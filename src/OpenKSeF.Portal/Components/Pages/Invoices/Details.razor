@@ -1,0 +1,82 @@
+@page "/invoices/{KsefInvoiceNumber}"
+@attribute [Authorize]
+@inject IInvoiceDetailService InvoiceDetailService
+
+<PageTitle>Invoice Details</PageTitle>
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="/invoices">Invoices</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Details</li>
+    </ol>
+</nav>
+
+<h1 class="h3 mb-3">Invoice details</h1>
+
+@if (_isLoading)
+{
+    <div class="d-flex align-items-center gap-2">
+        <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+        <span>Loading invoice details...</span>
+    </div>
+}
+else if (_invoice is null)
+{
+    <div class="alert alert-danger" data-testid="invoice-details-not-found" role="alert">Invoice not found or access denied.</div>
+    <a class="btn btn-outline-secondary" data-testid="invoice-details-back-link" href="/invoices">Back to invoices</a>
+}
+else
+{
+    <div class="card" data-testid="invoice-details-card">
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">KSeF Invoice Number</dt>
+                <dd class="col-sm-9" data-testid="invoice-detail-ksef-number">@_invoice.KSeFInvoiceNumber</dd>
+
+                <dt class="col-sm-3">KSeF Reference Number</dt>
+                <dd class="col-sm-9" data-testid="invoice-detail-ksef-reference-number">@_invoice.KSeFReferenceNumber</dd>
+
+                <dt class="col-sm-3">Vendor Name</dt>
+                <dd class="col-sm-9" data-testid="invoice-detail-vendor-name">@_invoice.VendorName</dd>
+
+                <dt class="col-sm-3">Vendor NIP</dt>
+                <dd class="col-sm-9" data-testid="invoice-detail-vendor-nip">@_invoice.VendorNip</dd>
+
+                <dt class="col-sm-3">Issue Date</dt>
+                <dd class="col-sm-9" data-testid="invoice-detail-issue-date">@_invoice.IssueDate.ToString("yyyy-MM-dd")</dd>
+
+                <dt class="col-sm-3">Amount</dt>
+                <dd class="col-sm-9" data-testid="invoice-detail-amount">@_invoice.AmountGross</dd>
+
+                <dt class="col-sm-3">Currency</dt>
+                <dd class="col-sm-9" data-testid="invoice-detail-currency">@_invoice.Currency</dd>
+
+                <dt class="col-sm-3">First Seen</dt>
+                <dd class="col-sm-9" data-testid="invoice-detail-first-seen">@_invoice.FirstSeenAt.ToString("u")</dd>
+
+                <dt class="col-sm-3">Last Updated</dt>
+                <dd class="col-sm-9" data-testid="invoice-detail-last-updated">@_invoice.LastUpdatedAt.ToString("u")</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="mt-3 d-flex gap-2">
+        <a class="btn btn-outline-secondary" data-testid="invoice-details-back-link" href="/invoices">Back to invoices</a>
+        <button class="btn btn-outline-primary" onclick="window.print()">Print</button>
+    </div>
+}
+
+@code {
+    [Parameter] public string KsefInvoiceNumber { get; set; } = string.Empty;
+
+    private bool _isLoading = true;
+    private InvoiceDetailModel? _invoice;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _isLoading = true;
+        _invoice = await InvoiceDetailService.GetByKsefNumberAsync(KsefInvoiceNumber);
+        _isLoading = false;
+    }
+}

@@ -1,0 +1,77 @@
+# .NET / .NET Core / .NET MAUI build output
+bin/
+obj/
+out/
+TestResults/
+artifacts/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Caches
+*.cache
+*.nupkg
+*.snupkg
+packages/
+
+# .NET MAUI / mobile build artifacts
+*.apk
+*.aab
+*.apks
+*.ipa
+*.app
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+
+# Signing and provisioning secrets
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+*.cer
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Node dependencies (if tooling is used)
+node_modules/
+
+# Environment variables
+.env
+.env.test
+.env.local
+.env.*.local
+
+# NuGet credentials (local overrides with real PAT)
+nuget.config.local
+
+# AI tooling / IDE config (keep skills for contributors)
+.cursor/
+!.cursor/skills/
+.mcp.json
+.claude/
+.taskmaster/
+
+# OS files
+.DS_Store
+
+Thumbs.db
+*.pfx
+*.pem
+*.key
+*.cer
+*.crt
+*.csr

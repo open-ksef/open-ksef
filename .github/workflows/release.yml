@@ -1,0 +1,166 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+
+# Allow only one release at a time for the same tag
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. Create draft GitHub Release
+  # ─────────────────────────────────────────────
+  create-release:
+    name: Create Draft Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          name: OpenKSeF ${{ github.ref_name }}
+          body: |
+            ## OpenKSeF ${{ github.ref_name }}
+
+            ### Docker (self-hosting)
+
+            Download `docker-compose.yml` attached below and run:
+
+            ```bash
+            docker compose up -d
+            ```
+
+            Images pushed to GHCR:
+            - `ghcr.io/${{ github.repository_owner }}/openksef-api:${{ github.ref_name }}`
+            - `ghcr.io/${{ github.repository_owner }}/openksef-worker:${{ github.ref_name }}`
+            - `ghcr.io/${{ github.repository_owner }}/openksef-portal-web:${{ github.ref_name }}`
+            - `ghcr.io/${{ github.repository_owner }}/openksef-keycloak:${{ github.ref_name }}`
+            - `ghcr.io/${{ github.repository_owner }}/openksef-gateway:${{ github.ref_name }}`
+
+            ---
+
+  # ─────────────────────────────────────────────
+  # 2. Docker images → GHCR
+  # ─────────────────────────────────────────────
+  docker:
+    name: Docker → GHCR
+    needs: create-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build & push API
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src
+          file: ./src/OpenKSeF.Api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/openksef-api:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/openksef-api:latest
+          build-args: |
+            NUGET_CIRFMF_USER=${{ github.actor }}
+            NUGET_CIRFMF_PAT=${{ secrets.NUGET_CIRFMF_PAT }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Worker
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src
+          file: ./src/OpenKSeF.Worker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/openksef-worker:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/openksef-worker:latest
+          build-args: |
+            NUGET_CIRFMF_USER=${{ github.actor }}
+            NUGET_CIRFMF_PAT=${{ secrets.NUGET_CIRFMF_PAT }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Portal Web
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src
+          file: ./src/OpenKSeF.Portal.Web/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/openksef-portal-web:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/openksef-portal-web:latest
+          build-args: |
+            NUGET_CIRFMF_USER=${{ github.actor }}
+            NUGET_CIRFMF_PAT=${{ secrets.NUGET_CIRFMF_PAT }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Keycloak
+        uses: docker/build-push-action@v6
+        with:
+          context: ./infra/keycloak
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/openksef-keycloak:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/openksef-keycloak:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: ./infra/nginx
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/openksef-gateway:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/openksef-gateway:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Attach docker-compose.yml to release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: docker-compose.yml
+
+  # ─────────────────────────────────────────────
+  # 3. Publish release (remove draft) once all jobs done
+  # ─────────────────────────────────────────────
+  publish-release:
+    name: Publish Release
+    needs: [docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
