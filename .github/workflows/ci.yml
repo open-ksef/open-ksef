@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Build & Test (.NET 8)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Configure CIRFMF NuGet feed
+        run: |
+          dotnet nuget update source CIRFMF \
+            --source https://nuget.pkg.github.com/CIRFMF/index.json \
+            --username ${{ github.actor }} \
+            --password ${{ secrets.NUGET_CIRFMF_PAT }} \
+            --store-password-in-clear-text \
+            --configfile nuget.config
+
+      - name: Restore
+        run: |
+          dotnet restore OpenKSeF.Api/OpenKSeF.Api.csproj
+          dotnet restore OpenKSeF.Worker/OpenKSeF.Worker.csproj
+          dotnet restore OpenKSeF.Domain/OpenKSeF.Domain.csproj
+          dotnet restore OpenKSeF.Domain.Tests/OpenKSeF.Domain.Tests.csproj
+          dotnet restore OpenKSeF.Api.Tests/OpenKSeF.Api.Tests.csproj
+
+      - name: Build
+        run: |
+          dotnet build OpenKSeF.Api/OpenKSeF.Api.csproj --no-restore -c Release
+          dotnet build OpenKSeF.Worker/OpenKSeF.Worker.csproj --no-restore -c Release
+          dotnet build OpenKSeF.Domain.Tests/OpenKSeF.Domain.Tests.csproj --no-restore -c Release
+          dotnet build OpenKSeF.Api.Tests/OpenKSeF.Api.Tests.csproj --no-restore -c Release
+
+      - name: Test
+        run: |
+          dotnet test OpenKSeF.Domain.Tests/OpenKSeF.Domain.Tests.csproj --no-build -c Release --verbosity normal
+          dotnet test OpenKSeF.Api.Tests/OpenKSeF.Api.Tests.csproj --no-build -c Release --verbosity normal
+
+  portal-web:
+    name: Build & Lint (Portal Web)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/OpenKSeF.Portal.Web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/OpenKSeF.Portal.Web/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint
+      - run: npm test
+
+  # ─────────────────────────────────────────────────────────────────
+  # Push :dev images to GHCR on every commit to main.
+  # Infra images (keycloak, gateway) are only rebuilt when their
+  # source files change (path filtering via dorny/paths-filter).
+  # ─────────────────────────────────────────────────────────────────
+  docker-dev:
+    name: Docker :dev images
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect infra file changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            keycloak:
+              - 'infra/keycloak/**'
+            nginx:
+              - 'infra/nginx/**'
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build & push API :dev
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src
+          file: ./src/OpenKSeF.Api/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-api:dev
+          build-args: |
+            NUGET_CIRFMF_USER=${{ github.actor }}
+            NUGET_CIRFMF_PAT=${{ secrets.NUGET_CIRFMF_PAT }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Worker :dev
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src
+          file: ./src/OpenKSeF.Worker/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-worker:dev
+          build-args: |
+            NUGET_CIRFMF_USER=${{ github.actor }}
+            NUGET_CIRFMF_PAT=${{ secrets.NUGET_CIRFMF_PAT }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Portal Web :dev
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src
+          file: ./src/OpenKSeF.Portal.Web/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-portal-web:dev
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Keycloak :dev
+        if: steps.changes.outputs.keycloak == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./infra/keycloak
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-keycloak:dev
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Gateway :dev
+        if: steps.changes.outputs.nginx == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./infra/nginx
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-gateway:dev
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

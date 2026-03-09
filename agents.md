@@ -1,0 +1,1 @@
+Navigate to `CLAUDE.md`.

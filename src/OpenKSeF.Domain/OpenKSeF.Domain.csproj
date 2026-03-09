@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenKSeF.Domain.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MailKit" Version="4.15.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.*" />
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.*" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.*" />
+  </ItemGroup>
+
+</Project>

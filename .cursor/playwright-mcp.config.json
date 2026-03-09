@@ -1,0 +1,21 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "launchOptions": {
+      "headless": false
+    },
+    "contextOptions": {
+      "viewport": { "width": 1280, "height": 720 },
+      "ignoreHTTPSErrors": true
+    }
+  },
+  "capabilities": ["core"],
+  "saveTrace": true,
+  "outputDir": "./.cursor/playwright-output",
+  "console": {
+    "level": "warning"
+  },
+  "network": {
+    "allowedOrigins": ["http://localhost:*"]
+  }
+}

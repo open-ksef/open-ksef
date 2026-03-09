@@ -1,0 +1,288 @@
+@page "/invoices"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@inject ITenantCrudService TenantCrudService
+@inject IInvoiceListService InvoiceListService
+@inject NavigationManager Navigation
+
+<PageTitle>Invoices</PageTitle>
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Invoices</li>
+    </ol>
+</nav>
+
+<h1 class="h3 mb-3">Invoices</h1>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-12 col-md-3">
+                <label class="form-label" for="tenant">Tenant</label>
+                <select id="tenant" class="form-select" data-testid="invoice-tenant-filter" @bind="_selectedTenantRaw">
+                    <option value="">All tenants</option>
+                    @foreach (var tenant in _tenants)
+                    {
+                        <option value="@tenant.Id">@(tenant.DisplayName ?? tenant.Nip) (@tenant.Nip)</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-6 col-md-2">
+                <label class="form-label" for="dateFrom">Date from</label>
+                <InputDate TValue="DateTime?" id="dateFrom" class="form-control" data-testid="invoice-date-from" @bind-Value="_dateFrom" />
+            </div>
+
+            <div class="col-6 col-md-2">
+                <label class="form-label" for="dateTo">Date to</label>
+                <InputDate TValue="DateTime?" id="dateTo" class="form-control" data-testid="invoice-date-to" @bind-Value="_dateTo" />
+            </div>
+
+            <div class="col-6 col-md-2">
+                <label class="form-label" for="pageSize">Page size</label>
+                <select id="pageSize" class="form-select" data-testid="invoice-page-size" @bind="_pageSize">
+                    @foreach (var pageSize in _pageSizes)
+                    {
+                        <option value="@pageSize">@pageSize</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-6 col-md-3 d-flex gap-2">
+                <button class="btn btn-primary" data-testid="invoice-apply-filters" @onclick="ApplyFilters">Apply</button>
+                <button class="btn btn-outline-secondary" @onclick="ResetFilters">Reset</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_isLoading)
+{
+    <div class="d-flex align-items-center gap-2">
+        <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+        <span>Loading invoices...</span>
+    </div>
+}
+else if (_errorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@_errorMessage</div>
+}
+else if (_result.TotalCount == 0)
+{
+    <div class="alert alert-info" role="alert">No invoices found for the selected filters.</div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="text-muted small">
+            Showing @FirstItemNumber()-@LastItemNumber() of @_result.TotalCount
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-outline-secondary btn-sm" data-testid="invoice-prev-page" disabled="@(_result.Page <= 1)" @onclick="PreviousPage">Previous</button>
+            <button class="btn btn-outline-secondary btn-sm" data-testid="invoice-next-page" disabled="@(_result.Page >= _result.TotalPages)" @onclick="NextPage">Next</button>
+        </div>
+    </div>
+
+    <table class="table table-striped align-middle" data-testid="invoice-table">
+        <thead>
+            <tr>
+                <th>KSeF Number</th>
+                <th>Vendor Name</th>
+                <th>Vendor NIP</th>
+                <th>
+                    <button class="btn btn-link btn-sm p-0" @onclick="() => ToggleSort(InvoiceSortBy.IssueDate)">
+                        Issue Date
+                    </button>
+                </th>
+                <th>
+                    <button class="btn btn-link btn-sm p-0" @onclick="() => ToggleSort(InvoiceSortBy.AmountGross)">
+                        Amount
+                    </button>
+                </th>
+                <th>Currency</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var invoice in _result.Items)
+            {
+                <tr data-testid="invoice-row">
+                    <td data-testid="invoice-ksef-number">@invoice.KSeFInvoiceNumber</td>
+                    <td>@invoice.VendorName</td>
+                    <td>@invoice.VendorNip</td>
+                    <td>@invoice.IssueDate.ToString("yyyy-MM-dd")</td>
+                    <td>@invoice.AmountGross</td>
+                    <td>@invoice.Currency</td>
+                    <td class="text-end">
+                        <a class="btn btn-outline-primary btn-sm" data-testid="invoice-view-details" href="@($"/invoices/{Uri.EscapeDataString(invoice.KSeFInvoiceNumber)}")">View Details</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "page")]
+    public int? PageParam { get; set; }
+
+    [SupplyParameterFromQuery(Name = "pageSize")]
+    public int? PageSizeParam { get; set; }
+
+    [SupplyParameterFromQuery(Name = "tenantId")]
+    public Guid? TenantIdParam { get; set; }
+
+    [SupplyParameterFromQuery(Name = "dateFrom")]
+    public DateTime? DateFromParam { get; set; }
+
+    [SupplyParameterFromQuery(Name = "dateTo")]
+    public DateTime? DateToParam { get; set; }
+
+    [SupplyParameterFromQuery(Name = "sortBy")]
+    public InvoiceSortBy? SortByParam { get; set; }
+
+    [SupplyParameterFromQuery(Name = "sortDirection")]
+    public SortDirection? SortDirectionParam { get; set; }
+
+    private readonly int[] _pageSizes = [10, 25, 50, 100];
+    private bool _isLoading;
+    private string? _errorMessage;
+    private IReadOnlyList<OpenKSeF.Domain.Entities.Tenant> _tenants = [];
+    private InvoiceListQuery _query = new();
+    private OpenKSeF.Domain.Models.PagedResult<InvoiceListRow> _result = new()
+    {
+        Items = [],
+        Page = 1,
+        PageSize = 25,
+        TotalCount = 0
+    };
+
+    private string _selectedTenantRaw = string.Empty;
+    private DateTime? _dateFrom;
+    private DateTime? _dateTo;
+    private int _pageSize = 25;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _query = new InvoiceListQuery
+        {
+            Page = PageParam ?? 1,
+            PageSize = PageSizeParam ?? 25,
+            TenantId = TenantIdParam,
+            DateFrom = DateFromParam,
+            DateTo = DateToParam,
+            SortBy = SortByParam ?? InvoiceSortBy.IssueDate,
+            SortDirection = SortDirectionParam ?? SortDirection.Desc
+        };
+
+        _selectedTenantRaw = _query.TenantId?.ToString() ?? string.Empty;
+        _dateFrom = _query.DateFrom;
+        _dateTo = _query.DateTo;
+        _pageSize = _query.PageSize;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            if (_tenants.Count == 0)
+            {
+                _tenants = await TenantCrudService.ListAsync();
+            }
+
+            _result = await InvoiceListService.SearchAsync(_query);
+        }
+        catch
+        {
+            _errorMessage = "Unable to load invoices.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        NavigateWithQuery(1, ParseTenantId(), _dateFrom, _dateTo, _pageSize, _query.SortBy, _query.SortDirection);
+    }
+
+    private void ResetFilters()
+    {
+        NavigateWithQuery(1, null, null, null, 25, InvoiceSortBy.IssueDate, SortDirection.Desc);
+    }
+
+    private void NextPage()
+    {
+        if (_result.Page < _result.TotalPages)
+        {
+            NavigateWithQuery(_result.Page + 1, _query.TenantId, _query.DateFrom, _query.DateTo, _query.PageSize, _query.SortBy, _query.SortDirection);
+        }
+    }
+
+    private void PreviousPage()
+    {
+        if (_result.Page > 1)
+        {
+            NavigateWithQuery(_result.Page - 1, _query.TenantId, _query.DateFrom, _query.DateTo, _query.PageSize, _query.SortBy, _query.SortDirection);
+        }
+    }
+
+    private void ToggleSort(InvoiceSortBy sortBy)
+    {
+        var sortDirection = _query.SortBy == sortBy && _query.SortDirection == SortDirection.Desc
+            ? SortDirection.Asc
+            : SortDirection.Desc;
+
+        NavigateWithQuery(1, _query.TenantId, _query.DateFrom, _query.DateTo, _query.PageSize, sortBy, sortDirection);
+    }
+
+    private void NavigateWithQuery(
+        int page,
+        Guid? tenantId,
+        DateTime? dateFrom,
+        DateTime? dateTo,
+        int pageSize,
+        InvoiceSortBy sortBy,
+        SortDirection sortDirection)
+    {
+        var query = new Dictionary<string, string?>
+        {
+            ["page"] = page.ToString(),
+            ["pageSize"] = pageSize.ToString(),
+            ["sortBy"] = sortBy.ToString(),
+            ["sortDirection"] = sortDirection.ToString()
+        };
+
+        if (tenantId.HasValue)
+        {
+            query["tenantId"] = tenantId.Value.ToString();
+        }
+
+        if (dateFrom.HasValue)
+        {
+            query["dateFrom"] = dateFrom.Value.ToString("yyyy-MM-dd");
+        }
+
+        if (dateTo.HasValue)
+        {
+            query["dateTo"] = dateTo.Value.ToString("yyyy-MM-dd");
+        }
+
+        var uri = Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString("/invoices", query!);
+        Navigation.NavigateTo(uri);
+    }
+
+    private Guid? ParseTenantId() => Guid.TryParse(_selectedTenantRaw, out var tenantId) ? tenantId : null;
+
+    private int FirstItemNumber() => _result.TotalCount == 0 ? 0 : ((_result.Page - 1) * _result.PageSize) + 1;
+
+    private int LastItemNumber() => Math.Min(_result.Page * _result.PageSize, _result.TotalCount);
+}

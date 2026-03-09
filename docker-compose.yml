@@ -1,0 +1,111 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: openksef-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-openksef}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openksef_dev_password}
+    # Creates the keycloak database on first init (no local file mount needed)
+    entrypoint:
+      - sh
+      - -c
+      - |
+        echo "CREATE DATABASE keycloak;" > /docker-entrypoint-initdb.d/01-keycloak.sql
+        exec docker-entrypoint.sh postgres
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openksef}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  keycloak:
+    image: ghcr.io/open-ksef/openksef-keycloak:latest
+    container_name: openksef-keycloak
+    command: start-dev --import-realm
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${KC_DB_USERNAME:-${POSTGRES_USER:-openksef}}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:-${POSTGRES_PASSWORD:-openksef_dev_password}}
+
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+
+      KC_HTTP_ENABLED: "true"
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    ports:
+      - "${KEYCLOAK_HOST_PORT:-8082}:8080"
+
+  api:
+    image: ghcr.io/open-ksef/openksef-api:latest
+    container_name: openksef-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://0.0.0.0:8081
+      ConnectionStrings__Db: Host=postgres;Port=5432;Database=openksef;Username=${POSTGRES_USER:-openksef};Password=${POSTGRES_PASSWORD:-openksef_dev_password}
+      Auth__Authority: http://keycloak:8080/auth/realms/openksef
+      Auth__PublicAuthority: ${APP_EXTERNAL_BASE_URL:-http://localhost:8080}/auth/realms/openksef
+      # Optional: set these manually or let the admin setup wizard configure them automatically
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      Auth__ServiceAccount__ClientId: openksef-api
+      Auth__ServiceAccount__ClientSecret: ${API_CLIENT_SECRET:-}
+      KSeF__BaseUrl: ${KSEF_BASE_URL:-https://ksef-test.mf.gov.pl/api}
+      Firebase__CredentialsJson: ${FIREBASE_CREDENTIALS_JSON:-}
+    ports:
+      - "${API_HOST_PORT:-8081}:8081"
+
+  worker:
+    image: ghcr.io/open-ksef/openksef-worker:latest
+    container_name: openksef-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    environment:
+      ConnectionStrings__Db: Host=postgres;Port=5432;Database=openksef;Username=${POSTGRES_USER:-openksef};Password=${POSTGRES_PASSWORD:-openksef_dev_password}
+      Auth__Authority: http://keycloak:8080/auth/realms/openksef
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      KSeF__BaseUrl: ${KSEF_BASE_URL:-https://ksef-test.mf.gov.pl/api}
+
+  portal-web:
+    image: ghcr.io/open-ksef/openksef-portal-web:latest
+    container_name: openksef-portal-web
+    depends_on:
+      keycloak:
+        condition: service_started
+    environment:
+      VITE_API_BASE_URL: /api
+      VITE_AUTH_AUTHORITY: /auth/realms/openksef
+      VITE_AUTH_CLIENT_ID: openksef-portal-web
+    ports:
+      - "${PORTAL_WEB_HOST_PORT:-8083}:80"
+
+  gateway:
+    image: ghcr.io/open-ksef/openksef-gateway:latest
+    container_name: openksef-gateway
+    depends_on:
+      keycloak:
+        condition: service_started
+      portal-web:
+        condition: service_started
+    ports:
+      - "${APP_HOST_PORT:-8080}:8080"
+
+volumes:
+  postgres_data:

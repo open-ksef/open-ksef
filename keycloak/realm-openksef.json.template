@@ -1,0 +1,87 @@
+{
+  "realm": "openksef",
+  "enabled": true,
+  "displayName": "openksef",
+  "registrationAllowed": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "sslRequired": "none",
+  "clients": [
+    {
+      "clientId": "openksef-api",
+      "name": "openksef-api",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "redirectUris": [
+        "__APP_EXTERNAL_BASE_URL__/api/*"
+      ],
+      "webOrigins": [
+        "__APP_EXTERNAL_BASE_URL__"
+      ]
+    },
+    {
+      "clientId": "openksef-mobile",
+      "name": "openksef-mobile",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "__APP_EXTERNAL_BASE_URL__/*",
+        "openksef://auth/*"
+      ],
+      "webOrigins": [
+        "*"
+      ]
+    },
+    {
+      "clientId": "openksef-portal-web",
+      "name": "openksef-portal-web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/callback",
+        "http://localhost:5173/silent-callback",
+        "__APP_EXTERNAL_BASE_URL__/callback",
+        "__APP_EXTERNAL_BASE_URL__/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "__APP_EXTERNAL_BASE_URL__"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "google",
+      "displayName": "Google",
+      "providerId": "google",
+      "enabled": true,
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "__GOOGLE_CLIENT_ID__",
+        "clientSecret": "__GOOGLE_CLIENT_SECRET__",
+        "defaultScope": "openid email profile",
+        "syncMode": "IMPORT"
+      }
+    }
+  ]
+}
