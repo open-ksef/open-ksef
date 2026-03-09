@@ -185,3 +185,4 @@ This project is licensed under the [Elastic License 2.0 (ELv2)](LICENSE).
 Free to use, modify, and self-host for internal purposes. Offering OpenKSeF as
 a hosted or managed service to third parties requires explicit written permission
 from the copyright holder. See [COMMERCIAL.md](COMMERCIAL.md) for details.
+
