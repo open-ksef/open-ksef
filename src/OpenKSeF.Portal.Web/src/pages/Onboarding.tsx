@@ -310,14 +310,6 @@ export function OnboardingPage(): ReactElement {
             {credentialType === 'Token' && (
               <>
                 <div
-                  className="onboarding-deprecation-warning"
-                  data-testid="onboarding-token-deprecation-warning"
-                >
-                  Od 1 stycznia 2027 r. tokeny autoryzacyjne nie będą obsługiwane przez KSeF.
-                  Zalecamy konfigurację certyfikatu KSeF.
-                </div>
-
-                <div
                   className="onboarding-instruction"
                   data-testid="onboarding-instruction"
                 >

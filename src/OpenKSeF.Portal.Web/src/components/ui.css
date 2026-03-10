@@ -1669,16 +1669,6 @@ dd {
   color: #fff;
 }
 
-.onboarding-deprecation-warning {
-  background: #fffbeb;
-  border: 1px solid #fcd34d;
-  border-radius: var(--ui-radius-md);
-  padding: 12px 16px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: #92400e;
-  font-weight: 500;
-}
 
 .credential-type-badge {
   display: inline-flex;

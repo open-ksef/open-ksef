@@ -160,12 +160,6 @@ Optional push config:
 - `APNs__BundleId`
 - `APNs__BaseUrl`
 
-## KSeF auth cutoff
-
-`KSeF__AuthMode` supports `Token`, `Certificate`, and `Auto`.
-
-In `Auto` mode, certificate auth is enforced from **January 1, 2027 (UTC)**.
-
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute.
