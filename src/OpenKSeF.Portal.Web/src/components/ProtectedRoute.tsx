@@ -11,6 +11,7 @@ export function ProtectedRoute({ children }: PropsWithChildren): ReactElement {
   const isOnboardingPath = location.pathname === '/onboarding'
 
   const setup = useSetupStatus()
+  const onboarding = useOnboardingStatus(isAuthenticated && !isLoading)
 
   if (setup.isLoading) {
     return <main>Sprawdzanie konfiguracji systemu…</main>
@@ -19,8 +20,6 @@ export function ProtectedRoute({ children }: PropsWithChildren): ReactElement {
   if (setup.data && !setup.data.isInitialized) {
     return <Navigate to="/admin-setup" replace />
   }
-
-  const onboarding = useOnboardingStatus(isAuthenticated && !isLoading)
 
   if (isLoading) {
     return <main>Sprawdzanie uwierzytelnienia…</main>

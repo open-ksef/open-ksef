@@ -82,44 +82,47 @@ public sealed class SystemSetupService : ISystemSetupService
         {
             var client = _httpClientFactory.CreateClient("keycloak");
             var kcBase = KeycloakInternalBaseUrl;
-            var headers = new Dictionary<string, string>
-            {
-                ["Authorization"] = $"Bearer {adminToken}",
-            };
 
-            // 1. Generate encryption key
+            // 1. Create realm + clients if they don't exist yet
+            await EnsureRealmExistsAsync(client, kcBase, adminToken, ct);
+            _logger.LogInformation("Keycloak realm verified/created");
+
+            await EnsureClientsExistAsync(client, kcBase, adminToken, ct);
+            _logger.LogInformation("Keycloak clients verified/created");
+
+            // 2. Generate encryption key
             var encryptionKeyBytes = RandomNumberGenerator.GetBytes(32);
             var encryptionKey = Convert.ToBase64String(encryptionKeyBytes);
             _logger.LogInformation("Generated encryption key");
 
-            // 2. Fetch openksef-api client secret
+            // 3. Fetch openksef-api client secret
             var apiClientSecret = await FetchApiClientSecretAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Fetched API client secret");
 
-            // 3. Enable token-exchange role
+            // 4. Enable token-exchange role
             await EnableTokenExchangeAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Token exchange configured");
 
-            // 4. Update Keycloak client redirect URIs
+            // 5. Update Keycloak client redirect URIs
             await UpdateClientRedirectUrisAsync(client, kcBase, adminToken, request.ExternalBaseUrl, ct);
             _logger.LogInformation("Updated client redirect URIs");
 
-            // 5. Configure Keycloak realm (login policy, password policy, SMTP)
+            // 6. Configure Keycloak realm (login policy, password policy, SMTP)
             await ConfigureRealmAsync(client, kcBase, adminToken, request, ct);
             _logger.LogInformation("Configured Keycloak realm settings");
 
-            // 6. Create first admin user
+            // 7. Create first admin user
             await CreateAdminUserAsync(client, kcBase, adminToken, request, ct);
             _logger.LogInformation("Created admin user");
 
-            // 7. Configure Google IdP (if provided)
+            // 8. Configure Google IdP (if provided)
             if (!string.IsNullOrEmpty(request.GoogleClientId) && !string.IsNullOrEmpty(request.GoogleClientSecret))
             {
                 await ConfigureGoogleIdpAsync(client, kcBase, adminToken, request, ct);
                 _logger.LogInformation("Configured Google IdP");
             }
 
-            // 8. Store config in DB
+            // 9. Store config in DB
             var configValues = new Dictionary<string, string>
             {
                 [SystemConfigKeys.EncryptionKey] = encryptionKey,
@@ -150,6 +153,109 @@ public sealed class SystemSetupService : ISystemSetupService
         {
             _logger.LogError(ex, "System setup failed");
             return new SetupApplyResponse(false, null, null, ex.Message);
+        }
+    }
+
+    private async Task EnsureRealmExistsAsync(
+        HttpClient client, string kcBase, string adminToken, CancellationToken ct)
+    {
+        var realmUrl = $"{kcBase}/admin/realms/openksef";
+        using var checkReq = new HttpRequestMessage(HttpMethod.Get, realmUrl);
+        checkReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+        var checkResp = await client.SendAsync(checkReq, ct);
+
+        if (checkResp.IsSuccessStatusCode)
+        {
+            _logger.LogInformation("Realm 'openksef' already exists");
+            return;
+        }
+
+        var realmPayload = new Dictionary<string, object>
+        {
+            ["realm"] = "openksef",
+            ["enabled"] = true,
+            ["displayName"] = "openksef",
+            ["sslRequired"] = "none",
+            ["accessTokenLifespan"] = 1800,
+            ["ssoSessionIdleTimeout"] = 1800,
+            ["ssoSessionMaxLifespan"] = 36000,
+            ["registrationAllowed"] = true,
+            ["loginWithEmailAllowed"] = true,
+            ["duplicateEmailsAllowed"] = false,
+            ["resetPasswordAllowed"] = true,
+            ["editUsernameAllowed"] = false,
+        };
+
+        await SendKeycloakJsonAsync(client, HttpMethod.Post,
+            $"{kcBase}/admin/realms", adminToken, realmPayload, ct);
+
+        _logger.LogInformation("Created realm 'openksef'");
+    }
+
+    private async Task EnsureClientsExistAsync(
+        HttpClient client, string kcBase, string adminToken, CancellationToken ct)
+    {
+        var clientsUrl = $"{kcBase}/admin/realms/openksef/clients";
+
+        var clientDefinitions = new[]
+        {
+            new Dictionary<string, object>
+            {
+                ["clientId"] = "openksef-api",
+                ["name"] = "openksef-api",
+                ["enabled"] = true,
+                ["protocol"] = "openid-connect",
+                ["publicClient"] = false,
+                ["standardFlowEnabled"] = true,
+                ["directAccessGrantsEnabled"] = false,
+                ["serviceAccountsEnabled"] = true,
+                ["redirectUris"] = new[] { "/*" },
+                ["webOrigins"] = new[] { "*" },
+            },
+            new Dictionary<string, object>
+            {
+                ["clientId"] = "openksef-mobile",
+                ["name"] = "openksef-mobile",
+                ["enabled"] = true,
+                ["protocol"] = "openid-connect",
+                ["publicClient"] = true,
+                ["standardFlowEnabled"] = true,
+                ["directAccessGrantsEnabled"] = true,
+                ["redirectUris"] = new[] { "/*", "openksef://auth/*" },
+                ["webOrigins"] = new[] { "*" },
+            },
+            new Dictionary<string, object>
+            {
+                ["clientId"] = "openksef-portal-web",
+                ["name"] = "openksef-portal-web",
+                ["enabled"] = true,
+                ["protocol"] = "openid-connect",
+                ["publicClient"] = true,
+                ["standardFlowEnabled"] = true,
+                ["implicitFlowEnabled"] = false,
+                ["directAccessGrantsEnabled"] = true,
+                ["serviceAccountsEnabled"] = false,
+                ["redirectUris"] = new[] { "/*" },
+                ["webOrigins"] = new[] { "*" },
+                ["attributes"] = new Dictionary<string, string>
+                {
+                    ["pkce.code.challenge.method"] = "S256",
+                },
+            },
+        };
+
+        foreach (var clientDef in clientDefinitions)
+        {
+            var clientId = (string)clientDef["clientId"];
+            var existing = await GetClientUuidAsync(client, kcBase, adminToken, clientId, ct);
+            if (existing != null)
+            {
+                _logger.LogInformation("Client '{ClientId}' already exists", clientId);
+                continue;
+            }
+
+            await SendKeycloakJsonAsync(client, HttpMethod.Post, clientsUrl, adminToken, clientDef, ct);
+            _logger.LogInformation("Created client '{ClientId}'", clientId);
         }
     }
 
@@ -277,6 +383,9 @@ public sealed class SystemSetupService : ISystemSetupService
             ["verifyEmail"] = request.VerifyEmail,
             ["loginWithEmailAllowed"] = request.LoginWithEmailAllowed,
             ["resetPasswordAllowed"] = request.ResetPasswordAllowed,
+            ["accessTokenLifespan"] = 1800,
+            ["ssoSessionIdleTimeout"] = 1800,
+            ["ssoSessionMaxLifespan"] = 36000,
         };
 
         if (!string.IsNullOrEmpty(request.PasswordPolicy))

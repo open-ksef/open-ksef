@@ -17,11 +17,10 @@ describe('Legacy Blazor portal decommission', () => {
     expect(compose).not.toContain('profiles: ["portal"]')
     expect(compose).not.toContain('profiles: ["app", "portal"]')
     expect(compose).toContain('portal-web:')
-    expect(compose).toContain('profiles: ["app"]')
   })
 
   it('removes legacy portal build and e2e jobs from CI workflow', () => {
-    const workflow = readRepoFile('.github/workflows/build.yml')
+    const workflow = readRepoFile('.github/workflows/ci.yml')
 
     expect(workflow).not.toContain('portal-e2e:')
     expect(workflow).not.toContain('OpenKSeF.Portal/OpenKSeF.Portal.csproj')

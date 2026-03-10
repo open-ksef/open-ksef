@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
 
 import {
@@ -123,91 +123,74 @@ export function CredentialListPage(): ReactElement {
   const rows = credentialsQuery.data ?? []
   const combinedError = credentialsQuery.error ?? tenantsQuery.error
 
-  const columns = useMemo<TableColumn<TenantCredentialStatusResponse>[]>(
-    () => [
-      { key: 'tenantDisplayName', label: 'Firma' },
-      {
-        key: 'credentialType',
-        label: 'Typ',
-        render: (row) => <CredentialTypeBadge type={row.hasCredential ? row.credentialType : null} />,
+  const columns: TableColumn<TenantCredentialStatusResponse>[] = [
+    { key: 'tenantDisplayName', label: 'Firma' },
+    {
+      key: 'credentialType',
+      label: 'Typ',
+      render: (row) => <CredentialTypeBadge type={row.hasCredential ? row.credentialType : null} />,
+    },
+    {
+      key: 'hasCredential',
+      label: 'Status',
+      render: (row) => {
+        if (!row.hasCredential) return <StatusBadge status="warning" label="Brak" />
+        return <StatusBadge status="success" label="Skonfigurowany" />
       },
-      {
-        key: 'hasCredential',
-        label: 'Status',
-        render: (row) => {
-          if (!row.hasCredential) return <StatusBadge status="warning" label="Brak" />
-          if (row.credentialType === 'Token') {
-            return (
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <StatusBadge status="success" label="Skonfigurowany" />
-                <span
-                  data-testid="credential-token-deprecation"
-                  style={{ fontSize: '11px', color: '#92400e' }}
-                  title="Od 1 stycznia 2027 r. tokeny nie będą obsługiwane"
-                >
-                  ⚠ Wygasa 2027
-                </span>
-              </span>
-            )
-          }
-          return <StatusBadge status="success" label="Skonfigurowany" />
-        },
-      },
-      {
-        key: 'lastUpdatedAt',
-        label: 'Ostatnia aktualizacja',
-        render: (row) =>
-          row.lastUpdatedAt ? (
-            new Date(row.lastUpdatedAt).toLocaleDateString('pl-PL')
-          ) : (
-            <span style={{ color: 'var(--ui-text-muted)' }}>-</span>
-          ),
-      },
-      {
-        key: 'tenantId',
-        label: 'Akcje',
-        render: (row) => (
-          <div className="table-actions">
-            <button
-              data-testid="credential-sync-button"
-              type="button"
-              className="btn-action"
-              disabled={!row.hasCredential || syncMutation.isPending}
-              onClick={() => {
-                setError(null)
-                syncMutation.mutate(row.tenantId)
-              }}
-            >
-              Wymuś synchronizację
-            </button>
-            <button
-              data-testid="credential-update-button"
-              type="button"
-              className="btn-action btn-action--edit"
-              onClick={() => {
-                setError(null)
-                setMode('update')
-                setSelectedTenantId(row.tenantId)
-                setFormCredentialType(row.credentialType ?? 'Token')
-                resetForm()
-              }}
-            >
-              {row.hasCredential ? 'Aktualizuj' : 'Dodaj'}
-            </button>
-            <button
-              data-testid="credential-delete-button"
-              type="button"
-              className="btn-action btn-action--danger"
-              onClick={() => setPendingDeleteTenantId(row.tenantId)}
-            >
-              Usuń
-            </button>
-          </div>
+    },
+    {
+      key: 'lastUpdatedAt',
+      label: 'Ostatnia aktualizacja',
+      render: (row) =>
+        row.lastUpdatedAt ? (
+          new Date(row.lastUpdatedAt).toLocaleDateString('pl-PL')
+        ) : (
+          <span style={{ color: 'var(--ui-text-muted)' }}>-</span>
         ),
-      },
-    ],
-    [syncMutation],
-  )
+    },
+    {
+      key: 'tenantId',
+      label: 'Akcje',
+      render: (row) => (
+        <div className="table-actions">
+          <button
+            data-testid="credential-sync-button"
+            type="button"
+            className="btn-action"
+            disabled={!row.hasCredential || syncMutation.isPending}
+            onClick={() => {
+              setError(null)
+              syncMutation.mutate(row.tenantId)
+            }}
+          >
+            Wymuś synchronizację
+          </button>
+          <button
+            data-testid="credential-update-button"
+            type="button"
+            className="btn-action btn-action--edit"
+            onClick={() => {
+              setError(null)
+              setMode('update')
+              setSelectedTenantId(row.tenantId)
+              setFormCredentialType(row.credentialType ?? 'Token')
+              resetForm()
+            }}
+          >
+            {row.hasCredential ? 'Aktualizuj' : 'Dodaj'}
+          </button>
+          <button
+            data-testid="credential-delete-button"
+            type="button"
+            className="btn-action btn-action--danger"
+            onClick={() => setPendingDeleteTenantId(row.tenantId)}
+          >
+            Usuń
+          </button>
+        </div>
+      ),
+    },
+  ]
 
   const handleDeleteConfirm = useCallback(() => {
     if (pendingDeleteTenantId) {
@@ -394,12 +377,6 @@ export function CredentialListPage(): ReactElement {
 
               {formCredentialType === 'Token' && (
                 <>
-                  <div
-                    className="onboarding-deprecation-warning"
-                    style={{ fontSize: '12px' }}
-                  >
-                    Od 1 stycznia 2027 r. tokeny autoryzacyjne nie będą obsługiwane przez KSeF.
-                  </div>
                   <div className="ui-form-group">
                     <label htmlFor="credential-token-input">Token KSeF</label>
                     <textarea

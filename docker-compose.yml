@@ -23,9 +23,9 @@ services:
       retries: 20
 
   keycloak:
-    image: ghcr.io/open-ksef/openksef-keycloak:latest
+    image: quay.io/keycloak/keycloak:26.0
     container_name: openksef-keycloak
-    command: start-dev --import-realm
+    command: start-dev --features=token-exchange,admin-fine-grained-authz
     depends_on:
       postgres:
         condition: service_healthy

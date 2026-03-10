@@ -32,7 +32,7 @@ Rollback steps:
 1. Revert changes in `infra/nginx/default.conf` to point `/` back to Blazor service.
 2. Restore `portal` service in `docker-compose.yml` and include it in runtime profile.
 3. Restore Blazor build and publish steps in `.github/workflows/build.yml`.
-4. Re-add Keycloak `openksef-portal` client in `keycloak/realm-openksef.json`.
+4. Re-add Keycloak `openksef-portal` client via the Keycloak admin console or Admin API.
 5. Redeploy gateway and application containers.
 
 Rollback support sunset:

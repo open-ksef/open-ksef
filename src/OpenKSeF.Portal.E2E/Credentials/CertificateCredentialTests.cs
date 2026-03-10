@@ -76,43 +76,6 @@ public sealed class CertificateCredentialTests : BasePortalTest
     }
 
     [Test]
-    public async Task Onboarding_TokenDeprecationBanner_IsVisible()
-    {
-        await DatabaseFixture.CleanupAsync();
-
-        await LoginViaDirectFormAsync();
-
-        await Page.WaitForURLAsync(
-            url => url.Contains("/onboarding", StringComparison.OrdinalIgnoreCase),
-            new() { Timeout = 15_000 });
-
-        // Step 1: Fill and advance
-        await Page.GetByTestId("onboarding-nip").FillAsync("6666666666");
-        await Page.GetByTestId("onboarding-display-name").FillAsync("Deprecation Banner Co");
-        await Page.GetByTestId("onboarding-next").ClickAsync();
-
-        // Step 2: Token type is selected by default
-        await Assertions.Expect(Page.GetByTestId("onboarding-credential-type")).ToBeVisibleAsync(
-            new() { Timeout = 10_000 });
-
-        // Verify deprecation banner is visible
-        var banner = Page.GetByTestId("onboarding-token-deprecation-warning");
-        await Assertions.Expect(banner).ToBeVisibleAsync();
-
-        var bannerText = await banner.TextContentAsync();
-        Assert.That(bannerText, Does.Contain("2027"));
-        Assert.That(bannerText, Does.Contain("tokeny autoryzacyjne"));
-
-        // Switch to certificate -- banner should disappear
-        await Page.GetByTestId("onboarding-credential-type-certificate").ClickAsync();
-        await Assertions.Expect(banner).Not.ToBeVisibleAsync();
-
-        // Switch back to token -- banner should reappear
-        await Page.GetByTestId("onboarding-credential-type-token").ClickAsync();
-        await Assertions.Expect(banner).ToBeVisibleAsync();
-    }
-
-    [Test]
     public async Task CredentialList_ShowsCredentialType()
     {
         await DatabaseFixture.CleanupAsync();
@@ -137,10 +100,6 @@ public sealed class CertificateCredentialTests : BasePortalTest
         await Assertions.Expect(badges.First).ToBeVisibleAsync();
         var badgeText = await badges.First.TextContentAsync();
         Assert.That(badgeText, Does.Contain("Token"));
-
-        // Verify deprecation warning for token-type rows
-        var deprecation = Page.GetByTestId("credential-token-deprecation");
-        await Assertions.Expect(deprecation.First).ToBeVisibleAsync();
     }
 
     [Test]
