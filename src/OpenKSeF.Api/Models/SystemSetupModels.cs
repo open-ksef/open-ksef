@@ -37,6 +37,9 @@ public record SetupApplyRequest
     public string? PushRelayUrl { get; init; }
     public string? PushRelayApiKey { get; init; }
     public string? FirebaseCredentialsJson { get; init; }
+
+    // Keycloak admin credential change (optional, recommended on first setup)
+    public string? NewKeycloakAdminPassword { get; init; }
 }
 
 public record SmtpConfig

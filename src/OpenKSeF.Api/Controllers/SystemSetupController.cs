@@ -92,7 +92,7 @@ public class SystemSetupController : ControllerBase
         if (kcAdminToken is null)
             return BadRequest(new { error = "Failed to authenticate with Keycloak. Please restart the setup." });
 
-        var result = await _setupService.ApplySetupAsync(request, kcAdminToken, ct);
+        var result = await _setupService.ApplySetupAsync(request, kcAdminToken, credentials.Value.Username, ct);
         if (!result.Success)
             return BadRequest(result);
 
