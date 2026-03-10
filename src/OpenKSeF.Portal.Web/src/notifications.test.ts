@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { notifyMutationError, notifyMutationSuccess } from './notifications'
 
@@ -18,18 +18,18 @@ describe('mutation notifications', () => {
   it('emits success toast with action/entity message', () => {
     notifyMutationSuccess('created', 'Tenant')
 
-    expect(success).toHaveBeenCalledWith('Firma: utworzona pomyslnie')
+    expect(success).toHaveBeenCalledWith('Firma: utworzona pomyślnie')
   })
 
   it('emits error toast with fallback message', () => {
     notifyMutationError('delete', 'Device', undefined)
 
-    expect(error).toHaveBeenCalledWith('Nie udalo sie usunac (Urzadzenie)')
+    expect(error).toHaveBeenCalledWith('Nie udało się usunąć (Urządzenie)')
   })
 
   it('emits error toast with error details when available', () => {
     notifyMutationError('update', 'Credential', new Error('Request failed'))
 
-    expect(error).toHaveBeenCalledWith('Nie udalo sie zaktualizowac (Dane logowania): Request failed')
+    expect(error).toHaveBeenCalledWith('Nie udało się zaktualizować (Dane logowania): Request failed')
   })
 })

@@ -22,7 +22,7 @@ Legacy projects retained for rollback/reference (not active runtime path):
 
 `docker-compose.dev.yml` provides local-build dev stack (6 services):
 - **Postgres** (:5432) - shared by Keycloak and app
-- **Keycloak** (:8082) - identity provider, `openksef` realm auto-imported
+- **Keycloak** (:8082) - identity provider (vanilla image; `openksef` realm created by admin setup wizard)
 - **API** (:8081) - .NET 8 REST API with Swagger
 - **Worker** - background KSeF sync
 - **Portal Web** (:8083) - React SPA
@@ -142,6 +142,19 @@ npm run build
 npm run lint
 npm test
 ```
+
+## Verification after changes
+
+After modifying code, **always run the relevant tests before committing**:
+
+| What changed | Run |
+|--------------|-----|
+| Portal Web (`src/OpenKSeF.Portal.Web`) | `cd src/OpenKSeF.Portal.Web && npm test` and `npm run lint` |
+| Backend C# (`src/OpenKSeF.Api`, `Domain`, `Sync`, `Worker`) | `dotnet test src/OpenKSeF.Api.Tests` and `dotnet test src/OpenKSeF.Domain.Tests` |
+| Both / unsure | `./scripts/run-all-tests.ps1` (runs all .NET + Portal tests; integration tests need Docker) |
+| Docker / compose changes | `dotnet test src/OpenKSeF.Api.IntegrationTests` (uses Testcontainers) |
+
+Portal Web tests (`vitest`) also verify cross-project contracts (docker-compose structure, CI workflow references, legacy decommission guards). Changing `docker-compose.yml`, `.github/workflows/`, or removing projects can break Portal tests -- always run `npm test` in those cases too.
 
 ## Configuration keys
 

@@ -13,6 +13,7 @@ vi.mock('@/api/endpoints/devices', () => ({
   listDevices: vi.fn(),
   registerDevice: vi.fn(),
   unregisterDevice: vi.fn(),
+  sendTestNotification: vi.fn(),
 }))
 
 vi.mock('@/api/endpoints/tenants', () => ({
