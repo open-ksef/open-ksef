@@ -47,6 +47,7 @@ export interface SetupApplyRequest {
   pushRelayUrl?: string
   pushRelayApiKey?: string
   firebaseCredentialsJson?: string
+  newKeycloakAdminPassword?: string
 }
 
 export interface SetupApplyResponse {

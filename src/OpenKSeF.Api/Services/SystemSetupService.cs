@@ -9,7 +9,7 @@ namespace OpenKSeF.Api.Services;
 public interface ISystemSetupService
 {
     Task<string?> AuthenticateAdminAsync(string username, string password);
-    Task<SetupApplyResponse> ApplySetupAsync(SetupApplyRequest request, string adminToken, CancellationToken ct = default);
+    Task<SetupApplyResponse> ApplySetupAsync(SetupApplyRequest request, string adminToken, string kcAdminUsername, CancellationToken ct = default);
 }
 
 public sealed class SystemSetupService : ISystemSetupService
@@ -76,7 +76,7 @@ public sealed class SystemSetupService : ISystemSetupService
     }
 
     public async Task<SetupApplyResponse> ApplySetupAsync(
-        SetupApplyRequest request, string adminToken, CancellationToken ct = default)
+        SetupApplyRequest request, string adminToken, string kcAdminUsername, CancellationToken ct = default)
     {
         try
         {
@@ -122,7 +122,15 @@ public sealed class SystemSetupService : ISystemSetupService
                 _logger.LogInformation("Configured Google IdP");
             }
 
-            // 9. Store config in DB
+            // 9. Change Keycloak admin password (if requested) -- must happen
+            //    before persisting is_initialized so a failure here doesn't lock out the wizard.
+            if (!string.IsNullOrEmpty(request.NewKeycloakAdminPassword))
+            {
+                await ChangeKeycloakAdminPasswordAsync(client, kcBase, adminToken, kcAdminUsername, request.NewKeycloakAdminPassword, ct);
+                _logger.LogInformation("Keycloak admin password changed");
+            }
+
+            // 10. Store config in DB
             var configValues = new Dictionary<string, string>
             {
                 [SystemConfigKeys.EncryptionKey] = encryptionKey,
@@ -511,6 +519,28 @@ public sealed class SystemSetupService : ISystemSetupService
             var createUrl = $"{kcBase}/admin/realms/openksef/identity-provider/instances";
             await SendKeycloakJsonAsync(client, HttpMethod.Post, createUrl, adminToken, payload, ct);
         }
+    }
+
+    private async Task ChangeKeycloakAdminPasswordAsync(
+        HttpClient client, string kcBase, string adminToken,
+        string kcAdminUsername, string newPassword, CancellationToken ct)
+    {
+        var usersUrl = $"{kcBase}/admin/realms/master/users?username={Uri.EscapeDataString(kcAdminUsername)}&exact=true";
+        using var findReq = new HttpRequestMessage(HttpMethod.Get, usersUrl);
+        findReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+
+        var findResp = await client.SendAsync(findReq, ct);
+        findResp.EnsureSuccessStatusCode();
+
+        var users = await findResp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
+        if (users.Length == 0)
+            throw new InvalidOperationException($"Keycloak admin user '{kcAdminUsername}' not found in master realm");
+
+        var userId = users[0].GetProperty("id").GetString()!;
+
+        var passUrl = $"{kcBase}/admin/realms/master/users/{userId}/reset-password";
+        await SendKeycloakJsonAsync(client, HttpMethod.Put, passUrl, adminToken,
+            new { type = "password", value = newPassword, temporary = false }, ct);
     }
 
     private async Task<string?> GetClientUuidAsync(

@@ -3,6 +3,7 @@ using Google.Apis.Auth.OAuth2;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using OpenKSeF.Api.Extensions;
@@ -99,6 +100,37 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             }
         };
     });
+
+// Dynamic issuer validation: also accept tokens whose issuer matches the
+// ExternalBaseUrl stored in the DB by the admin-setup wizard.
+builder.Services.AddSingleton<IPostConfigureOptions<JwtBearerOptions>>(sp =>
+{
+    var sysConfig = sp.GetRequiredService<ISystemConfigService>();
+    return new PostConfigureOptions<JwtBearerOptions>(
+        JwtBearerDefaults.AuthenticationScheme, options =>
+    {
+        var staticIssuers = options.TokenValidationParameters.ValidIssuers?.ToArray() ?? [];
+        options.TokenValidationParameters.ValidIssuers = null;
+        options.TokenValidationParameters.IssuerValidator = (issuer, _, _) =>
+        {
+            if (staticIssuers.Contains(issuer, StringComparer.OrdinalIgnoreCase))
+                return issuer;
+
+            var extUrl = sysConfig.GetValue(SystemConfigKeys.ExternalBaseUrl)?.TrimEnd('/');
+            if (!string.IsNullOrEmpty(extUrl))
+            {
+                var dynamicIssuer = $"{extUrl}/auth/realms/openksef";
+                if (string.Equals(issuer, dynamicIssuer, StringComparison.OrdinalIgnoreCase))
+                    return issuer;
+            }
+
+            throw new SecurityTokenInvalidIssuerException(
+                $"IDX10205: Issuer validation failed. Issuer: '{issuer}'. " +
+                $"Did not match static issuers: '{string.Join(", ", staticIssuers)}' " +
+                $"or dynamic issuer from ExternalBaseUrl: '{extUrl}'.");
+        };
+    });
+});
 
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();

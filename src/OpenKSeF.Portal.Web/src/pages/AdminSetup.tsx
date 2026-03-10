@@ -72,6 +72,8 @@ export function AdminSetupPage(): ReactElement {
   const [kcUsername, setKcUsername] = useState('admin')
   const [kcPassword, setKcPassword] = useState('')
   const [setupToken, setSetupToken] = useState<string | null>(null)
+  const [newKcPassword, setNewKcPassword] = useState('')
+  const [newKcPasswordConfirm, setNewKcPasswordConfirm] = useState('')
 
   // Step 2
   const [externalUrl, setExternalUrl] = useState(globalThis.location?.origin ?? 'http://localhost:8080')
@@ -129,6 +131,14 @@ export function AdminSetupPage(): ReactElement {
     setError(null)
     if (!kcPassword) {
       setError('Hasło administratora Keycloak jest wymagane')
+      return
+    }
+    if (newKcPassword && newKcPassword.length < 8) {
+      setError('Nowe hasło musi mieć co najmniej 8 znaków')
+      return
+    }
+    if (newKcPassword && newKcPassword !== newKcPasswordConfirm) {
+      setError('Hasła nie są identyczne')
       return
     }
     setLoading(true)
@@ -203,6 +213,7 @@ export function AdminSetupPage(): ReactElement {
       pushRelayUrl: pushMode === 'relay' ? pushRelayUrl || undefined : undefined,
       pushRelayApiKey: pushMode === 'relay' ? pushRelayApiKey || undefined : undefined,
       firebaseCredentialsJson: pushMode === 'firebase' ? firebaseJson || undefined : undefined,
+      newKeycloakAdminPassword: newKcPassword || undefined,
     }
 
     try {
@@ -247,6 +258,34 @@ export function AdminSetupPage(): ReactElement {
                 <input id="setup-kc-pass" data-testid="setup-kc-pass" type="password"
                   value={kcPassword} onInput={e => setKcPassword((e.target as HTMLInputElement).value)} />
               </div>
+
+              <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--ui-border)' }} />
+
+              <CollapsibleGuide title="Zmień hasło administratora Keycloak (zalecane)">
+                <div className="onboarding-instruction" style={{ color: 'var(--ui-warning)', marginBottom: '12px' }}>
+                  Domyślne hasło administratora Keycloak (admin/admin) stanowi ryzyko
+                  bezpieczeństwa. Zalecamy zmianę hasła podczas pierwszej konfiguracji.
+                </div>
+                <div className="ui-form-group">
+                  <label htmlFor="setup-new-kc-pass">Nowe hasło administratora Keycloak</label>
+                  <input id="setup-new-kc-pass" data-testid="setup-new-kc-pass" type="password"
+                    placeholder="Min. 8 znaków"
+                    value={newKcPassword} onInput={e => setNewKcPassword((e.target as HTMLInputElement).value)} />
+                </div>
+                <div className="ui-form-group">
+                  <label htmlFor="setup-new-kc-pass-confirm">Potwierdź nowe hasło</label>
+                  <input id="setup-new-kc-pass-confirm" data-testid="setup-new-kc-pass-confirm" type="password"
+                    value={newKcPasswordConfirm} onInput={e => setNewKcPasswordConfirm((e.target as HTMLInputElement).value)} />
+                </div>
+              </CollapsibleGuide>
+
+              {!newKcPassword && (
+                <div className="onboarding-instruction" style={{ color: 'var(--ui-warning)' }}>
+                  Hasło administratora Keycloak nie zostanie zmienione.
+                  Rozwiń sekcję powyżej, aby ustawić nowe hasło.
+                </div>
+              )}
+
               {error && <div className="ui-form-error" role="alert">⚠ {error}</div>}
             </div>
             <div className="onboarding-actions onboarding-actions--end">
@@ -568,6 +607,9 @@ export function AdminSetupPage(): ReactElement {
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Google OAuth</td><td style={{ padding: '4px 8px' }}>{googleClientId ? 'Skonfigurowano' : 'Pominięto'}</td></tr>
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Powiadomienia push</td><td style={{ padding: '4px 8px' }}>
                     {pushMode === 'relay' ? `Relay (${pushRelayUrl})` : pushMode === 'firebase' ? 'Firebase (własny)' : 'Tylko lokalne (SignalR)'}
+                  </td></tr>
+                  <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Hasło admina Keycloak</td><td style={{ padding: '4px 8px' }}>
+                    {newKcPassword ? 'Zostanie zmienione' : 'Bez zmian'}
                   </td></tr>
                 </tbody>
               </table>
