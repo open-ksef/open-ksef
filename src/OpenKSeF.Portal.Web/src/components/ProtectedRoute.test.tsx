@@ -35,7 +35,12 @@ describe('ProtectedRoute', () => {
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
     vi.mocked(getSetupStatus).mockResolvedValue({ isInitialized: true })
-    vi.mocked(getOnboardingStatus).mockResolvedValue({ isComplete: true })
+    vi.mocked(getOnboardingStatus).mockResolvedValue({
+      isComplete: true,
+      hasTenant: true,
+      hasCredential: true,
+      firstTenantId: 'tenant-1',
+    })
 
     container = document.createElement('div')
     document.body.appendChild(container)
