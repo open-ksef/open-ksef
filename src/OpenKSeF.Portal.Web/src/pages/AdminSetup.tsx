@@ -112,11 +112,6 @@ export function AdminSetupPage(): ReactElement {
   const [pushRelayApiKey, setPushRelayApiKey] = useState('')
   const [firebaseJson, setFirebaseJson] = useState('')
 
-  const ksefBaseUrl =
-    ksefEnv === 'production'
-      ? 'https://ksef.podatki.gov.pl/api'
-      : 'https://ksef-test.mf.gov.pl/api'
-
   const passwordPolicyValue = (() => {
     switch (passwordPolicyPreset) {
       case 'strong':
@@ -197,7 +192,7 @@ export function AdminSetupPage(): ReactElement {
 
     const request: SetupApplyRequest = {
       externalBaseUrl: externalUrl.replace(/\/+$/, ''),
-      kSeFBaseUrl: ksefBaseUrl,
+      kSeFBaseUrl: ksefEnv,
       adminEmail,
       adminPassword,
       adminFirstName: adminFirstName || undefined,

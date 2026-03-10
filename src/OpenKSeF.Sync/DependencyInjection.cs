@@ -8,25 +8,16 @@ namespace OpenKSeF.Sync;
 
 public static class DependencyInjection
 {
-    private static readonly Dictionary<string, string> LegacyUrlMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["https://ksef-test.mf.gov.pl/api"] = KsefEnvironmentsUris.TEST,
-        ["https://ksef-test.mf.gov.pl"]     = KsefEnvironmentsUris.TEST,
-        ["https://ksef-demo.mf.gov.pl/api"] = KsefEnvironmentsUris.DEMO,
-        ["https://ksef-demo.mf.gov.pl"]     = KsefEnvironmentsUris.DEMO,
-        ["https://ksef.mf.gov.pl/api"]      = KsefEnvironmentsUris.PROD,
-        ["https://ksef.mf.gov.pl"]          = KsefEnvironmentsUris.PROD,
-    };
-
     public static IServiceCollection AddSyncServices(
         this IServiceCollection services, IConfiguration configuration)
     {
         var configuredUrl = configuration["KSeF:BaseUrl"];
-        var baseUrl = ResolveBaseUrl(configuredUrl);
 
         services.AddKSeFClient(options =>
         {
-            options.BaseUrl = baseUrl;
+            options.BaseUrl = !string.IsNullOrWhiteSpace(configuredUrl)
+                ? configuredUrl
+                : KsefEnvironmentsUris.TEST;
         });
 
         services.AddCryptographyClient(CryptographyServiceWarmupMode.NonBlocking);
@@ -41,16 +32,14 @@ public static class DependencyInjection
         return services;
     }
 
-    internal static string ResolveBaseUrl(string? configuredUrl)
+    /// <summary>
+    /// Resolves a KSeF environment key (from the admin setup wizard dropdown)
+    /// to the base URL expected by the KSeF.Client NuGet library.
+    /// </summary>
+    public static string ResolveKSeFEnvironment(string? envKey) => envKey?.ToLowerInvariant() switch
     {
-        if (string.IsNullOrWhiteSpace(configuredUrl))
-            return KsefEnvironmentsUris.TEST;
-
-        var trimmed = configuredUrl.TrimEnd('/');
-
-        if (LegacyUrlMap.TryGetValue(trimmed, out var mapped))
-            return mapped;
-
-        return trimmed;
-    }
+        "production" => KsefEnvironmentsUris.PROD,
+        "demo" => KsefEnvironmentsUris.DEMO,
+        _ => KsefEnvironmentsUris.TEST,
+    };
 }

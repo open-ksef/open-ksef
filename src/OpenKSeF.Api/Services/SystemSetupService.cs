@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Services;
+using OpenKSeF.Sync;
 
 namespace OpenKSeF.Api.Services;
 
@@ -130,13 +131,16 @@ public sealed class SystemSetupService : ISystemSetupService
                 _logger.LogInformation("Keycloak admin password changed");
             }
 
-            // 10. Store config in DB
+            // 10. Resolve KSeF environment key to the URL expected by the NuGet client
+            var ksefBaseUrl = DependencyInjection.ResolveKSeFEnvironment(request.KSeFBaseUrl);
+
+            // 11. Store config in DB
             var configValues = new Dictionary<string, string>
             {
                 [SystemConfigKeys.EncryptionKey] = encryptionKey,
                 [SystemConfigKeys.ApiClientSecret] = apiClientSecret,
                 [SystemConfigKeys.ExternalBaseUrl] = request.ExternalBaseUrl.TrimEnd('/'),
-                [SystemConfigKeys.KSeFBaseUrl] = request.KSeFBaseUrl,
+                [SystemConfigKeys.KSeFBaseUrl] = ksefBaseUrl,
                 [SystemConfigKeys.IsInitialized] = "true",
             };
 
