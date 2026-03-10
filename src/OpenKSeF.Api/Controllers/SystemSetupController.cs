@@ -62,7 +62,7 @@ public class SystemSetupController : ControllerBase
         if (kcAdminToken is null)
             return BadRequest(new { error = "Invalid Keycloak admin credentials." });
 
-        var setupToken = GenerateSetupToken(kcAdminToken);
+        var setupToken = GenerateSetupToken(request.Username, request.Password);
         return Ok(new SetupAuthenticateResponse(setupToken, 600));
     }
 
@@ -81,12 +81,16 @@ public class SystemSetupController : ControllerBase
         if (string.IsNullOrEmpty(setupToken))
             return BadRequest(new { error = "X-Setup-Token header is required." });
 
-        var kcAdminToken = ValidateSetupToken(setupToken);
-        if (kcAdminToken is null)
+        var credentials = ValidateSetupToken(setupToken);
+        if (credentials is null)
             return BadRequest(new { error = "Invalid or expired setup token." });
 
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
+
+        var kcAdminToken = await _setupService.AuthenticateAdminAsync(credentials.Value.Username, credentials.Value.Password);
+        if (kcAdminToken is null)
+            return BadRequest(new { error = "Failed to authenticate with Keycloak. Please restart the setup." });
 
         var result = await _setupService.ApplySetupAsync(request, kcAdminToken, ct);
         if (!result.Success)
@@ -95,15 +99,16 @@ public class SystemSetupController : ControllerBase
         return Ok(result);
     }
 
-    private string GenerateSetupToken(string kcAdminToken)
+    private string GenerateSetupToken(string username, string password)
     {
         var key = new SymmetricSecurityKey(_setupTokenSigningKey);
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var signingCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new[]
         {
             new Claim("purpose", "admin-setup"),
-            new Claim("kc_token", kcAdminToken),
+            new Claim("kc_user", username),
+            new Claim("kc_pass", password),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
 
@@ -112,12 +117,12 @@ public class SystemSetupController : ControllerBase
             audience: "openksef-setup",
             claims: claims,
             expires: DateTime.UtcNow.AddMinutes(10),
-            signingCredentials: credentials);
+            signingCredentials: signingCredentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    private string? ValidateSetupToken(string token)
+    private (string Username, string Password)? ValidateSetupToken(string token)
     {
         var key = new SymmetricSecurityKey(_setupTokenSigningKey);
         var validationParameters = new TokenValidationParameters
@@ -142,7 +147,13 @@ public class SystemSetupController : ControllerBase
 
             CleanupExpiredTokens();
 
-            return principal.FindFirst("kc_token")?.Value;
+            var username = principal.FindFirst("kc_user")?.Value;
+            var password = principal.FindFirst("kc_pass")?.Value;
+
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+                return null;
+
+            return (username, password);
         }
         catch
         {

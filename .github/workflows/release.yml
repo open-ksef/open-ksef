@@ -51,7 +51,6 @@ jobs:
             - `ghcr.io/${{ github.repository_owner }}/openksef-api:${{ github.ref_name }}`
             - `ghcr.io/${{ github.repository_owner }}/openksef-worker:${{ github.ref_name }}`
             - `ghcr.io/${{ github.repository_owner }}/openksef-portal-web:${{ github.ref_name }}`
-            - `ghcr.io/${{ github.repository_owner }}/openksef-keycloak:${{ github.ref_name }}`
             - `ghcr.io/${{ github.repository_owner }}/openksef-gateway:${{ github.ref_name }}`
 
             ---
@@ -119,17 +118,6 @@ jobs:
           build-args: |
             NUGET_CIRFMF_USER=${{ github.actor }}
             NUGET_CIRFMF_PAT=${{ secrets.NUGET_CIRFMF_PAT }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build & push Keycloak
-        uses: docker/build-push-action@v6
-        with:
-          context: ./infra/keycloak
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/openksef-keycloak:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/openksef-keycloak:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

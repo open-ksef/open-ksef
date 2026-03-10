@@ -19,25 +19,11 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     container_name: openksef-keycloak
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        set -e
-        mkdir -p /opt/keycloak/data/import
-        sed -e "s|__APP_EXTERNAL_BASE_URL__|$${APP_EXTERNAL_BASE_URL:-http://localhost:8080}|g" \
-            -e "s|__GOOGLE_CLIENT_ID__|$${GOOGLE_CLIENT_ID}|g" \
-            -e "s|__GOOGLE_CLIENT_SECRET__|$${GOOGLE_CLIENT_SECRET}|g" \
-          /opt/keycloak/data/import-tpl/realm-openksef.json.template \
-          > /opt/keycloak/data/import/realm-openksef.json
-        exec /opt/keycloak/bin/kc.sh start-dev --import-realm --features=token-exchange,admin-fine-grained-authz
+    command: start-dev --features=token-exchange,admin-fine-grained-authz
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      APP_EXTERNAL_BASE_URL: ${APP_EXTERNAL_BASE_URL:-http://localhost:8080}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: ${KC_DB_USERNAME:-${POSTGRES_USER:-openksef}}
@@ -51,8 +37,6 @@ services:
       KC_HOSTNAME_STRICT_HTTPS: "false"
     ports:
       - "${KEYCLOAK_HOST_PORT:-8082}:8080"
-    volumes:
-      - ./keycloak:/opt/keycloak/data/import-tpl:ro
 
   api:
     image: openksef-api:dev-local

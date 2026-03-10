@@ -145,7 +145,7 @@ npm test
 
 ## Configuration keys
 
-- `APP_EXTERNAL_BASE_URL` - public URL of the gateway (used by Keycloak realm template, API token issuer); defaults to `http://localhost:8080`
+- `APP_EXTERNAL_BASE_URL` - public URL of the gateway (used by admin setup wizard, API token issuer); defaults to `http://localhost:8080`
 - `ConnectionStrings__Db`
 - `Auth__Authority`
 - `ENCRYPTION_KEY`

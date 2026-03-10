@@ -7,9 +7,10 @@
     2. docker compose -f docker-compose.dev.yml up -d --build
     3. Waits for Keycloak, API, and Portal health endpoints
     4. Detects or starts ngrok tunnel for HTTPS access (needed by Android OIDC)
-    5. Updates all Keycloak client redirect URIs with the ngrok URL
-    6. Creates a test user in Keycloak
-    7. Prints a summary with all URLs and credentials
+    5. Checks if openksef realm exists (created by admin setup wizard); exits early if not
+    6. Updates all Keycloak client redirect URIs with the ngrok URL
+    7. Creates a test user in Keycloak
+    8. Prints a summary with all URLs and credentials
 .PARAMETER SkipBuild
     Skip Docker image rebuild.
 .PARAMETER SkipNgrok
@@ -106,7 +107,7 @@ if ($LASTEXITCODE -ne 0) { throw "docker compose up failed" }
 # ── 3. Wait for health endpoints ─────────────────────────────────────
 Write-Host "`n[health] Waiting for services (timeout ${TimeoutSeconds}s) ..." -ForegroundColor Cyan
 
-Wait-ForUrl -Url 'http://localhost:8082/auth/realms/openksef' -Label 'Keycloak realm' -Timeout $TimeoutSeconds | Out-Null
+Wait-ForUrl -Url 'http://localhost:8082/auth/realms/master' -Label 'Keycloak' -Timeout $TimeoutSeconds | Out-Null
 Wait-ForUrl -Url 'http://localhost:8081/health' -Label 'API direct' -Timeout $TimeoutSeconds | Out-Null
 Wait-ForUrl -Url 'http://localhost:8080/' -Label 'Portal (via gateway)' -Timeout $TimeoutSeconds | Out-Null
 
@@ -161,7 +162,7 @@ if (-not $SkipNgrok) {
     }
 }
 
-# ── 5. Update Keycloak clients with ngrok URL ────────────────────────
+# ── 5. Check if openksef realm exists (created by admin setup wizard) ─
 $kcBaseUrl = 'http://localhost:8082'
 $adminUser = $testEnv['KEYCLOAK_ADMIN']
 $adminPass = $testEnv['KEYCLOAK_ADMIN_PASSWORD']
@@ -170,6 +171,39 @@ $testPass  = $testEnv['E2E_TEST_PASSWORD']
 
 Write-Host "`n[keycloak] Getting admin token ..." -ForegroundColor Cyan
 $token = Get-KeycloakAdminToken -KcBaseUrl $kcBaseUrl -User $adminUser -Pass $adminPass
+
+$realmExists = $false
+try {
+    $kcHeaders = @{ Authorization = "Bearer $token" }
+    Invoke-RestMethod -Uri "$kcBaseUrl/auth/admin/realms/openksef" -Headers $kcHeaders -ErrorAction Stop | Out-Null
+    $realmExists = $true
+} catch { }
+
+if (-not $realmExists) {
+    Write-Host "`n[keycloak] Realm 'openksef' does not exist yet." -ForegroundColor Yellow
+    Write-Host "  Run the admin setup wizard at http://localhost:8080 to create the realm," -ForegroundColor Yellow
+    Write-Host "  then re-run this script to provision test data and ngrok URLs." -ForegroundColor Yellow
+
+    Write-Host "`n" -NoNewline
+    Write-Host ('=' * 65) -ForegroundColor DarkGray
+    Write-Host " OpenKSeF Dev Environment Ready (setup wizard pending)" -ForegroundColor Yellow
+    Write-Host ('=' * 65) -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  Gateway (portal+API+auth)  : http://localhost:8080"
+    Write-Host "  Keycloak admin console      : http://localhost:8082/auth/admin"
+    Write-Host "  API direct                  : http://localhost:8081"
+    Write-Host "  API Swagger                 : http://localhost:8081/swagger"
+    Write-Host "  Portal direct               : http://localhost:8083"
+    Write-Host ""
+    Write-Host "  Keycloak admin              : $adminUser / $adminPass"
+    Write-Host ""
+    Write-Host "  Next step: open http://localhost:8080 and complete the admin setup wizard." -ForegroundColor Cyan
+    Write-Host ('=' * 65) -ForegroundColor DarkGray
+    exit 0
+}
+
+# ── 6. Update Keycloak clients with ngrok URL ────────────────────────
+$kcHeaders = @{ Authorization = "Bearer $token"; 'Content-Type' = 'application/json' }
 
 if ($ngrokUrl) {
     Write-Host "[keycloak] Updating client redirect URIs with $ngrokUrl ..." -ForegroundColor Cyan
@@ -184,94 +218,6 @@ if ($ngrokUrl) {
 
     Update-KeycloakClientRedirects -KcBaseUrl $kcBaseUrl -Token $token -Realm 'openksef' `
         -ClientId 'openksef-api' -RedirectUris $ngrokRedirects
-}
-
-# ── 6. Configure openksef-api service account + token exchange ────────
-Write-Host "`n[keycloak] Configuring openksef-api client for token exchange ..." -ForegroundColor Cyan
-
-$kcHeaders = @{ Authorization = "Bearer $token"; 'Content-Type' = 'application/json' }
-
-# Get openksef-api client
-$apiClients = Invoke-RestMethod -Uri "$kcBaseUrl/auth/admin/realms/openksef/clients?clientId=openksef-api" -Headers $kcHeaders
-if ($apiClients.Count -eq 0) { throw "openksef-api client not found in Keycloak" }
-$apiClientUuid = $apiClients[0].id
-
-# Get the client secret (Keycloak generates one for confidential clients)
-$secretResp = Invoke-RestMethod -Uri "$kcBaseUrl/auth/admin/realms/openksef/clients/$apiClientUuid/client-secret" -Headers $kcHeaders
-$apiClientSecret = $secretResp.value
-
-if ([string]::IsNullOrEmpty($apiClientSecret)) {
-    # Generate a new secret
-    $secretResp = Invoke-RestMethod -Uri "$kcBaseUrl/auth/admin/realms/openksef/clients/$apiClientUuid/client-secret" `
-        -Headers $kcHeaders -Method Post
-    $apiClientSecret = $secretResp.value
-}
-Write-Host "  [OK] openksef-api client secret: $($apiClientSecret.Substring(0,8))..." -ForegroundColor Green
-
-# Enable token-exchange permission on the openksef-api client
-# 1) Enable permissions on the client
-$permPayload = @{ enabled = $true } | ConvertTo-Json
-try {
-    Invoke-RestMethod -Uri "$kcBaseUrl/auth/admin/realms/openksef/clients/$apiClientUuid/management/permissions" `
-        -Headers $kcHeaders -Method Put -Body $permPayload | Out-Null
-    Write-Host "  [OK] Client permissions enabled" -ForegroundColor Green
-} catch {
-    Write-Host "  [skip] Permissions may already be enabled: $($_.Exception.Message)" -ForegroundColor Yellow
-}
-
-# 2) Get the service account user for openksef-api
-$saUser = Invoke-RestMethod -Uri "$kcBaseUrl/auth/admin/realms/openksef/clients/$apiClientUuid/service-account-user" -Headers $kcHeaders
-$saUserId = $saUser.id
-Write-Host "  [OK] Service account user: $saUserId" -ForegroundColor Green
-
-# 3) Get the realm-management client (holds token-exchange role)
-$rmClients = Invoke-RestMethod -Uri "$kcBaseUrl/auth/admin/realms/openksef/clients?clientId=realm-management" -Headers $kcHeaders
-if ($rmClients.Count -gt 0) {
-    $rmClientUuid = $rmClients[0].id
-
-    # Get available roles for the service account user on realm-management client
-    $availableRoles = Invoke-RestMethod `
-        -Uri "$kcBaseUrl/auth/admin/realms/openksef/users/$saUserId/role-mappings/clients/$rmClientUuid/available" `
-        -Headers $kcHeaders
-
-    $tokenExchangeRole = $availableRoles | Where-Object { $_.name -eq 'token-exchange' }
-    if ($tokenExchangeRole) {
-        $rolePayload = @( @{ id = $tokenExchangeRole.id; name = $tokenExchangeRole.name } ) | ConvertTo-Json
-        Invoke-RestMethod -Uri "$kcBaseUrl/auth/admin/realms/openksef/users/$saUserId/role-mappings/clients/$rmClientUuid" `
-            -Headers $kcHeaders -Method Post -Body $rolePayload | Out-Null
-        Write-Host "  [OK] token-exchange role assigned to service account" -ForegroundColor Green
-    } else {
-        # Check if already assigned
-        $assignedRoles = Invoke-RestMethod `
-            -Uri "$kcBaseUrl/auth/admin/realms/openksef/users/$saUserId/role-mappings/clients/$rmClientUuid" `
-            -Headers $kcHeaders
-        $alreadyAssigned = $assignedRoles | Where-Object { $_.name -eq 'token-exchange' }
-        if ($alreadyAssigned) {
-            Write-Host "  [skip] token-exchange role already assigned" -ForegroundColor Yellow
-        } else {
-            Write-Host "  [warn] token-exchange role not found on realm-management client. Ensure Keycloak has token-exchange feature enabled." -ForegroundColor Yellow
-        }
-    }
-} else {
-    Write-Host "  [warn] realm-management client not found" -ForegroundColor Yellow
-}
-
-# 4) Write API_CLIENT_SECRET to .env if not already set
-$envContent = Get-Content $envFile -Raw
-if ($envContent -match '(?m)^API_CLIENT_SECRET=\s*$' -or $envContent -notmatch 'API_CLIENT_SECRET=') {
-    $envContent = $envContent -replace '(?m)^API_CLIENT_SECRET=.*$', "API_CLIENT_SECRET=$apiClientSecret"
-    if ($envContent -notmatch 'API_CLIENT_SECRET=') {
-        $envContent += "`nAPI_CLIENT_SECRET=$apiClientSecret`n"
-    }
-    Set-Content -Path $envFile -Value $envContent -NoNewline
-    Write-Host "  [OK] API_CLIENT_SECRET written to .env" -ForegroundColor Green
-
-    # Restart API container to pick up the new secret
-    Write-Host "  [restart] Restarting API container ..." -ForegroundColor Cyan
-    & docker compose -f $composeFile restart api | Out-Null
-    Wait-ForUrl -Url 'http://localhost:8081/health' -Label 'API restart' -Timeout 60 | Out-Null
-} else {
-    Write-Host "  [skip] API_CLIENT_SECRET already set in .env" -ForegroundColor Yellow
 }
 
 # ── 7. Create test user ──────────────────────────────────────────────

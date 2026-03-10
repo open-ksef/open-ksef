@@ -46,7 +46,7 @@ Default ports:
 
 If you access the app from another host/IP, set `APP_EXTERNAL_BASE_URL` (for example `http://192.168.1.50:8080`) so SPA/OIDC redirect URLs use the correct public address.
 
-Realm import file: `keycloak/realm-openksef.json` (clients: `openksef-api`, `openksef-portal-web`).
+Keycloak starts as a vanilla image. The admin setup wizard (`/api/system/setup`) creates the `openksef` realm and clients (`openksef-api`, `openksef-portal-web`, `openksef-mobile`) automatically.
 
 ## Local development
 
