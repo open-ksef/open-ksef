@@ -1,7 +1,11 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Api.Models;
+using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Services;
@@ -17,17 +21,20 @@ public sealed class SystemSetupService : ISystemSetupService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ISystemConfigService _systemConfig;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SystemSetupService> _logger;
 
     public SystemSetupService(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ISystemConfigService systemConfig,
+        IServiceScopeFactory scopeFactory,
         ILogger<SystemSetupService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _systemConfig = systemConfig;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -111,9 +118,9 @@ public sealed class SystemSetupService : ISystemSetupService
             await ConfigureRealmAsync(client, kcBase, adminToken, request, ct);
             _logger.LogInformation("Configured Keycloak realm settings");
 
-            // 7. Create first admin user
-            await CreateAdminUserAsync(client, kcBase, adminToken, request, ct);
-            _logger.LogInformation("Created admin user");
+            // 7. Create first user account
+            await CreateFirstUserAsync(client, kcBase, adminToken, request, ct);
+            _logger.LogInformation("Created first user");
 
             // 8. Configure Google IdP (if provided)
             if (!string.IsNullOrEmpty(request.GoogleClientId) && !string.IsNullOrEmpty(request.GoogleClientSecret))
@@ -130,7 +137,7 @@ public sealed class SystemSetupService : ISystemSetupService
                 _logger.LogInformation("Keycloak admin password changed");
             }
 
-            // 10. Store config in DB
+            // 10. Resolve KSeF environment and store config in DB
             var configValues = new Dictionary<string, string>
             {
                 [SystemConfigKeys.EncryptionKey] = encryptionKey,
@@ -419,10 +426,12 @@ public sealed class SystemSetupService : ISystemSetupService
         await SendKeycloakJsonAsync(client, HttpMethod.Put, realmUrl, adminToken, payload, ct);
     }
 
-    private async Task CreateAdminUserAsync(
+    private async Task CreateFirstUserAsync(
         HttpClient client, string kcBase, string adminToken, SetupApplyRequest request, CancellationToken ct)
     {
         var usersUrl = $"{kcBase}/admin/realms/openksef/users";
+
+        string userId;
 
         // Check if user already exists
         using var checkReq = new HttpRequestMessage(HttpMethod.Get, $"{usersUrl}?email={Uri.EscapeDataString(request.AdminEmail)}&exact=true");
@@ -433,39 +442,62 @@ public sealed class SystemSetupService : ISystemSetupService
 
         if (existing.Length > 0)
         {
-            _logger.LogInformation("Admin user {Email} already exists, skipping creation", request.AdminEmail);
-            return;
+            userId = existing[0].GetProperty("id").GetString()!;
+            _logger.LogInformation("User {Email} already exists, skipping creation", request.AdminEmail);
+        }
+        else
+        {
+            var userPayload = new
+            {
+                username = request.AdminEmail,
+                email = request.AdminEmail,
+                enabled = true,
+                emailVerified = true,
+                firstName = request.AdminFirstName ?? "",
+                lastName = request.AdminLastName ?? "",
+            };
+
+            var createResp = await SendKeycloakJsonAsync(client, HttpMethod.Post, usersUrl, adminToken, userPayload, ct);
+            createResp.EnsureSuccessStatusCode();
+
+            using var fetchReq = new HttpRequestMessage(HttpMethod.Get, $"{usersUrl}?email={Uri.EscapeDataString(request.AdminEmail)}&exact=true");
+            fetchReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+            var fetchResp = await client.SendAsync(fetchReq, ct);
+            fetchResp.EnsureSuccessStatusCode();
+
+            var users = await fetchResp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
+            if (users.Length == 0)
+                throw new InvalidOperationException("Failed to find created user");
+
+            userId = users[0].GetProperty("id").GetString()!;
+
+            var passUrl = $"{usersUrl}/{userId}/reset-password";
+            await SendKeycloakJsonAsync(client, HttpMethod.Put, passUrl, adminToken,
+                new { type = "password", value = request.AdminPassword, temporary = false }, ct);
         }
 
-        var userPayload = new
+        // Create first tenant in DB if NIP was provided
+        if (!string.IsNullOrWhiteSpace(request.FirstTenantNip))
         {
-            username = request.AdminEmail,
-            email = request.AdminEmail,
-            enabled = true,
-            emailVerified = true,
-            firstName = request.AdminFirstName ?? "Admin",
-            lastName = string.IsNullOrWhiteSpace(request.AdminLastName) ? "Administrator" : request.AdminLastName,
-        };
-
-        var createResp = await SendKeycloakJsonAsync(client, HttpMethod.Post, usersUrl, adminToken, userPayload, ct);
-        createResp.EnsureSuccessStatusCode();
-
-        // Fetch the created user to get their ID
-        using var fetchReq = new HttpRequestMessage(HttpMethod.Get, $"{usersUrl}?email={Uri.EscapeDataString(request.AdminEmail)}&exact=true");
-        fetchReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
-        var fetchResp = await client.SendAsync(fetchReq, ct);
-        fetchResp.EnsureSuccessStatusCode();
-
-        var users = await fetchResp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
-        if (users.Length == 0)
-            throw new InvalidOperationException("Failed to find created admin user");
-
-        var userId = users[0].GetProperty("id").GetString()!;
-
-        // Set password
-        var passUrl = $"{usersUrl}/{userId}/reset-password";
-        await SendKeycloakJsonAsync(client, HttpMethod.Put, passUrl, adminToken,
-            new { type = "password", value = request.AdminPassword, temporary = false }, ct);
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var tenantExists = await db.Tenants.AnyAsync(t => t.UserId == userId && t.Nip == request.FirstTenantNip, ct);
+            if (!tenantExists)
+            {
+                var now = DateTime.UtcNow;
+                db.Tenants.Add(new Tenant
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    Nip = request.FirstTenantNip,
+                    DisplayName = request.FirstTenantDisplayName,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                });
+                await db.SaveChangesAsync(ct);
+                _logger.LogInformation("Created first tenant with NIP {Nip} for user {UserId}", request.FirstTenantNip, userId);
+            }
+        }
     }
 
     private async Task ConfigureGoogleIdpAsync(

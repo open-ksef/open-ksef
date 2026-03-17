@@ -19,6 +19,10 @@ public record SetupApplyRequest
     public string? AdminFirstName { get; init; }
     public string? AdminLastName { get; init; }
 
+    // First tenant/company
+    public string? FirstTenantNip { get; init; }
+    public string? FirstTenantDisplayName { get; init; }
+
     // Auth & Email (Keycloak realm config)
     public bool RegistrationAllowed { get; init; } = true;
     public bool VerifyEmail { get; init; }
@@ -61,3 +65,57 @@ public record SetupApplyResponse(
     string? EncryptionKey,
     string? ApiClientSecret,
     string? Error);
+
+// --- Settings API (post-setup) ---
+
+public record SettingsAuthRequest
+{
+    [Required] public string KcAdminUsername { get; init; } = null!;
+    [Required] public string KcAdminPassword { get; init; } = null!;
+}
+
+public record SettingsResponse
+{
+    public string? ExternalBaseUrl { get; init; }
+    public string? KSeFEnvironment { get; init; }
+    public bool KSeFEnvironmentLocked { get; init; }
+    public string? KSeFEnvironmentLockReason { get; init; }
+
+    public bool RegistrationAllowed { get; init; }
+    public bool VerifyEmail { get; init; }
+    public bool LoginWithEmailAllowed { get; init; }
+    public bool ResetPasswordAllowed { get; init; }
+    public string? PasswordPolicy { get; init; }
+
+    public SmtpConfig? Smtp { get; init; }
+
+    public string? GoogleClientId { get; init; }
+    public bool GoogleConfigured { get; init; }
+    public string? PushRelayUrl { get; init; }
+    public string? PushRelayApiKey { get; init; }
+    public bool FirebaseConfigured { get; init; }
+}
+
+public record SettingsUpdateRequest
+{
+    [Required] public string KcAdminUsername { get; init; } = null!;
+    [Required] public string KcAdminPassword { get; init; } = null!;
+
+    public string? ExternalBaseUrl { get; init; }
+    public string? KSeFEnvironment { get; init; }
+    public bool? RegistrationAllowed { get; init; }
+    public bool? VerifyEmail { get; init; }
+    public bool? LoginWithEmailAllowed { get; init; }
+    public bool? ResetPasswordAllowed { get; init; }
+    public string? PasswordPolicy { get; init; }
+    public SmtpConfig? Smtp { get; init; }
+    public bool ClearSmtp { get; init; }
+    public string? GoogleClientId { get; init; }
+    public string? GoogleClientSecret { get; init; }
+    public string? PushRelayUrl { get; init; }
+    public string? PushRelayApiKey { get; init; }
+    public string? FirebaseCredentialsJson { get; init; }
+    public bool ConfirmCredentialWipe { get; init; }
+}
+
+public record SettingsUpdateResponse(bool Success, string? Error);

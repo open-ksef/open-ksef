@@ -10,6 +10,7 @@ const navItems = [
   { to: '/credentials', label: 'Dane logowania', icon: '⚿' },
   { to: '/devices', label: 'Urządzenia', icon: '◈' },
   { to: '/mobile-setup', label: 'Aplikacja mobilna', icon: '⬡' },
+  { to: '/settings', label: 'Ustawienia', icon: '⚙' },
 ]
 
 function getInitials(name: string | undefined | null): string {

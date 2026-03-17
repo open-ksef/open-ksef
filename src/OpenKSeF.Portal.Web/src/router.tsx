@@ -13,6 +13,7 @@ import { InvoiceListPage } from '@/pages/InvoiceList'
 import { LoginPage } from '@/pages/Login'
 import { MobileSetupPage } from '@/pages/MobileSetup'
 import { NotFoundPage } from '@/pages/NotFound'
+import { SettingsPage } from '@/pages/Settings'
 import { OnboardingPage } from '@/pages/Onboarding'
 import { SilentCallbackPage } from '@/pages/SilentCallback'
 import { TenantListPage } from '@/pages/TenantList'
@@ -33,6 +34,7 @@ export const appRoutes: RouteObject[] = [
       { path: 'credentials', element: <CredentialListPage /> },
       { path: 'devices', element: <DeviceListPage /> },
       { path: 'mobile-setup', element: <MobileSetupPage /> },
+      { path: 'settings', element: <SettingsPage /> },
     ],
   },
   {
