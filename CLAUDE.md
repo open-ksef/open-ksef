@@ -11,12 +11,15 @@ Main projects:
 - `src/OpenKSeF.Worker` - background sync
 - `src/OpenKSeF.Domain` - shared domain/data (includes `IKSeFGateway` abstraction)
 - `src/OpenKSeF.Sync` - sync orchestration + KSeF gateway (uses CIRFMF `KSeF.Client` via NuGet)
-- `src/OpenKSeF.Portal.Web` - React portal (active)
+- `src/OpenKSeF.Portal.Web` - React portal
 
-Legacy projects retained for rollback/reference (not active runtime path):
-- `src/OpenKSeF.Portal`
-- `src/OpenKSeF.Portal.Tests`
-- `src/OpenKSeF.Portal.E2E`
+All projects above are active code -- refactor, rename, restructure, and delete freely.
+
+When implementing changes:
+- Modify existing code in-place. Do NOT add parallel implementations or "v2" files.
+- If existing code almost does what you need, refactor it.
+- Delete code that becomes unnecessary after your changes.
+- Never leave dead code, commented-out blocks, or unused imports.
 
 ## Infrastructure
 
@@ -154,7 +157,7 @@ After modifying code, **always run the relevant tests before committing**:
 | Both / unsure | `./scripts/run-all-tests.ps1` (runs all .NET + Portal tests; integration tests need Docker) |
 | Docker / compose changes | `dotnet test src/OpenKSeF.Api.IntegrationTests` (uses Testcontainers) |
 
-Portal Web tests (`vitest`) also verify cross-project contracts (docker-compose structure, CI workflow references, legacy decommission guards). Changing `docker-compose.yml`, `.github/workflows/`, or removing projects can break Portal tests -- always run `npm test` in those cases too.
+Portal Web tests (`vitest`) also verify cross-project contracts (docker-compose structure, CI workflow references). Changing `docker-compose.yml`, `.github/workflows/`, or removing projects can break Portal tests -- always run `npm test` in those cases too.
 
 ## Configuration keys
 

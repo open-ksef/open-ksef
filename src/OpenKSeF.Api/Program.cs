@@ -237,6 +237,14 @@ using (var scope = app.Services.CreateScope())
 var systemConfig = app.Services.GetRequiredService<ISystemConfigService>();
 await systemConfig.RefreshCacheAsync();
 
+// Override KSeF base URL from DB config (wizard-saved value takes precedence over env var)
+var dbKsefUrl = systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl);
+if (!string.IsNullOrEmpty(dbKsefUrl))
+{
+    var ksefOptions = app.Services.GetRequiredService<KSeF.Client.DI.KSeFClientOptions>();
+    ksefOptions.BaseUrl = dbKsefUrl;
+}
+
 // Correlation ID middleware
 app.Use(async (context, next) =>
 {

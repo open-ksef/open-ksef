@@ -11,10 +11,6 @@ Components:
 
 Mobile app: see [open-ksef-mobile](https://github.com/OpenKSeF/open-ksef-mobile).
 
-Legacy notice:
-- The Blazor portal (`OpenKSeF.Portal`) was removed from active runtime paths after React cutover on **February 28, 2026**.
-- Legacy code remains in the repository for rollback and reference, but is not part of the default runtime stack.
-
 ## Quick start (Docker)
 
 1. Create env file:
@@ -137,11 +133,6 @@ Account creation:
 - Open portal login (`/login`) and use **Create account**.
 - Self-registration is enabled in realm `openksef` and each user only sees their own tenants in API queries.
 
-Run Playwright E2E against local React app:
-```bash
-PORTAL_BASE_URL=http://localhost:5173 dotnet test src/OpenKSeF.Portal.E2E/OpenKSeF.Portal.E2E.csproj -c Release
-```
-
 ## Required configuration
 
 API/Worker minimum:
@@ -167,10 +158,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute.
 ## Security
 
 If you discover a security vulnerability, **do not open a public issue**. See [SECURITY.md](SECURITY.md) for responsible disclosure instructions.
-
-## Migration and rollback
-
-See [MIGRATION.md](MIGRATION.md) for React cutover details and rollback procedure.
 
 ## License
 

@@ -86,13 +86,13 @@ public class SystemConfigServiceTests : IDisposable
         var values = new Dictionary<string, string>
         {
             [SystemConfigKeys.ExternalBaseUrl] = "https://example.com",
-            [SystemConfigKeys.KSeFBaseUrl] = "https://ksef.podatki.gov.pl/api",
+            [SystemConfigKeys.KSeFBaseUrl] = "https://ksef-test.mf.gov.pl/api",
         };
 
         await _service.SetValuesAsync(values);
 
         Assert.Equal("https://example.com", _service.GetValue(SystemConfigKeys.ExternalBaseUrl));
-        Assert.Equal("https://ksef.podatki.gov.pl/api", _service.GetValue(SystemConfigKeys.KSeFBaseUrl));
+        Assert.Equal("https://ksef-test.mf.gov.pl/api", _service.GetValue(SystemConfigKeys.KSeFBaseUrl));
     }
 
     [Fact]
