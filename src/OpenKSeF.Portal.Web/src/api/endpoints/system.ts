@@ -1,4 +1,4 @@
-import { ApiClient } from '../client'
+import { ApiClient, apiClient } from '../client'
 
 const anonClient = new ApiClient(import.meta.env.VITE_API_BASE_URL ?? '/api')
 
@@ -36,6 +36,8 @@ export interface SetupApplyRequest {
   adminPassword: string
   adminFirstName?: string
   adminLastName?: string
+  firstTenantNip?: string
+  firstTenantDisplayName?: string
   registrationAllowed: boolean
   verifyEmail: boolean
   loginWithEmailAllowed: boolean
@@ -74,4 +76,70 @@ export function applySetup(
   return anonClient.post<SetupApplyResponse>('/system/setup/apply', request, {
     headers: { 'X-Setup-Token': setupToken },
   })
+}
+
+// --- Settings API (post-setup, requires KC admin creds) ---
+
+export interface SettingsAuthRequest {
+  kcAdminUsername: string
+  kcAdminPassword: string
+}
+
+export interface SettingsResponse {
+  externalBaseUrl?: string
+  kSeFEnvironment?: string
+  kSeFEnvironmentLocked: boolean
+  kSeFEnvironmentLockReason?: string
+  registrationAllowed: boolean
+  verifyEmail: boolean
+  loginWithEmailAllowed: boolean
+  resetPasswordAllowed: boolean
+  passwordPolicy?: string
+  smtp?: SmtpConfig
+  googleClientId?: string
+  googleConfigured: boolean
+  pushRelayUrl?: string
+  pushRelayApiKey?: string
+  firebaseConfigured: boolean
+}
+
+export interface SettingsUpdateRequest {
+  kcAdminUsername: string
+  kcAdminPassword: string
+  externalBaseUrl?: string
+  kSeFEnvironment?: string
+  registrationAllowed?: boolean
+  verifyEmail?: boolean
+  loginWithEmailAllowed?: boolean
+  resetPasswordAllowed?: boolean
+  passwordPolicy?: string
+  smtp?: SmtpConfig
+  clearSmtp?: boolean
+  googleClientId?: string
+  googleClientSecret?: string
+  pushRelayUrl?: string
+  pushRelayApiKey?: string
+  firebaseCredentialsJson?: string
+  confirmCredentialWipe?: boolean
+}
+
+export interface SettingsUpdateResponse {
+  success: boolean
+  error?: string
+}
+
+export function getSettings(
+  kcAdminUsername: string,
+  kcAdminPassword: string,
+): Promise<SettingsResponse> {
+  return apiClient.post<SettingsResponse>('/system/settings', {
+    kcAdminUsername,
+    kcAdminPassword,
+  })
+}
+
+export function updateSettings(
+  request: SettingsUpdateRequest,
+): Promise<SettingsUpdateResponse> {
+  return apiClient.put<SettingsUpdateResponse>('/system/settings', request)
 }

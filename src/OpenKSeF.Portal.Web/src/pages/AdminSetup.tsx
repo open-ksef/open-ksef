@@ -15,7 +15,7 @@ type Step = 1 | 2 | 3 | 4 | 5 | 6
 
 function StepIndicator({ current }: { current: Step }) {
   const steps = [1, 2, 3, 4, 5, 6] as const
-  const labels = ['Logowanie', 'Podstawowe', 'Autoryzacja', 'Bezpieczeństwo', 'Integracje', 'Podsumowanie']
+  const labels = ['Logowanie', 'Konto i firma', 'Autoryzacja', 'Bezpieczeństwo', 'Integracje', 'Podsumowanie']
   return (
     <div className="onboarding-stepper" data-testid="admin-setup-step-indicator">
       {steps.map((s, i) => (
@@ -78,10 +78,12 @@ export function AdminSetupPage(): ReactElement {
   // Step 2
   const [externalUrl, setExternalUrl] = useState(globalThis.location?.origin ?? 'http://localhost:8080')
   const [ksefEnv, setKsefEnv] = useState('test')
-  const [adminEmail, setAdminEmail] = useState('')
-  const [adminPassword, setAdminPassword] = useState('')
-  const [adminFirstName, setAdminFirstName] = useState('')
-  const [adminLastName, setAdminLastName] = useState('')
+  const [userEmail, setUserEmail] = useState('')
+  const [userPassword, setUserPassword] = useState('')
+  const [userFirstName, setUserFirstName] = useState('')
+  const [userLastName, setUserLastName] = useState('')
+  const [firstTenantNip, setFirstTenantNip] = useState('')
+  const [firstTenantDisplayName, setFirstTenantDisplayName] = useState('')
 
   // Step 3
   const [registrationAllowed, setRegistrationAllowed] = useState(true)
@@ -151,8 +153,9 @@ export function AdminSetupPage(): ReactElement {
   const handleStep2 = () => {
     setError(null)
     if (!externalUrl) { setError('Adres URL systemu jest wymagany'); return }
-    if (!adminEmail || !/^\S+@\S+\.\S+$/.test(adminEmail)) { setError('Prawidłowy adres e-mail administratora jest wymagany'); return }
-    if (!adminPassword || adminPassword.length < 8) { setError('Hasło musi mieć co najmniej 8 znaków'); return }
+    if (!userEmail || !/^\S+@\S+\.\S+$/.test(userEmail)) { setError('Prawidłowy adres e-mail jest wymagany'); return }
+    if (!userPassword || userPassword.length < 8) { setError('Hasło musi mieć co najmniej 8 znaków'); return }
+    if (!firstTenantNip || !/^\d{10}$/.test(firstTenantNip)) { setError('NIP musi składać się z 10 cyfr'); return }
     setStep(3)
   }
 
@@ -193,10 +196,12 @@ export function AdminSetupPage(): ReactElement {
     const request: SetupApplyRequest = {
       externalBaseUrl: externalUrl.replace(/\/+$/, ''),
       kSeFBaseUrl: ksefEnv,
-      adminEmail,
-      adminPassword,
-      adminFirstName: adminFirstName || undefined,
-      adminLastName: adminLastName || undefined,
+      adminEmail: userEmail,
+      adminPassword: userPassword,
+      adminFirstName: userFirstName || undefined,
+      adminLastName: userLastName || undefined,
+      firstTenantNip: firstTenantNip || undefined,
+      firstTenantDisplayName: firstTenantDisplayName || undefined,
       registrationAllowed,
       verifyEmail: smtpEnabled ? verifyEmail : false,
       loginWithEmailAllowed: loginWithEmail,
@@ -291,10 +296,11 @@ export function AdminSetupPage(): ReactElement {
           </>
         )}
 
-        {/* Step 2: Base Configuration */}
+        {/* Step 2: First Account & Company */}
         {step === 2 && (
           <>
-            <h1 className="onboarding-title">Konfiguracja podstawowa</h1>
+            <h1 className="onboarding-title">Pierwsze konto i firma</h1>
+            <p className="onboarding-subtitle">Utwórz pierwsze konto użytkownika i dodaj firmę.</p>
             <div className="onboarding-form">
               <div className="ui-form-group">
                 <label htmlFor="setup-url">Zewnętrzny adres URL systemu</label>
@@ -310,25 +316,44 @@ export function AdminSetupPage(): ReactElement {
                   <option value="production">Produkcja (ksef.podatki.gov.pl)</option>
                 </select>
               </div>
+
+              <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--ui-border)' }} />
+
+              <h3 style={{ margin: '0 0 8px' }}>Pierwsze konto użytkownika</h3>
               <div className="ui-form-group">
-                <label htmlFor="setup-admin-email">E-mail administratora</label>
-                <input id="setup-admin-email" data-testid="setup-admin-email" type="email" placeholder="admin@firma.pl"
-                  value={adminEmail} onInput={e => setAdminEmail((e.target as HTMLInputElement).value)} />
+                <label htmlFor="setup-user-email">E-mail</label>
+                <input id="setup-user-email" data-testid="setup-admin-email" type="email" placeholder="jan@firma.pl"
+                  value={userEmail} onInput={e => setUserEmail((e.target as HTMLInputElement).value)} />
               </div>
               <div className="ui-form-group">
-                <label htmlFor="setup-admin-pass">Hasło administratora</label>
-                <input id="setup-admin-pass" data-testid="setup-admin-pass" type="password" placeholder="Min. 8 znaków"
-                  value={adminPassword} onInput={e => setAdminPassword((e.target as HTMLInputElement).value)} />
+                <label htmlFor="setup-user-pass">Hasło</label>
+                <input id="setup-user-pass" data-testid="setup-admin-pass" type="password" placeholder="Min. 8 znaków"
+                  value={userPassword} onInput={e => setUserPassword((e.target as HTMLInputElement).value)} />
               </div>
               <div className="ui-form-group">
-                <label htmlFor="setup-admin-fname">Imię <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span></label>
-                <input id="setup-admin-fname" data-testid="setup-admin-fname" type="text"
-                  value={adminFirstName} onInput={e => setAdminFirstName((e.target as HTMLInputElement).value)} />
+                <label htmlFor="setup-user-fname">Imię <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span></label>
+                <input id="setup-user-fname" data-testid="setup-admin-fname" type="text"
+                  value={userFirstName} onInput={e => setUserFirstName((e.target as HTMLInputElement).value)} />
               </div>
               <div className="ui-form-group">
-                <label htmlFor="setup-admin-lname">Nazwisko <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span></label>
-                <input id="setup-admin-lname" data-testid="setup-admin-lname" type="text"
-                  value={adminLastName} onInput={e => setAdminLastName((e.target as HTMLInputElement).value)} />
+                <label htmlFor="setup-user-lname">Nazwisko <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span></label>
+                <input id="setup-user-lname" data-testid="setup-admin-lname" type="text"
+                  value={userLastName} onInput={e => setUserLastName((e.target as HTMLInputElement).value)} />
+              </div>
+
+              <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--ui-border)' }} />
+
+              <h3 style={{ margin: '0 0 8px' }}>Pierwsza firma</h3>
+              <div className="ui-form-group">
+                <label htmlFor="setup-tenant-nip">NIP</label>
+                <input id="setup-tenant-nip" data-testid="setup-tenant-nip" type="text" placeholder="1234567890"
+                  maxLength={10}
+                  value={firstTenantNip} onInput={e => setFirstTenantNip((e.target as HTMLInputElement).value.replace(/\D/g, ''))} />
+              </div>
+              <div className="ui-form-group">
+                <label htmlFor="setup-tenant-name">Nazwa firmy <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span></label>
+                <input id="setup-tenant-name" data-testid="setup-tenant-name" type="text" placeholder="Moja Firma Sp. z o.o."
+                  value={firstTenantDisplayName} onInput={e => setFirstTenantDisplayName((e.target as HTMLInputElement).value)} />
               </div>
               {error && <div className="ui-form-error" role="alert">⚠ {error}</div>}
             </div>
@@ -596,7 +621,8 @@ export function AdminSetupPage(): ReactElement {
                 <tbody>
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>URL systemu</td><td style={{ padding: '4px 8px' }}>{externalUrl}</td></tr>
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Środowisko KSeF</td><td style={{ padding: '4px 8px' }}>{ksefEnv === 'production' ? 'Produkcja' : 'Test'}</td></tr>
-                  <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Admin</td><td style={{ padding: '4px 8px' }}>{adminEmail}</td></tr>
+                  <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Użytkownik</td><td style={{ padding: '4px 8px' }}>{userEmail}</td></tr>
+                  <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Firma (NIP)</td><td style={{ padding: '4px 8px' }}>{firstTenantNip}{firstTenantDisplayName ? ` — ${firstTenantDisplayName}` : ''}</td></tr>
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Rejestracja</td><td style={{ padding: '4px 8px' }}>{registrationAllowed ? 'Tak' : 'Nie'}</td></tr>
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>SMTP</td><td style={{ padding: '4px 8px' }}>{smtpEnabled ? smtpHost : 'Pominięto'}</td></tr>
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Google OAuth</td><td style={{ padding: '4px 8px' }}>{googleClientId ? 'Skonfigurowano' : 'Pominięto'}</td></tr>
@@ -625,7 +651,7 @@ export function AdminSetupPage(): ReactElement {
             <div className="onboarding-success__icon">✓</div>
             <h1 className="onboarding-success__title">System skonfigurowany!</h1>
             <p className="onboarding-success__detail">
-              Zaloguj się jako <strong>{adminEmail}</strong>, aby rozpocząć korzystanie z OpenKSeF.
+              Zaloguj się jako <strong>{userEmail}</strong>, aby rozpocząć korzystanie z OpenKSeF.
             </p>
             <div className="onboarding-actions onboarding-actions--end" style={{ width: '100%' }}>
               <Button data-testid="setup-go-login" size="lg" onClick={goToLogin}>

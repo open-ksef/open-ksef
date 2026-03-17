@@ -53,6 +53,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // System config (DB-backed key-value store with env var fallback)
 builder.Services.AddSingleton<ISystemConfigService, SystemConfigService>();
 builder.Services.AddScoped<ISystemSetupService, SystemSetupService>();
+builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
 
 // Encryption
 builder.Services.AddEncryptionService(builder.Configuration, builder.Environment);

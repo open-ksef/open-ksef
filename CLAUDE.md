@@ -21,6 +21,49 @@ When implementing changes:
 - Delete code that becomes unnecessary after your changes.
 - Never leave dead code, commented-out blocks, or unused imports.
 
+## Architecture principles
+
+### Layer dependencies
+
+```
+Domain  (zero project dependencies -- entities, DTOs, abstractions, services)
+  ↑
+Sync    (depends only on Domain -- KSeF gateway impl, sync orchestration)
+  ↑
+Api / Worker  (depend on Domain + Sync -- HTTP layer, background jobs)
+```
+
+New code must respect this layering. Never add a reference from Domain to any upper layer. Never make Sync depend on Api or Worker.
+
+### Service design
+
+- Define service interfaces in `Domain/Abstractions/` or alongside the service in `Domain/Services/`.
+- Place implementations in the layer that owns the concern: KSeF gateway in `Sync`, push providers in `Api`, background jobs in `Worker`.
+- Controllers are thin HTTP adapters. They validate input, call a service, and return a response. Business logic belongs in domain services, not controllers.
+- Register services through DI (`AddScoped`, `AddSingleton`) in `Program.cs` or dedicated `DependencyInjection.cs` extension methods.
+
+### DTO discipline
+
+- `Domain/DTOs/` holds internal contracts shared across layers (e.g. sync results, internal requests).
+- `Api/Models/` holds API-facing request/response types shaped for JSON consumers (portal, mobile app).
+- Do not expose EF entities directly in API responses. Map to a response model.
+- When adding a new API endpoint, define its request/response types in `Api/Models/` and keep `Domain/DTOs/` free of HTTP-specific concerns.
+
+### DbContext usage
+
+The project uses direct `ApplicationDbContext` injection -- there is no generic repository layer. This is intentional. Rules:
+- Keep queries in controllers simple (single `Include`, `Where`, `Select`).
+- Move complex queries (joins, aggregations, multi-step logic) into domain services.
+- Never scatter raw SQL or complex LINQ across multiple controllers -- extract a shared service method.
+
+### SOLID checklist
+
+- **Single Responsibility.** One class = one job. A controller handles HTTP routing; a service handles business rules; a gateway handles external API calls.
+- **Open/Closed.** Add new behavior through new interface implementations (e.g. new `IPushProvider`), not by adding `if/else` branches in existing code.
+- **Liskov Substitution.** Every `IKSeFGateway`, `IEmailService`, `IPushProvider` implementation must be safely interchangeable.
+- **Interface Segregation.** Keep interfaces focused. If a service interface grows beyond one responsibility, split it.
+- **Dependency Inversion.** Controllers and services depend on interfaces from `Domain`, never on concrete classes from other layers.
+
 ## Infrastructure
 
 `docker-compose.dev.yml` provides local-build dev stack (6 services):
