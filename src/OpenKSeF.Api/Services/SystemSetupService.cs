@@ -7,6 +7,7 @@ using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
+using OpenKSeF.Sync;
 
 namespace OpenKSeF.Api.Services;
 
@@ -138,12 +139,13 @@ public sealed class SystemSetupService : ISystemSetupService
             }
 
             // 10. Resolve KSeF environment and store config in DB
+            var ksefBaseUrl = DependencyInjection.ResolveKSeFEnvironment(request.KSeFBaseUrl);
             var configValues = new Dictionary<string, string>
             {
                 [SystemConfigKeys.EncryptionKey] = encryptionKey,
                 [SystemConfigKeys.ApiClientSecret] = apiClientSecret,
                 [SystemConfigKeys.ExternalBaseUrl] = request.ExternalBaseUrl.TrimEnd('/'),
-                [SystemConfigKeys.KSeFBaseUrl] = request.KSeFBaseUrl,
+                [SystemConfigKeys.KSeFBaseUrl] = ksefBaseUrl,
                 [SystemConfigKeys.IsInitialized] = "true",
             };
 

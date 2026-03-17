@@ -58,6 +58,9 @@ else
     throw new InvalidOperationException("ENCRYPTION_KEY is required in non-development environments.");
 }
 
+// System config (DB-backed key-value store with env var fallback)
+builder.Services.AddSingleton<ISystemConfigService, SystemConfigService>();
+
 // KSeF sync services (gateway + sync + KSeF client)
 builder.Services.AddSyncServices(builder.Configuration);
 
@@ -70,4 +73,16 @@ builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection(SyncOpt
 builder.Services.AddHostedService<InvoiceSyncService>();
 
 var host = builder.Build();
+
+// Load system config cache and override KSeF base URL from DB
+var systemConfig = host.Services.GetRequiredService<ISystemConfigService>();
+await systemConfig.RefreshCacheAsync();
+
+var dbKsefUrl = systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl);
+if (!string.IsNullOrEmpty(dbKsefUrl))
+{
+    var ksefOptions = host.Services.GetRequiredService<KSeF.Client.DI.KSeFClientOptions>();
+    ksefOptions.BaseUrl = dbKsefUrl;
+}
+
 host.Run();

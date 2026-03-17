@@ -100,7 +100,7 @@ public class SystemSetupControllerTests
         var request = new SetupApplyRequest
         {
             ExternalBaseUrl = "http://localhost:8080",
-            KSeFBaseUrl = "https://ksef-test.mf.gov.pl/api",
+            KSeFBaseUrl = "test",
             AdminEmail = "admin@example.com",
             AdminPassword = "Test1234!",
         };
@@ -118,7 +118,7 @@ public class SystemSetupControllerTests
         var request = new SetupApplyRequest
         {
             ExternalBaseUrl = "http://localhost:8080",
-            KSeFBaseUrl = "https://ksef-test.mf.gov.pl/api",
+            KSeFBaseUrl = "test",
             AdminEmail = "admin@example.com",
             AdminPassword = "Test1234!",
         };
@@ -136,7 +136,7 @@ public class SystemSetupControllerTests
         var request = new SetupApplyRequest
         {
             ExternalBaseUrl = "http://localhost:8080",
-            KSeFBaseUrl = "https://ksef-test.mf.gov.pl/api",
+            KSeFBaseUrl = "test",
             AdminEmail = "admin@example.com",
             AdminPassword = "Test1234!",
         };

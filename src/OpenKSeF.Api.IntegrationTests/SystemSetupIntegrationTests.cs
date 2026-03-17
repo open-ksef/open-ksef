@@ -76,7 +76,7 @@ public class SystemSetupIntegrationTests : IDisposable
         var applyRequest = new SetupApplyRequest
         {
             ExternalBaseUrl = "http://localhost:8080",
-            KSeFBaseUrl = "https://ksef-test.mf.gov.pl/api",
+            KSeFBaseUrl = "test",
             AdminEmail = "integration-test@open-ksef.pl",
             AdminPassword = "IntegrationTest1234!",
             RegistrationAllowed = true,
@@ -125,7 +125,7 @@ public class SystemSetupIntegrationTests : IDisposable
         var applyRequest = new SetupApplyRequest
         {
             ExternalBaseUrl = "http://localhost:8080",
-            KSeFBaseUrl = "https://ksef-test.mf.gov.pl/api",
+            KSeFBaseUrl = "test",
             AdminEmail = "block-test@open-ksef.pl",
             AdminPassword = "Test1234!",
         };
