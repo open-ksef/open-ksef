@@ -11,13 +11,9 @@ public static class DependencyInjection
     public static IServiceCollection AddSyncServices(
         this IServiceCollection services, IConfiguration configuration)
     {
-        var configuredUrl = configuration["KSeF:BaseUrl"];
-
         services.AddKSeFClient(options =>
         {
-            options.BaseUrl = !string.IsNullOrWhiteSpace(configuredUrl)
-                ? configuredUrl
-                : KsefEnvironmentsUris.TEST;
+            options.BaseUrl = KsefEnvironmentsUris.TEST;
         });
 
         services.AddCryptographyClient(CryptographyServiceWarmupMode.NonBlocking);
@@ -33,8 +29,8 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// Resolves a KSeF environment key (from the admin setup wizard dropdown)
-    /// to the base URL expected by the KSeF.Client NuGet library.
+    /// Resolves a KSeF environment key ("test", "production", "demo") to the
+    /// base URL from KSeF.Client NuGet package. Single source of truth for URLs.
     /// </summary>
     public static string ResolveKSeFEnvironment(string? envKey) => envKey?.ToLowerInvariant() switch
     {

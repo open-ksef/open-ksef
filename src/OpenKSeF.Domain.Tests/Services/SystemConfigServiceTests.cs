@@ -33,7 +33,7 @@ public class SystemConfigServiceTests : IDisposable
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ENCRYPTION_KEY"] = "env-encryption-key-base64",
-                ["KSeF:BaseUrl"] = "https://ksef-test.mf.gov.pl/api",
+                ["KSeF:Environment"] = "test",
             })
             .Build();
 
@@ -86,13 +86,13 @@ public class SystemConfigServiceTests : IDisposable
         var values = new Dictionary<string, string>
         {
             [SystemConfigKeys.ExternalBaseUrl] = "https://example.com",
-            [SystemConfigKeys.KSeFBaseUrl] = "https://ksef-test.mf.gov.pl/api",
+            [SystemConfigKeys.KSeFEnvironment] = "test",
         };
 
         await _service.SetValuesAsync(values);
 
         Assert.Equal("https://example.com", _service.GetValue(SystemConfigKeys.ExternalBaseUrl));
-        Assert.Equal("https://ksef-test.mf.gov.pl/api", _service.GetValue(SystemConfigKeys.KSeFBaseUrl));
+        Assert.Equal("test", _service.GetValue(SystemConfigKeys.KSeFEnvironment));
     }
 
     [Fact]
