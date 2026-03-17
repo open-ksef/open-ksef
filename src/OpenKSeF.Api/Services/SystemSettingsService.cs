@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Services;
+using OpenKSeF.Sync;
 
 namespace OpenKSeF.Api.Services;
 
@@ -58,7 +59,9 @@ public sealed class SystemSettingsService : ISystemSettingsService
         var googleConfigured = await IsGoogleIdpConfiguredAsync(client, kcBase, kcAdminToken, ct);
         var (hasInvoices, hasCredentials) = await GetKSeFEnvironmentLockStatusAsync(ct);
 
-        var ksefEnv = _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment) ?? "test";
+        var ksefEnv = _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
+            ?? DependencyInjection.NormalizeKSeFEnvironmentKey(
+                _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl));
 
         string? lockReason = null;
         var locked = false;
@@ -106,7 +109,9 @@ public sealed class SystemSettingsService : ISystemSettingsService
             var needsCredentialWipe = false;
             if (!string.IsNullOrEmpty(request.KSeFEnvironment))
             {
-                var currentEnv = _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment) ?? "test";
+                var currentEnv = _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
+                    ?? DependencyInjection.NormalizeKSeFEnvironmentKey(
+                        _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl));
 
                 if (!string.Equals(currentEnv, request.KSeFEnvironment, StringComparison.OrdinalIgnoreCase))
                 {
