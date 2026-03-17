@@ -103,7 +103,8 @@ public sealed class SystemSettingsService : ISystemSettingsService
             var client = _httpClientFactory.CreateClient("keycloak");
             var kcBase = KeycloakInternalBaseUrl;
 
-            // Handle KSeF environment change
+            // Validate KSeF environment change before doing any work
+            var needsCredentialWipe = false;
             if (!string.IsNullOrEmpty(request.KSeFEnvironment))
             {
                 var currentKsefUrl = _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl) ?? "";
@@ -120,8 +121,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
                         if (!request.ConfirmCredentialWipe)
                             return new SettingsUpdateResponse(false, "Zmiana środowiska KSeF wymaga usunięcia wszystkich poświadczeń KSeF. Potwierdź operację.");
 
-                        await WipeKSeFCredentialsAsync(ct);
-                        _logger.LogWarning("Wiped all KSeF credentials due to environment change to {Env}", request.KSeFEnvironment);
+                        needsCredentialWipe = true;
                     }
                 }
             }
@@ -170,6 +170,13 @@ public sealed class SystemSettingsService : ISystemSettingsService
             {
                 await _systemConfig.SetValuesAsync(configValues, ct);
                 await _systemConfig.RefreshCacheAsync(ct);
+            }
+
+            // Wipe credentials only after all other operations succeeded
+            if (needsCredentialWipe)
+            {
+                await WipeKSeFCredentialsAsync(ct);
+                _logger.LogWarning("Wiped all KSeF credentials due to environment change to {Env}", request.KSeFEnvironment);
             }
 
             _logger.LogInformation("Settings updated successfully");

@@ -151,9 +151,9 @@ export function SettingsPage(): ReactElement {
       clearSmtp: !smtpEnabled,
       googleClientId: googleClientId || undefined,
       googleClientSecret: googleClientSecret || undefined,
-      pushRelayUrl: pushMode === 'relay' ? pushRelayUrl || undefined : undefined,
-      pushRelayApiKey: pushMode === 'relay' ? pushRelayApiKey || undefined : undefined,
-      firebaseCredentialsJson: pushMode === 'firebase' ? firebaseJson || undefined : undefined,
+      pushRelayUrl: pushMode === 'relay' ? (pushRelayUrl || undefined) : '',
+      pushRelayApiKey: pushMode === 'relay' ? (pushRelayApiKey || undefined) : '',
+      firebaseCredentialsJson: pushMode === 'firebase' ? (firebaseJson || undefined) : '',
       confirmCredentialWipe: confirmWipe,
     }
   }
