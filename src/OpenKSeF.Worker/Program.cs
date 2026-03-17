@@ -78,11 +78,12 @@ var host = builder.Build();
 var systemConfig = host.Services.GetRequiredService<ISystemConfigService>();
 await systemConfig.RefreshCacheAsync();
 
-var dbKsefUrl = systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl);
-if (!string.IsNullOrEmpty(dbKsefUrl))
+var ksefEnv = systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
+    ?? systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl);
+if (!string.IsNullOrEmpty(ksefEnv))
 {
     var ksefOptions = host.Services.GetRequiredService<KSeF.Client.DI.KSeFClientOptions>();
-    ksefOptions.BaseUrl = dbKsefUrl;
+    ksefOptions.BaseUrl = OpenKSeF.Sync.DependencyInjection.ResolveKSeFEnvironment(ksefEnv);
 }
 
 host.Run();

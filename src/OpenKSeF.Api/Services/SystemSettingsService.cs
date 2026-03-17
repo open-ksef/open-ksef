@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Services;
+using OpenKSeF.Sync;
 
 namespace OpenKSeF.Api.Services;
 
@@ -58,8 +59,9 @@ public sealed class SystemSettingsService : ISystemSettingsService
         var googleConfigured = await IsGoogleIdpConfiguredAsync(client, kcBase, kcAdminToken, ct);
         var (hasInvoices, hasCredentials) = await GetKSeFEnvironmentLockStatusAsync(ct);
 
-        var ksefBaseUrl = _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl) ?? "";
-        var ksefEnv = ksefBaseUrl.Contains("ksef-test", StringComparison.OrdinalIgnoreCase) ? "test" : "production";
+        var ksefEnv = _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
+            ?? DependencyInjection.NormalizeKSeFEnvironmentKey(
+                _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl));
 
         string? lockReason = null;
         var locked = false;
@@ -107,8 +109,9 @@ public sealed class SystemSettingsService : ISystemSettingsService
             var needsCredentialWipe = false;
             if (!string.IsNullOrEmpty(request.KSeFEnvironment))
             {
-                var currentKsefUrl = _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl) ?? "";
-                var currentEnv = currentKsefUrl.Contains("ksef-test", StringComparison.OrdinalIgnoreCase) ? "test" : "production";
+                var currentEnv = _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
+                    ?? DependencyInjection.NormalizeKSeFEnvironmentKey(
+                        _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl));
 
                 if (!string.Equals(currentEnv, request.KSeFEnvironment, StringComparison.OrdinalIgnoreCase))
                 {
@@ -148,12 +151,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
             }
 
             if (!string.IsNullOrEmpty(request.KSeFEnvironment))
-            {
-                var ksefUrl = request.KSeFEnvironment == "production"
-                    ? "https://ksef.podatki.gov.pl/api"
-                    : "https://ksef-test.mf.gov.pl/api";
-                configValues[SystemConfigKeys.KSeFBaseUrl] = ksefUrl;
-            }
+                configValues[SystemConfigKeys.KSeFEnvironment] = request.KSeFEnvironment;
 
             if (request.GoogleClientId != null)
                 configValues[SystemConfigKeys.GoogleClientId] = request.GoogleClientId;

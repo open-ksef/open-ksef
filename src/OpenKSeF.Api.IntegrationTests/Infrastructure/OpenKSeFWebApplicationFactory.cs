@@ -19,7 +19,7 @@ public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Progra
         builder.UseSetting("Auth:PublicAuthority", _fixture.KeycloakAuthority);
         builder.UseSetting("Auth:ServiceAccount:ClientId", "openksef-api");
         builder.UseSetting("Auth:ServiceAccount:ClientSecret", "test-api-client-secret");
-        builder.UseSetting("KSeF:BaseUrl", "https://ksef-test.mf.gov.pl/api");
+        builder.UseSetting("KSeF:Environment", "test");
         builder.UseSetting("ASPNETCORE_ENVIRONMENT", "Development");
 
         builder.UseEnvironment("Development");

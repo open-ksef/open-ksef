@@ -6,6 +6,9 @@ public static class SystemConfigKeys
     public const string EncryptionKey = "encryption_key";
     public const string ApiClientSecret = "api_client_secret";
     public const string ExternalBaseUrl = "external_base_url";
+    public const string KSeFEnvironment = "ksef_environment";
+
+    /// <summary>Legacy key — stored a full URL. Kept for migration from older installs.</summary>
     public const string KSeFBaseUrl = "ksef_base_url";
     public const string FirebaseCredentialsJson = "firebase_credentials_json";
     public const string GoogleClientId = "google_client_id";

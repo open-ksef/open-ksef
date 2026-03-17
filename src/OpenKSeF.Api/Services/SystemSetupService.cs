@@ -138,14 +138,19 @@ public sealed class SystemSetupService : ISystemSetupService
                 _logger.LogInformation("Keycloak admin password changed");
             }
 
-            // 10. Resolve KSeF environment and store config in DB
-            var ksefBaseUrl = DependencyInjection.ResolveKSeFEnvironment(request.KSeFBaseUrl);
+            // 10. Store config in DB (environment key only, URL resolved at runtime)
+            var ksefEnv = request.KSeFBaseUrl?.ToLowerInvariant() switch
+            {
+                "production" => "production",
+                "demo" => "demo",
+                _ => "test",
+            };
             var configValues = new Dictionary<string, string>
             {
                 [SystemConfigKeys.EncryptionKey] = encryptionKey,
                 [SystemConfigKeys.ApiClientSecret] = apiClientSecret,
                 [SystemConfigKeys.ExternalBaseUrl] = request.ExternalBaseUrl.TrimEnd('/'),
-                [SystemConfigKeys.KSeFBaseUrl] = ksefBaseUrl,
+                [SystemConfigKeys.KSeFEnvironment] = ksefEnv,
                 [SystemConfigKeys.IsInitialized] = "true",
             };
 
