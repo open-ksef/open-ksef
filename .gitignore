@@ -64,6 +64,7 @@ nuget.config.local
 .mcp.json
 .claude/
 .taskmaster/
+ai-code-graph/
 
 # OS files
 .DS_Store
