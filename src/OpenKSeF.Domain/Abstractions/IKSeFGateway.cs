@@ -36,7 +36,8 @@ public record KSeFInvoiceHeader(
     string Currency,
     DateTime IssueDate,
     DateTime? AcquisitionDate,
-    string? InvoiceType);
+    string? InvoiceType,
+    string? VendorBankAccount = null);
 
 public record KSeFInvoiceQueryResult(
     IReadOnlyList<KSeFInvoiceHeader> Invoices,

@@ -20,6 +20,7 @@ public class InvoiceHeader
     public string? InvoiceType { get; set; }
     public DateTime FirstSeenAt { get; set; }
     public DateTime LastUpdatedAt { get; set; }
+    public string? VendorBankAccount { get; set; }
     public bool IsPaid { get; set; }
     public DateTime? PaidAt { get; set; }
 

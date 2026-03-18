@@ -16,8 +16,11 @@ public class TransferDetailsService : ITransferDetailsService
         if (!string.IsNullOrWhiteSpace(invoice.VendorNip))
             lines.Add($"NIP: {invoice.VendorNip}");
 
+        if (!string.IsNullOrWhiteSpace(invoice.VendorBankAccount))
+            lines.Add($"Nr rachunku: {invoice.VendorBankAccount}");
+
         lines.Add($"Kwota: {invoice.AmountGross.ToString("N2", CultureInfo.InvariantCulture)} {invoice.Currency}");
-        lines.Add($"Tytul: Faktura {invoice.KSeFInvoiceNumber}");
+        lines.Add($"Tytul: Faktura {invoice.InvoiceNumber ?? invoice.KSeFInvoiceNumber}");
 
         return string.Join("\n", lines);
     }
@@ -28,12 +31,10 @@ public class TransferDetailsService : ITransferDetailsService
         {
             RecipientName = invoice.VendorName,
             RecipientNip = invoice.VendorNip,
-            // RecipientAccount is null for MVP — vendor bank account lookup deferred.
-            // TODO: Integrate with KSeF API or manual entry for bank account retrieval.
-            RecipientAccount = null,
+            RecipientAccount = invoice.VendorBankAccount,
             Amount = invoice.AmountGross,
             Currency = invoice.Currency,
-            Title = $"Faktura {invoice.KSeFInvoiceNumber}"
+            Title = $"Faktura {invoice.InvoiceNumber ?? invoice.KSeFInvoiceNumber}"
         };
     }
 }

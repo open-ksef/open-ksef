@@ -17,6 +17,7 @@ public sealed class TenantSyncService : ITenantSyncService
     private readonly IKSeFGateway _gateway;
     private readonly IEncryptionService _encryption;
     private readonly IInvoiceService _invoiceService;
+    private readonly KSeFInvoiceXmlParser _xmlParser;
     private readonly TenantSyncOptions _syncOptions;
     private readonly ILogger<TenantSyncService> _logger;
 
@@ -25,6 +26,7 @@ public sealed class TenantSyncService : ITenantSyncService
         IKSeFGateway gateway,
         IEncryptionService encryption,
         IInvoiceService invoiceService,
+        KSeFInvoiceXmlParser xmlParser,
         IOptions<TenantSyncOptions> syncOptions,
         ILogger<TenantSyncService> logger)
     {
@@ -32,6 +34,7 @@ public sealed class TenantSyncService : ITenantSyncService
         _gateway = gateway;
         _encryption = encryption;
         _invoiceService = invoiceService;
+        _xmlParser = xmlParser;
         _syncOptions = syncOptions.Value;
         if (_syncOptions.BatchSize <= 0)
         {
@@ -136,21 +139,39 @@ public sealed class TenantSyncService : ITenantSyncService
                     if (result.Invoices.Count == 0)
                         break;
 
-                    var invoiceDtos = result.Invoices.Select(i => new InvoiceDto(
-                        Number: i.KSeFNumber,
-                        ReferenceNumber: i.ReferenceNumber,
-                        InvoiceNumber: i.InvoiceNumber,
-                        VendorName: i.VendorName,
-                        VendorNip: i.VendorNip,
-                        BuyerName: i.BuyerName,
-                        BuyerNip: i.BuyerNip,
-                        AmountNet: i.AmountNet,
-                        AmountVat: i.AmountVat,
-                        AmountGross: i.AmountGross,
-                        Currency: i.Currency,
-                        IssueDate: i.IssueDate,
-                        AcquisitionDate: i.AcquisitionDate,
-                        InvoiceType: i.InvoiceType));
+                    var existingNumbers = await _db.InvoiceHeaders
+                        .Where(h => h.TenantId == tenant.Id)
+                        .Select(h => h.KSeFInvoiceNumber)
+                        .ToListAsync(cancellationToken);
+                    var existingSet = new HashSet<string>(existingNumbers);
+
+                    var invoiceDtos = new List<InvoiceDto>(result.Invoices.Count);
+                    foreach (var i in result.Invoices)
+                    {
+                        string? bankAccount = null;
+                        if (!existingSet.Contains(i.KSeFNumber))
+                        {
+                            bankAccount = await DownloadBankAccountAsync(
+                                session, i.KSeFNumber, cancellationToken);
+                        }
+
+                        invoiceDtos.Add(new InvoiceDto(
+                            Number: i.KSeFNumber,
+                            ReferenceNumber: i.ReferenceNumber,
+                            InvoiceNumber: i.InvoiceNumber,
+                            VendorName: i.VendorName,
+                            VendorNip: i.VendorNip,
+                            BuyerName: i.BuyerName,
+                            BuyerNip: i.BuyerNip,
+                            AmountNet: i.AmountNet,
+                            AmountVat: i.AmountVat,
+                            AmountGross: i.AmountGross,
+                            Currency: i.Currency,
+                            IssueDate: i.IssueDate,
+                            AcquisitionDate: i.AcquisitionDate,
+                            InvoiceType: i.InvoiceType,
+                            VendorBankAccount: bankAccount));
+                    }
 
                     var newIds = await _invoiceService.UpsertInvoicesAsync(tenant.Id, invoiceDtos);
                     totalNew += newIds.Count;
@@ -205,6 +226,22 @@ public sealed class TenantSyncService : ITenantSyncService
                     _logger.LogWarning(ex, "Failed to terminate KSeF session for tenant {TenantId}", tenant.Id);
                 }
             }
+        }
+    }
+
+    private async Task<string?> DownloadBankAccountAsync(
+        KSeFSession session, string ksefNumber, CancellationToken ct)
+    {
+        try
+        {
+            var xmlBytes = await _gateway.DownloadInvoiceAsync(session, ksefNumber, ct);
+            return _xmlParser.ExtractBankAccount(xmlBytes);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "Failed to download invoice XML for bank account extraction: {KSeFNumber}", ksefNumber);
+            return null;
         }
     }
 
