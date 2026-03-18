@@ -139,17 +139,20 @@ public sealed class TenantSyncService : ITenantSyncService
                     if (result.Invoices.Count == 0)
                         break;
 
-                    var existingNumbers = await _db.InvoiceHeaders
-                        .Where(h => h.TenantId == tenant.Id)
+                    var batchNumbers = result.Invoices.Select(i => i.KSeFNumber).ToList();
+                    var invoicesWithBankAccount = await _db.InvoiceHeaders
+                        .Where(h => h.TenantId == tenant.Id
+                            && batchNumbers.Contains(h.KSeFInvoiceNumber)
+                            && h.VendorBankAccount != null)
                         .Select(h => h.KSeFInvoiceNumber)
                         .ToListAsync(cancellationToken);
-                    var existingSet = new HashSet<string>(existingNumbers);
+                    var skipDownloadSet = new HashSet<string>(invoicesWithBankAccount);
 
                     var invoiceDtos = new List<InvoiceDto>(result.Invoices.Count);
                     foreach (var i in result.Invoices)
                     {
                         string? bankAccount = null;
-                        if (!existingSet.Contains(i.KSeFNumber))
+                        if (!skipDownloadSet.Contains(i.KSeFNumber))
                         {
                             bankAccount = await DownloadBankAccountAsync(
                                 session, i.KSeFNumber, cancellationToken);
