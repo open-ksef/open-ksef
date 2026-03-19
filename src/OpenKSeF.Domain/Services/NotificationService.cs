@@ -150,22 +150,46 @@ public class NotificationService : INotificationService
         return await SendToSingleDeviceAsync(deviceToken, notification);
     }
 
+    private const int MaxRetries = 3;
+    private static readonly int[] RetryDelaysMs = [500, 1000, 2000];
+
     /// <summary>
     /// Per-token delivery: Relay > Direct FCM > APNs (in registration order).
+    /// Each provider is retried up to 3 times on transient (network) failures
+    /// before falling through to the next provider.
     /// </summary>
     private async Task<bool> SendToSingleDeviceAsync(string token, PushNotification notification)
     {
         foreach (var provider in _pushProviders)
         {
-            try
+            for (var attempt = 0; attempt < MaxRetries; attempt++)
             {
-                var success = await provider.SendAsync(token, notification);
-                if (success) return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Push provider failed for token {Token}",
-                    token[..Math.Min(8, token.Length)]);
+                try
+                {
+                    var success = await provider.SendAsync(token, notification);
+                    if (success) return true;
+                    break; // provider returned false (permanent failure like invalid token)
+                }
+                catch (HttpRequestException ex) when (attempt < MaxRetries - 1)
+                {
+                    _logger.LogDebug(ex,
+                        "Transient push failure for token {Token}, attempt {Attempt}/{Max}",
+                        token[..Math.Min(8, token.Length)], attempt + 1, MaxRetries);
+                    await Task.Delay(RetryDelaysMs[attempt]);
+                }
+                catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException && attempt < MaxRetries - 1)
+                {
+                    _logger.LogDebug(ex,
+                        "Push timeout for token {Token}, attempt {Attempt}/{Max}",
+                        token[..Math.Min(8, token.Length)], attempt + 1, MaxRetries);
+                    await Task.Delay(RetryDelaysMs[attempt]);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Push provider failed for token {Token}",
+                        token[..Math.Min(8, token.Length)]);
+                    break; // non-transient exception, move to next provider
+                }
             }
         }
 

@@ -1,16 +1,21 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 
-namespace OpenKSeF.Api.Push;
+namespace OpenKSeF.Domain.Push;
 
 /// <summary>
 /// Forwards push notifications to the team-operated relay service which
 /// holds the Firebase/APNs credentials. Self-hosted admins don't need
 /// to configure Firebase at all -- the relay handles delivery.
+///
+/// Authentication: each instance registers with the relay during setup
+/// and receives a unique HMAC key. The key and instance ID are stored
+/// in SystemConfig and sent with every request.
 /// </summary>
 public class RelayPushProvider : IPushProvider
 {
@@ -38,6 +43,13 @@ public class RelayPushProvider : IPushProvider
         }
 
         var apiKey = _systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey) ?? "";
+        var instanceId = _systemConfig.GetValue(SystemConfigKeys.PushRelayInstanceId) ?? "";
+
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            _logger.LogWarning("Push relay API key not configured -- instance may not be registered. Skipping relay delivery");
+            return false;
+        }
 
         var payload = new
         {
@@ -59,6 +71,9 @@ public class RelayPushProvider : IPushProvider
         request.Headers.Add("X-Relay-Timestamp", timestamp);
         request.Headers.Add("X-Relay-Signature", signature);
 
+        if (!string.IsNullOrEmpty(instanceId))
+            request.Headers.Add("X-Relay-Instance", instanceId);
+
         try
         {
             var response = await client.SendAsync(request);
@@ -70,9 +85,22 @@ public class RelayPushProvider : IPushProvider
             }
 
             var body = await response.Content.ReadAsStringAsync();
+            var statusCode = (int)response.StatusCode;
+
+            if (statusCode == 429 || statusCode >= 500)
+            {
+                throw new HttpRequestException(
+                    $"Relay transient failure: {response.StatusCode} {body[..Math.Min(200, body.Length)]}",
+                    null, response.StatusCode);
+            }
+
             _logger.LogWarning("Relay push failed: {Status} {Body}",
                 response.StatusCode, body[..Math.Min(200, body.Length)]);
             return false;
+        }
+        catch (HttpRequestException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -83,9 +111,6 @@ public class RelayPushProvider : IPushProvider
 
     private static string ComputeHmac(string payload, string timestamp, string apiKey)
     {
-        if (string.IsNullOrEmpty(apiKey))
-            return "";
-
         var key = Encoding.UTF8.GetBytes(apiKey);
         var message = Encoding.UTF8.GetBytes($"{timestamp}.{payload}");
         var hash = HMACSHA256.HashData(key, message);

@@ -15,4 +15,5 @@ public static class SystemConfigKeys
     public const string GoogleClientSecret = "google_client_secret";
     public const string PushRelayUrl = "push_relay_url";
     public const string PushRelayApiKey = "push_relay_api_key";
+    public const string PushRelayInstanceId = "push_relay_instance_id";
 }

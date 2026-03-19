@@ -93,6 +93,7 @@ public record SettingsResponse
     public bool GoogleConfigured { get; init; }
     public string? PushRelayUrl { get; init; }
     public string? PushRelayApiKey { get; init; }
+    public string? PushRelayInstanceId { get; init; }
     public bool FirebaseConfigured { get; init; }
 }
 
@@ -114,6 +115,7 @@ public record SettingsUpdateRequest
     public string? GoogleClientSecret { get; init; }
     public string? PushRelayUrl { get; init; }
     public string? PushRelayApiKey { get; init; }
+    public bool ReRegisterRelay { get; init; }
     public string? FirebaseCredentialsJson { get; init; }
     public bool ConfirmCredentialWipe { get; init; }
 }

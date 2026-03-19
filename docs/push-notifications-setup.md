@@ -43,9 +43,9 @@ The OpenKSeF team operates a lightweight relay service at `https://push.open-kse
 
 **Why this works:** The official OpenKSeF mobile app is built with the team's Firebase project (`google-services.json`). The relay service holds the corresponding Firebase server credentials. Self-hosted admins never need to touch Firebase.
 
-**Setup:** In the admin wizard (Step 5 - Integrations), select "Relay OpenKSeF" (it's the default). The relay URL is pre-filled. Optionally, enter an API key if provided by the team.
+**Security:** Each instance registers with the relay during the admin setup wizard and receives a unique HMAC API key. Requests are signed with this key, timestamps are validated (5-minute window), and per-instance rate limits are enforced. The relay runs behind Cloudflare with additional WAF protection.
 
-**Security:** Requests to the relay are signed with an HMAC (using the relay API key) to prevent unauthorized senders.
+**Setup:** In the admin wizard (Step 5 - Integrations), select "Relay OpenKSeF" (it's the default). The relay URL is pre-filled. Registration happens automatically when you complete the wizard — no manual key management needed.
 
 ### Layer 3: Direct Firebase / APNs (advanced)
 
@@ -67,7 +67,7 @@ In the admin setup wizard at `http://localhost:8080/admin-setup`, Step 5 (Integr
 
 - Select "Relay OpenKSeF"
 - The URL `https://push.open-ksef.pl` is pre-filled
-- Optionally enter an API key
+- Registration happens automatically — a unique API key is generated and stored
 - Done — no Firebase setup needed
 
 ### Option B: Own Firebase project (advanced)
@@ -161,6 +161,25 @@ Every time a device registers via `POST /api/devices/register`, the API automati
 
 ---
 
+## Device Token Behavior
+
+When the mobile app registers a device, it sends the platform push token (FCM for Android, APNs for iOS). If Firebase/APNs is not available (e.g. no `google-services.json` in the build), the app sends a placeholder token in the format `device-<guid>`.
+
+Devices with `device-*` tokens **only receive SignalR real-time notifications** while the app is connected. Remote push (relay, FCM, APNs) will fail silently for these tokens. This is expected behavior for development builds without Firebase configured.
+
+---
+
+## Background Sync Notifications (Worker)
+
+The Worker process handles background KSeF synchronization. When new invoices are discovered during sync, the Worker sends push notifications using the same layered delivery as the API:
+
+- **Relay** → FCM → APNs (no SignalR, since the Worker has no hub connection)
+- **Email fallback** if tenant has a notification email
+
+The Worker reads push configuration from the same database (`SystemConfig` table) and supports the same `Firebase__CredentialsJson` environment variable as the API.
+
+---
+
 ## Relay Service Deployment (team-operated)
 
 The relay service is at `src/OpenKSeF.PushRelay/`. It's a standalone ASP.NET Minimal API that receives push requests and forwards them to FCM/APNs.
@@ -172,22 +191,31 @@ cd src/OpenKSeF.PushRelay
 dotnet run
 ```
 
-### Docker
+### Docker Compose
+
+The relay has its own dedicated compose file (`docker-compose.push-relay.yml`), separate from the main Open-KSeF stack. It is deployed independently -- typically on a different server behind Cloudflare.
 
 ```bash
-docker build -t openksef-push-relay -f src/OpenKSeF.PushRelay/Dockerfile src/OpenKSeF.PushRelay/
-docker run -p 8084:8080 \
-  -e Firebase__CredentialsJson='{"type":"service_account",...}' \
-  -e Relay__ApiKey='your-shared-key' \
-  openksef-push-relay
+# Dev (build from source):
+docker compose -f docker-compose.push-relay.yml up -d --build
+
+# Prod (pull from GHCR):
+PUSH_RELAY_IMAGE=ghcr.io/open-ksef/openksef-push-relay:latest \
+  docker compose -f docker-compose.push-relay.yml up -d
 ```
+
+### Production: Cloudflare + Docker
+
+See [push-relay-infra-setup.md](push-relay-infra-setup.md) for the full production deployment guide.
 
 ### Configuration
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `Firebase__CredentialsJson` | For Android push | *(none)* | Firebase service account JSON |
-| `Relay__ApiKey` | Recommended | *(none)* | HMAC key for authenticating requests |
+| `Relay__ApiKey` | No | *(none)* | Legacy global HMAC key (for backward compat) |
+| `Relay__AdminKey` | Recommended | *(none)* | Key protecting admin management endpoints |
+| `Relay__DataDir` | No | `./data` | Directory for SQLite instance registry |
 | `APNs__BundleId` | For iOS push | `com.openksef.mobile` | iOS app bundle ID |
 | `APNs__BaseUrl` | For iOS push | `https://api.push.apple.com` | APNs endpoint |
 | `APNs__KeyId` | For iOS push | *(none)* | APNs Auth Key ID |
@@ -195,6 +223,23 @@ docker run -p 8084:8080 \
 | `APNs__AuthKeyP8` | For iOS push | *(none)* | `.p8` private key content |
 
 ### API
+
+#### Registration (called by instances during setup)
+
+```
+POST /api/register
+{
+  "instanceUrl": "https://my-openksef.example.com"
+}
+
+Response:
+{
+  "instanceId": "abc123...",
+  "apiKey": "64-hex-chars..."
+}
+```
+
+#### Push (called by instances to send notifications)
 
 ```
 POST /api/push
@@ -206,6 +251,7 @@ POST /api/push
 }
 
 Headers:
+  X-Relay-Instance: <instanceId>
   X-Relay-Timestamp: <unix-epoch-seconds>
   X-Relay-Signature: <hmac-sha256-hex>
 ```
@@ -218,7 +264,9 @@ Headers:
 |---------|-------|-----|
 | No notifications at all | No push providers configured | Enable relay in admin wizard or configure Firebase |
 | SignalR not connecting | Auth token expired or wrong server URL | Re-login in the mobile app |
-| Relay returns 401 | Invalid HMAC signature | Check that API key matches between instance and relay |
+| Relay returns 401 | Invalid HMAC signature or unregistered instance | Check registration status in Settings, re-register if needed |
+| Relay returns 403 | Instance has been disabled on the relay | Contact OpenKSeF team |
+| Relay returns 429 | Rate limit exceeded | Reduce push frequency or contact OpenKSeF team |
 | Relay returns 502 | Firebase/APNs credentials invalid on relay | Check relay logs, verify Firebase JSON |
 | FCM token invalid | Device token expired or wrong Firebase project | Re-register device; check `google-services.json` matches |
 | iOS push returns 403 | Missing APNs JWT auth | Use relay (handles APNs auth) or implement JWT in `ApnsPushProvider` |
@@ -227,11 +275,27 @@ Headers:
 
 ## Environment variable reference
 
+### Open-KSeF instance (API + Worker)
+
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `FIREBASE_CREDENTIALS_JSON` | For direct FCM | *(none — uses relay)* | Firebase service account JSON (single line) |
+| `FIREBASE_CREDENTIALS_JSON` | For direct FCM | *(none — uses relay)* | Firebase service account JSON (single line). Used by both API and Worker. |
 | `APNS_BUNDLE_ID` | For direct iOS | `com.openksef.mobile` | iOS app bundle identifier |
 | `APNS_BASE_URL` | For direct iOS | `https://api.push.apple.com` | APNs endpoint |
 | `APNS_KEY_ID` | For direct iOS | *(none)* | APNs Auth Key ID |
 | `APNS_TEAM_ID` | For direct iOS | *(none)* | Apple Developer Team ID |
 | `APNS_AUTH_KEY_P8` | For direct iOS | *(none)* | Contents of the `.p8` private key file |
+
+### PushRelay service
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PUSH_RELAY_ADMIN_KEY` | Recommended | *(none)* | Key protecting relay admin endpoints |
+| `PUSH_RELAY_API_KEY` | No | *(none)* | Legacy global HMAC key (backward compat) |
+| `PUSH_RELAY_HOST_PORT` | No | `8084` | Host port for the relay container |
+| `FIREBASE_CREDENTIALS_JSON` | For Android push | *(none)* | Firebase service account JSON |
+| `APNS_BUNDLE_ID` | For iOS push | `com.openksef.mobile` | iOS app bundle identifier |
+| `APNS_BASE_URL` | For iOS push | `https://api.push.apple.com` | APNs endpoint |
+| `APNS_KEY_ID` | For iOS push | *(none)* | APNs Auth Key ID |
+| `APNS_TEAM_ID` | For iOS push | *(none)* | Apple Developer Team ID |
+| `APNS_AUTH_KEY_P8` | For iOS push | *(none)* | Contents of the `.p8` private key file |
