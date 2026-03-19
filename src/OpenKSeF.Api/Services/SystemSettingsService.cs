@@ -93,6 +93,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
             GoogleConfigured = googleConfigured,
             PushRelayUrl = _systemConfig.GetValue(SystemConfigKeys.PushRelayUrl),
             PushRelayApiKey = _systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey),
+            PushRelayInstanceId = _systemConfig.GetValue(SystemConfigKeys.PushRelayInstanceId),
             FirebaseConfigured = !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.FirebaseCredentialsJson)),
         };
     }
@@ -158,9 +159,38 @@ public sealed class SystemSettingsService : ISystemSettingsService
             if (request.GoogleClientSecret != null)
                 configValues[SystemConfigKeys.GoogleClientSecret] = request.GoogleClientSecret;
             if (request.PushRelayUrl != null)
+            {
                 configValues[SystemConfigKeys.PushRelayUrl] = request.PushRelayUrl;
-            if (request.PushRelayApiKey != null)
-                configValues[SystemConfigKeys.PushRelayApiKey] = request.PushRelayApiKey;
+
+                // If relay URL is set and re-registration is requested (API key cleared),
+                // auto-register with the relay to get a new key
+                if (request.ReRegisterRelay && !string.IsNullOrEmpty(request.PushRelayUrl))
+                {
+                    try
+                    {
+                        var externalUrl = _systemConfig.GetValue(SystemConfigKeys.ExternalBaseUrl) ?? "";
+                        var (instanceId, relayApiKey) = await RegisterWithRelayAsync(request.PushRelayUrl, externalUrl, ct);
+                        configValues[SystemConfigKeys.PushRelayApiKey] = relayApiKey;
+                        configValues[SystemConfigKeys.PushRelayInstanceId] = instanceId;
+                        _logger.LogInformation("Re-registered with push relay, instanceId: {InstanceId}", instanceId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to re-register with push relay");
+                        return new SettingsUpdateResponse(false, "Nie udało się zarejestrować w serwisie relay: " + ex.Message);
+                    }
+                }
+                else if (request.PushRelayApiKey != null)
+                {
+                    configValues[SystemConfigKeys.PushRelayApiKey] = request.PushRelayApiKey;
+                }
+            }
+            else if (request.PushRelayUrl == "")
+            {
+                configValues[SystemConfigKeys.PushRelayUrl] = "";
+                configValues[SystemConfigKeys.PushRelayApiKey] = "";
+                configValues[SystemConfigKeys.PushRelayInstanceId] = "";
+            }
             if (request.FirebaseCredentialsJson != null)
                 configValues[SystemConfigKeys.FirebaseCredentialsJson] = request.FirebaseCredentialsJson;
 
@@ -386,6 +416,25 @@ public sealed class SystemSettingsService : ISystemSettingsService
         resp.EnsureSuccessStatusCode();
         var clients = await resp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
         return clients.Length > 0 ? clients[0].GetProperty("id").GetString() : null;
+    }
+
+    private async Task<(string InstanceId, string ApiKey)> RegisterWithRelayAsync(
+        string relayUrl, string externalBaseUrl, CancellationToken ct)
+    {
+        var client = _httpClientFactory.CreateClient("push-relay");
+        var registerUrl = $"{relayUrl.TrimEnd('/')}/api/register";
+
+        var payload = new { instanceUrl = externalBaseUrl.TrimEnd('/') };
+        var response = await client.PostAsJsonAsync(registerUrl, payload, ct);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+        var instanceId = result.GetProperty("instanceId").GetString()
+            ?? throw new InvalidOperationException("Relay registration returned no instanceId");
+        var apiKey = result.GetProperty("apiKey").GetString()
+            ?? throw new InvalidOperationException("Relay registration returned no apiKey");
+
+        return (instanceId, apiKey);
     }
 
     private async Task WipeKSeFCredentialsAsync(CancellationToken ct)

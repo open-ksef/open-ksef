@@ -155,9 +155,30 @@ public sealed class SystemSetupService : ISystemSetupService
             };
 
             if (!string.IsNullOrEmpty(request.PushRelayUrl))
+            {
                 configValues[SystemConfigKeys.PushRelayUrl] = request.PushRelayUrl;
-            if (!string.IsNullOrEmpty(request.PushRelayApiKey))
-                configValues[SystemConfigKeys.PushRelayApiKey] = request.PushRelayApiKey;
+
+                // Auto-register with the relay if no manual API key was provided
+                if (string.IsNullOrEmpty(request.PushRelayApiKey))
+                {
+                    try
+                    {
+                        var (relayInstanceId, relayApiKey) = await RegisterWithRelayAsync(
+                            request.PushRelayUrl, request.ExternalBaseUrl, ct);
+                        configValues[SystemConfigKeys.PushRelayApiKey] = relayApiKey;
+                        configValues[SystemConfigKeys.PushRelayInstanceId] = relayInstanceId;
+                        _logger.LogInformation("Registered with push relay, instanceId: {InstanceId}", relayInstanceId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to register with push relay -- push notifications will use SignalR only until registration succeeds");
+                    }
+                }
+                else
+                {
+                    configValues[SystemConfigKeys.PushRelayApiKey] = request.PushRelayApiKey;
+                }
+            }
             if (!string.IsNullOrEmpty(request.FirebaseCredentialsJson))
                 configValues[SystemConfigKeys.FirebaseCredentialsJson] = request.FirebaseCredentialsJson;
             if (!string.IsNullOrEmpty(request.GoogleClientId))
@@ -592,6 +613,25 @@ public sealed class SystemSetupService : ISystemSetupService
         resp.EnsureSuccessStatusCode();
         var clients = await resp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
         return clients.Length > 0 ? clients[0].GetProperty("id").GetString() : null;
+    }
+
+    private async Task<(string InstanceId, string ApiKey)> RegisterWithRelayAsync(
+        string relayUrl, string externalBaseUrl, CancellationToken ct)
+    {
+        var client = _httpClientFactory.CreateClient("push-relay");
+        var registerUrl = $"{relayUrl.TrimEnd('/')}/api/register";
+
+        var payload = new { instanceUrl = externalBaseUrl.TrimEnd('/') };
+        var response = await client.PostAsJsonAsync(registerUrl, payload, ct);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+        var instanceId = result.GetProperty("instanceId").GetString()
+            ?? throw new InvalidOperationException("Relay registration returned no instanceId");
+        var apiKey = result.GetProperty("apiKey").GetString()
+            ?? throw new InvalidOperationException("Relay registration returned no apiKey");
+
+        return (instanceId, apiKey);
     }
 
     private static async Task<HttpResponseMessage> SendKeycloakJsonAsync(

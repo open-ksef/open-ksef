@@ -211,7 +211,8 @@ export function AdminSetupPage(): ReactElement {
       googleClientId: googleClientId || undefined,
       googleClientSecret: googleClientSecret || undefined,
       pushRelayUrl: pushMode === 'relay' ? pushRelayUrl || undefined : undefined,
-      pushRelayApiKey: pushMode === 'relay' ? pushRelayApiKey || undefined : undefined,
+      pushRelayApiKey: pushMode === 'relay' && pushRelayUrl !== 'https://push.open-ksef.pl'
+        ? pushRelayApiKey || undefined : undefined,
       firebaseCredentialsJson: pushMode === 'firebase' ? firebaseJson || undefined : undefined,
       newKeycloakAdminPassword: newKcPassword || undefined,
     }
@@ -554,12 +555,19 @@ export function AdminSetupPage(): ReactElement {
                     <input id="setup-relay-url" data-testid="setup-relay-url" type="url"
                       value={pushRelayUrl} onInput={e => setPushRelayUrl((e.target as HTMLInputElement).value)} />
                   </div>
-                  <div className="ui-form-group">
-                    <label htmlFor="setup-relay-key">Klucz API relay <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span></label>
-                    <input id="setup-relay-key" data-testid="setup-relay-key" type="password"
-                      placeholder="Podaj jeśli otrzymałeś od zespołu OpenKSeF"
-                      value={pushRelayApiKey} onInput={e => setPushRelayApiKey((e.target as HTMLInputElement).value)} />
-                  </div>
+                  {pushRelayUrl === 'https://push.open-ksef.pl' ? (
+                    <div className="onboarding-instruction">
+                      System zostanie automatycznie zarejestrowany w serwisie relay.
+                      Klucz API zostanie wygenerowany automatycznie podczas konfiguracji.
+                    </div>
+                  ) : (
+                    <div className="ui-form-group">
+                      <label htmlFor="setup-relay-key">Klucz API relay</label>
+                      <input id="setup-relay-key" data-testid="setup-relay-key" type="password"
+                        placeholder="Klucz API dla niestandardowego serwera relay"
+                        value={pushRelayApiKey} onInput={e => setPushRelayApiKey((e.target as HTMLInputElement).value)} />
+                    </div>
+                  )}
                 </>
               )}
 

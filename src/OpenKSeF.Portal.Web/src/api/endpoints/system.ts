@@ -100,6 +100,7 @@ export interface SettingsResponse {
   googleConfigured: boolean
   pushRelayUrl?: string
   pushRelayApiKey?: string
+  pushRelayInstanceId?: string
   firebaseConfigured: boolean
 }
 
@@ -119,6 +120,7 @@ export interface SettingsUpdateRequest {
   googleClientSecret?: string
   pushRelayUrl?: string
   pushRelayApiKey?: string
+  reRegisterRelay?: boolean
   firebaseCredentialsJson?: string
   confirmCredentialWipe?: boolean
 }
