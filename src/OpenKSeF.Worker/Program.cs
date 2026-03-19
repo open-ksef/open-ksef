@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using FirebaseAdmin;
+using Google.Apis.Auth.OAuth2;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Abstractions;
@@ -64,8 +66,23 @@ builder.Services.AddSingleton<ISystemConfigService, SystemConfigService>();
 // KSeF sync services (gateway + sync + KSeF client)
 builder.Services.AddSyncServices(builder.Configuration);
 
-// Domain services
-builder.Services.AddWorkerDomainServices();
+// Firebase / Push Notifications (direct FCM -- advanced/opt-in)
+var firebaseCredentialsJson = builder.Configuration["Firebase:CredentialsJson"];
+if (!string.IsNullOrEmpty(firebaseCredentialsJson))
+{
+    FirebaseApp.Create(new AppOptions
+    {
+        Credential = GoogleCredential.FromJson(firebaseCredentialsJson)
+    });
+    Log.Information("Firebase initialized in Worker");
+}
+else
+{
+    Log.Information("Firebase:CredentialsJson not configured — using relay for push notifications");
+}
+
+// Domain services (including push providers: Relay -> FCM -> APNs)
+builder.Services.AddWorkerDomainServices(builder.Configuration);
 
 // Worker-specific sync options
 builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection(SyncOptions.SectionName));

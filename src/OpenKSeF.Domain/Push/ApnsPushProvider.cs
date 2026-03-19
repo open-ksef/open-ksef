@@ -1,10 +1,11 @@
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Models;
 
-namespace OpenKSeF.Api.Push;
+namespace OpenKSeF.Domain.Push;
 
 public class ApnsPushProvider : IPushProvider
 {
@@ -49,7 +50,7 @@ public class ApnsPushProvider : IPushProvider
                 return true;
             }
 
-            if ((int)response.StatusCode == 410) // Gone - token no longer valid
+            if ((int)response.StatusCode == 410)
             {
                 _logger.LogWarning("APNs token expired: {Token}", deviceToken[..8]);
                 return false;

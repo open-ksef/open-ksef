@@ -9,6 +9,7 @@ using Microsoft.OpenApi.Models;
 using OpenKSeF.Api.Extensions;
 using OpenKSeF.Api.Hubs;
 using OpenKSeF.Api.Push;
+using OpenKSeF.Domain.Push;
 using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Abstractions;

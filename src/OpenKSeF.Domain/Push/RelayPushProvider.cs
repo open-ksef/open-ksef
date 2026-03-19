@@ -1,11 +1,12 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 
-namespace OpenKSeF.Api.Push;
+namespace OpenKSeF.Domain.Push;
 
 /// <summary>
 /// Forwards push notifications to the team-operated relay service which

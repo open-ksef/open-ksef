@@ -1,9 +1,10 @@
 using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
+using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Models;
 
-namespace OpenKSeF.Api.Push;
+namespace OpenKSeF.Domain.Push;
 
 public class FcmPushProvider : IPushProvider
 {

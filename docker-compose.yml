@@ -82,6 +82,7 @@ services:
       Auth__Authority: http://keycloak:8080/auth/realms/openksef
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       KSeF__BaseUrl: ${KSEF_BASE_URL:-https://ksef-test.mf.gov.pl/api}
+      Firebase__CredentialsJson: ${FIREBASE_CREDENTIALS_JSON:-}
 
   portal-web:
     image: ghcr.io/open-ksef/openksef-portal-web:latest
