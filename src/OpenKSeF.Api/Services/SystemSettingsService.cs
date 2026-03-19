@@ -1,4 +1,5 @@
 using System.Text.Json;
+using KSeF.Client.DI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -21,6 +22,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ISystemConfigService _systemConfig;
+    private readonly KSeFClientOptions _ksefOptions;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SystemSettingsService> _logger;
 
@@ -28,12 +30,14 @@ public sealed class SystemSettingsService : ISystemSettingsService
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ISystemConfigService systemConfig,
+        KSeFClientOptions ksefOptions,
         IServiceScopeFactory scopeFactory,
         ILogger<SystemSettingsService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _systemConfig = systemConfig;
+        _ksefOptions = ksefOptions;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -199,6 +203,17 @@ public sealed class SystemSettingsService : ISystemSettingsService
             {
                 await _systemConfig.SetValuesAsync(configValues, ct);
                 await _systemConfig.RefreshCacheAsync(ct);
+            }
+
+            if (!string.IsNullOrEmpty(request.KSeFEnvironment))
+            {
+                var newBaseUrl = DependencyInjection.ResolveKSeFEnvironment(request.KSeFEnvironment);
+                if (_ksefOptions.BaseUrl != newBaseUrl)
+                {
+                    _ksefOptions.BaseUrl = newBaseUrl;
+                    _logger.LogInformation("KSeF environment hot-reloaded to {Env} ({Url})",
+                        request.KSeFEnvironment, newBaseUrl);
+                }
             }
 
             // Wipe credentials only after all other operations succeeded

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using KSeF.Client.DI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,7 @@ public sealed class SystemSetupService : ISystemSetupService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ISystemConfigService _systemConfig;
+    private readonly KSeFClientOptions _ksefOptions;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SystemSetupService> _logger;
 
@@ -29,12 +31,14 @@ public sealed class SystemSetupService : ISystemSetupService
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ISystemConfigService systemConfig,
+        KSeFClientOptions ksefOptions,
         IServiceScopeFactory scopeFactory,
         ILogger<SystemSetupService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _systemConfig = systemConfig;
+        _ksefOptions = ksefOptions;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -188,6 +192,11 @@ public sealed class SystemSetupService : ISystemSetupService
 
             await _systemConfig.SetValuesAsync(configValues, ct);
             await _systemConfig.RefreshCacheAsync(ct);
+
+            _ksefOptions.BaseUrl = DependencyInjection.ResolveKSeFEnvironment(ksefEnv);
+            _logger.LogInformation("KSeF environment set to {Env} ({Url})",
+                ksefEnv, _ksefOptions.BaseUrl);
+
             _logger.LogInformation("System setup completed successfully");
 
             return new SetupApplyResponse(true, encryptionKey, apiClientSecret, null);
