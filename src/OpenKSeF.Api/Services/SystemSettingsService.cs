@@ -160,36 +160,37 @@ public sealed class SystemSettingsService : ISystemSettingsService
                 configValues[SystemConfigKeys.GoogleClientSecret] = request.GoogleClientSecret;
             if (request.PushRelayUrl != null)
             {
-                configValues[SystemConfigKeys.PushRelayUrl] = request.PushRelayUrl;
+                if (request.PushRelayUrl == "")
+                {
+                    configValues[SystemConfigKeys.PushRelayUrl] = "";
+                    configValues[SystemConfigKeys.PushRelayApiKey] = "";
+                    configValues[SystemConfigKeys.PushRelayInstanceId] = "";
+                }
+                else
+                {
+                    configValues[SystemConfigKeys.PushRelayUrl] = request.PushRelayUrl;
 
-                // If relay URL is set and re-registration is requested (API key cleared),
-                // auto-register with the relay to get a new key
-                if (request.ReRegisterRelay && !string.IsNullOrEmpty(request.PushRelayUrl))
-                {
-                    try
+                    if (request.ReRegisterRelay)
                     {
-                        var externalUrl = _systemConfig.GetValue(SystemConfigKeys.ExternalBaseUrl) ?? "";
-                        var (instanceId, relayApiKey) = await RegisterWithRelayAsync(request.PushRelayUrl, externalUrl, ct);
-                        configValues[SystemConfigKeys.PushRelayApiKey] = relayApiKey;
-                        configValues[SystemConfigKeys.PushRelayInstanceId] = instanceId;
-                        _logger.LogInformation("Re-registered with push relay, instanceId: {InstanceId}", instanceId);
+                        try
+                        {
+                            var externalUrl = _systemConfig.GetValue(SystemConfigKeys.ExternalBaseUrl) ?? "";
+                            var (instanceId, relayApiKey) = await RegisterWithRelayAsync(request.PushRelayUrl, externalUrl, ct);
+                            configValues[SystemConfigKeys.PushRelayApiKey] = relayApiKey;
+                            configValues[SystemConfigKeys.PushRelayInstanceId] = instanceId;
+                            _logger.LogInformation("Re-registered with push relay, instanceId: {InstanceId}", instanceId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to re-register with push relay");
+                            return new SettingsUpdateResponse(false, "Nie udało się zarejestrować w serwisie relay: " + ex.Message);
+                        }
                     }
-                    catch (Exception ex)
+                    else if (request.PushRelayApiKey != null)
                     {
-                        _logger.LogWarning(ex, "Failed to re-register with push relay");
-                        return new SettingsUpdateResponse(false, "Nie udało się zarejestrować w serwisie relay: " + ex.Message);
+                        configValues[SystemConfigKeys.PushRelayApiKey] = request.PushRelayApiKey;
                     }
                 }
-                else if (request.PushRelayApiKey != null)
-                {
-                    configValues[SystemConfigKeys.PushRelayApiKey] = request.PushRelayApiKey;
-                }
-            }
-            else if (request.PushRelayUrl == "")
-            {
-                configValues[SystemConfigKeys.PushRelayUrl] = "";
-                configValues[SystemConfigKeys.PushRelayApiKey] = "";
-                configValues[SystemConfigKeys.PushRelayInstanceId] = "";
             }
             if (request.FirebaseCredentialsJson != null)
                 configValues[SystemConfigKeys.FirebaseCredentialsJson] = request.FirebaseCredentialsJson;

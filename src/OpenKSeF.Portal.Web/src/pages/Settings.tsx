@@ -157,7 +157,7 @@ export function SettingsPage(): ReactElement {
       googleClientSecret: googleClientSecret || undefined,
       pushRelayUrl: pushMode === 'relay' ? (pushRelayUrl || undefined) : '',
       pushRelayApiKey: pushMode === 'relay' && pushRelayUrl !== 'https://push.open-ksef.pl'
-        ? (pushRelayApiKey || undefined) : '',
+        ? (pushRelayApiKey || undefined) : undefined,
       reRegisterRelay: pushMode === 'relay' && reRegisterRelay,
       firebaseCredentialsJson: pushMode === 'firebase' ? (firebaseJson || undefined) : '',
       confirmCredentialWipe: confirmWipe,

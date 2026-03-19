@@ -85,9 +85,22 @@ public class RelayPushProvider : IPushProvider
             }
 
             var body = await response.Content.ReadAsStringAsync();
+            var statusCode = (int)response.StatusCode;
+
+            if (statusCode == 429 || statusCode >= 500)
+            {
+                throw new HttpRequestException(
+                    $"Relay transient failure: {response.StatusCode} {body[..Math.Min(200, body.Length)]}",
+                    null, response.StatusCode);
+            }
+
             _logger.LogWarning("Relay push failed: {Status} {Body}",
                 response.StatusCode, body[..Math.Min(200, body.Length)]);
             return false;
+        }
+        catch (HttpRequestException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
