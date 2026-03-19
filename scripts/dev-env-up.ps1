@@ -220,6 +220,21 @@ if ($ngrokUrl) {
         -ClientId 'openksef-api' -RedirectUris $ngrokRedirects
 }
 
+# ── 6b. Disable VERIFY_PROFILE required action (Keycloak 26+ blocks login) ──
+Write-Host "`n[keycloak] Disabling VERIFY_PROFILE required action ..." -ForegroundColor Cyan
+$vpPayload = @{
+    alias = 'VERIFY_PROFILE'; name = 'Verify Profile'; providerId = 'VERIFY_PROFILE'
+    enabled = $false; defaultAction = $false; priority = 90
+} | ConvertTo-Json
+
+try {
+    Invoke-RestMethod -Uri "$kcBaseUrl/auth/admin/realms/openksef/authentication/required-actions/VERIFY_PROFILE" `
+        -Headers $kcHeaders -Method Put -Body $vpPayload | Out-Null
+    Write-Host "  [OK] VERIFY_PROFILE disabled" -ForegroundColor Green
+} catch {
+    Write-Host "  [warn] Could not disable VERIFY_PROFILE: $_" -ForegroundColor Yellow
+}
+
 # ── 7. Create test user ──────────────────────────────────────────────
 Write-Host "`n[keycloak] Provisioning test user '$testUser' ..." -ForegroundColor Cyan
 

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using KSeF.Client.DI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,7 @@ public sealed class SystemSetupService : ISystemSetupService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ISystemConfigService _systemConfig;
+    private readonly KSeFClientOptions _ksefOptions;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SystemSetupService> _logger;
 
@@ -29,12 +31,14 @@ public sealed class SystemSetupService : ISystemSetupService
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ISystemConfigService systemConfig,
+        KSeFClientOptions ksefOptions,
         IServiceScopeFactory scopeFactory,
         ILogger<SystemSetupService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _systemConfig = systemConfig;
+        _ksefOptions = ksefOptions;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -119,6 +123,9 @@ public sealed class SystemSetupService : ISystemSetupService
             await ConfigureRealmAsync(client, kcBase, adminToken, request, ct);
             _logger.LogInformation("Configured Keycloak realm settings");
 
+            // 6b. Disable VERIFY_PROFILE required action (Keycloak 26+ default that blocks login)
+            await DisableVerifyProfileActionAsync(client, kcBase, adminToken, ct);
+
             // 7. Create first user account
             await CreateFirstUserAsync(client, kcBase, adminToken, request, ct);
             _logger.LogInformation("Created first user");
@@ -188,6 +195,11 @@ public sealed class SystemSetupService : ISystemSetupService
 
             await _systemConfig.SetValuesAsync(configValues, ct);
             await _systemConfig.RefreshCacheAsync(ct);
+
+            _ksefOptions.BaseUrl = DependencyInjection.ResolveKSeFEnvironment(ksefEnv);
+            _logger.LogInformation("KSeF environment set to {Env} ({Url})",
+                ksefEnv, _ksefOptions.BaseUrl);
+
             _logger.LogInformation("System setup completed successfully");
 
             return new SetupApplyResponse(true, encryptionKey, apiClientSecret, null);
@@ -452,6 +464,35 @@ public sealed class SystemSetupService : ISystemSetupService
         }
 
         await SendKeycloakJsonAsync(client, HttpMethod.Put, realmUrl, adminToken, payload, ct);
+    }
+
+    private async Task DisableVerifyProfileActionAsync(
+        HttpClient client, string kcBase, string adminToken, CancellationToken ct)
+    {
+        var url = $"{kcBase}/admin/realms/openksef/authentication/required-actions/VERIFY_PROFILE";
+        var payload = new Dictionary<string, object>
+        {
+            ["alias"] = "VERIFY_PROFILE",
+            ["name"] = "Verify Profile",
+            ["providerId"] = "VERIFY_PROFILE",
+            ["enabled"] = false,
+            ["defaultAction"] = false,
+            ["priority"] = 90,
+        };
+
+        try
+        {
+            var resp = await SendKeycloakJsonAsync(client, HttpMethod.Put, url, adminToken, payload, ct, throwOnError: false);
+            if (resp.IsSuccessStatusCode)
+                _logger.LogInformation("Disabled VERIFY_PROFILE required action");
+            else
+                _logger.LogWarning("Failed to disable VERIFY_PROFILE (HTTP {StatusCode}) — login may require profile verification",
+                    (int)resp.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to disable VERIFY_PROFILE required action — login may require profile verification");
+        }
     }
 
     private async Task CreateFirstUserAsync(

@@ -43,22 +43,25 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
         options.EnableSensitiveDataLogging();
 });
 
-// Encryption (shared key with API for decrypting KSeF tokens)
-var encKeyBase64 = builder.Configuration["ENCRYPTION_KEY"];
-if (!string.IsNullOrEmpty(encKeyBase64))
+// Encryption: deferred factory that reads from SystemConfigService (DB first, env fallback).
+// The actual key resolution happens at first use, after the startup wait-gate confirms setup is complete.
+var isDev = builder.Environment.IsDevelopment();
+builder.Services.AddSingleton<IEncryptionService>(sp =>
 {
-    var encKey = Convert.FromBase64String(encKeyBase64);
-    builder.Services.AddSingleton<IEncryptionService>(new AesGcmEncryptionService(encKey));
-}
-else if (builder.Environment.IsDevelopment())
-{
-    var ephemeralKey = RandomNumberGenerator.GetBytes(32);
-    builder.Services.AddSingleton<IEncryptionService>(new AesGcmEncryptionService(ephemeralKey));
-}
-else
-{
-    throw new InvalidOperationException("ENCRYPTION_KEY is required in non-development environments.");
-}
+    var sysConfig = sp.GetRequiredService<ISystemConfigService>();
+    var keyBase64 = sysConfig.GetValue(SystemConfigKeys.EncryptionKey);
+
+    if (string.IsNullOrEmpty(keyBase64))
+    {
+        if (!isDev)
+            throw new InvalidOperationException(
+                "Encryption key not configured. Run the admin setup wizard or set ENCRYPTION_KEY env var. " +
+                "Generate one with: openssl rand -base64 32");
+        return new AesGcmEncryptionService(RandomNumberGenerator.GetBytes(32));
+    }
+
+    return new AesGcmEncryptionService(Convert.FromBase64String(keyBase64));
+});
 
 // System config (DB-backed key-value store with env var fallback)
 builder.Services.AddSingleton<ISystemConfigService, SystemConfigService>();
@@ -91,10 +94,26 @@ builder.Services.AddHostedService<InvoiceSyncService>();
 
 var host = builder.Build();
 
-// Load system config cache and override KSeF base URL from DB
+// Load system config cache
 var systemConfig = host.Services.GetRequiredService<ISystemConfigService>();
 await systemConfig.RefreshCacheAsync();
 
+// Wait for admin setup to complete before starting sync.
+// The Worker starts alongside all services via docker-compose, but the encryption key
+// and KSeF environment only exist after the admin runs the setup wizard.
+// Env-configured deployments (ENCRYPTION_KEY set directly) skip the wait-gate.
+bool IsReady() => systemConfig.IsInitialized
+    || !string.IsNullOrEmpty(systemConfig.GetValue(SystemConfigKeys.EncryptionKey));
+
+while (!IsReady())
+{
+    Log.Information("System not initialized — waiting for admin setup wizard. Retrying in 30s...");
+    await Task.Delay(TimeSpan.FromSeconds(30));
+    await systemConfig.RefreshCacheAsync();
+}
+Log.Information("System initialized — starting Worker");
+
+// Override KSeF base URL from DB config
 var ksefEnv = systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
     ?? systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl);
 if (!string.IsNullOrEmpty(ksefEnv))

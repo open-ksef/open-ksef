@@ -1,4 +1,6 @@
+using KSeF.Client.DI;
 using Microsoft.Extensions.Options;
+using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
 
 namespace OpenKSeF.Worker.Services;
@@ -6,15 +8,21 @@ namespace OpenKSeF.Worker.Services;
 public sealed class InvoiceSyncService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ISystemConfigService _systemConfig;
+    private readonly KSeFClientOptions _ksefOptions;
     private readonly SyncOptions _syncOptions;
     private readonly ILogger<InvoiceSyncService> _logger;
 
     public InvoiceSyncService(
         IServiceScopeFactory scopeFactory,
+        ISystemConfigService systemConfig,
+        KSeFClientOptions ksefOptions,
         IOptions<SyncOptions> syncOptions,
         ILogger<InvoiceSyncService> logger)
     {
         _scopeFactory = scopeFactory;
+        _systemConfig = systemConfig;
+        _ksefOptions = ksefOptions;
         _syncOptions = syncOptions.Value;
         _logger = logger;
     }
@@ -35,6 +43,7 @@ public sealed class InvoiceSyncService : BackgroundService
 
             try
             {
+                await RefreshRuntimeConfigAsync();
                 await SyncAllTenantsAsync(stoppingToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -44,6 +53,24 @@ public sealed class InvoiceSyncService : BackgroundService
 
             _logger.LogInformation("Sync cycle complete. Next run in {Hours}h", _syncOptions.IntervalHours);
             await Task.Delay(TimeSpan.FromHours(_syncOptions.IntervalHours), stoppingToken);
+        }
+    }
+
+    private async Task RefreshRuntimeConfigAsync()
+    {
+        await _systemConfig.RefreshCacheAsync();
+
+        var ksefEnv = _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
+            ?? _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl);
+
+        if (!string.IsNullOrEmpty(ksefEnv))
+        {
+            var resolvedUrl = DependencyInjection.ResolveKSeFEnvironment(ksefEnv);
+            if (_ksefOptions.BaseUrl != resolvedUrl)
+            {
+                _logger.LogInformation("KSeF environment changed to {Env} ({Url})", ksefEnv, resolvedUrl);
+                _ksefOptions.BaseUrl = resolvedUrl;
+            }
         }
     }
 
