@@ -35,6 +35,29 @@ Api / Worker  (depend on Domain + Sync -- HTTP layer, background jobs)
 
 New code must respect this layering. Never add a reference from Domain to any upper layer. Never make Sync depend on Api or Worker.
 
+### CIRFMF KSeF.Client library — library-first principle
+
+The `OpenKSeF.Sync` project uses the [CIRFMF KSeF.Client](https://github.com/CIRFMF/ksef-client-csharp) NuGet package (`KSeF.Client Version="2.*"`) as the primary interface to the KSeF API. Before writing custom code for KSeF communication or data extraction, always check what the library already provides:
+
+- `IKSeFClient.GetInvoiceAsync(ksefNumber, accessToken)` — downloads full invoice XML as `string`
+- `IKSeFClient.QueryInvoiceMetadataAsync()` — returns `InvoiceSummary` (amounts, dates, NIP, invoice number) but no invoice body details like bank accounts
+- `IAuthCoordinator` / `ICryptographyService` — handles session auth and encryption
+- Our `KSeFGateway` wraps these calls behind `IKSeFGateway` for testability
+
+The CIRFMF library handles API communication but does **not** parse FA(2)/FA(3) invoice XML content. Thin XML reads (e.g. extracting `NrRB` from `Platnosc > RachunekBankowy`) belong in the `Sync` layer alongside the gateway.
+
+### KSeF documentation reference
+
+The `ksef-docs/` folder (sibling to `open-ksef/` in the workspace) is a clone of [CIRFMF/ksef-docs](https://github.com/CIRFMF/ksef-docs) and contains:
+
+- Official KSeF API integrator guide (Polish)
+- `faktury/schemy/FA/` — XSD schemas for FA(2) and FA(3) invoice XML structures
+- `pobieranie-faktur/` — invoice download and export documentation
+- `kody-qr.md` — QR code verification standard (KSeF verification QR, not ZBP payment QR)
+- `open-api.json` — KSeF OpenAPI specification
+
+Always consult these docs (especially the XSD schemas) before making assumptions about KSeF XML field names, namespaces, or data types.
+
 ### Service design
 
 - Define service interfaces in `Domain/Abstractions/` or alongside the service in `Domain/Services/`.

@@ -14,4 +14,5 @@ public record InvoiceDto(
     string? Currency,
     DateTime IssueDate,
     DateTime? AcquisitionDate,
-    string? InvoiceType);
+    string? InvoiceType,
+    string? VendorBankAccount = null);

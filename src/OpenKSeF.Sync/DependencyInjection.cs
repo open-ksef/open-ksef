@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddCryptographyClient(CryptographyServiceWarmupMode.NonBlocking);
 
         services.AddScoped<IKSeFGateway, KSeFGateway>();
+        services.AddSingleton<KSeFInvoiceXmlParser>();
 
         services.Configure<TenantSyncOptions>(
             configuration.GetSection(TenantSyncOptions.SectionName));

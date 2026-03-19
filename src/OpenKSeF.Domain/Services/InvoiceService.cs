@@ -60,6 +60,7 @@ public class InvoiceService : IInvoiceService
                     IssueDate = invoice.IssueDate,
                     AcquisitionDate = invoice.AcquisitionDate,
                     InvoiceType = invoice.InvoiceType,
+                    VendorBankAccount = invoice.VendorBankAccount,
                     FirstSeenAt = now,
                     LastUpdatedAt = now
                 };
@@ -87,6 +88,8 @@ public class InvoiceService : IInvoiceService
                 existing.Currency = invoice.Currency ?? "PLN";
                 existing.AcquisitionDate = invoice.AcquisitionDate;
                 existing.InvoiceType = invoice.InvoiceType;
+                if (invoice.VendorBankAccount is not null)
+                    existing.VendorBankAccount = invoice.VendorBankAccount;
                 existing.LastUpdatedAt = now;
 
                 _logger.LogDebug(

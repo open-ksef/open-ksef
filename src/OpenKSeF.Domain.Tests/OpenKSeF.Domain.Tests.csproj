@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OpenKSeF.Domain\OpenKSeF.Domain.csproj" />
+    <ProjectReference Include="..\OpenKSeF.Sync\OpenKSeF.Sync.csproj" />
     <ProjectReference Include="..\OpenKSeF.Worker\OpenKSeF.Worker.csproj" />
   </ItemGroup>
 
