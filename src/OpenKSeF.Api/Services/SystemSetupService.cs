@@ -123,6 +123,9 @@ public sealed class SystemSetupService : ISystemSetupService
             await ConfigureRealmAsync(client, kcBase, adminToken, request, ct);
             _logger.LogInformation("Configured Keycloak realm settings");
 
+            // 6b. Disable VERIFY_PROFILE required action (Keycloak 26+ default that blocks login)
+            await DisableVerifyProfileActionAsync(client, kcBase, adminToken, ct);
+
             // 7. Create first user account
             await CreateFirstUserAsync(client, kcBase, adminToken, request, ct);
             _logger.LogInformation("Created first user");
@@ -461,6 +464,31 @@ public sealed class SystemSetupService : ISystemSetupService
         }
 
         await SendKeycloakJsonAsync(client, HttpMethod.Put, realmUrl, adminToken, payload, ct);
+    }
+
+    private async Task DisableVerifyProfileActionAsync(
+        HttpClient client, string kcBase, string adminToken, CancellationToken ct)
+    {
+        var url = $"{kcBase}/admin/realms/openksef/authentication/required-actions/VERIFY_PROFILE";
+        var payload = new Dictionary<string, object>
+        {
+            ["alias"] = "VERIFY_PROFILE",
+            ["name"] = "Verify Profile",
+            ["providerId"] = "VERIFY_PROFILE",
+            ["enabled"] = false,
+            ["defaultAction"] = false,
+            ["priority"] = 90,
+        };
+
+        try
+        {
+            await SendKeycloakJsonAsync(client, HttpMethod.Put, url, adminToken, payload, ct, throwOnError: false);
+            _logger.LogInformation("Disabled VERIFY_PROFILE required action");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to disable VERIFY_PROFILE required action — login may require profile verification");
+        }
     }
 
     private async Task CreateFirstUserAsync(
