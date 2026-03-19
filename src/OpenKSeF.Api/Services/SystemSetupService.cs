@@ -482,8 +482,12 @@ public sealed class SystemSetupService : ISystemSetupService
 
         try
         {
-            await SendKeycloakJsonAsync(client, HttpMethod.Put, url, adminToken, payload, ct, throwOnError: false);
-            _logger.LogInformation("Disabled VERIFY_PROFILE required action");
+            var resp = await SendKeycloakJsonAsync(client, HttpMethod.Put, url, adminToken, payload, ct, throwOnError: false);
+            if (resp.IsSuccessStatusCode)
+                _logger.LogInformation("Disabled VERIFY_PROFILE required action");
+            else
+                _logger.LogWarning("Failed to disable VERIFY_PROFILE (HTTP {StatusCode}) — login may require profile verification",
+                    (int)resp.StatusCode);
         }
         catch (Exception ex)
         {

@@ -101,7 +101,11 @@ await systemConfig.RefreshCacheAsync();
 // Wait for admin setup to complete before starting sync.
 // The Worker starts alongside all services via docker-compose, but the encryption key
 // and KSeF environment only exist after the admin runs the setup wizard.
-while (!systemConfig.IsInitialized)
+// Env-configured deployments (ENCRYPTION_KEY set directly) skip the wait-gate.
+bool IsReady() => systemConfig.IsInitialized
+    || !string.IsNullOrEmpty(systemConfig.GetValue(SystemConfigKeys.EncryptionKey));
+
+while (!IsReady())
 {
     Log.Information("System not initialized — waiting for admin setup wizard. Retrying in 30s...");
     await Task.Delay(TimeSpan.FromSeconds(30));
