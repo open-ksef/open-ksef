@@ -160,19 +160,19 @@ export function DeviceListPage(): ReactElement {
               data-testid="device-test-button"
               type="button"
               className="btn-action"
-              disabled={testingToken === row.token}
+              disabled={testingToken === row.id}
               onClick={() => {
-                setTestingToken(row.token)
-                testMutation.mutate(row.token)
+                setTestingToken(row.id)
+                testMutation.mutate(row.id)
               }}
             >
-              {testingToken === row.token ? 'Wysyłanie…' : 'Testuj'}
+              {testingToken === row.id ? 'Wysyłanie…' : 'Testuj'}
             </button>
             <button
               data-testid="device-unregister-button"
               type="button"
               className="btn-action btn-action--danger"
-              onClick={() => setPendingUnregisterToken(row.token)}
+              onClick={() => setPendingUnregisterToken(row.id)}
             >
               ✕ Wyrejestruj
             </button>

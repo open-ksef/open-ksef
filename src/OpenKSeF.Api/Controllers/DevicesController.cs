@@ -89,14 +89,14 @@ public class DevicesController : ControllerBase
         return Ok(new { message = "Device registered." });
     }
 
-    [HttpPost("{token}/test-notification")]
+    [HttpPost("{id:guid}/test-notification")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> TestNotification(string token)
+    public async Task<IActionResult> TestNotification(Guid id)
     {
         var userId = _currentUser.UserId;
         var device = await _db.DeviceTokens
-            .FirstOrDefaultAsync(d => d.Token == token && d.UserId == userId);
+            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
 
         if (device is null)
             return NotFound();
@@ -108,14 +108,14 @@ public class DevicesController : ControllerBase
             : Ok(new { success = false, error = "Push delivery failed — check Firebase/APNs configuration." });
     }
 
-    [HttpDelete("{token}")]
+    [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Unregister(string token)
+    public async Task<IActionResult> Unregister(Guid id)
     {
         var userId = _currentUser.UserId;
         var existing = await _db.DeviceTokens
-            .FirstOrDefaultAsync(d => d.Token == token && d.UserId == userId);
+            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
 
         if (existing is null)
             return NotFound();

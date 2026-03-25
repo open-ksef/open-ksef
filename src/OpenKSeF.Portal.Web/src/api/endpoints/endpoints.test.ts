@@ -101,7 +101,7 @@ describe('devices endpoints', () => {
       platform: 0,
       tenantId: 'tenant-1',
     })
-    await unregisterDevice('device-token')
+    await unregisterDevice('device-id-guid')
 
     expect(apiClientMock.get).toHaveBeenCalledWith('/devices')
     expect(apiClientMock.post).toHaveBeenCalledWith('/devices/register', {
@@ -109,7 +109,7 @@ describe('devices endpoints', () => {
       platform: 0,
       tenantId: 'tenant-1',
     })
-    expect(apiClientMock.delete).toHaveBeenCalledWith('/devices/device-token')
+    expect(apiClientMock.delete).toHaveBeenCalledWith('/devices/device-id-guid')
   })
 })
 
