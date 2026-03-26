@@ -141,8 +141,8 @@ builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
-// Memory cache (used by SetupSessionService)
-builder.Services.AddMemoryCache(options => options.SizeLimit = 1024);
+// Memory cache (may be used by framework internals)
+builder.Services.AddMemoryCache();
 
 // Setup session (server-side opaque token store for admin setup wizard)
 builder.Services.AddSingleton<ISetupSessionService, SetupSessionService>();
@@ -198,35 +198,43 @@ builder.Services.AddSingleton<IPushProvider, ApnsPushProvider>(sp =>
 });
 
 // Rate limiting
+// UseForwardedHeaders (called in the pipeline below) populates RemoteIpAddress with
+// the real client IP before any rate-limit policy runs, so it is safe to partition on
+// RemoteIpAddress here. Never read X-Forwarded-For directly — it is client-controllable.
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
     // Strict limit for setup authentication: 5 attempts per 15 minutes per IP
-    options.AddFixedWindowLimiter("setup-auth", limiterOptions =>
+    options.AddPolicy("setup-auth", context =>
     {
-        limiterOptions.Window = TimeSpan.FromMinutes(15);
-        limiterOptions.PermitLimit = 5;
-        limiterOptions.QueueLimit = 0;
-        limiterOptions.AutoReplenishment = true;
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(15),
+            PermitLimit = 5,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
     });
 
     // Strict limit for setup apply: 5 attempts per 15 minutes per IP
-    options.AddFixedWindowLimiter("setup-apply", limiterOptions =>
+    options.AddPolicy("setup-apply", context =>
     {
-        limiterOptions.Window = TimeSpan.FromMinutes(15);
-        limiterOptions.PermitLimit = 5;
-        limiterOptions.QueueLimit = 0;
-        limiterOptions.AutoReplenishment = true;
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(15),
+            PermitLimit = 5,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
     });
 
     // Global baseline: 120 requests per minute per IP (sliding window)
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
     {
-        var ip = context.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
-                 ?? context.Connection.RemoteIpAddress?.ToString()
-                 ?? "unknown";
-
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         return RateLimitPartition.GetSlidingWindowLimiter(ip, _ => new SlidingWindowRateLimiterOptions
         {
             Window = TimeSpan.FromMinutes(1),
