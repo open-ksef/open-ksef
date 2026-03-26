@@ -32,8 +32,8 @@ services:
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
-      KC_DB_USERNAME: ${KC_DB_USERNAME:?KC_DB_USERNAME is required}
-      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?KC_DB_PASSWORD is required}
+      KC_DB_USERNAME: ${KC_DB_USERNAME:-${POSTGRES_USER}}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:-${POSTGRES_PASSWORD}}
 
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:?KEYCLOAK_ADMIN is required}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
@@ -60,8 +60,9 @@ services:
       ConnectionStrings__Db: Host=postgres;Port=5432;Database=openksef;Username=${POSTGRES_USER:?POSTGRES_USER is required};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       Auth__Authority: http://keycloak:8080/auth/realms/openksef
       Auth__PublicAuthority: ${APP_EXTERNAL_BASE_URL:-http://localhost:8080}/auth/realms/openksef
-      # Required: set ENCRYPTION_KEY before first use (openssl rand -base64 32)
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
+      # Set ENCRYPTION_KEY after first run — the setup wizard generates it
+      # and displays it once. Add it to your .env and restart.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       Auth__ServiceAccount__ClientId: openksef-api
       Auth__ServiceAccount__ClientSecret: ${API_CLIENT_SECRET:-}
       KSeF__BaseUrl: ${KSEF_BASE_URL:-https://ksef-test.mf.gov.pl/api}
@@ -80,7 +81,7 @@ services:
     environment:
       ConnectionStrings__Db: Host=postgres;Port=5432;Database=openksef;Username=${POSTGRES_USER:?POSTGRES_USER is required};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       Auth__Authority: http://keycloak:8080/auth/realms/openksef
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       KSeF__BaseUrl: ${KSEF_BASE_URL:-https://ksef-test.mf.gov.pl/api}
       Firebase__CredentialsJson: ${FIREBASE_CREDENTIALS_JSON:-}
 
