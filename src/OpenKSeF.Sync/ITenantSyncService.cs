@@ -7,5 +7,6 @@ public interface ITenantSyncService
     Task<TenantSyncResult> SyncTenantAsync(
         Guid tenantId,
         string? userId = null,
+        bool forceFullResync = false,
         CancellationToken cancellationToken = default);
 }
