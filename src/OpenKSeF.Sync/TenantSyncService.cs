@@ -54,7 +54,7 @@ public sealed class TenantSyncService : ITenantSyncService
         var results = new List<TenantSyncResult>(tenants.Count);
         foreach (var tenant in tenants)
         {
-            var result = await SyncTenantInternalAsync(tenant, cancellationToken);
+            var result = await SyncTenantInternalAsync(tenant, forceFullResync: false, cancellationToken);
             results.Add(result);
         }
 
@@ -81,27 +81,13 @@ public sealed class TenantSyncService : ITenantSyncService
                 ErrorMessage: "Tenant not found.");
         }
 
-        if (forceFullResync)
-        {
-            if (tenant.SyncState is not null)
-                tenant.SyncState.LastSuccessfulSync = null;
+        if (forceFullResync && tenant.SyncState is not null)
+            tenant.SyncState.LastSuccessfulSync = null;
 
-            var invoiceIds = await _db.InvoiceHeaders
-                .Where(h => h.TenantId == tenantId)
-                .Select(h => h.Id)
-                .ToListAsync(cancellationToken);
-
-            await _db.InvoiceLines
-                .Where(l => invoiceIds.Contains(l.InvoiceHeaderId))
-                .ExecuteDeleteAsync(cancellationToken);
-
-            await _db.SaveChangesAsync(cancellationToken);
-        }
-
-        return await SyncTenantInternalAsync(tenant, cancellationToken);
+        return await SyncTenantInternalAsync(tenant, forceFullResync, cancellationToken);
     }
 
-    private async Task<TenantSyncResult> SyncTenantInternalAsync(Tenant tenant, CancellationToken cancellationToken)
+    private async Task<TenantSyncResult> SyncTenantInternalAsync(Tenant tenant, bool forceFullResync, CancellationToken cancellationToken)
     {
         var credential = tenant.KSeFCredentials.FirstOrDefault();
         if (credential is null)
@@ -158,14 +144,22 @@ public sealed class TenantSyncService : ITenantSyncService
                         break;
 
                     var batchNumbers = result.Invoices.Select(i => i.KSeFNumber).ToList();
-                    var invoicesAlreadyParsed = await _db.InvoiceHeaders
-                        .Where(h => h.TenantId == tenant.Id
-                            && batchNumbers.Contains(h.KSeFInvoiceNumber)
-                            && h.VendorBankAccount != null
-                            && h.Lines.Any())
-                        .Select(h => h.KSeFInvoiceNumber)
-                        .ToListAsync(cancellationToken);
-                    var skipDownloadSet = new HashSet<string>(invoicesAlreadyParsed);
+                    HashSet<string> skipDownloadSet;
+                    if (forceFullResync)
+                    {
+                        skipDownloadSet = [];
+                    }
+                    else
+                    {
+                        var invoicesAlreadyParsed = await _db.InvoiceHeaders
+                            .Where(h => h.TenantId == tenant.Id
+                                && batchNumbers.Contains(h.KSeFInvoiceNumber)
+                                && h.VendorBankAccount != null
+                                && h.Lines.Any())
+                            .Select(h => h.KSeFInvoiceNumber)
+                            .ToListAsync(cancellationToken);
+                        skipDownloadSet = new HashSet<string>(invoicesAlreadyParsed);
+                    }
 
                     var invoiceDtos = new List<InvoiceDto>(result.Invoices.Count);
                     foreach (var i in result.Invoices)
