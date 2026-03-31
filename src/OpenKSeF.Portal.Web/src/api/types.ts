@@ -49,7 +49,7 @@ export interface InvoiceResponse {
   firstSeenAt: string
   isPaid: boolean
   paidAt: string | null
-  lines: InvoiceLineResponse[] | null
+  lines?: InvoiceLineResponse[] | null
 }
 
 export interface TransferDetailsResponse {
