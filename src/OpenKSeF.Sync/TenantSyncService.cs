@@ -64,6 +64,7 @@ public sealed class TenantSyncService : ITenantSyncService
     public async Task<TenantSyncResult> SyncTenantAsync(
         Guid tenantId,
         string? userId = null,
+        bool forceFullResync = false,
         CancellationToken cancellationToken = default)
     {
         var tenant = await _db.Tenants
@@ -78,6 +79,23 @@ public sealed class TenantSyncService : ITenantSyncService
                 Nip: string.Empty,
                 Outcome: TenantSyncOutcome.TenantNotFound,
                 ErrorMessage: "Tenant not found.");
+        }
+
+        if (forceFullResync)
+        {
+            if (tenant.SyncState is not null)
+                tenant.SyncState.LastSuccessfulSync = null;
+
+            var invoiceIds = await _db.InvoiceHeaders
+                .Where(h => h.TenantId == tenantId)
+                .Select(h => h.Id)
+                .ToListAsync(cancellationToken);
+
+            await _db.InvoiceLines
+                .Where(l => invoiceIds.Contains(l.InvoiceHeaderId))
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await _db.SaveChangesAsync(cancellationToken);
         }
 
         return await SyncTenantInternalAsync(tenant, cancellationToken);

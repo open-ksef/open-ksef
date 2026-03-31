@@ -8,6 +8,7 @@ import {
   addOrUpdatePemCertificateCredential,
   deleteCredential,
   forceCredentialSync,
+  forceFullResync,
   listCredentials,
 } from '@/api/endpoints/credentials'
 import { listTenants } from '@/api/endpoints/tenants'
@@ -45,6 +46,7 @@ export function CredentialListPage(): ReactElement {
   const [certPassword, setCertPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pendingDeleteTenantId, setPendingDeleteTenantId] = useState<string | null>(null)
+  const [pendingFullResyncTenantId, setPendingFullResyncTenantId] = useState<string | null>(null)
   const certInputRef = useRef<HTMLInputElement>(null)
   const keyInputRef = useRef<HTMLInputElement>(null)
 
@@ -120,6 +122,19 @@ export function CredentialListPage(): ReactElement {
     },
   })
 
+  const fullResyncMutation = useMutation({
+    mutationFn: (tenantId: string) => forceFullResync(tenantId),
+    onSuccess: async (result) => {
+      toast.success(`Pełna resynchronizacja zakończona. Pobrane: ${result.fetchedInvoices}, zaktualizowane: ${result.newInvoices}.`)
+      await queryClient.invalidateQueries({ queryKey: ['credentials'] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      await queryClient.invalidateQueries({ queryKey: ['invoices'] })
+    },
+    onError: (mutationError) => {
+      notifyMutationError('save', 'Credential', mutationError)
+    },
+  })
+
   const rows = credentialsQuery.data ?? []
   const combinedError = credentialsQuery.error ?? tenantsQuery.error
 
@@ -157,13 +172,22 @@ export function CredentialListPage(): ReactElement {
             data-testid="credential-sync-button"
             type="button"
             className="btn-action"
-            disabled={!row.hasCredential || syncMutation.isPending}
+            disabled={!row.hasCredential || syncMutation.isPending || fullResyncMutation.isPending}
             onClick={() => {
               setError(null)
               syncMutation.mutate(row.tenantId)
             }}
           >
             Wymuś synchronizację
+          </button>
+          <button
+            data-testid="credential-full-resync-button"
+            type="button"
+            className="btn-action btn-action--danger"
+            disabled={!row.hasCredential || syncMutation.isPending || fullResyncMutation.isPending}
+            onClick={() => setPendingFullResyncTenantId(row.tenantId)}
+          >
+            Pełna resynchronizacja
           </button>
           <button
             data-testid="credential-update-button"
@@ -201,6 +225,16 @@ export function CredentialListPage(): ReactElement {
   }, [pendingDeleteTenantId, deleteMutation])
 
   const handleDeleteCancel = useCallback(() => setPendingDeleteTenantId(null), [])
+
+  const handleFullResyncConfirm = useCallback(() => {
+    if (pendingFullResyncTenantId) {
+      fullResyncMutation.mutate(pendingFullResyncTenantId, {
+        onSettled: () => setPendingFullResyncTenantId(null),
+      })
+    }
+  }, [pendingFullResyncTenantId, fullResyncMutation])
+
+  const handleFullResyncCancel = useCallback(() => setPendingFullResyncTenantId(null), [])
 
   const resetForm = () => {
     setToken('')
@@ -302,6 +336,17 @@ export function CredentialListPage(): ReactElement {
         isPending={deleteMutation.isPending}
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
+      />
+
+      <ConfirmDialog
+        open={pendingFullResyncTenantId !== null}
+        title="Wykonać pełną resynchronizację?"
+        message="Wszystkie pozycje faktur zostaną usunięte z bazy danych i pobrane ponownie z KSeF. Synchronizacja może potrwać dłużej niż zwykle. Czy na pewno chcesz kontynuować?"
+        confirmLabel="Wykonaj pełną resynchronizację"
+        variant="danger"
+        isPending={fullResyncMutation.isPending}
+        onConfirm={handleFullResyncConfirm}
+        onCancel={handleFullResyncCancel}
       />
 
       {mode ? (
