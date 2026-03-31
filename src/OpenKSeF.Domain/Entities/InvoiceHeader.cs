@@ -25,4 +25,5 @@ public class InvoiceHeader
     public DateTime? PaidAt { get; set; }
 
     public Tenant Tenant { get; set; } = null!;
+    public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();
 }

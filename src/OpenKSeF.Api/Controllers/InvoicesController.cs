@@ -5,6 +5,7 @@ using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
+using System.Linq;
 
 namespace OpenKSeF.Api.Controllers;
 
@@ -89,7 +90,8 @@ public class InvoicesController : ControllerBase
                 i.InvoiceType,
                 i.FirstSeenAt,
                 i.IsPaid,
-                i.PaidAt))
+                i.PaidAt,
+                null))
             .ToListAsync();
 
         return Ok(new PagedResult<InvoiceResponse>
@@ -111,29 +113,11 @@ public class InvoicesController : ControllerBase
             return Forbid();
 
         var invoice = await _db.InvoiceHeaders
+            .Include(i => i.Lines)
             .Where(i => i.Id == id && i.TenantId == tenantId)
-            .Select(i => new InvoiceResponse(
-                i.Id,
-                i.KSeFInvoiceNumber,
-                i.KSeFReferenceNumber,
-                i.InvoiceNumber,
-                i.VendorName,
-                i.VendorNip,
-                i.BuyerName,
-                i.BuyerNip,
-                i.AmountNet,
-                i.AmountVat,
-                i.AmountGross,
-                i.Currency,
-                i.IssueDate,
-                i.AcquisitionDate,
-                i.InvoiceType,
-                i.FirstSeenAt,
-                i.IsPaid,
-                i.PaidAt))
             .FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(invoice);
+        return invoice is null ? NotFound() : Ok(ToDetailResponse(invoice));
     }
 
     [HttpGet("by-number/{ksefInvoiceNumber}")]
@@ -146,29 +130,11 @@ public class InvoicesController : ControllerBase
             return Forbid();
 
         var invoice = await _db.InvoiceHeaders
+            .Include(i => i.Lines)
             .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber && i.TenantId == tenantId)
-            .Select(i => new InvoiceResponse(
-                i.Id,
-                i.KSeFInvoiceNumber,
-                i.KSeFReferenceNumber,
-                i.InvoiceNumber,
-                i.VendorName,
-                i.VendorNip,
-                i.BuyerName,
-                i.BuyerNip,
-                i.AmountNet,
-                i.AmountVat,
-                i.AmountGross,
-                i.Currency,
-                i.IssueDate,
-                i.AcquisitionDate,
-                i.InvoiceType,
-                i.FirstSeenAt,
-                i.IsPaid,
-                i.PaidAt))
             .FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(invoice);
+        return invoice is null ? NotFound() : Ok(ToDetailResponse(invoice));
     }
 
     [HttpGet("{id:guid}/transfer")]
@@ -223,25 +189,9 @@ public class InvoicesController : ControllerBase
 
         await _db.SaveChangesAsync();
 
-        return Ok(new InvoiceResponse(
-            invoice.Id,
-            invoice.KSeFInvoiceNumber,
-            invoice.KSeFReferenceNumber,
-            invoice.InvoiceNumber,
-            invoice.VendorName,
-            invoice.VendorNip,
-            invoice.BuyerName,
-            invoice.BuyerNip,
-            invoice.AmountNet,
-            invoice.AmountVat,
-            invoice.AmountGross,
-            invoice.Currency,
-            invoice.IssueDate,
-            invoice.AcquisitionDate,
-            invoice.InvoiceType,
-            invoice.FirstSeenAt,
-            invoice.IsPaid,
-            invoice.PaidAt));
+        await _db.Entry(invoice).Collection(i => i.Lines).LoadAsync();
+
+        return Ok(ToDetailResponse(invoice));
     }
 
     private async Task<bool> VerifyTenantOwnership(Guid tenantId)
@@ -249,4 +199,31 @@ public class InvoicesController : ControllerBase
         return await _db.Tenants
             .AnyAsync(t => t.Id == tenantId && t.UserId == _currentUser.UserId);
     }
+
+    private static InvoiceResponse ToDetailResponse(Domain.Entities.InvoiceHeader i) => new(
+        i.Id,
+        i.KSeFInvoiceNumber,
+        i.KSeFReferenceNumber,
+        i.InvoiceNumber,
+        i.VendorName,
+        i.VendorNip,
+        i.BuyerName,
+        i.BuyerNip,
+        i.AmountNet,
+        i.AmountVat,
+        i.AmountGross,
+        i.Currency,
+        i.IssueDate,
+        i.AcquisitionDate,
+        i.InvoiceType,
+        i.FirstSeenAt,
+        i.IsPaid,
+        i.PaidAt,
+        Lines: i.Lines
+            .OrderBy(l => l.LineNumber)
+            .Select(l => new InvoiceLineResponse(
+                l.LineNumber, l.Name, l.Unit, l.Quantity,
+                l.UnitPriceNet, l.UnitPriceGross,
+                l.AmountNet, l.AmountGross, l.AmountVat, l.VatRate))
+            .ToList());
 }

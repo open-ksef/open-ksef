@@ -212,6 +212,46 @@ export function InvoiceDetailsPage(): ReactElement {
               </div>
             </div>
 
+            {invoice.lines && invoice.lines.length > 0 && (
+              <div className="invoice-lines-card" data-testid="invoice-lines">
+                <h2 className="invoice-lines-title">Pozycje faktury</h2>
+                <div className="invoice-lines-table-wrapper">
+                  <table className="invoice-lines-table">
+                    <thead>
+                      <tr>
+                        <th>Lp.</th>
+                        <th>Nazwa</th>
+                        <th>Jm.</th>
+                        <th>Ilość</th>
+                        <th>Cena netto</th>
+                        <th>Cena brutto</th>
+                        <th>Netto</th>
+                        <th>VAT</th>
+                        <th>Brutto</th>
+                        <th>Stawka VAT</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoice.lines.map((line) => (
+                        <tr key={line.lineNumber}>
+                          <td>{line.lineNumber}</td>
+                          <td>{line.name ?? '—'}</td>
+                          <td>{line.unit ?? '—'}</td>
+                          <td>{line.quantity != null ? line.quantity.toLocaleString('pl-PL', { maximumFractionDigits: 6 }) : '—'}</td>
+                          <td>{line.unitPriceNet != null ? line.unitPriceNet.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 6 }) : '—'}</td>
+                          <td>{line.unitPriceGross != null ? line.unitPriceGross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 6 }) : '—'}</td>
+                          <td>{line.amountNet != null ? line.amountNet.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
+                          <td>{line.amountVat != null ? line.amountVat.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
+                          <td>{line.amountGross != null ? line.amountGross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
+                          <td>{line.vatRate ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             <div className="payment-actions" data-testid="payment-actions">
               <button
                 className={`ui-button ${invoice.isPaid ? 'ui-button--secondary' : 'ui-button--primary'} mark-paid-btn`}
