@@ -39,7 +39,7 @@ public class CredentialsControllerSyncTests : IDisposable
     public async Task SyncNow_ReturnsNotFound_WhenTenantNotFound()
     {
         var tenantId = Guid.NewGuid();
-        _tenantSyncService.SyncTenantAsync(tenantId, _userId, Arg.Any<CancellationToken>())
+        _tenantSyncService.SyncTenantAsync(tenantId, _userId, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(new TenantSyncResult(tenantId, "", TenantSyncOutcome.TenantNotFound, ErrorMessage: "Tenant not found."));
 
         var controller = CreateController();
@@ -52,7 +52,7 @@ public class CredentialsControllerSyncTests : IDisposable
     public async Task SyncNow_ReturnsConflict_WhenMissingCredential()
     {
         var tenantId = Guid.NewGuid();
-        _tenantSyncService.SyncTenantAsync(tenantId, _userId, Arg.Any<CancellationToken>())
+        _tenantSyncService.SyncTenantAsync(tenantId, _userId, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(new TenantSyncResult(tenantId, "1234567890", TenantSyncOutcome.MissingCredential, ErrorMessage: "Missing credential."));
 
         var controller = CreateController();
@@ -65,7 +65,7 @@ public class CredentialsControllerSyncTests : IDisposable
     public async Task SyncNow_ReturnsBadGateway_WhenSyncFails()
     {
         var tenantId = Guid.NewGuid();
-        _tenantSyncService.SyncTenantAsync(tenantId, _userId, Arg.Any<CancellationToken>())
+        _tenantSyncService.SyncTenantAsync(tenantId, _userId, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(new TenantSyncResult(tenantId, "1234567890", TenantSyncOutcome.Failed, ErrorMessage: "KSeF unavailable."));
 
         var controller = CreateController();
@@ -80,7 +80,7 @@ public class CredentialsControllerSyncTests : IDisposable
     {
         var tenantId = Guid.NewGuid();
         var syncedAt = DateTime.UtcNow;
-        _tenantSyncService.SyncTenantAsync(tenantId, _userId, Arg.Any<CancellationToken>())
+        _tenantSyncService.SyncTenantAsync(tenantId, _userId, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(new TenantSyncResult(
                 TenantId: tenantId,
                 Nip: "1234567890",

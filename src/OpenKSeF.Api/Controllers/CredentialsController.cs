@@ -213,21 +213,39 @@ public class CredentialsController : ControllerBase
         var result = await _tenantSyncService.SyncTenantAsync(
             tenantId,
             _currentUser.UserId,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
-        return result.Outcome switch
-        {
-            TenantSyncOutcome.TenantNotFound => NotFound(),
-            TenantSyncOutcome.MissingCredential => Conflict(new { error = result.ErrorMessage }),
-            TenantSyncOutcome.Failed => StatusCode(StatusCodes.Status502BadGateway, new { error = result.ErrorMessage }),
-            TenantSyncOutcome.Success => Ok(new TenantManualSyncResponse(
-                TenantId: result.TenantId,
-                FetchedInvoices: result.FetchedInvoices,
-                NewInvoices: result.NewInvoices,
-                SyncedAtUtc: result.SyncedAtUtc ?? DateTime.UtcNow)),
-            _ => StatusCode(StatusCodes.Status500InternalServerError, new { error = "Unknown sync outcome." })
-        };
+        return MapSyncResult(result);
     }
+
+    [HttpPost("full-resync")]
+    [ProducesResponseType(typeof(TenantManualSyncResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> FullResync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var result = await _tenantSyncService.SyncTenantAsync(
+            tenantId,
+            _currentUser.UserId,
+            forceFullResync: true,
+            cancellationToken: cancellationToken);
+
+        return MapSyncResult(result);
+    }
+
+    private IActionResult MapSyncResult(TenantSyncResult result) => result.Outcome switch
+    {
+        TenantSyncOutcome.TenantNotFound => NotFound(),
+        TenantSyncOutcome.MissingCredential => Conflict(new { error = result.ErrorMessage }),
+        TenantSyncOutcome.Failed => StatusCode(StatusCodes.Status502BadGateway, new { error = result.ErrorMessage }),
+        TenantSyncOutcome.Success => Ok(new TenantManualSyncResponse(
+            TenantId: result.TenantId,
+            FetchedInvoices: result.FetchedInvoices,
+            NewInvoices: result.NewInvoices,
+            SyncedAtUtc: result.SyncedAtUtc ?? DateTime.UtcNow)),
+        _ => StatusCode(StatusCodes.Status500InternalServerError, new { error = "Unknown sync outcome." })
+    };
 
     private async Task<bool> VerifyTenantOwnership(Guid tenantId)
     {

@@ -54,7 +54,7 @@ public sealed class TenantSyncService : ITenantSyncService
         var results = new List<TenantSyncResult>(tenants.Count);
         foreach (var tenant in tenants)
         {
-            var result = await SyncTenantInternalAsync(tenant, cancellationToken);
+            var result = await SyncTenantInternalAsync(tenant, fullResyncWindowStart: null, cancellationToken);
             results.Add(result);
         }
 
@@ -64,6 +64,7 @@ public sealed class TenantSyncService : ITenantSyncService
     public async Task<TenantSyncResult> SyncTenantAsync(
         Guid tenantId,
         string? userId = null,
+        bool forceFullResync = false,
         CancellationToken cancellationToken = default)
     {
         var tenant = await _db.Tenants
@@ -80,10 +81,19 @@ public sealed class TenantSyncService : ITenantSyncService
                 ErrorMessage: "Tenant not found.");
         }
 
-        return await SyncTenantInternalAsync(tenant, cancellationToken);
+        DateTime? fullResyncWindowStart = null;
+        if (forceFullResync)
+        {
+            var earliestAcquisition = await _db.InvoiceHeaders
+                .Where(h => h.TenantId == tenantId)
+                .MinAsync(h => (DateTime?)h.AcquisitionDate, cancellationToken);
+            fullResyncWindowStart = earliestAcquisition?.AddHours(-1);
+        }
+
+        return await SyncTenantInternalAsync(tenant, fullResyncWindowStart, cancellationToken);
     }
 
-    private async Task<TenantSyncResult> SyncTenantInternalAsync(Tenant tenant, CancellationToken cancellationToken)
+    private async Task<TenantSyncResult> SyncTenantInternalAsync(Tenant tenant, DateTime? fullResyncWindowStart, CancellationToken cancellationToken)
     {
         var credential = tenant.KSeFCredentials.FirstOrDefault();
         if (credential is null)
@@ -111,7 +121,8 @@ public sealed class TenantSyncService : ITenantSyncService
             };
 
             var now = DateTime.UtcNow;
-            var windowStart = syncState.LastSuccessfulSync?.AddHours(-1)
+            var windowStart = fullResyncWindowStart
+                ?? syncState.LastSuccessfulSync?.AddHours(-1)
                 ?? now.AddMonths(-_syncOptions.InitialSyncMonthsBack);
             var totalFetched = 0;
             var totalNew = 0;
@@ -140,14 +151,22 @@ public sealed class TenantSyncService : ITenantSyncService
                         break;
 
                     var batchNumbers = result.Invoices.Select(i => i.KSeFNumber).ToList();
-                    var invoicesAlreadyParsed = await _db.InvoiceHeaders
-                        .Where(h => h.TenantId == tenant.Id
-                            && batchNumbers.Contains(h.KSeFInvoiceNumber)
-                            && h.VendorBankAccount != null
-                            && h.Lines.Any())
-                        .Select(h => h.KSeFInvoiceNumber)
-                        .ToListAsync(cancellationToken);
-                    var skipDownloadSet = new HashSet<string>(invoicesAlreadyParsed);
+                    HashSet<string> skipDownloadSet;
+                    if (fullResyncWindowStart is not null)
+                    {
+                        skipDownloadSet = [];
+                    }
+                    else
+                    {
+                        var invoicesAlreadyParsed = await _db.InvoiceHeaders
+                            .Where(h => h.TenantId == tenant.Id
+                                && batchNumbers.Contains(h.KSeFInvoiceNumber)
+                                && h.VendorBankAccount != null
+                                && h.Lines.Any())
+                            .Select(h => h.KSeFInvoiceNumber)
+                            .ToListAsync(cancellationToken);
+                        skipDownloadSet = new HashSet<string>(invoicesAlreadyParsed);
+                    }
 
                     var invoiceDtos = new List<InvoiceDto>(result.Invoices.Count);
                     foreach (var i in result.Invoices)

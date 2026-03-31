@@ -72,6 +72,10 @@ export function forceCredentialSync(tenantId: string): Promise<TenantManualSyncR
   return apiClient.post<TenantManualSyncResponse>(`/tenants/${encodeURIComponent(tenantId)}/credentials/sync`)
 }
 
+export function forceFullResync(tenantId: string): Promise<TenantManualSyncResponse> {
+  return apiClient.post<TenantManualSyncResponse>(`/tenants/${encodeURIComponent(tenantId)}/credentials/full-resync`)
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
