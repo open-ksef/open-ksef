@@ -140,13 +140,14 @@ public sealed class TenantSyncService : ITenantSyncService
                         break;
 
                     var batchNumbers = result.Invoices.Select(i => i.KSeFNumber).ToList();
-                    var invoicesWithBankAccount = await _db.InvoiceHeaders
+                    var invoicesAlreadyParsed = await _db.InvoiceHeaders
                         .Where(h => h.TenantId == tenant.Id
                             && batchNumbers.Contains(h.KSeFInvoiceNumber)
-                            && h.VendorBankAccount != null)
+                            && h.VendorBankAccount != null
+                            && h.Lines.Any())
                         .Select(h => h.KSeFInvoiceNumber)
                         .ToListAsync(cancellationToken);
-                    var skipDownloadSet = new HashSet<string>(invoicesWithBankAccount);
+                    var skipDownloadSet = new HashSet<string>(invoicesAlreadyParsed);
 
                     var invoiceDtos = new List<InvoiceDto>(result.Invoices.Count);
                     foreach (var i in result.Invoices)
@@ -234,7 +235,7 @@ public sealed class TenantSyncService : ITenantSyncService
         }
     }
 
-    private async Task<(string? BankAccount, IReadOnlyList<Domain.DTOs.InvoiceLineDto> Lines)> DownloadInvoiceDetailsAsync(
+    private async Task<(string? BankAccount, IReadOnlyList<Domain.DTOs.InvoiceLineDto>? Lines)> DownloadInvoiceDetailsAsync(
         KSeFSession session, string ksefNumber, CancellationToken ct)
     {
         try
@@ -246,7 +247,7 @@ public sealed class TenantSyncService : ITenantSyncService
         {
             _logger.LogWarning(ex,
                 "Failed to download invoice XML for details extraction: {KSeFNumber}", ksefNumber);
-            return (null, Array.Empty<Domain.DTOs.InvoiceLineDto>());
+            return (null, null);
         }
     }
 
