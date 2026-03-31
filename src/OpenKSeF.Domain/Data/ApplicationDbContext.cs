@@ -13,6 +13,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<KSeFCredential> KSeFCredentials => Set<KSeFCredential>();
     public DbSet<InvoiceHeader> InvoiceHeaders => Set<InvoiceHeader>();
+    public DbSet<InvoiceLine> InvoiceLines => Set<InvoiceLine>();
     public DbSet<SyncState> SyncStates => Set<SyncState>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
     public DbSet<SystemConfig> SystemConfigs => Set<SystemConfig>();
@@ -67,6 +68,26 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(i => i.Tenant)
                 .WithMany(t => t.Invoices)
                 .HasForeignKey(i => i.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // InvoiceLine
+        modelBuilder.Entity<InvoiceLine>(entity =>
+        {
+            entity.HasKey(l => l.Id);
+            entity.HasIndex(l => l.InvoiceHeaderId);
+            entity.Property(l => l.Name).HasMaxLength(512);
+            entity.Property(l => l.Unit).HasMaxLength(50);
+            entity.Property(l => l.VatRate).HasMaxLength(50);
+            entity.Property(l => l.Quantity).HasPrecision(18, 6);
+            entity.Property(l => l.UnitPriceNet).HasPrecision(18, 6);
+            entity.Property(l => l.UnitPriceGross).HasPrecision(18, 6);
+            entity.Property(l => l.AmountNet).HasPrecision(18, 2);
+            entity.Property(l => l.AmountGross).HasPrecision(18, 2);
+            entity.Property(l => l.AmountVat).HasPrecision(18, 2);
+            entity.HasOne(l => l.InvoiceHeader)
+                .WithMany(i => i.Lines)
+                .HasForeignKey(l => l.InvoiceHeaderId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

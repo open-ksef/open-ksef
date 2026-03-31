@@ -1072,6 +1072,60 @@ label {
   color: var(--ui-text-muted);
 }
 
+/* ─── Invoice lines card ──────────────────────────────────────────────────── */
+.invoice-lines-card {
+  background: var(--ui-surface);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow-card);
+  overflow: hidden;
+  margin-top: 12px;
+  padding: 20px;
+}
+
+.invoice-lines-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ui-text);
+  margin: 0 0 16px;
+}
+
+.invoice-lines-table-wrapper {
+  overflow-x: auto;
+}
+
+.invoice-lines-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.invoice-lines-table th {
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ui-text-muted);
+  border-bottom: 2px solid var(--ui-border);
+  white-space: nowrap;
+}
+
+.invoice-lines-table td {
+  padding: 10px 10px;
+  border-bottom: 1px solid #f3f4f6;
+  color: var(--ui-text);
+  vertical-align: top;
+}
+
+.invoice-lines-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.invoice-lines-table tbody tr:hover td {
+  background: var(--ui-surface-hover, #f9fafb);
+}
+
 /* ─── Payment actions ─────────────────────────────────────────────────────── */
 .payment-actions {
   display: flex;

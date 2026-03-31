@@ -5,6 +5,7 @@ using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.DTOs;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Events;
+using System.Linq;
 
 namespace OpenKSeF.Domain.Services;
 
@@ -64,6 +65,10 @@ public class InvoiceService : IInvoiceService
                     FirstSeenAt = now,
                     LastUpdatedAt = now
                 };
+
+                if (invoice.Lines is { Count: > 0 })
+                    newInvoice.Lines = invoice.Lines.Select(l => MapLine(l, newInvoice.Id)).ToList();
+
                 _db.InvoiceHeaders.Add(newInvoice);
                 newInvoiceIds.Add(newInvoice.Id);
                 newInvoiceEvents.Add(new NewInvoiceDetectedEvent(
@@ -91,6 +96,16 @@ public class InvoiceService : IInvoiceService
                 if (invoice.VendorBankAccount is not null)
                     existing.VendorBankAccount = invoice.VendorBankAccount;
                 existing.LastUpdatedAt = now;
+
+                if (invoice.Lines is not null)
+                {
+                    var oldLines = await _db.InvoiceLines
+                        .Where(l => l.InvoiceHeaderId == existing.Id)
+                        .ToListAsync();
+                    _db.InvoiceLines.RemoveRange(oldLines);
+                    if (invoice.Lines.Count > 0)
+                        _db.InvoiceLines.AddRange(invoice.Lines.Select(l => MapLine(l, existing.Id)));
+                }
 
                 _logger.LogDebug(
                     "Updated existing invoice: {KSeFNumber} for tenant {TenantId}",
@@ -121,4 +136,20 @@ public class InvoiceService : IInvoiceService
 
         return newInvoiceIds;
     }
+
+    private static InvoiceLine MapLine(InvoiceLineDto dto, Guid invoiceHeaderId) => new()
+    {
+        Id = Guid.NewGuid(),
+        InvoiceHeaderId = invoiceHeaderId,
+        LineNumber = dto.LineNumber,
+        Name = dto.Name,
+        Unit = dto.Unit,
+        Quantity = dto.Quantity,
+        UnitPriceNet = dto.UnitPriceNet,
+        UnitPriceGross = dto.UnitPriceGross,
+        AmountNet = dto.AmountNet,
+        AmountGross = dto.AmountGross,
+        AmountVat = dto.AmountVat,
+        VatRate = dto.VatRate
+    };
 }

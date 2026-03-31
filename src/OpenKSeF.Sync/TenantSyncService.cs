@@ -140,21 +140,23 @@ public sealed class TenantSyncService : ITenantSyncService
                         break;
 
                     var batchNumbers = result.Invoices.Select(i => i.KSeFNumber).ToList();
-                    var invoicesWithBankAccount = await _db.InvoiceHeaders
+                    var invoicesAlreadyParsed = await _db.InvoiceHeaders
                         .Where(h => h.TenantId == tenant.Id
                             && batchNumbers.Contains(h.KSeFInvoiceNumber)
-                            && h.VendorBankAccount != null)
+                            && h.VendorBankAccount != null
+                            && h.Lines.Any())
                         .Select(h => h.KSeFInvoiceNumber)
                         .ToListAsync(cancellationToken);
-                    var skipDownloadSet = new HashSet<string>(invoicesWithBankAccount);
+                    var skipDownloadSet = new HashSet<string>(invoicesAlreadyParsed);
 
                     var invoiceDtos = new List<InvoiceDto>(result.Invoices.Count);
                     foreach (var i in result.Invoices)
                     {
                         string? bankAccount = null;
+                        IReadOnlyList<Domain.DTOs.InvoiceLineDto>? lines = null;
                         if (!skipDownloadSet.Contains(i.KSeFNumber))
                         {
-                            bankAccount = await DownloadBankAccountAsync(
+                            (bankAccount, lines) = await DownloadInvoiceDetailsAsync(
                                 session, i.KSeFNumber, cancellationToken);
                         }
 
@@ -173,7 +175,8 @@ public sealed class TenantSyncService : ITenantSyncService
                             IssueDate: i.IssueDate,
                             AcquisitionDate: i.AcquisitionDate,
                             InvoiceType: i.InvoiceType,
-                            VendorBankAccount: bankAccount));
+                            VendorBankAccount: bankAccount,
+                            Lines: lines));
                     }
 
                     var newIds = await _invoiceService.UpsertInvoicesAsync(tenant.Id, invoiceDtos);
@@ -232,19 +235,19 @@ public sealed class TenantSyncService : ITenantSyncService
         }
     }
 
-    private async Task<string?> DownloadBankAccountAsync(
+    private async Task<(string? BankAccount, IReadOnlyList<Domain.DTOs.InvoiceLineDto>? Lines)> DownloadInvoiceDetailsAsync(
         KSeFSession session, string ksefNumber, CancellationToken ct)
     {
         try
         {
             var xmlBytes = await _gateway.DownloadInvoiceAsync(session, ksefNumber, ct);
-            return _xmlParser.ExtractBankAccount(xmlBytes);
+            return _xmlParser.ExtractInvoiceDetails(xmlBytes);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex,
-                "Failed to download invoice XML for bank account extraction: {KSeFNumber}", ksefNumber);
-            return null;
+                "Failed to download invoice XML for details extraction: {KSeFNumber}", ksefNumber);
+            return (null, null);
         }
     }
 

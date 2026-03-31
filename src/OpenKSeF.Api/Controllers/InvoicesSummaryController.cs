@@ -6,6 +6,7 @@ using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
+using System.Linq;
 
 namespace OpenKSeF.Api.Controllers;
 
@@ -85,19 +86,18 @@ public class InvoicesSummaryController : ControllerBase
 
         var userTenantIds = UserTenantIds();
 
-        var query = _db.InvoiceHeaders
+        var headerQuery = _db.InvoiceHeaders
+            .Include(i => i.Lines)
             .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber);
 
         if (tenantId.HasValue)
-            query = query.Where(i => i.TenantId == tenantId.Value);
+            headerQuery = headerQuery.Where(i => i.TenantId == tenantId.Value);
         else
-            query = query.Where(i => userTenantIds.Contains(i.TenantId));
+            headerQuery = headerQuery.Where(i => userTenantIds.Contains(i.TenantId));
 
-        var invoice = await query
-            .Select(ToInvoiceResponse())
-            .FirstOrDefaultAsync();
+        var invoice = await headerQuery.FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(invoice);
+        return invoice is null ? NotFound() : Ok(ToDetailResponse(invoice));
     }
 
     private IQueryable<Guid> UserTenantIds() =>
@@ -127,5 +127,33 @@ public class InvoicesSummaryController : ControllerBase
             i.InvoiceType,
             i.FirstSeenAt,
             i.IsPaid,
-            i.PaidAt);
+            i.PaidAt,
+            null);
+
+    private static InvoiceResponse ToDetailResponse(InvoiceHeader i) => new(
+        i.Id,
+        i.KSeFInvoiceNumber,
+        i.KSeFReferenceNumber,
+        i.InvoiceNumber,
+        i.VendorName,
+        i.VendorNip,
+        i.BuyerName,
+        i.BuyerNip,
+        i.AmountNet,
+        i.AmountVat,
+        i.AmountGross,
+        i.Currency,
+        i.IssueDate,
+        i.AcquisitionDate,
+        i.InvoiceType,
+        i.FirstSeenAt,
+        i.IsPaid,
+        i.PaidAt,
+        Lines: i.Lines
+            .OrderBy(l => l.LineNumber)
+            .Select(l => new InvoiceLineResponse(
+                l.LineNumber, l.Name, l.Unit, l.Quantity,
+                l.UnitPriceNet, l.UnitPriceGross,
+                l.AmountNet, l.AmountGross, l.AmountVat, l.VatRate))
+            .ToList());
 }

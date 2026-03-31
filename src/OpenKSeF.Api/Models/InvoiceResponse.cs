@@ -20,4 +20,5 @@ public record InvoiceResponse(
     string? InvoiceType,
     DateTime FirstSeenAt,
     bool IsPaid,
-    DateTime? PaidAt);
+    DateTime? PaidAt,
+    IReadOnlyList<InvoiceLineResponse>? Lines = null);
