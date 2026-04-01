@@ -84,10 +84,11 @@ public sealed class TenantSyncService : ITenantSyncService
         DateTime? fullResyncWindowStart = null;
         if (forceFullResync)
         {
-            var earliestAcquisition = await _db.InvoiceHeaders
+            var earliestIssueDate = await _db.InvoiceHeaders
                 .Where(h => h.TenantId == tenantId)
-                .MinAsync(h => (DateTime?)h.AcquisitionDate, cancellationToken);
-            fullResyncWindowStart = earliestAcquisition?.AddHours(-1);
+                .MinAsync(h => (DateTime?)h.IssueDate, cancellationToken);
+            fullResyncWindowStart = earliestIssueDate?.AddHours(-1)
+                ?? DateTime.UtcNow.AddMonths(-_syncOptions.InitialSyncMonthsBack);
         }
 
         return await SyncTenantInternalAsync(tenant, fullResyncWindowStart, cancellationToken);

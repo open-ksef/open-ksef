@@ -125,7 +125,7 @@ export function CredentialListPage(): ReactElement {
   const fullResyncMutation = useMutation({
     mutationFn: (tenantId: string) => forceFullResync(tenantId),
     onSuccess: async (result) => {
-      toast.success(`Pełna resynchronizacja zakończona. Pobrane: ${result.fetchedInvoices}, zaktualizowane: ${result.newInvoices}.`)
+      toast.success(`Pełna resynchronizacja zakończona. Pobrane: ${result.fetchedInvoices}, nowe: ${result.newInvoices}.`)
       await queryClient.invalidateQueries({ queryKey: ['credentials'] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       await queryClient.invalidateQueries({ queryKey: ['invoices'] })
