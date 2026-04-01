@@ -98,17 +98,30 @@ public sealed class KSeFInvoiceXmlParser
             foreach (var wiersz in fa.Elements(ns + "FaWiersz"))
             {
                 var lineNumber = ParseInt(wiersz.Element(ns + "NrWierszaFa")?.Value) ?? 0;
+                var unitPriceNet = ParseDecimal(wiersz.Element(ns + "P_9A")?.Value);
+                var amountNet = ParseDecimal(wiersz.Element(ns + "P_11")?.Value);
+                var vatRate = wiersz.Element(ns + "P_12")?.Value?.Trim();
+
+                // P_9B, P_11A, P_11Vat are only present for special cases (art. 106e ust. 7, 8, 10).
+                // For standard invoices, derive gross/VAT from net amount and rate.
+                var unitPriceGross = ParseDecimal(wiersz.Element(ns + "P_9B")?.Value)
+                    ?? DeriveGross(unitPriceNet, vatRate, 6);
+                var amountGross = ParseDecimal(wiersz.Element(ns + "P_11A")?.Value)
+                    ?? DeriveGross(amountNet, vatRate, 2);
+                var amountVat = ParseDecimal(wiersz.Element(ns + "P_11Vat")?.Value)
+                    ?? DeriveVat(amountNet, vatRate);
+
                 lines.Add(new InvoiceLineDto(
                     LineNumber: lineNumber,
                     Name: wiersz.Element(ns + "P_7")?.Value?.Trim(),
                     Unit: wiersz.Element(ns + "P_8A")?.Value?.Trim(),
                     Quantity: ParseDecimal(wiersz.Element(ns + "P_8B")?.Value),
-                    UnitPriceNet: ParseDecimal(wiersz.Element(ns + "P_9A")?.Value),
-                    UnitPriceGross: ParseDecimal(wiersz.Element(ns + "P_9B")?.Value),
-                    AmountNet: ParseDecimal(wiersz.Element(ns + "P_11")?.Value),
-                    AmountGross: ParseDecimal(wiersz.Element(ns + "P_11A")?.Value),
-                    AmountVat: ParseDecimal(wiersz.Element(ns + "P_11Vat")?.Value),
-                    VatRate: wiersz.Element(ns + "P_12")?.Value?.Trim()));
+                    UnitPriceNet: unitPriceNet,
+                    UnitPriceGross: unitPriceGross,
+                    AmountNet: amountNet,
+                    AmountGross: amountGross,
+                    AmountVat: amountVat,
+                    VatRate: vatRate));
             }
         }
 
@@ -156,5 +169,32 @@ public sealed class KSeFInvoiceXmlParser
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
         return int.TryParse(value, out var result) ? result : null;
+    }
+
+    /// <summary>
+    /// Parses a KSeF VAT rate string (e.g. "23", "8", "5", "0") to a decimal multiplier.
+    /// Returns null for non-taxable rates ("ZW", "NP", "OO", etc.).
+    /// </summary>
+    private static decimal? ParseVatRateMultiplier(string? vatRate)
+    {
+        if (string.IsNullOrWhiteSpace(vatRate)) return null;
+        return decimal.TryParse(vatRate, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var rate)
+            ? rate / 100m : null;
+    }
+
+    private static decimal? DeriveGross(decimal? net, string? vatRate, int decimals)
+    {
+        if (net is null) return null;
+        var multiplier = ParseVatRateMultiplier(vatRate);
+        var gross = multiplier.HasValue ? net.Value * (1 + multiplier.Value) : net.Value;
+        return Math.Round(gross, decimals);
+    }
+
+    private static decimal? DeriveVat(decimal? net, string? vatRate)
+    {
+        if (net is null) return null;
+        var multiplier = ParseVatRateMultiplier(vatRate);
+        return multiplier.HasValue ? Math.Round(net.Value * multiplier.Value, 2) : 0m;
     }
 }
