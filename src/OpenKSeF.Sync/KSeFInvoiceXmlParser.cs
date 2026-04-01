@@ -188,13 +188,13 @@ public sealed class KSeFInvoiceXmlParser
         if (net is null) return null;
         var multiplier = ParseVatRateMultiplier(vatRate);
         var gross = multiplier.HasValue ? net.Value * (1 + multiplier.Value) : net.Value;
-        return Math.Round(gross, decimals);
+        return Math.Round(gross, decimals, MidpointRounding.AwayFromZero);
     }
 
     private static decimal? DeriveVat(decimal? net, string? vatRate)
     {
         if (net is null) return null;
         var multiplier = ParseVatRateMultiplier(vatRate);
-        return multiplier.HasValue ? Math.Round(net.Value * multiplier.Value, 2) : 0m;
+        return multiplier.HasValue ? Math.Round(net.Value * multiplier.Value, 2, MidpointRounding.AwayFromZero) : 0m;
     }
 }
