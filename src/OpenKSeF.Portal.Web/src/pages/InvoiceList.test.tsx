@@ -117,6 +117,7 @@ describe('InvoiceListPage', () => {
 
     expect(container.querySelector('[data-testid="invoice-table"]')).toBeTruthy()
     expect(container.querySelectorAll('[data-testid="invoice-row"]').length).toBe(1)
+    expect(container.querySelector('[data-testid="invoice-number"]')?.textContent).toContain('FV/2026/001')
     expect(container.querySelector('[data-testid="invoice-ksef-number"]')?.textContent).toContain('KSEF-001')
     expect(container.querySelector('[data-testid="invoice-view-details"]')).toBeTruthy()
 

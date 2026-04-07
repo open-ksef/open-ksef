@@ -72,7 +72,7 @@ public class QrCodeServiceTests
     [Fact]
     public void BuildZbpPayload_TitleTruncatedTo32()
     {
-        var data = MakeTransferData(title: "Faktura 12345678901234567890123456789");
+        var data = MakeTransferData(title: "123456789012345678901234567890123");
         var payload = _sut.BuildZbpPayload(data);
 
         var segments = payload.Split('|');
@@ -120,11 +120,11 @@ public class QrCodeServiceTests
             RecipientAccount = "12345678901234567890123456",
             Amount = 12m,
             Currency = "PLN",
-            Title = "Faktura 12/2026"
+            Title = "12/2026"
         };
 
         var payload = _sut.BuildZbpPayload(data);
-        Assert.Equal("|PL|12345678901234567890123456|1200|ABC SP ZOO|Faktura 122026|||", payload);
+        Assert.Equal("|PL|12345678901234567890123456|1200|ABC SP ZOO|12/2026|||", payload);
     }
 
     [Fact]
@@ -164,6 +164,7 @@ public class QrCodeServiceTests
     [InlineData("Normal Text", 20, "Normal Text")]
     [InlineData("Special!@#$%^&*()", 20, "Special")]
     [InlineData("Dots.and-dashes ok", 20, "Dots.and-dashes ok")]
+    [InlineData("15445/04/2026", 32, "15445/04/2026")]
     [InlineData("ABCDEFGHIJ KLMNOPQRSTUVWXYZ", 20, "ABCDEFGHIJ KLMNOPQRS")]
     [InlineData("", 20, "")]
     public void Sanitize_AppliesRulesCorrectly(string input, int maxLen, string expected)
@@ -188,7 +189,7 @@ public class QrCodeServiceTests
         string name = "Test Vendor",
         string? account = null,
         decimal amount = 100m,
-        string title = "Faktura FV-001") =>
+        string title = "FV-001") =>
         new()
         {
             RecipientName = name,
