@@ -79,7 +79,7 @@ public partial class QrCodeService : IQrCodeService
         return digitsOnly.Length == NrbLength ? digitsOnly : string.Empty;
     }
 
-    [GeneratedRegex("[^a-zA-Z0-9 .\\-]")]
+    [GeneratedRegex("[^a-zA-Z0-9 .\\-/]")]
     private static partial Regex AllowedCharsRegex();
 
     [GeneratedRegex("[^0-9]")]

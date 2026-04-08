@@ -12,7 +12,7 @@ public class TransferDetailsServiceTests
     {
         var invoice = MakeInvoice(invoiceNumber: "FV/2026/03/001");
         var result = _sut.BuildTransferData(invoice);
-        Assert.Equal("Faktura FV/2026/03/001", result.Title);
+        Assert.Equal("FV/2026/03/001", result.Title);
     }
 
     [Fact]
@@ -20,7 +20,7 @@ public class TransferDetailsServiceTests
     {
         var invoice = MakeInvoice(invoiceNumber: null);
         var result = _sut.BuildTransferData(invoice);
-        Assert.Equal("Faktura 9999999999-20260301-ABC123-FF", result.Title);
+        Assert.Equal("9999999999-20260301-ABC123-FF", result.Title);
     }
 
     [Fact]
@@ -60,7 +60,7 @@ public class TransferDetailsServiceTests
     {
         var invoice = MakeInvoice(invoiceNumber: "FV/2026/001");
         var result = _sut.BuildTransferText(invoice);
-        Assert.Contains("Tytul: Faktura FV/2026/001", result);
+        Assert.Contains("Tytul: FV/2026/001", result);
     }
 
     private static InvoiceHeader MakeInvoice(

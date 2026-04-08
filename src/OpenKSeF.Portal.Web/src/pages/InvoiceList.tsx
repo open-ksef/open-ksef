@@ -63,20 +63,23 @@ export function InvoiceListPage(): ReactElement {
   const columns = useMemo<TableColumn<InvoiceResponse>[]>(
     () => [
       {
+        key: 'invoiceNumber',
+        label: 'Nr faktury',
+        render: (row) => (
+          <span
+            data-testid="invoice-number"
+            style={{ fontWeight: 700, fontFamily: 'ui-monospace, monospace', fontSize: '13px' }}
+          >
+            {row.invoiceNumber ?? row.ksefInvoiceNumber}
+          </span>
+        ),
+      },
+      {
         key: 'ksefInvoiceNumber',
         label: 'Numer KSeF',
         render: (row) => (
           <span className="token-display" data-testid="invoice-ksef-number">
             {row.ksefInvoiceNumber}
-          </span>
-        ),
-      },
-      {
-        key: 'invoiceNumber',
-        label: 'Nr faktury',
-        render: (row) => (
-          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '13px' }}>
-            {row.invoiceNumber ?? '—'}
           </span>
         ),
       },

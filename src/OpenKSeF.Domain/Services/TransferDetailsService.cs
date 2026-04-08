@@ -20,7 +20,7 @@ public class TransferDetailsService : ITransferDetailsService
             lines.Add($"Nr rachunku: {invoice.VendorBankAccount}");
 
         lines.Add($"Kwota: {invoice.AmountGross.ToString("N2", CultureInfo.InvariantCulture)} {invoice.Currency}");
-        lines.Add($"Tytul: Faktura {invoice.InvoiceNumber ?? invoice.KSeFInvoiceNumber}");
+        lines.Add($"Tytul: {invoice.InvoiceNumber ?? invoice.KSeFInvoiceNumber}");
 
         return string.Join("\n", lines);
     }
@@ -34,7 +34,7 @@ public class TransferDetailsService : ITransferDetailsService
             RecipientAccount = invoice.VendorBankAccount,
             Amount = invoice.AmountGross,
             Currency = invoice.Currency,
-            Title = $"Faktura {invoice.InvoiceNumber ?? invoice.KSeFInvoiceNumber}"
+            Title = invoice.InvoiceNumber ?? invoice.KSeFInvoiceNumber
         };
     }
 }
