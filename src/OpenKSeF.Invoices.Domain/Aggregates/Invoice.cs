@@ -157,6 +157,14 @@ public sealed class Invoice
         DueDate = dueDate;
     }
 
+    public void SetCommercialData(string? paymentMethod = null, string? publicNotes = null, string? internalNotes = null)
+    {
+        EnsureNotImmutable();
+        PaymentMethod = paymentMethod;
+        PublicNotes = publicNotes;
+        InternalNotes = internalNotes;
+    }
+
     /// <summary>
     /// Recalculates document totals and VAT breakdown from line items.
     /// Must be called after adding or modifying lines.
