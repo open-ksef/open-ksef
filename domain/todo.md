@@ -38,20 +38,20 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 ### E1-S1: Create `Invoice` aggregate
 > Backlog: `04:L85-L99` | Full model: `01:L136-L260`
 
-- [ ] Create project `OpenKSeF.Invoices.Domain`
-- [ ] Create project `OpenKSeF.Invoices.Domain.Tests`
-- [ ] Implement enums: `DocumentKind`, `DocumentStatus`, `BuyerKind`, `PricingMode`, `KsefSubmissionRequirement`, `KsefSubmissionState`, `CorrectionReasonKind` — `01:L262-L287`
-- [ ] Implement value objects: `Money`, `CurrencyCode`, `Percentage`, `VatRate`, `VatClassification`, `TaxExemptionReason`, `Nip`, `PartyName`, `PostalAddress`, `BankAccountNumber`, `DocumentNumber`, `IssueDates`, `KsefIdentifiers`, `ApprovalState`, `DocumentTotals`, `VatSummary`, `AdvanceAllocation`, `CorrectionReference`, `DuplicateMetadata` — `01:L241-L261`
-- [ ] Implement `SellerSnapshot`, `BuyerSnapshot` party snapshots — `01:L171-L173`
-- [ ] Implement `InvoiceLine` entity with monetary calculation — `01:L218-L239`
-- [ ] Implement `Invoice` aggregate root: identity `01:L142-L146`, classification `01:L148-L169`, dates `01:L176-L183`, money/currency `01:L185-L192`, commercial data `01:L194-L205`, KSeF state `01:L207-L212`, relations `01:L214-L216`
-- [ ] Implement state machine: Draft -> Approved -> Submitted -> Accepted/Rejected — `01:L318-L370`
-- [ ] Implement aggregate invariants — `01:L379-L395`
-- [ ] Implement cross-document invariants — `01:L376-L378`
-- [ ] Implement document kind rules: VAT `01:L398-L411`, Advance `01:L413-L419`, Final `01:L421-L427`, Proforma `01:L429-L435`, Correction `01:L437-L447`, Duplicate-as-metadata `01:L449-L457`
-- [ ] Implement domain events — `01:L573-L582`
-- [ ] Unit tests: totals calculation, document kind invariants, state transitions
-- [ ] Verify: no EF/infrastructure references in domain project
+- [x] Create project `OpenKSeF.Invoices.Domain`
+- [x] Create project `OpenKSeF.Invoices.Domain.Tests`
+- [x] Implement enums: `DocumentKind`, `DocumentStatus`, `BuyerKind`, `PricingMode`, `KsefSubmissionRequirement`, `KsefSubmissionState`, `CorrectionReasonKind` — `01:L262-L287`
+- [x] Implement value objects: `Money`, `CurrencyCode`, `Percentage`, `VatRate`, `VatClassification`, `TaxExemptionReason`, `Nip`, `PartyName`, `PostalAddress`, `BankAccountNumber`, `DocumentNumber`, `IssueDates`, `KsefIdentifiers`, `ApprovalState`, `DocumentTotals`, `VatSummary`, `AdvanceAllocation`, `CorrectionReference`, `DuplicateMetadata` — `01:L241-L261`
+- [x] Implement `SellerSnapshot`, `BuyerSnapshot` party snapshots — `01:L171-L173`
+- [x] Implement `InvoiceLine` entity with monetary calculation — `01:L218-L239`
+- [x] Implement `Invoice` aggregate root: identity `01:L142-L146`, classification `01:L148-L169`, dates `01:L176-L183`, money/currency `01:L185-L192`, commercial data `01:L194-L205`, KSeF state `01:L207-L212`, relations `01:L214-L216`
+- [x] Implement state machine: Draft -> Approved -> Submitted -> Accepted/Rejected — `01:L318-L370`
+- [x] Implement aggregate invariants — `01:L379-L395`
+- [x] Implement cross-document invariants — `01:L376-L378`
+- [x] Implement document kind rules: VAT `01:L398-L411`, Advance `01:L413-L419`, Final `01:L421-L427`, Proforma `01:L429-L435`, Correction `01:L437-L447`, Duplicate-as-metadata `01:L449-L457`
+- [x] Implement domain events — `01:L573-L582`
+- [x] Unit tests: totals calculation, document kind invariants, state transitions
+- [x] Verify: no EF/infrastructure references in domain project
 
 ### E1-S2: Policy abstractions
 > Backlog: `04:L101-L118` | Interface list: `01:L289-L298`
