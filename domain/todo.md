@@ -67,14 +67,14 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 ### E2-S1: Validation primitives and pipeline
 > Backlog: `04:L123-L137` | Interfaces: `02:L38-L81`
 
-- [ ] Implement `ValidationStage`, `ValidationSeverity` enums — `02:L38-L49`
-- [ ] Implement `ValidationMessage` record — `02:L52-L59`
-- [ ] Implement `ValidationContext` record — `02:L61-L68`
-- [ ] Implement `ValidationResult` record — `02:L70-L73`
-- [ ] Implement `IValidationRule<T>` interface — `02:L75-L80`
-- [ ] Implement pipeline split interfaces: `IDomainValidationRule<Invoice>`, `IDomainValidationRule<InvoiceLine>`, `IKsefTechnicalValidationRule<KsefInvoicePayload>`, `IStateTransitionRule<Invoice>` — `02:L89-L91`
-- [ ] Implement orchestrators: `DraftValidationService`, `ApprovalValidationService`, `KsefSubmissionValidationService` — `02:L93-L97`
-- [ ] Implement `IPolicyProvider` / `IPolicySnapshot` — `02:L103-L118`
+- [x] Implement `ValidationStage`, `ValidationSeverity` enums — `02:L38-L49`
+- [x] Implement `ValidationMessage` record — `02:L52-L59`
+- [x] Implement `ValidationContext` record — `02:L61-L68`
+- [x] Implement `ValidationResult` record — `02:L70-L73`
+- [x] Implement `IValidationRule<T>` interface — `02:L75-L80`
+- [x] Implement pipeline split interfaces: `IDomainValidationRule<Invoice>`, `IDomainValidationRule<InvoiceLine>`, `IKsefTechnicalValidationRule<KsefInvoicePayload>`, `IStateTransitionRule<Invoice>` — `02:L89-L91`
+- [x] Implement orchestrators: `DraftValidationService`, `ApprovalValidationService`, `KsefSubmissionValidationService` — `02:L93-L97`
+- [x] Implement `IPolicyProvider` / `IPolicySnapshot` — `02:L103-L118`
 
 ### E2-S2: Domain validation rules v1
 > Backlog: `04:L139-L153` | Full rule catalog: `02:L124-L448`

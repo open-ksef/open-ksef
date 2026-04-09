@@ -6,6 +6,18 @@ using OpenKSeF.Invoices.Domain.ValueObjects;
 
 namespace OpenKSeF.Invoices.Domain.Tests.TestSupport;
 
+/// <summary>Default in-memory IPolicySnapshot for unit tests.</summary>
+public sealed class TestPolicySnapshot : IPolicySnapshot
+{
+    public static readonly TestPolicySnapshot Default = new();
+    public NumberingPolicy Numbering { get; } = new();
+    public KsefPolicy Ksef { get; } = new();
+    public VatPolicy Vat { get; } = new();
+    public EditPolicy Edit { get; } = new();
+    public ValidationPolicy Validation { get; } = new();
+    public CurrencyPolicy Currency { get; } = new();
+}
+
 /// <summary>Sequential counter-based numbering for unit tests.</summary>
 public sealed class SequentialNumberingPolicy : INumberingPolicy
 {
