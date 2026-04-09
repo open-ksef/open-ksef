@@ -83,7 +83,7 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 - [x] Rules: Parties — `INV-VAL-010..013` — `02:L149-L176`
 - [x] Rules: Dates — `INV-VAL-020..022` — `02:L179-L199`
 - [x] Rules: Numbering — `INV-VAL-030..032` — `02:L202-L222`
-- [ ] Rules: Currency — `INV-VAL-040..042` — `02:L225-L245`
+- [x] Rules: Currency — `INV-VAL-040..042` — `02:L225-L245`
 - [ ] Rules: Lines/totals — `INV-VAL-050..053` — `02:L248-L275`
 - [ ] Rules: VAT — `INV-VAL-060..064` — `02:L278-L312`
 - [ ] Rules: Advance/final — `INV-VAL-070..073` — `02:L315-L341`
