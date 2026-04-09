@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // InvoiceHeader is used in EF projection; intentional legacy read path
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

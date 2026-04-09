@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // InvoiceHeader/InvoiceLine are legacy persistence types; intentional sync-write path
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;

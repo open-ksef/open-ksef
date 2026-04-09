@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // TransferDetailsService is a legacy sync-side service; intentional InvoiceHeader reference
 using System.Globalization;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Models;

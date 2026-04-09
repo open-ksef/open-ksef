@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // test fixtures reference legacy entities intentionally
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
 

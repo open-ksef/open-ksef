@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // test fixtures reference legacy entities intentionally
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;

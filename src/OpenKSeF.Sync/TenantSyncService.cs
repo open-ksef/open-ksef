@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // TenantSyncService is the legacy sync write path; intentional InvoiceHeader reference
 using System.Security.Cryptography.X509Certificates;
 using KSeF.Client.Api.Services;
 using Microsoft.EntityFrameworkCore;

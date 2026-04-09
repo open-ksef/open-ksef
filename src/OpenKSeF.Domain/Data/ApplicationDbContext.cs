@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // InvoiceHeader/InvoiceLine are legacy persistence types; intentional EF mapping
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Domain.Entities;
 

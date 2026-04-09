@@ -1,5 +1,16 @@
 namespace OpenKSeF.Domain.Entities;
 
+/// <summary>
+/// Legacy synchronized read-side entity representing an invoice fetched from KSeF.
+/// This is NOT the invoice-issuing domain aggregate.
+///
+/// Target rename: <c>InvoiceHeader</c> → <c>SyncedInvoice</c> (code + PostgreSQL table).
+/// New domain aggregate will be introduced in <c>OpenKSeF.Invoices.Domain</c> as <c>Invoice</c>.
+///
+/// Do NOT add business behaviour here. Use <see cref="Services.ISyncedInvoiceMapper"/> to
+/// cross the anti-corruption boundary into clean domain contracts.
+/// </summary>
+[Obsolete("Legacy read-model. Use ISyncedInvoiceMapper to map to InvoiceDto. Will be renamed to SyncedInvoice.")]
 public class InvoiceHeader
 {
     public Guid Id { get; set; }

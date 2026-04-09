@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // InvoiceHeader is a legacy navigation property; intentional EF relation
 namespace OpenKSeF.Domain.Entities;
 
 public class Tenant

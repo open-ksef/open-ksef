@@ -1,5 +1,12 @@
 namespace OpenKSeF.Domain.Entities;
 
+/// <summary>
+/// Legacy synchronized read-side entity for a line item belonging to <see cref="InvoiceHeader"/>.
+///
+/// Target rename: <c>InvoiceLine</c> → <c>SyncedInvoiceLine</c> (code + PostgreSQL table).
+/// Do NOT add business behaviour here.
+/// </summary>
+[Obsolete("Legacy read-model. Use ISyncedInvoiceMapper to map to InvoiceLineDto. Will be renamed to SyncedInvoiceLine.")]
 public class InvoiceLine
 {
     public Guid Id { get; set; }

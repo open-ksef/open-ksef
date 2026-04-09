@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // test fixtures reference legacy entities intentionally
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
@@ -46,7 +47,7 @@ public class InvoicesControllerTests : IDisposable
     }
 
     private InvoicesController CreateController() =>
-        new(_db, _currentUser, _transferDetails, _qrCode);
+        new(_db, _currentUser, _transferDetails, _qrCode, new SyncedInvoiceMapper());
 
     private InvoiceHeader MakeInvoice(string ksefNumber, DateTime issueDate, string? vendor = null) =>
         new()

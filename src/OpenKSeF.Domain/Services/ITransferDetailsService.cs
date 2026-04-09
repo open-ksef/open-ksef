@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // ITransferDetailsService is a legacy interface that still works with InvoiceHeader
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Models;
 
