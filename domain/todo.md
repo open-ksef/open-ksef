@@ -56,9 +56,9 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 ### E1-S2: Policy abstractions
 > Backlog: `04:L101-L118` | Interface list: `01:L289-L298`
 
-- [ ] Define interfaces: `INumberingPolicy`, `IDocumentUniquenessPolicy`, `IBuyerClassificationPolicy`, `IKsefRequirementPolicy`, `IVatPolicy`, `ICorrectionPolicy`, `IAdvanceSettlementPolicy`, `IApprovedEditPolicy`, `IClock`
-- [ ] Create in-memory/default test implementations for each policy
-- [ ] Unit test: at least one policy-swappable test per policy family
+- [x] Define interfaces: `INumberingPolicy`, `IDocumentUniquenessPolicy`, `IBuyerClassificationPolicy`, `IKsefRequirementPolicy`, `IVatPolicy`, `ICorrectionPolicy`, `IAdvanceSettlementPolicy`, `IApprovedEditPolicy`, `IClock`
+- [x] Create in-memory/default test implementations for each policy
+- [x] Unit test: at least one policy-swappable test per policy family
 
 ---
 

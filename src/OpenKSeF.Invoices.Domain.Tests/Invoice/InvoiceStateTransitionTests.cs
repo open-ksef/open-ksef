@@ -6,7 +6,7 @@ using OpenKSeF.Invoices.Domain.Snapshots;
 using OpenKSeF.Invoices.Domain.ValueObjects;
 using InvoiceLine = OpenKSeF.Invoices.Domain.Entities.InvoiceLine;
 
-namespace OpenKSeF.Invoices.Domain.Tests.Invoice;
+namespace OpenKSeF.Invoices.Domain.Tests.InvoiceTests;
 
 public class InvoiceStateTransitionTests
 {
