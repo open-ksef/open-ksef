@@ -12,8 +12,10 @@ public sealed record VatPolicy(bool StrictRateEnforcement = true);
 /// <summary>Edit permissions: whether approved invoices can be reopened.</summary>
 public sealed record EditPolicy(bool AllowReopenApproved = false);
 
-/// <summary>Validation behavior flags: whether warnings block approval.</summary>
-public sealed record ValidationPolicy(bool WarningsBlockApproval = false);
+/// <summary>Validation behavior flags for stage blocking and required commercial metadata.</summary>
+public sealed record ValidationPolicy(
+    bool WarningsBlockApproval = false,
+    bool SaleDateRequired = false);
 
 /// <summary>Currency restrictions: default and allowed currencies.</summary>
 public sealed record CurrencyPolicy(string DefaultCurrency = "PLN");

@@ -149,6 +149,14 @@ public sealed class Invoice
         DocumentNumber = number;
     }
 
+    public void SetIssueDates(DateTime issueDate, DateTime? saleDate = null, DateTime? dueDate = null)
+    {
+        EnsureNotImmutable();
+        IssueDate = issueDate;
+        SaleDate = saleDate;
+        DueDate = dueDate;
+    }
+
     /// <summary>
     /// Recalculates document totals and VAT breakdown from line items.
     /// Must be called after adding or modifying lines.
