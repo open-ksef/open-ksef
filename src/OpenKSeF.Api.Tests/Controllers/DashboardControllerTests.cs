@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // test fixtures reference legacy entities intentionally
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -97,7 +98,7 @@ public class DashboardControllerTests : IDisposable
                 LastSuccessfulSync = now.AddHours(-1)
             });
 
-        _db.InvoiceHeaders.AddRange(
+        _db.SyncedInvoices.AddRange(
             MakeInvoice(tenantSuccess.Id, now.AddDays(-1)),
             MakeInvoice(tenantSuccess.Id, now.AddDays(-6)),
             MakeInvoice(tenantSuccess.Id, now.AddDays(-20)),
@@ -221,7 +222,7 @@ public class DashboardControllerTests : IDisposable
             LastSyncedAt = DateTime.UtcNow.AddHours(-1),
             LastSuccessfulSync = DateTime.UtcNow.AddHours(-1)
         });
-        db.InvoiceHeaders.Add(MakeInvoice(tenant.Id, DateTime.UtcNow.AddDays(-1)));
+        db.SyncedInvoices.Add(MakeInvoice(tenant.Id, DateTime.UtcNow.AddDays(-1)));
         await db.SaveChangesAsync();
 
         counter.Reset();
@@ -249,10 +250,10 @@ public class DashboardControllerTests : IDisposable
         return tenant;
     }
 
-    private static InvoiceHeader MakeInvoice(Guid tenantId, DateTime issueDate)
+    private static SyncedInvoice MakeInvoice(Guid tenantId, DateTime issueDate)
     {
         var number = $"INV-{Guid.NewGuid():N}";
-        return new InvoiceHeader
+        return new SyncedInvoice
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,

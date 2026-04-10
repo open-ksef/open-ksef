@@ -1,6 +1,13 @@
 namespace OpenKSeF.Domain.Entities;
 
-public class InvoiceHeader
+/// <summary>
+/// Synchronized read-side entity representing an invoice fetched from KSeF.
+/// This is NOT the invoice-issuing domain aggregate — see <c>OpenKSeF.Invoices.Domain.Aggregates.Invoice</c>.
+///
+/// Do NOT add business behaviour here. Use <see cref="Services.ISyncedInvoiceMapper"/> to
+/// cross the anti-corruption boundary into clean domain contracts.
+/// </summary>
+public class SyncedInvoice
 {
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
@@ -25,5 +32,5 @@ public class InvoiceHeader
     public DateTime? PaidAt { get; set; }
 
     public Tenant Tenant { get; set; } = null!;
-    public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();
+    public ICollection<SyncedInvoiceLine> Lines { get; set; } = new List<SyncedInvoiceLine>();
 }

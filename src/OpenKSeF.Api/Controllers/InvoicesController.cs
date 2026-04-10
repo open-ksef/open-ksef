@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.DTOs;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 using System.Linq;
@@ -18,17 +19,20 @@ public class InvoicesController : ControllerBase
     private readonly ICurrentUserService _currentUser;
     private readonly ITransferDetailsService _transferDetails;
     private readonly IQrCodeService _qrCode;
+    private readonly ISyncedInvoiceMapper _invoiceMapper;
 
     public InvoicesController(
         ApplicationDbContext db,
         ICurrentUserService currentUser,
         ITransferDetailsService transferDetails,
-        IQrCodeService qrCode)
+        IQrCodeService qrCode,
+        ISyncedInvoiceMapper invoiceMapper)
     {
         _db = db;
         _currentUser = currentUser;
         _transferDetails = transferDetails;
         _qrCode = qrCode;
+        _invoiceMapper = invoiceMapper;
     }
 
     [HttpGet]
@@ -50,7 +54,7 @@ public class InvoicesController : ControllerBase
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
-        var query = _db.InvoiceHeaders
+        var query = _db.SyncedInvoices
             .Where(i => i.TenantId == tenantId);
 
         if (!string.IsNullOrWhiteSpace(filterByVendor))
@@ -112,12 +116,12 @@ public class InvoicesController : ControllerBase
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
 
-        var invoice = await _db.InvoiceHeaders
+        var invoice = await _db.SyncedInvoices
             .Include(i => i.Lines)
             .Where(i => i.Id == id && i.TenantId == tenantId)
             .FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(ToDetailResponse(invoice));
+        return invoice is null ? NotFound() : Ok(ToResponse(invoice.Id, invoice.FirstSeenAt, invoice.IsPaid, invoice.PaidAt, _invoiceMapper.ToDto(invoice)));
     }
 
     [HttpGet("by-number/{ksefInvoiceNumber}")]
@@ -129,12 +133,12 @@ public class InvoicesController : ControllerBase
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
 
-        var invoice = await _db.InvoiceHeaders
+        var invoice = await _db.SyncedInvoices
             .Include(i => i.Lines)
             .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber && i.TenantId == tenantId)
             .FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(ToDetailResponse(invoice));
+        return invoice is null ? NotFound() : Ok(ToResponse(invoice.Id, invoice.FirstSeenAt, invoice.IsPaid, invoice.PaidAt, _invoiceMapper.ToDto(invoice)));
     }
 
     [HttpGet("{id:guid}/transfer")]
@@ -146,7 +150,7 @@ public class InvoicesController : ControllerBase
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
 
-        var invoice = await _db.InvoiceHeaders
+        var invoice = await _db.SyncedInvoices
             .FirstOrDefaultAsync(i => i.Id == id && i.TenantId == tenantId);
 
         if (invoice is null)
@@ -177,7 +181,7 @@ public class InvoicesController : ControllerBase
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
 
-        var invoice = await _db.InvoiceHeaders
+        var invoice = await _db.SyncedInvoices
             .FirstOrDefaultAsync(i => i.Id == id && i.TenantId == tenantId);
 
         if (invoice is null)
@@ -191,7 +195,7 @@ public class InvoicesController : ControllerBase
 
         await _db.Entry(invoice).Collection(i => i.Lines).LoadAsync();
 
-        return Ok(ToDetailResponse(invoice));
+        return Ok(ToResponse(invoice.Id, invoice.FirstSeenAt, invoice.IsPaid, invoice.PaidAt, _invoiceMapper.ToDto(invoice)));
     }
 
     private async Task<bool> VerifyTenantOwnership(Guid tenantId)
@@ -200,27 +204,26 @@ public class InvoicesController : ControllerBase
             .AnyAsync(t => t.Id == tenantId && t.UserId == _currentUser.UserId);
     }
 
-    private static InvoiceResponse ToDetailResponse(Domain.Entities.InvoiceHeader i) => new(
-        i.Id,
-        i.KSeFInvoiceNumber,
-        i.KSeFReferenceNumber,
-        i.InvoiceNumber,
-        i.VendorName,
-        i.VendorNip,
-        i.BuyerName,
-        i.BuyerNip,
-        i.AmountNet,
-        i.AmountVat,
-        i.AmountGross,
-        i.Currency,
-        i.IssueDate,
-        i.AcquisitionDate,
-        i.InvoiceType,
-        i.FirstSeenAt,
-        i.IsPaid,
-        i.PaidAt,
-        Lines: i.Lines
-            .OrderBy(l => l.LineNumber)
+    private static InvoiceResponse ToResponse(Guid id, DateTime firstSeenAt, bool isPaid, DateTime? paidAt, InvoiceDto dto) => new(
+        id,
+        dto.Number,
+        dto.ReferenceNumber,
+        dto.InvoiceNumber,
+        dto.VendorName,
+        dto.VendorNip,
+        dto.BuyerName,
+        dto.BuyerNip,
+        dto.AmountNet,
+        dto.AmountVat,
+        dto.AmountGross,
+        dto.Currency ?? "PLN",
+        dto.IssueDate,
+        dto.AcquisitionDate,
+        dto.InvoiceType,
+        firstSeenAt,
+        isPaid,
+        paidAt,
+        Lines: dto.Lines?
             .Select(l => new InvoiceLineResponse(
                 l.LineNumber, l.Name, l.Unit, l.Quantity,
                 l.UnitPriceNet, l.UnitPriceGross,

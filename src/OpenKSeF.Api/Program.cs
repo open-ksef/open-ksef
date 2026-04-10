@@ -155,6 +155,7 @@ builder.Services.AddSingleton<IKeycloakUserService, KeycloakUserService>();
 
 // Domain services
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+builder.Services.AddScoped<ISyncedInvoiceMapper, SyncedInvoiceMapper>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ITransferDetailsService, TransferDetailsService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();

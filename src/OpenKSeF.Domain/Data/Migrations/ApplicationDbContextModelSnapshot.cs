@@ -152,7 +152,7 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.HasIndex("TenantId", "KSeFInvoiceNumber")
                         .IsUnique();
 
-                    b.ToTable("InvoiceHeaders");
+                    b.ToTable("SyncedInvoices", (string)null);
                 });
 
             modelBuilder.Entity("OpenKSeF.Domain.Entities.InvoiceLine", b =>
@@ -207,7 +207,227 @@ namespace OpenKSeF.Domain.Data.Migrations
 
                     b.HasIndex("InvoiceHeaderId");
 
-                    b.ToTable("InvoiceLines");
+                    b.ToTable("SyncedInvoiceLines", (string)null);
+                });
+
+            modelBuilder.Entity("OpenKSeF.Domain.Entities.IssuedInvoiceLineRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CorrectionRole")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<decimal?>("DiscountPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal>("GrossAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("IssuedInvoiceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("LineNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("NetAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("PricingMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<string>("UnitOfMeasure")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal>("VatAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("VatClassification")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("VatRate")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssuedInvoiceId");
+
+                    b.ToTable("IssuedInvoiceLines", (string)null);
+                });
+
+            modelBuilder.Entity("OpenKSeF.Domain.Entities.IssuedInvoiceRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AcceptedByKsefAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("BuyerKind")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("BuyerName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("BuyerNip")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("CorrectionOriginalDocumentNumber")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid?>("CorrectionOriginalInvoiceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CorrectionReasonDescription")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CorrectionReasonKind")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasDefaultValue("PLN");
+
+                    b.Property<string>("DocumentNumber")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalReference")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("InternalNotes")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("IssueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("KsefDocumentNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("KsefReferenceNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("KsefRejectionReason")
+                        .HasColumnType("text");
+
+                    b.Property<string>("KsefSubmissionRequirement")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("KsefSubmissionState")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("PublicNotes")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("SaleDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SellerName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("SellerNip")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("SubmittedToKsefAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("TotalGross")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("TotalNet")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("TotalVat")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "DocumentNumber")
+                        .IsUnique()
+                        .HasFilter("\"DocumentNumber\" IS NOT NULL");
+
+                    b.ToTable("IssuedInvoices", (string)null);
                 });
 
             modelBuilder.Entity("OpenKSeF.Domain.Entities.KSeFCredential", b =>
@@ -360,6 +580,28 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Navigation("InvoiceHeader");
                 });
 
+            modelBuilder.Entity("OpenKSeF.Domain.Entities.IssuedInvoiceLineRecord", b =>
+                {
+                    b.HasOne("OpenKSeF.Domain.Entities.IssuedInvoiceRecord", "IssuedInvoice")
+                        .WithMany("Lines")
+                        .HasForeignKey("IssuedInvoiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("IssuedInvoice");
+                });
+
+            modelBuilder.Entity("OpenKSeF.Domain.Entities.IssuedInvoiceRecord", b =>
+                {
+                    b.HasOne("OpenKSeF.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("OpenKSeF.Domain.Entities.KSeFCredential", b =>
                 {
                     b.HasOne("OpenKSeF.Domain.Entities.Tenant", "Tenant")
@@ -383,6 +625,11 @@ namespace OpenKSeF.Domain.Data.Migrations
                 });
 
             modelBuilder.Entity("OpenKSeF.Domain.Entities.InvoiceHeader", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("OpenKSeF.Domain.Entities.IssuedInvoiceRecord", b =>
                 {
                     b.Navigation("Lines");
                 });

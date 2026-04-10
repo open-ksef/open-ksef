@@ -43,7 +43,7 @@ public class InvoicesSummaryController : ControllerBase
         if (tenantId.HasValue && !await IsTenantOwnedByCurrentUser(tenantId.Value))
             return Forbid();
 
-        var query = _db.InvoiceHeaders
+        var query = _db.SyncedInvoices
             .Where(i => userTenantIds.Contains(i.TenantId));
 
         if (tenantId.HasValue)
@@ -86,7 +86,7 @@ public class InvoicesSummaryController : ControllerBase
 
         var userTenantIds = UserTenantIds();
 
-        var headerQuery = _db.InvoiceHeaders
+        var headerQuery = _db.SyncedInvoices
             .Include(i => i.Lines)
             .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber);
 
@@ -108,7 +108,7 @@ public class InvoicesSummaryController : ControllerBase
     private async Task<bool> IsTenantOwnedByCurrentUser(Guid tenantId) =>
         await _db.Tenants.AnyAsync(t => t.Id == tenantId && t.UserId == _currentUser.UserId);
 
-    private static System.Linq.Expressions.Expression<Func<InvoiceHeader, InvoiceResponse>> ToInvoiceResponse() =>
+    private static System.Linq.Expressions.Expression<Func<SyncedInvoice, InvoiceResponse>> ToInvoiceResponse() =>
         i => new InvoiceResponse(
             i.Id,
             i.KSeFInvoiceNumber,
@@ -130,7 +130,7 @@ public class InvoicesSummaryController : ControllerBase
             i.PaidAt,
             null);
 
-    private static InvoiceResponse ToDetailResponse(InvoiceHeader i) => new(
+    private static InvoiceResponse ToDetailResponse(SyncedInvoice i) => new(
         i.Id,
         i.KSeFInvoiceNumber,
         i.KSeFReferenceNumber,

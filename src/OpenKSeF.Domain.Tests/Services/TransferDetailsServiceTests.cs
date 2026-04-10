@@ -63,7 +63,7 @@ public class TransferDetailsServiceTests
         Assert.Contains("Tytul: FV/2026/001", result);
     }
 
-    private static InvoiceHeader MakeInvoice(
+    private static SyncedInvoice MakeInvoice(
         string? invoiceNumber = "FV/2026/03/001",
         string? vendorBankAccount = null) =>
         new()

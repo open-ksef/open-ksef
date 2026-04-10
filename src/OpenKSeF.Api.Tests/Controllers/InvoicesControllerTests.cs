@@ -46,9 +46,9 @@ public class InvoicesControllerTests : IDisposable
     }
 
     private InvoicesController CreateController() =>
-        new(_db, _currentUser, _transferDetails, _qrCode);
+        new(_db, _currentUser, _transferDetails, _qrCode, new SyncedInvoiceMapper());
 
-    private InvoiceHeader MakeInvoice(string ksefNumber, DateTime issueDate, string? vendor = null) =>
+    private SyncedInvoice MakeInvoice(string ksefNumber, DateTime issueDate, string? vendor = null) =>
         new()
         {
             Id = Guid.NewGuid(),
@@ -68,7 +68,7 @@ public class InvoicesControllerTests : IDisposable
     {
         var old = MakeInvoice("OLD-001", new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         var recent = MakeInvoice("NEW-001", new DateTime(2025, 6, 1, 0, 0, 0, DateTimeKind.Utc));
-        _db.InvoiceHeaders.AddRange(old, recent);
+        _db.SyncedInvoices.AddRange(old, recent);
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -84,7 +84,7 @@ public class InvoicesControllerTests : IDisposable
     {
         var old = MakeInvoice("OLD-001", new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         var recent = MakeInvoice("NEW-001", new DateTime(2025, 6, 1, 0, 0, 0, DateTimeKind.Utc));
-        _db.InvoiceHeaders.AddRange(old, recent);
+        _db.SyncedInvoices.AddRange(old, recent);
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -98,7 +98,7 @@ public class InvoicesControllerTests : IDisposable
     [Fact]
     public async Task List_WithDateRange_ReturnsOnlyInvoicesInRange()
     {
-        _db.InvoiceHeaders.AddRange(
+        _db.SyncedInvoices.AddRange(
             MakeInvoice("I-1", new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
             MakeInvoice("I-2", new DateTime(2024, 6, 15, 0, 0, 0, DateTimeKind.Utc)),
             MakeInvoice("I-3", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
@@ -119,7 +119,7 @@ public class InvoicesControllerTests : IDisposable
     public async Task GetByKSeFNumber_ExistingInvoice_ReturnsOk()
     {
         var invoice = MakeInvoice("KSEF-12345", DateTime.UtcNow.Date);
-        _db.InvoiceHeaders.Add(invoice);
+        _db.SyncedInvoices.Add(invoice);
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -152,7 +152,7 @@ public class InvoicesControllerTests : IDisposable
     public async Task GetTransferDetails_ExistingInvoice_ReturnsTransferData()
     {
         var invoice = MakeInvoice("KSEF-TR-001", DateTime.UtcNow.Date);
-        _db.InvoiceHeaders.Add(invoice);
+        _db.SyncedInvoices.Add(invoice);
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -178,7 +178,7 @@ public class InvoicesControllerTests : IDisposable
     public async Task SetPaid_MarksInvoiceAsPaid()
     {
         var invoice = MakeInvoice("KSEF-PAY-001", DateTime.UtcNow.Date);
-        _db.InvoiceHeaders.Add(invoice);
+        _db.SyncedInvoices.Add(invoice);
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -189,7 +189,7 @@ public class InvoicesControllerTests : IDisposable
         Assert.True(response.IsPaid);
         Assert.NotNull(response.PaidAt);
 
-        var dbInvoice = await _db.InvoiceHeaders.FindAsync(invoice.Id);
+        var dbInvoice = await _db.SyncedInvoices.FindAsync(invoice.Id);
         Assert.True(dbInvoice!.IsPaid);
         Assert.NotNull(dbInvoice.PaidAt);
     }
@@ -200,7 +200,7 @@ public class InvoicesControllerTests : IDisposable
         var invoice = MakeInvoice("KSEF-PAY-002", DateTime.UtcNow.Date);
         invoice.IsPaid = true;
         invoice.PaidAt = DateTime.UtcNow;
-        _db.InvoiceHeaders.Add(invoice);
+        _db.SyncedInvoices.Add(invoice);
         await _db.SaveChangesAsync();
 
         var controller = CreateController();

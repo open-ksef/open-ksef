@@ -1,9 +1,14 @@
 namespace OpenKSeF.Domain.Entities;
 
-public class InvoiceLine
+/// <summary>
+/// Synchronized read-side entity for a line item belonging to <see cref="SyncedInvoice"/>.
+/// Do NOT add business behaviour here.
+/// </summary>
+public class SyncedInvoiceLine
 {
     public Guid Id { get; set; }
-    public Guid InvoiceHeaderId { get; set; }
+    /// <summary>FK to <see cref="SyncedInvoice"/>. Stored as column <c>InvoiceHeaderId</c> in the database.</summary>
+    public Guid SyncedInvoiceId { get; set; }
     public int LineNumber { get; set; }
     public string? Name { get; set; }
     public string? Unit { get; set; }
@@ -15,5 +20,5 @@ public class InvoiceLine
     public decimal? AmountVat { get; set; }
     public string? VatRate { get; set; }
 
-    public InvoiceHeader InvoiceHeader { get; set; } = null!;
+    public SyncedInvoice SyncedInvoice { get; set; } = null!;
 }

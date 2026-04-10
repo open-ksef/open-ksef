@@ -6,7 +6,7 @@ namespace OpenKSeF.Domain.Services;
 
 public class TransferDetailsService : ITransferDetailsService
 {
-    public string BuildTransferText(InvoiceHeader invoice)
+    public string BuildTransferText(SyncedInvoice invoice)
     {
         var lines = new List<string>
         {
@@ -25,7 +25,7 @@ public class TransferDetailsService : ITransferDetailsService
         return string.Join("\n", lines);
     }
 
-    public TransferData BuildTransferData(InvoiceHeader invoice)
+    public TransferData BuildTransferData(SyncedInvoice invoice)
     {
         return new TransferData
         {

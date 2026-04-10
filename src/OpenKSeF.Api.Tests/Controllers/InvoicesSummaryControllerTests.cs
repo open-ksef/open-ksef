@@ -64,7 +64,7 @@ public class InvoicesSummaryControllerTests : IDisposable
     private InvoicesSummaryController CreateController() =>
         new(_db, _currentUser);
 
-    private static InvoiceHeader MakeInvoice(Guid tenantId, string number, DateTime issueDate) =>
+    private static SyncedInvoice MakeInvoice(Guid tenantId, string number, DateTime issueDate) =>
         new()
         {
             Id = Guid.NewGuid(),
@@ -83,7 +83,7 @@ public class InvoicesSummaryControllerTests : IDisposable
     [Fact]
     public async Task List_WithoutTenantFilter_ReturnsOnlyCurrentUserTenantInvoices()
     {
-        _db.InvoiceHeaders.AddRange(
+        _db.SyncedInvoices.AddRange(
             MakeInvoice(_tenantAId, "A-001", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
             MakeInvoice(_tenantBId, "B-001", new DateTime(2025, 1, 2, 0, 0, 0, DateTimeKind.Utc)),
             MakeInvoice(_otherTenantId, "C-001", new DateTime(2025, 1, 3, 0, 0, 0, DateTimeKind.Utc)));
@@ -110,7 +110,7 @@ public class InvoicesSummaryControllerTests : IDisposable
     [Fact]
     public async Task List_WithTenantFilter_ReturnsOnlySelectedTenantInvoices()
     {
-        _db.InvoiceHeaders.AddRange(
+        _db.SyncedInvoices.AddRange(
             MakeInvoice(_tenantAId, "A-001", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
             MakeInvoice(_tenantBId, "B-001", new DateTime(2025, 1, 2, 0, 0, 0, DateTimeKind.Utc)));
         await _db.SaveChangesAsync();
@@ -126,7 +126,7 @@ public class InvoicesSummaryControllerTests : IDisposable
     [Fact]
     public async Task List_WithDateRangeAndPagination_AppliesFiltersAndOrdering()
     {
-        _db.InvoiceHeaders.AddRange(
+        _db.SyncedInvoices.AddRange(
             MakeInvoice(_tenantAId, "A-001", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
             MakeInvoice(_tenantAId, "A-002", new DateTime(2025, 2, 1, 0, 0, 0, DateTimeKind.Utc)),
             MakeInvoice(_tenantAId, "A-003", new DateTime(2025, 3, 1, 0, 0, 0, DateTimeKind.Utc)));
@@ -150,7 +150,7 @@ public class InvoicesSummaryControllerTests : IDisposable
     {
         for (var i = 0; i < 105; i++)
         {
-            _db.InvoiceHeaders.Add(MakeInvoice(_tenantAId, $"A-{i:D3}", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(i)));
+            _db.SyncedInvoices.Add(MakeInvoice(_tenantAId, $"A-{i:D3}", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(i)));
         }
 
         await _db.SaveChangesAsync();
@@ -167,7 +167,7 @@ public class InvoicesSummaryControllerTests : IDisposable
     [Fact]
     public async Task GetByNumber_WithoutTenantId_SearchesAcrossAllOwnedTenants()
     {
-        _db.InvoiceHeaders.Add(MakeInvoice(_tenantBId, "B-999", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
+        _db.SyncedInvoices.Add(MakeInvoice(_tenantBId, "B-999", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
