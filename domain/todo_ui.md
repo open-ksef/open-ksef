@@ -133,14 +133,14 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 - [x] `src/components/invoices/PartyCard.tsx` / `PartyFormSection.tsx`
 - [x] `src/components/invoices/IssueDatesFieldset.tsx`
 - [x] `src/components/invoices/DocumentNumberPreview.tsx`
-- [ ] `src/components/invoices/TotalsSummaryCard.tsx`
-- [ ] `src/components/invoices/VatSummaryTable.tsx`
-- [ ] `src/components/invoices/InvoiceLineEditor.tsx` (both standard and correction variants)
-- [ ] `src/components/invoices/InvoiceLineTable.tsx`
-- [ ] `src/components/invoices/CorrectionReferenceCard.tsx`
-- [ ] `src/components/invoices/AdvanceAllocationPicker.tsx` / `AdvanceAllocationList.tsx`
-- [ ] `src/components/invoices/DuplicateIssuanceBanner.tsx`
-- [ ] `src/components/invoices/PrintVariantSwitcher.tsx`
+- [x] `src/components/invoices/TotalsSummaryCard.tsx`
+- [x] `src/components/invoices/VatSummaryTable.tsx`
+- [x] `src/components/invoices/InvoiceLineEditor.tsx` (both standard and correction variants)
+- [x] `src/components/invoices/InvoiceLineTable.tsx`
+- [x] `src/components/invoices/CorrectionReferenceCard.tsx`
+- [x] `src/components/invoices/AdvanceAllocationPicker.tsx` / `AdvanceAllocationList.tsx`
+- [x] `src/components/invoices/DuplicateIssuanceBanner.tsx`
+- [x] `src/components/invoices/PrintVariantSwitcher.tsx`
 
 ---
 
