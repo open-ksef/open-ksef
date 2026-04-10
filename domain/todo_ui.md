@@ -204,9 +204,9 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E3-S3: Client-side rule mirroring
 > Backlog: `05:§5.9.2`
 
-- [ ] Mirror in zod: `INV-VAL-001..003`, `INV-VAL-010..013`, `INV-VAL-020..022`, `INV-VAL-040`, `INV-VAL-050..053`
-- [ ] Never replicate: numbering, VAT reconciliation, advance/final settlement, correction chain, KSeF requirement, state machine, technical KSeF
-- [ ] Document in each schema which rule it mirrors
+- [x] Mirror in zod: `INV-VAL-001..003`, `INV-VAL-010..013`, `INV-VAL-020..022`, `INV-VAL-040`, `INV-VAL-050..053`
+- [x] Never replicate: numbering, VAT reconciliation, advance/final settlement, correction chain, KSeF requirement, state machine, technical KSeF
+- [x] Document in each schema which rule it mirrors
 
 ---
 

@@ -53,40 +53,118 @@ export const ibanSchema = z
   .pipe(z.string().regex(/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/, 'Expected IBAN'))
   .refine(isValidIban, 'Invalid IBAN checksum')
 
-export const createInvoiceRequestSchema = z.object({
-  kind: documentKindSchema,
-  sellerName: z.string().trim().min(1),
-  sellerNip: nipSchema,
-  buyerName: z.string().trim().min(1),
-  buyerKind: buyerKindSchema,
-  buyerNip: nipSchema.nullish(),
-  currency: currencyCodeSchema,
-  issueDate: isoDateSchema,
-  ksefSubmissionRequirement: ksefSubmissionRequirementSchema,
-  documentNumber: z.string().trim().min(1).nullish(),
-  externalReference: z.string().trim().min(1).nullish(),
-})
+export const createInvoiceRequestSchema = z
+  .object({
+    /** mirrors INV-VAL-001: DocumentKind must be a supported v1 kind */
+    kind: documentKindSchema,
+    /** mirrors INV-VAL-010: seller legal name is required */
+    sellerName: z.string().trim().min(1),
+    /** mirrors INV-VAL-011: seller NIP is required */
+    sellerNip: nipSchema,
+    buyerName: z.string().trim().min(1),
+    /**
+     * mirrors INV-VAL-012 (Warning, Draft): 'Unknown' is accepted but the form should
+     * render a warning when selected; not blocked here since it is advisory only.
+     */
+    buyerKind: buyerKindSchema,
+    /**
+     * mirrors INV-VAL-013: B2B buyer requires valid NIP.
+     * Cross-field enforcement in superRefine below.
+     */
+    buyerNip: nipSchema.nullish(),
+    /** mirrors INV-VAL-040: currency code is required (ISO-4217 format) */
+    currency: currencyCodeSchema,
+    /** mirrors INV-VAL-020: issue date is required */
+    issueDate: isoDateSchema,
+    /**
+     * mirrors INV-VAL-003 (cross-field): proforma cannot be KSeF-submittable.
+     * Cross-field enforcement in superRefine below.
+     * Rules INV-VAL-090..093 (KSeF requirement resolution) are server-authoritative only.
+     */
+    ksefSubmissionRequirement: ksefSubmissionRequirementSchema,
+    documentNumber: z.string().trim().min(1).nullish(),
+    externalReference: z.string().trim().min(1).nullish(),
+  })
+  .superRefine((data, ctx) => {
+    // INV-VAL-003: proforma cannot be marked as KSeF-submittable
+    if (
+      data.kind === 'Proforma' &&
+      (data.ksefSubmissionRequirement === 'Required' || data.ksefSubmissionRequirement === 'Optional')
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ksefSubmissionRequirement'],
+        message: 'Proforma nie jest dokumentem fiskalnym i nie może zostać wysłana do KSeF.',
+        params: { ruleCode: 'INV-VAL-003' },
+      })
+    }
+    // INV-VAL-013: B2B buyer requires valid NIP
+    if (data.buyerKind === 'Business' && !data.buyerNip) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['buyerNip'],
+        message: 'Dla nabywcy B2B wymagany jest poprawny NIP.',
+        params: { ruleCode: 'INV-VAL-013' },
+      })
+    }
+  })
 
-export const updateInvoiceDraftRequestSchema = z.object({
-  issueDate: isoDateSchema.optional(),
-  saleDate: isoDateSchema.nullish(),
-  dueDate: isoDateSchema.nullish(),
-  documentNumber: z.string().trim().min(1).nullish(),
-  externalReference: z.string().trim().min(1).nullish(),
-  paymentMethod: z.string().trim().min(1).nullish(),
-  publicNotes: z.string().trim().min(1).nullish(),
-  internalNotes: z.string().trim().min(1).nullish(),
-  lines: z.array(z.object({
-    lineNumber: z.number().int().positive(),
-    description: z.string().trim().min(1),
-    quantity: z.number().finite().positive(),
-    unitOfMeasure: z.string().trim().min(1).nullish(),
-    pricingMode: pricingModeSchema,
-    unitPrice: z.number().finite().nonnegative(),
-    discountPercent: z.number().finite().nonnegative().nullish(),
-    vatRate: z.string().trim().min(1),
-  })).min(1).optional(),
-})
+export const updateInvoiceDraftRequestSchema = z
+  .object({
+    /** mirrors INV-VAL-020: issue date is required at Approve/SendToKsef; format validated here */
+    issueDate: isoDateSchema.optional(),
+    /**
+     * mirrors INV-VAL-022: sale date may be required per policy.
+     * Format is validated here; presence requirement is server-authoritative (policy-dependent).
+     */
+    saleDate: isoDateSchema.nullish(),
+    /**
+     * mirrors INV-VAL-021 (Warning, Draft): due date must not be earlier than issue date.
+     * Cross-field warning in superRefine below.
+     */
+    dueDate: isoDateSchema.nullish(),
+    documentNumber: z.string().trim().min(1).nullish(),
+    externalReference: z.string().trim().min(1).nullish(),
+    paymentMethod: z.string().trim().min(1).nullish(),
+    publicNotes: z.string().trim().min(1).nullish(),
+    internalNotes: z.string().trim().min(1).nullish(),
+    /**
+     * mirrors INV-VAL-002: when lines are supplied the array cannot be empty (fiscal document
+     * must contain at least one line; enforced at Approve stage server-side for existing drafts).
+     * mirrors INV-VAL-050: each line description is required.
+     * mirrors INV-VAL-051: each line quantity must be > 0.
+     * INV-VAL-052 (line totals consistency) and INV-VAL-053 (document totals = sum of lines)
+     * are server-authoritative — amounts are computed server-side and are not part of this payload.
+     */
+    lines: z
+      .array(
+        z.object({
+          lineNumber: z.number().int().positive(),
+          /** mirrors INV-VAL-050: line description is required */
+          description: z.string().trim().min(1),
+          /** mirrors INV-VAL-051: quantity must be > 0 for standard lines */
+          quantity: z.number().finite().positive(),
+          unitOfMeasure: z.string().trim().min(1).nullish(),
+          pricingMode: pricingModeSchema,
+          unitPrice: z.number().finite().nonnegative(),
+          discountPercent: z.number().finite().nonnegative().nullish(),
+          vatRate: z.string().trim().min(1),
+        }),
+      )
+      .min(1)
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    // INV-VAL-021 (Warning): due date earlier than issue date — non-blocking in the UI
+    if (data.issueDate && data.dueDate && data.dueDate < data.issueDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['dueDate'],
+        message: 'Termin płatności jest wcześniejszy niż data wystawienia.',
+        params: { ruleCode: 'INV-VAL-021', severity: 'Warning' },
+      })
+    }
+  })
 
 export const createCorrectionFromOriginalRequestSchema = z.object({
   issueDate: isoDateSchema,

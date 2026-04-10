@@ -25,7 +25,7 @@ import { KsefRequirementBanner } from '@/components/invoices/KsefRequirementBann
 import { TotalsSummaryCard } from '@/components/invoices/TotalsSummaryCard'
 import { ValidationMessageList } from '@/components/invoices/ValidationMessageList'
 
-const createInvoiceFormSchema = createInvoiceRequestSchema.extend({
+const createInvoiceFormSchema = createInvoiceRequestSchema.safeExtend({
   buyerNip: z.union([createInvoiceRequestSchema.shape.buyerNip, z.literal('')]),
   documentNumber: z.union([createInvoiceRequestSchema.shape.documentNumber, z.literal('')]),
   externalReference: z.union([createInvoiceRequestSchema.shape.externalReference, z.literal('')]),

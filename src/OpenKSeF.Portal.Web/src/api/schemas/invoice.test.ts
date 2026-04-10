@@ -9,6 +9,7 @@ import {
   invoicePrintModelSchema,
   invoiceReadDtoSchema,
   nipSchema,
+  updateInvoiceDraftRequestSchema,
   validationEnvelopeSchema,
 } from './invoice'
 import { getInvoiceRuleFamily, invoiceRuleCodeRegistry } from './ruleCodes'
@@ -151,6 +152,104 @@ describe('invoice schemas', () => {
 
     expect(printModel.variant).toBe('English')
     expect(envelope.messages[0].code).toBe('INV-VAL-013')
+  })
+})
+
+describe('client-side rule mirroring', () => {
+  const validBase = {
+    kind: 'VatInvoice' as const,
+    sellerName: 'Sprzedawca Sp. z o.o.',
+    sellerNip: '1234563218',
+    buyerName: 'Nabywca Sp. z o.o.',
+    buyerKind: 'Business' as const,
+    buyerNip: '8567346215',
+    currency: 'PLN',
+    issueDate: '2026-04-10',
+    ksefSubmissionRequirement: 'Required' as const,
+  }
+
+  it('INV-VAL-001: rejects unsupported DocumentKind', () => {
+    expect(() => createInvoiceRequestSchema.parse({ ...validBase, kind: 'Unknown' })).toThrow()
+  })
+
+  it('INV-VAL-003: rejects proforma with KSeF Required or Optional', () => {
+    expect(() =>
+      createInvoiceRequestSchema.parse({ ...validBase, kind: 'Proforma', ksefSubmissionRequirement: 'Required' }),
+    ).toThrow()
+    expect(() =>
+      createInvoiceRequestSchema.parse({ ...validBase, kind: 'Proforma', ksefSubmissionRequirement: 'Optional' }),
+    ).toThrow()
+    // Proforma with Forbidden or NotApplicable is allowed
+    expect(() =>
+      createInvoiceRequestSchema.parse({
+        ...validBase,
+        kind: 'Proforma',
+        ksefSubmissionRequirement: 'Forbidden',
+        buyerKind: 'Consumer',
+        buyerNip: null,
+      }),
+    ).not.toThrow()
+    expect(() =>
+      createInvoiceRequestSchema.parse({
+        ...validBase,
+        kind: 'Proforma',
+        ksefSubmissionRequirement: 'NotApplicable',
+        buyerKind: 'Consumer',
+        buyerNip: null,
+      }),
+    ).not.toThrow()
+  })
+
+  it('INV-VAL-013: rejects Business buyer without NIP', () => {
+    expect(() =>
+      createInvoiceRequestSchema.parse({ ...validBase, buyerKind: 'Business', buyerNip: null }),
+    ).toThrow()
+    // Consumer without NIP is allowed
+    expect(() =>
+      createInvoiceRequestSchema.parse({ ...validBase, buyerKind: 'Consumer', buyerNip: null }),
+    ).not.toThrow()
+    // Unknown without NIP is a Warning only, not blocked
+    expect(() =>
+      createInvoiceRequestSchema.parse({
+        ...validBase,
+        buyerKind: 'Unknown',
+        buyerNip: null,
+        ksefSubmissionRequirement: 'Optional',
+      }),
+    ).not.toThrow()
+  })
+
+  it('INV-VAL-021: flags due date earlier than issue date as a warning-tagged issue', () => {
+    const result = updateInvoiceDraftRequestSchema.safeParse({
+      issueDate: '2026-04-10',
+      dueDate: '2026-04-09',
+    })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0].params?.ruleCode).toBe('INV-VAL-021')
+    expect(result.error?.issues[0].params?.severity).toBe('Warning')
+  })
+
+  it('INV-VAL-021: passes when due date equals or follows issue date', () => {
+    expect(
+      updateInvoiceDraftRequestSchema.safeParse({ issueDate: '2026-04-10', dueDate: '2026-04-10' }).success,
+    ).toBe(true)
+    expect(
+      updateInvoiceDraftRequestSchema.safeParse({ issueDate: '2026-04-10', dueDate: '2026-04-20' }).success,
+    ).toBe(true)
+  })
+
+  it('INV-VAL-050: rejects line with empty description', () => {
+    const result = updateInvoiceDraftRequestSchema.safeParse({
+      lines: [{ lineNumber: 1, description: '', quantity: 1, pricingMode: 'Net', unitPrice: 100, vatRate: '23%' }],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('INV-VAL-051: rejects line with quantity <= 0', () => {
+    const result = updateInvoiceDraftRequestSchema.safeParse({
+      lines: [{ lineNumber: 1, description: 'Usługa', quantity: 0, pricingMode: 'Net', unitPrice: 100, vatRate: '23%' }],
+    })
+    expect(result.success).toBe(false)
   })
 })
 
