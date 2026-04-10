@@ -38,6 +38,7 @@ public sealed class InvoiceReadDtoProjector : IInvoiceReadModelProjector<Invoice
             ExternalReference: invoice.ExternalReference,
             PaymentMethod: invoice.PaymentMethod,
             PublicNotes: invoice.PublicNotes,
+            InternalNotes: invoice.InternalNotes,
             KsefDocumentNumber: invoice.KsefIdentifiers?.KsefDocumentNumber,
             KsefReferenceNumber: invoice.KsefIdentifiers?.KsefReferenceNumber,
             KsefRejectionReason: invoice.KsefRejectionReason,

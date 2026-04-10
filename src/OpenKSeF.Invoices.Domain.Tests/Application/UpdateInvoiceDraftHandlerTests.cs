@@ -27,9 +27,14 @@ public class UpdateInvoiceDraftHandlerTests
             new DateTime(2026, 04, 10),
             new DateTime(2026, 04, 25),
             "FV/2026/0002",
+            "EXT-44",
             "Transfer",
             "Public note",
-            "Internal note");
+            "Internal note",
+            [
+                new UpdateInvoiceDraftLineCommand(1, "Updated service", 2m, "h", PricingMode.Net, 150m, 10m, "23%"),
+                new UpdateInvoiceDraftLineCommand(2, "Exempt service", 1m, null, PricingMode.Net, 50m, null, "zw")
+            ]);
 
         handler.Handle(invoice, command);
 
@@ -37,8 +42,50 @@ public class UpdateInvoiceDraftHandlerTests
         Assert.Equal(new DateTime(2026, 04, 10), invoice.SaleDate);
         Assert.Equal(new DateTime(2026, 04, 25), invoice.DueDate);
         Assert.Equal("FV/2026/0002", invoice.DocumentNumber!.Value);
+        Assert.Equal("EXT-44", invoice.ExternalReference);
         Assert.Equal("Transfer", invoice.PaymentMethod);
         Assert.Equal("Public note", invoice.PublicNotes);
+        Assert.Equal("Internal note", invoice.InternalNotes);
+        Assert.Collection(
+            invoice.LineItems,
+            line =>
+            {
+                Assert.Equal(1, line.LineNumber);
+                Assert.Equal("Updated service", line.Description);
+                Assert.Equal(2m, line.Quantity);
+                Assert.Equal("23%", line.VatRate.ToString());
+            },
+            line =>
+            {
+                Assert.Equal(2, line.LineNumber);
+                Assert.Equal("Exempt service", line.Description);
+                Assert.Equal("Exempt(zw)", line.VatRate.ToString());
+            });
+        Assert.Equal(320m, invoice.Totals.NetTotal.Amount);
+        Assert.Equal(62.1m, invoice.Totals.VatTotal.Amount);
+        Assert.Equal(382.1m, invoice.Totals.GrossTotal.Amount);
+    }
+
+    [Fact]
+    public void Handle_PreservesExistingValues_WhenPatchOmitsFields()
+    {
+        var invoice = MakeDraftInvoice();
+        invoice.SetDocumentNumber(new DocumentNumber("FV/2026/0001"));
+        invoice.SetExternalReference("ERP-1");
+        invoice.SetCommercialData("Transfer", "Public note", "Internal note");
+
+        var handler = new UpdateInvoiceDraftHandler();
+        var command = new UpdateInvoiceDraftCommand(
+            invoice.Id.Value,
+            PublicNotes: "Changed public note");
+
+        handler.Handle(invoice, command);
+
+        Assert.Equal(new DateTime(2026, 04, 10), invoice.IssueDate);
+        Assert.Equal("FV/2026/0001", invoice.DocumentNumber!.Value);
+        Assert.Equal("ERP-1", invoice.ExternalReference);
+        Assert.Equal("Transfer", invoice.PaymentMethod);
+        Assert.Equal("Changed public note", invoice.PublicNotes);
         Assert.Equal("Internal note", invoice.InternalNotes);
     }
 

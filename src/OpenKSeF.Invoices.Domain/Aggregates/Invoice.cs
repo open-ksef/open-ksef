@@ -244,6 +244,12 @@ public sealed class Invoice
         DocumentNumber = number;
     }
 
+    public void SetExternalReference(string? externalReference)
+    {
+        EnsureNotImmutable();
+        ExternalReference = string.IsNullOrWhiteSpace(externalReference) ? null : externalReference;
+    }
+
     public void SetIssueDates(DateTime issueDate, DateTime? saleDate = null, DateTime? dueDate = null)
     {
         EnsureNotImmutable();
@@ -258,6 +264,14 @@ public sealed class Invoice
         PaymentMethod = paymentMethod;
         PublicNotes = publicNotes;
         InternalNotes = internalNotes;
+    }
+
+    public void ReplaceLines(IEnumerable<InvoiceLine> lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        EnsureNotImmutable();
+        _lines.Clear();
+        _lines.AddRange(lines);
     }
 
     public void RecordDuplicateIssue(DateTime issuedAt, string? issuedBy = null)

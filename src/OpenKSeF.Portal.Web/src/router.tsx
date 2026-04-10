@@ -10,6 +10,7 @@ import { DashboardPage } from '@/pages/Dashboard'
 import { DeviceListPage } from '@/pages/DeviceList'
 import { InvoiceAggregateDetailPage } from '@/pages/InvoiceAggregateDetail'
 import { InvoiceDraftCreatePage } from '@/pages/InvoiceDraftCreate'
+import { InvoiceDraftEditPage } from '@/pages/InvoiceDraftEdit'
 import { SyncedInvoiceDetailPage } from '@/pages/SyncedInvoiceDetail'
 import { InvoiceListPage } from '@/pages/InvoiceList'
 import { LoginPage } from '@/pages/Login'
@@ -34,7 +35,7 @@ export const appRoutes: RouteObject[] = [
       { path: 'invoices/new', element: <InvoiceDraftCreatePage /> },
       { path: 'invoices/final-from-advances', element: <div /> },
       { path: 'invoices/aggregate/:id', element: <InvoiceAggregateDetailPage /> },
-      { path: 'invoices/aggregate/:id/edit', element: <div /> },
+      { path: 'invoices/aggregate/:id/edit', element: <InvoiceDraftEditPage /> },
       { path: 'invoices/aggregate/:id/approve', element: <div /> },
       { path: 'invoices/aggregate/:id/submit', element: <div /> },
       { path: 'invoices/aggregate/:id/corrections/new', element: <div /> },

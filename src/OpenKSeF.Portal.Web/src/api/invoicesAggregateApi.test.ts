@@ -317,6 +317,7 @@ function createInvoiceReadDto(overrides: Record<string, unknown> = {}) {
     externalReference: null,
     paymentMethod: null,
     publicNotes: null,
+    internalNotes: null,
     ksefDocumentNumber: 'KSEF-1',
     ksefReferenceNumber: 'REF-1',
     ksefRejectionReason: null,

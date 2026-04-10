@@ -154,14 +154,7 @@ public sealed class InvoicesAggregateControllerContractTests
         var invoice = MakeDraftInvoice(harness.TenantId, "FV/NOOP");
         await harness.SaveInvoiceAsync(invoice);
 
-        var request = new UpdateInvoiceDraftRequest(
-            invoice.IssueDate,
-            invoice.SaleDate,
-            invoice.DueDate,
-            invoice.DocumentNumber?.Value,
-            invoice.PaymentMethod,
-            invoice.PublicNotes,
-            null);
+        var request = new UpdateInvoiceDraftRequest();
 
         var first = await harness.ExecuteAsync(controller =>
             controller.UpdateDraft(harness.TenantId, invoice.Id.Value, request));
@@ -174,6 +167,50 @@ public sealed class InvoicesAggregateControllerContractTests
         var reloaded = await harness.Repository.FindByIdAsync(invoice.Id);
         Assert.NotNull(reloaded);
         Assert.Empty(reloaded!.DomainEvents);
+    }
+
+    [Fact]
+    public async Task Api006a_UpdateDraftAcceptsPartialPatchForLinesAndReference()
+    {
+        using var harness = new ContractHarness();
+        var invoice = MakeDraftInvoice(harness.TenantId, "FV/PATCH");
+        invoice.AddLine(InvoiceLine.Create(
+            2,
+            "First",
+            1m,
+            new Money(100m, CurrencyCode.Pln),
+            PricingMode.Net,
+            VatRate.OfPercentage(new Percentage(8))));
+        invoice.RecalculateTotals();
+        await harness.SaveInvoiceAsync(invoice);
+
+        var request = new UpdateInvoiceDraftRequest(
+            ExternalReference: "ERP-77",
+            Lines:
+            [
+                new UpdateInvoiceDraftLineRequest(1, "Second", 1m, "szt.", PricingMode.Net, 200m, null, "23%"),
+                new UpdateInvoiceDraftLineRequest(2, "First", 1m, "szt.", PricingMode.Net, 100m, null, "8%")
+            ]);
+
+        var result = await harness.ExecuteAsync(controller =>
+            controller.UpdateDraft(harness.TenantId, invoice.Id.Value, request));
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var dto = Assert.IsType<InvoiceReadDto>(ok.Value);
+        Assert.Equal("ERP-77", dto.ExternalReference);
+        Assert.Collection(
+            dto.Lines,
+            line =>
+            {
+                Assert.Equal(1, line.LineNumber);
+                Assert.Equal("Second", line.Description);
+            },
+            line =>
+            {
+                Assert.Equal(2, line.LineNumber);
+                Assert.Equal("First", line.Description);
+                Assert.Equal("8%", line.VatRate);
+            });
     }
 
     [Fact]

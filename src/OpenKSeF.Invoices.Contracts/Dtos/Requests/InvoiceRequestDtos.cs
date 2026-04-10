@@ -34,13 +34,15 @@ public sealed record CreateInvoiceRequest(
 }
 
 public sealed record UpdateInvoiceDraftRequest(
-    DateTime IssueDate,
+    DateTime? IssueDate = null,
     DateTime? SaleDate = null,
     DateTime? DueDate = null,
     string? DocumentNumber = null,
+    string? ExternalReference = null,
     string? PaymentMethod = null,
     string? PublicNotes = null,
-    string? InternalNotes = null)
+    string? InternalNotes = null,
+    IReadOnlyList<UpdateInvoiceDraftLineRequest>? Lines = null)
 {
     public UpdateInvoiceDraftCommand ToCommand(Guid invoiceId) =>
         new(
@@ -49,9 +51,33 @@ public sealed record UpdateInvoiceDraftRequest(
             SaleDate,
             DueDate,
             DocumentNumber,
+            ExternalReference,
             PaymentMethod,
             PublicNotes,
-            InternalNotes);
+            InternalNotes,
+            Lines?.Select(line => line.ToContract()).ToList());
+}
+
+public sealed record UpdateInvoiceDraftLineRequest(
+    int LineNumber,
+    string Description,
+    decimal Quantity,
+    string? UnitOfMeasure,
+    [property: JsonConverter(typeof(InvoicePascalCaseEnumJsonConverter))] PricingMode PricingMode,
+    decimal UnitPrice,
+    decimal? DiscountPercent,
+    string VatRate)
+{
+    public UpdateInvoiceDraftLineCommand ToContract() =>
+        new(
+            LineNumber,
+            Description,
+            Quantity,
+            UnitOfMeasure,
+            PricingMode,
+            UnitPrice,
+            DiscountPercent,
+            VatRate);
 }
 
 public sealed record ApproveInvoiceRequest

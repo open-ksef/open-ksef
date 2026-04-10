@@ -16,6 +16,7 @@ interface InvoiceLineEditorProps {
   onChange: (lines: InvoiceLineFormValue[]) => void
   mode: 'create' | 'correction'
   pricingMode: 'Net' | 'Gross'
+  allowReorder?: boolean
 }
 
 const newEmptyLine = (pricingMode: 'Net' | 'Gross'): InvoiceLineFormValue => ({
@@ -28,7 +29,13 @@ const newEmptyLine = (pricingMode: 'Net' | 'Gross'): InvoiceLineFormValue => ({
   vatRate: '23%',
 })
 
-export function InvoiceLineEditor({ value, onChange, mode, pricingMode }: InvoiceLineEditorProps): ReactElement {
+export function InvoiceLineEditor({
+  value,
+  onChange,
+  mode,
+  pricingMode,
+  allowReorder = false,
+}: InvoiceLineEditorProps): ReactElement {
   function handleAdd(): void {
     onChange([...value, newEmptyLine(pricingMode)])
   }
@@ -39,6 +46,18 @@ export function InvoiceLineEditor({ value, onChange, mode, pricingMode }: Invoic
 
   function handleChange(index: number, updated: InvoiceLineFormValue): void {
     onChange(value.map((line, i) => (i === index ? updated : line)))
+  }
+
+  function handleMove(index: number, direction: -1 | 1): void {
+    const nextIndex = index + direction
+    if (nextIndex < 0 || nextIndex >= value.length) {
+      return
+    }
+
+    const nextLines = [...value]
+    const [moved] = nextLines.splice(index, 1)
+    nextLines.splice(nextIndex, 0, moved)
+    onChange(nextLines)
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
@@ -54,7 +73,7 @@ export function InvoiceLineEditor({ value, onChange, mode, pricingMode }: Invoic
         <div className="invoice-line-editor__row" key={index}>
           {mode === 'correction' && line.correctionBefore ? (
             <div className="invoice-line-editor__correction-before">
-              <span className="invoice-line-editor__correction-label">Przed korektą</span>
+              <span className="invoice-line-editor__correction-label">Przed korekta</span>
               <LineFields
                 line={line.correctionBefore}
                 index={index}
@@ -80,14 +99,34 @@ export function InvoiceLineEditor({ value, onChange, mode, pricingMode }: Invoic
             type="button"
             className="invoice-line-editor__remove"
             onClick={() => handleRemove(index)}
-            aria-label={`Usuń pozycję ${index + 1}`}
+            aria-label={`Usun pozycje ${index + 1}`}
           >
-            Usuń
+            Usun
           </button>
+          {allowReorder ? (
+            <div className="invoice-line-editor__reorder">
+              <button
+                type="button"
+                data-testid={`line-move-up-${index}`}
+                onClick={() => handleMove(index, -1)}
+                disabled={index === 0}
+              >
+                W gore
+              </button>
+              <button
+                type="button"
+                data-testid={`line-move-down-${index}`}
+                onClick={() => handleMove(index, 1)}
+                disabled={index === value.length - 1}
+              >
+                W dol
+              </button>
+            </div>
+          ) : null}
         </div>
       ))}
       <button type="button" className="invoice-line-editor__add" onClick={handleAdd}>
-        Dodaj pozycję
+        Dodaj pozycje
       </button>
     </div>
   )
@@ -117,20 +156,20 @@ function LineFields({ line, index, prefix, disabled, onChange }: LineFieldsProps
           type="text"
           value={line.description}
           disabled={disabled}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => update({ description: e.target.value })}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => update({ description: event.target.value })}
         />
       </label>
       <label htmlFor={id('quantity')}>
-        Ilość
+        Ilosc
         <input
           id={id('quantity')}
           type="text"
           inputMode="decimal"
           value={line.quantity}
           disabled={disabled}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => {
-            const n = Number(e.target.value)
-            if (!Number.isNaN(n)) update({ quantity: n })
+          onChange={(event: ChangeEvent<HTMLInputElement>) => {
+            const parsed = Number(event.target.value)
+            if (!Number.isNaN(parsed)) update({ quantity: parsed })
           }}
         />
       </label>
@@ -141,7 +180,7 @@ function LineFields({ line, index, prefix, disabled, onChange }: LineFieldsProps
           type="text"
           value={line.unitOfMeasure}
           disabled={disabled}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => update({ unitOfMeasure: e.target.value })}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => update({ unitOfMeasure: event.target.value })}
         />
       </label>
       <label htmlFor={id('unitPrice')}>
@@ -152,9 +191,9 @@ function LineFields({ line, index, prefix, disabled, onChange }: LineFieldsProps
           inputMode="decimal"
           value={line.unitPrice}
           disabled={disabled}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => {
-            const n = Number(e.target.value.replace(',', '.'))
-            if (!Number.isNaN(n)) update({ unitPrice: n })
+          onChange={(event: ChangeEvent<HTMLInputElement>) => {
+            const parsed = Number(event.target.value.replace(',', '.'))
+            if (!Number.isNaN(parsed)) update({ unitPrice: parsed })
           }}
         />
       </label>
@@ -164,7 +203,7 @@ function LineFields({ line, index, prefix, disabled, onChange }: LineFieldsProps
           id={id('vatRate')}
           value={line.vatRate}
           disabled={disabled}
-          onChange={(e: ChangeEvent<HTMLSelectElement>) => update({ vatRate: e.target.value })}
+          onChange={(event: ChangeEvent<HTMLSelectElement>) => update({ vatRate: event.target.value })}
         >
           {['23%', '8%', '5%', '0%', 'zw', 'np'].map((rate) => (
             <option key={rate} value={rate}>

@@ -73,4 +73,37 @@ public class InvoiceRequestDtosTests
 
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<CreateInvoiceRequest>(json));
     }
+
+    [Fact]
+    public void UpdateInvoiceDraftRequest_ToCommand_MapsOptionalPatchValues()
+    {
+        var invoiceId = Guid.NewGuid();
+        var request = new UpdateInvoiceDraftRequest(
+            DocumentNumber: "FV/2/2026",
+            ExternalReference: "ERP-22",
+            Lines:
+            [
+                new UpdateInvoiceDraftLineRequest(
+                    1,
+                    "Service",
+                    2m,
+                    "h",
+                    PricingMode.Net,
+                    150m,
+                    5m,
+                    "23%")
+            ]);
+
+        var command = request.ToCommand(invoiceId);
+
+        Assert.Equal(invoiceId, command.InvoiceId);
+        Assert.Null(command.IssueDate);
+        Assert.Equal("FV/2/2026", command.DocumentNumber);
+        Assert.Equal("ERP-22", command.ExternalReference);
+        var line = Assert.Single(command.Lines!);
+        Assert.Equal(1, line.LineNumber);
+        Assert.Equal(PricingMode.Net, line.PricingMode);
+        Assert.Equal(150m, line.UnitPrice);
+        Assert.Equal("23%", line.VatRate);
+    }
 }

@@ -28,6 +28,7 @@ public sealed record InvoiceReadDto(
     string? ExternalReference,
     string? PaymentMethod,
     string? PublicNotes,
+    string? InternalNotes,
     string? KsefDocumentNumber,
     string? KsefReferenceNumber,
     string? KsefRejectionReason,

@@ -68,13 +68,24 @@ export const createInvoiceRequestSchema = z.object({
 })
 
 export const updateInvoiceDraftRequestSchema = z.object({
-  issueDate: isoDateSchema,
+  issueDate: isoDateSchema.optional(),
   saleDate: isoDateSchema.nullish(),
   dueDate: isoDateSchema.nullish(),
   documentNumber: z.string().trim().min(1).nullish(),
+  externalReference: z.string().trim().min(1).nullish(),
   paymentMethod: z.string().trim().min(1).nullish(),
   publicNotes: z.string().trim().min(1).nullish(),
   internalNotes: z.string().trim().min(1).nullish(),
+  lines: z.array(z.object({
+    lineNumber: z.number().int().positive(),
+    description: z.string().trim().min(1),
+    quantity: z.number().finite().positive(),
+    unitOfMeasure: z.string().trim().min(1).nullish(),
+    pricingMode: pricingModeSchema,
+    unitPrice: z.number().finite().nonnegative(),
+    discountPercent: z.number().finite().nonnegative().nullish(),
+    vatRate: z.string().trim().min(1),
+  })).min(1).optional(),
 })
 
 export const createCorrectionFromOriginalRequestSchema = z.object({
@@ -161,6 +172,7 @@ export const invoiceReadDtoSchema = z.object({
   externalReference: z.string().nullable(),
   paymentMethod: z.string().nullable(),
   publicNotes: z.string().nullable(),
+  internalNotes: z.string().nullable().optional(),
   ksefDocumentNumber: z.string().nullable(),
   ksefReferenceNumber: z.string().nullable(),
   ksefRejectionReason: z.string().nullable(),

@@ -194,12 +194,12 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E3-S2: Edit draft form
 > Backlog: `05:§5.6.4`
 
-- [ ] Create `src/pages/InvoiceDraftEdit.tsx`
-- [ ] Prefill from `getAggregateInvoice`
-- [ ] Redirect to detail if status is not `Draft`
-- [ ] Patch payload contains only changed fields
-- [ ] Submit → `updateInvoiceDraft`
-- [ ] Tests: `UIE-001..006`
+- [x] Create `src/pages/InvoiceDraftEdit.tsx`
+- [x] Prefill from `getAggregateInvoice`
+- [x] Redirect to detail if status is not `Draft`
+- [x] Patch payload contains only changed fields
+- [x] Submit → `updateInvoiceDraft`
+- [x] Tests: `UIE-001..006`
 
 ### E3-S3: Client-side rule mirroring
 > Backlog: `05:§5.9.2`
