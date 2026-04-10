@@ -148,10 +148,10 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 ### E4-S2: Technical validation before submission
 > Backlog: `04:L204-L215`
 
-- [ ] Implement `IKsefTechnicalValidationRule` rules: `INV-VAL-110..112` — `02:L428-L448`
-- [ ] Integrate open-ksef schema/library validation
-- [ ] Send pipeline blocks schema-invalid payloads before transport
-- [ ] Negative integration tests — `03:L280-L297` (KTF-001..003)
+- [x] Implement `IKsefTechnicalValidationRule` rules: `INV-VAL-110..112` — `02:L428-L448`
+- [x] Integrate open-ksef schema/library validation
+- [x] Send pipeline blocks schema-invalid payloads before transport
+- [x] Negative integration tests — `03:L280-L297` (KTF-001..003)
 
 ### E4-S3: Submission result handling
 > Backlog: `04:L217-L232`
