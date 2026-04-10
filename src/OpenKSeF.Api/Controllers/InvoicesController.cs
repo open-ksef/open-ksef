@@ -54,7 +54,7 @@ public class InvoicesController : ControllerBase
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
-        var query = _db.InvoiceHeaders
+        var query = _db.SyncedInvoices
             .Where(i => i.TenantId == tenantId);
 
         if (!string.IsNullOrWhiteSpace(filterByVendor))
@@ -116,7 +116,7 @@ public class InvoicesController : ControllerBase
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
 
-        var invoice = await _db.InvoiceHeaders
+        var invoice = await _db.SyncedInvoices
             .Include(i => i.Lines)
             .Where(i => i.Id == id && i.TenantId == tenantId)
             .FirstOrDefaultAsync();
@@ -133,7 +133,7 @@ public class InvoicesController : ControllerBase
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
 
-        var invoice = await _db.InvoiceHeaders
+        var invoice = await _db.SyncedInvoices
             .Include(i => i.Lines)
             .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber && i.TenantId == tenantId)
             .FirstOrDefaultAsync();
@@ -150,7 +150,7 @@ public class InvoicesController : ControllerBase
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
 
-        var invoice = await _db.InvoiceHeaders
+        var invoice = await _db.SyncedInvoices
             .FirstOrDefaultAsync(i => i.Id == id && i.TenantId == tenantId);
 
         if (invoice is null)
@@ -181,7 +181,7 @@ public class InvoicesController : ControllerBase
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
 
-        var invoice = await _db.InvoiceHeaders
+        var invoice = await _db.SyncedInvoices
             .FirstOrDefaultAsync(i => i.Id == id && i.TenantId == tenantId);
 
         if (invoice is null)

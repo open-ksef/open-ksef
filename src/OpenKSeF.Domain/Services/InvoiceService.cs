@@ -1,4 +1,3 @@
-#pragma warning disable CS0618 // InvoiceHeader/InvoiceLine are legacy persistence types; intentional sync-write path
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
@@ -37,14 +36,14 @@ public class InvoiceService : IInvoiceService
 
         foreach (var invoice in invoices)
         {
-            var existing = await _db.InvoiceHeaders
+            var existing = await _db.SyncedInvoices
                 .FirstOrDefaultAsync(i =>
                     i.TenantId == tenantId &&
                     i.KSeFInvoiceNumber == invoice.Number);
 
             if (existing is null)
             {
-                var newInvoice = new InvoiceHeader
+                var newInvoice = new SyncedInvoice
                 {
                     Id = Guid.NewGuid(),
                     TenantId = tenantId,
@@ -70,7 +69,7 @@ public class InvoiceService : IInvoiceService
                 if (invoice.Lines is { Count: > 0 })
                     newInvoice.Lines = invoice.Lines.Select(l => MapLine(l, newInvoice.Id)).ToList();
 
-                _db.InvoiceHeaders.Add(newInvoice);
+                _db.SyncedInvoices.Add(newInvoice);
                 newInvoiceIds.Add(newInvoice.Id);
                 newInvoiceEvents.Add(new NewInvoiceDetectedEvent(
                     tenantId, newInvoice.Id, invoice.VendorName,
@@ -100,12 +99,12 @@ public class InvoiceService : IInvoiceService
 
                 if (invoice.Lines is not null)
                 {
-                    var oldLines = await _db.InvoiceLines
-                        .Where(l => l.InvoiceHeaderId == existing.Id)
+                    var oldLines = await _db.SyncedInvoiceLines
+                        .Where(l => l.SyncedInvoiceId == existing.Id)
                         .ToListAsync();
-                    _db.InvoiceLines.RemoveRange(oldLines);
+                    _db.SyncedInvoiceLines.RemoveRange(oldLines);
                     if (invoice.Lines.Count > 0)
-                        _db.InvoiceLines.AddRange(invoice.Lines.Select(l => MapLine(l, existing.Id)));
+                        _db.SyncedInvoiceLines.AddRange(invoice.Lines.Select(l => MapLine(l, existing.Id)));
                 }
 
                 _logger.LogDebug(
@@ -138,10 +137,10 @@ public class InvoiceService : IInvoiceService
         return newInvoiceIds;
     }
 
-    private static InvoiceLine MapLine(InvoiceLineDto dto, Guid invoiceHeaderId) => new()
+    private static SyncedInvoiceLine MapLine(InvoiceLineDto dto, Guid syncedInvoiceId) => new()
     {
         Id = Guid.NewGuid(),
-        InvoiceHeaderId = invoiceHeaderId,
+        SyncedInvoiceId = syncedInvoiceId,
         LineNumber = dto.LineNumber,
         Name = dto.Name,
         Unit = dto.Unit,

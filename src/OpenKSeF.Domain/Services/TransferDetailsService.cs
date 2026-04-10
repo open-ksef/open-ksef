@@ -1,4 +1,3 @@
-#pragma warning disable CS0618 // TransferDetailsService is a legacy sync-side service; intentional InvoiceHeader reference
 using System.Globalization;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Models;
@@ -7,7 +6,7 @@ namespace OpenKSeF.Domain.Services;
 
 public class TransferDetailsService : ITransferDetailsService
 {
-    public string BuildTransferText(InvoiceHeader invoice)
+    public string BuildTransferText(SyncedInvoice invoice)
     {
         var lines = new List<string>
         {
@@ -26,7 +25,7 @@ public class TransferDetailsService : ITransferDetailsService
         return string.Join("\n", lines);
     }
 
-    public TransferData BuildTransferData(InvoiceHeader invoice)
+    public TransferData BuildTransferData(SyncedInvoice invoice)
     {
         return new TransferData
         {

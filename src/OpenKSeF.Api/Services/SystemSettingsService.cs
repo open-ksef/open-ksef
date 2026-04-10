@@ -238,7 +238,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        var hasInvoices = await db.InvoiceHeaders.AnyAsync(ct);
+        var hasInvoices = await db.SyncedInvoices.AnyAsync(ct);
         var hasCredentials = await db.KSeFCredentials.AnyAsync(ct);
 
         return (hasInvoices, hasCredentials);

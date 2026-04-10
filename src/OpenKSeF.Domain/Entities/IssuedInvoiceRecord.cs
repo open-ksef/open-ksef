@@ -6,7 +6,7 @@ namespace OpenKSeF.Domain.Entities;
 ///
 /// Coexistence strategy:
 /// - <see cref="IssuedInvoiceRecord"/>: write-side / issuing domain — invoices the tenant creates
-/// - <see cref="InvoiceHeader"/> (→ SyncedInvoice): read-side — invoices synced from KSeF
+/// - <see cref="SyncedInvoice"/>: read-side — invoices synced from KSeF
 /// Both tables live in the same database; they serve different bounded contexts.
 ///
 /// Rollback path for the SyncedInvoice rename migration:

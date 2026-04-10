@@ -1,4 +1,3 @@
-#pragma warning disable CS0618 // InvoiceHeader/InvoiceLine are legacy persistence types; intentional EF mapping
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Domain.Entities;
 
@@ -13,8 +12,8 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<KSeFCredential> KSeFCredentials => Set<KSeFCredential>();
-    public DbSet<InvoiceHeader> InvoiceHeaders => Set<InvoiceHeader>();
-    public DbSet<InvoiceLine> InvoiceLines => Set<InvoiceLine>();
+    public DbSet<SyncedInvoice> SyncedInvoices => Set<SyncedInvoice>();
+    public DbSet<SyncedInvoiceLine> SyncedInvoiceLines => Set<SyncedInvoiceLine>();
     public DbSet<SyncState> SyncStates => Set<SyncState>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
     public DbSet<SystemConfig> SystemConfigs => Set<SystemConfig>();
@@ -51,8 +50,8 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // InvoiceHeader (persisted as SyncedInvoices — legacy synced read model)
-        modelBuilder.Entity<InvoiceHeader>(entity =>
+        // SyncedInvoice (synced read model; table: SyncedInvoices)
+        modelBuilder.Entity<SyncedInvoice>(entity =>
         {
             entity.ToTable("SyncedInvoices");
             entity.HasKey(i => i.Id);
@@ -77,12 +76,14 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // InvoiceLine (persisted as SyncedInvoiceLines — legacy synced read model)
-        modelBuilder.Entity<InvoiceLine>(entity =>
+        // SyncedInvoiceLine (synced read model; table: SyncedInvoiceLines)
+        modelBuilder.Entity<SyncedInvoiceLine>(entity =>
         {
             entity.ToTable("SyncedInvoiceLines");
             entity.HasKey(l => l.Id);
-            entity.HasIndex(l => l.InvoiceHeaderId);
+            // Column is still named InvoiceHeaderId in the database (legacy name preserved)
+            entity.Property(l => l.SyncedInvoiceId).HasColumnName("InvoiceHeaderId");
+            entity.HasIndex(l => l.SyncedInvoiceId).HasDatabaseName("IX_SyncedInvoiceLines_InvoiceHeaderId");
             entity.Property(l => l.Name).HasMaxLength(512);
             entity.Property(l => l.Unit).HasMaxLength(50);
             entity.Property(l => l.VatRate).HasMaxLength(50);
@@ -92,9 +93,10 @@ public class ApplicationDbContext : DbContext
             entity.Property(l => l.AmountNet).HasPrecision(18, 2);
             entity.Property(l => l.AmountGross).HasPrecision(18, 2);
             entity.Property(l => l.AmountVat).HasPrecision(18, 2);
-            entity.HasOne(l => l.InvoiceHeader)
+            entity.HasOne(l => l.SyncedInvoice)
                 .WithMany(i => i.Lines)
-                .HasForeignKey(l => l.InvoiceHeaderId)
+                .HasForeignKey(l => l.SyncedInvoiceId)
+                .HasConstraintName("FK_SyncedInvoiceLines_SyncedInvoices_InvoiceHeaderId")
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

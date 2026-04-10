@@ -1,4 +1,3 @@
-#pragma warning disable CS0618 // InvoiceHeader is a legacy navigation property; intentional EF relation
 namespace OpenKSeF.Domain.Entities;
 
 public class Tenant
@@ -12,7 +11,7 @@ public class Tenant
     public DateTime UpdatedAt { get; set; }
 
     public ICollection<KSeFCredential> KSeFCredentials { get; set; } = [];
-    public ICollection<InvoiceHeader> Invoices { get; set; } = [];
+    public ICollection<SyncedInvoice> Invoices { get; set; } = [];
     public SyncState? SyncState { get; set; }
     public ICollection<DeviceToken> DeviceTokens { get; set; } = [];
 }

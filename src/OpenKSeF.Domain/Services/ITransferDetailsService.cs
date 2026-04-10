@@ -1,4 +1,3 @@
-#pragma warning disable CS0618 // ITransferDetailsService is a legacy interface that still works with InvoiceHeader
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Models;
 
@@ -12,10 +11,10 @@ public interface ITransferDetailsService
     /// <summary>
     /// Builds a copy-paste friendly text representation of transfer details.
     /// </summary>
-    string BuildTransferText(InvoiceHeader invoice);
+    string BuildTransferText(SyncedInvoice invoice);
 
     /// <summary>
     /// Builds a structured transfer data object for QR code generation or programmatic use.
     /// </summary>
-    TransferData BuildTransferData(InvoiceHeader invoice);
+    TransferData BuildTransferData(SyncedInvoice invoice);
 }

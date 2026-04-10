@@ -40,9 +40,9 @@ public class DashboardController : ControllerBase
                 t.DisplayName,
                 t.SyncState != null ? t.SyncState.LastSyncedAt : null,
                 t.SyncState != null ? t.SyncState.LastSuccessfulSync : null,
-                _db.InvoiceHeaders.Count(i => i.TenantId == t.Id),
-                _db.InvoiceHeaders.Count(i => i.TenantId == t.Id && i.IssueDate >= last7DaysThreshold),
-                _db.InvoiceHeaders.Count(i => i.TenantId == t.Id && i.IssueDate >= last30DaysThreshold),
+                _db.SyncedInvoices.Count(i => i.TenantId == t.Id),
+                _db.SyncedInvoices.Count(i => i.TenantId == t.Id && i.IssueDate >= last7DaysThreshold),
+                _db.SyncedInvoices.Count(i => i.TenantId == t.Id && i.IssueDate >= last30DaysThreshold),
                 t.SyncState == null || !t.SyncState.LastSuccessfulSync.HasValue
                     ? "Error"
                     : t.SyncState.LastSuccessfulSync >= successThreshold

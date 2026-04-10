@@ -1,4 +1,3 @@
-#pragma warning disable CS0618 // TenantSyncService is the legacy sync write path; intentional InvoiceHeader reference
 using System.Security.Cryptography.X509Certificates;
 using KSeF.Client.Api.Services;
 using Microsoft.EntityFrameworkCore;
@@ -85,7 +84,7 @@ public sealed class TenantSyncService : ITenantSyncService
         DateTime? fullResyncWindowStart = null;
         if (forceFullResync)
         {
-            var earliestIssueDate = await _db.InvoiceHeaders
+            var earliestIssueDate = await _db.SyncedInvoices
                 .Where(h => h.TenantId == tenantId)
                 .MinAsync(h => (DateTime?)h.IssueDate, cancellationToken);
             fullResyncWindowStart = earliestIssueDate?.AddHours(-1)
@@ -160,7 +159,7 @@ public sealed class TenantSyncService : ITenantSyncService
                     }
                     else
                     {
-                        var invoicesAlreadyParsed = await _db.InvoiceHeaders
+                        var invoicesAlreadyParsed = await _db.SyncedInvoices
                             .Where(h => h.TenantId == tenant.Id
                                 && batchNumbers.Contains(h.KSeFInvoiceNumber)
                                 && h.VendorBankAccount != null

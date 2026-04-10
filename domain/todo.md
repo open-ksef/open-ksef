@@ -199,7 +199,7 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 ## Cross-Cutting Tasks
 > `04:L283-L300`
 
-- [ ] **X1 Naming cleanup** `04:L285-L289`: reserve `Invoice` for domain; rename legacy to `SyncedInvoice`/`SyncedInvoiceLine`; align PostgreSQL
+- [x] **X1 Naming cleanup** `04:L285-L289`: reserve `Invoice` for domain; rename legacy to `SyncedInvoice`/`SyncedInvoiceLine`; align PostgreSQL
 - [x] **X2 Error code governance** `04:L291-L292`: central `INV-VAL-###` registry + CI test for uniqueness
 - [x] **X3 Architectural guards** `04:L294-L296`: test preventing infra refs from Domain; test preventing controllers from mutating aggregates
 - [x] **X4 Documentation as code** `04:L298-L300`: keep domain docs in `docs/domain/`; add ADR for naming + duplicate-as-print decisions

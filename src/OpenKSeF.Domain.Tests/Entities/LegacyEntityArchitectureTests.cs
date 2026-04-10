@@ -4,16 +4,15 @@ using OpenKSeF.Domain.Entities;
 namespace OpenKSeF.Domain.Tests.Entities;
 
 /// <summary>
-/// Architectural guard: legacy EF entities must remain pure data containers.
+/// Architectural guard: synced read-side EF entities must remain pure data containers.
 /// No public methods should be added — if you need behaviour, use a mapper or domain service.
 /// </summary>
-#pragma warning disable CS0618 // accessing obsolete types intentionally in architecture tests
 public class LegacyEntityArchitectureTests
 {
     [Fact]
-    public void InvoiceHeader_HasNoBehaviourMethods()
+    public void SyncedInvoice_HasNoBehaviourMethods()
     {
-        var methods = typeof(InvoiceHeader)
+        var methods = typeof(SyncedInvoice)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(m => !m.IsSpecialName) // exclude property get_/set_ accessors
             .ToList();
@@ -22,9 +21,9 @@ public class LegacyEntityArchitectureTests
     }
 
     [Fact]
-    public void InvoiceLine_HasNoBehaviourMethods()
+    public void SyncedInvoiceLine_HasNoBehaviourMethods()
     {
-        var methods = typeof(InvoiceLine)
+        var methods = typeof(SyncedInvoiceLine)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(m => !m.IsSpecialName)
             .ToList();
@@ -33,17 +32,17 @@ public class LegacyEntityArchitectureTests
     }
 
     [Fact]
-    public void InvoiceHeader_IsMarkedObsolete()
+    public void SyncedInvoice_IsNotObsolete()
     {
-        var attr = typeof(InvoiceHeader).GetCustomAttribute<ObsoleteAttribute>();
-        Assert.NotNull(attr);
+        // After rename, SyncedInvoice is the correct name — it must NOT be marked obsolete
+        var attr = typeof(SyncedInvoice).GetCustomAttribute<ObsoleteAttribute>();
+        Assert.Null(attr);
     }
 
     [Fact]
-    public void InvoiceLine_IsMarkedObsolete()
+    public void SyncedInvoiceLine_IsNotObsolete()
     {
-        var attr = typeof(InvoiceLine).GetCustomAttribute<ObsoleteAttribute>();
-        Assert.NotNull(attr);
+        var attr = typeof(SyncedInvoiceLine).GetCustomAttribute<ObsoleteAttribute>();
+        Assert.Null(attr);
     }
 }
-#pragma warning restore CS0618
