@@ -102,7 +102,7 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 - [x] Final invoice tests: `FIN-001..004` — `03:L54-L74`
 - [x] Correction tests: `COR-001..006` — `03:L77-L112`
 - [x] Proforma tests: `PRO-001..003` — `03:L115-L130`
-- [ ] Buyer classification tests: `BUY-001..005` — `03:L133-L161`
+- [x] Buyer classification tests: `BUY-001..005` — `03:L133-L161`
 - [ ] State transition tests: `ST-001..006` — `03:L163-L199`
 - [ ] Immutability tests: `IMM-001..003` — `03:L201-L218`
 - [ ] Config/policy tests: `CFG-001..005` — `03:L220-L249`
