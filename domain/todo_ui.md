@@ -88,9 +88,9 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E1-S1: Tech stack additions
 > Backlog: `05:§5.5.1`
 
-- [ ] `npm install react-hook-form zod @hookform/resolvers` in `src/OpenKSeF.Portal.Web`
-- [ ] Verify `npm run build` and `npm run lint` still pass
-- [ ] Update `package.json` engines/deps list
+- [x] `npm install react-hook-form zod @hookform/resolvers` in `src/OpenKSeF.Portal.Web`
+- [x] Verify `npm run build` and `npm run lint` still pass
+- [x] Update `package.json` engines/deps list
 
 ### E1-S2: Shared schemas
 > Backlog: `05:§5.5.4`
