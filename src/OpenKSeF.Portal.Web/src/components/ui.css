@@ -898,6 +898,37 @@ label {
   color: #6d28d9;
 }
 
+.ksef-identifiers-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-card);
+}
+
+.ksef-identifiers-card__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ui-text);
+}
+
+.ksef-identifiers-card__details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ksef-identifiers-card__details dt,
+.ksef-identifiers-card__details dd {
+  margin: 0;
+}
+
 .ui-skeleton {
   display: grid;
   gap: 10px;
