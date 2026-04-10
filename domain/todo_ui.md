@@ -225,10 +225,10 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E4-S2: Reopen flow
 > Backlog: `05:§5.8`
 
-- [ ] "Odblokuj do edycji" button on detail for eligible statuses
-- [ ] Gated by server response (`reopenAllowed` flag on `InvoiceReadDto`); backend must expose this
-- [ ] Disabled button with tooltip when not allowed, referencing `INV-VAL-102`
-- [ ] Tests: `UIA-003..004`
+- [x] "Odblokuj do edycji" button on detail for eligible statuses
+- [x] Gated by server response (`reopenAllowed` flag on `InvoiceReadDto`); backend must expose this
+- [x] Disabled button with tooltip when not allowed, referencing `INV-VAL-102`
+- [x] Tests: `UIA-003..004`
 
 ---
 

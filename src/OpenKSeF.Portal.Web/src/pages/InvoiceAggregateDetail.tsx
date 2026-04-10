@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
-import type { ReactElement } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, type ReactElement } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
-import { getAggregateInvoice } from '@/api/invoicesAggregateApi'
+import { InvoiceValidationError, getAggregateInvoice, reopenInvoice } from '@/api/invoicesAggregateApi'
 import type { InvoiceReadDto } from '@/api/schemas/invoice'
 import { listTenants } from '@/api/endpoints/tenants'
 import { AsyncStateView } from '@/components/AsyncStateView'
@@ -33,6 +33,9 @@ export function InvoiceAggregateDetailPage(): ReactElement {
 
   const effectiveTenantId = tenantIdFromUrl || tenantsQuery.data?.[0]?.id || ''
 
+  const queryClient = useQueryClient()
+  const [reopenError, setReopenError] = useState<string | null>(null)
+
   const invoiceQuery = useQuery({
     queryKey: ['invoices', 'aggregate', 'detail', { tenantId: effectiveTenantId, id }],
     queryFn: () => getAggregateInvoice(effectiveTenantId, id),
@@ -45,6 +48,23 @@ export function InvoiceAggregateDetailPage(): ReactElement {
       }
 
       return false
+    },
+  })
+
+  const reopenMutation = useMutation({
+    mutationFn: () => reopenInvoice(effectiveTenantId, id),
+    onSuccess: () => {
+      setReopenError(null)
+      void queryClient.invalidateQueries({
+        queryKey: ['invoices', 'aggregate', 'detail', { tenantId: effectiveTenantId, id }],
+      })
+    },
+    onError: (error) => {
+      if (error instanceof InvoiceValidationError) {
+        setReopenError(error.messages[0]?.messagePl ?? 'Nie udało się cofnąć zatwierdzenia.')
+      } else {
+        setReopenError('Nie udało się cofnąć zatwierdzenia.')
+      }
     },
   })
 
@@ -133,7 +153,17 @@ export function InvoiceAggregateDetailPage(): ReactElement {
               </div>
             ) : null}
 
-            <ActionButtons invoice={invoice} tenantId={effectiveTenantId} id={id} />
+            {reopenError ? <p role="alert">{reopenError}</p> : null}
+            <ActionButtons
+              invoice={invoice}
+              tenantId={effectiveTenantId}
+              id={id}
+              onReopen={() => {
+                setReopenError(null)
+                void reopenMutation.mutate()
+              }}
+              isReopening={reopenMutation.isPending}
+            />
           </div>
         ) : null}
       </AsyncStateView>
@@ -202,7 +232,15 @@ function DatesSection({ invoice }: { invoice: InvoiceReadDto }): ReactElement {
   )
 }
 
-function ActionButtons({ invoice, tenantId, id }: { invoice: InvoiceReadDto; tenantId: string; id: string }): ReactElement {
+interface ActionButtonsProps {
+  invoice: InvoiceReadDto
+  tenantId: string
+  id: string
+  onReopen: () => void
+  isReopening: boolean
+}
+
+function ActionButtons({ invoice, tenantId, id, onReopen, isReopening }: ActionButtonsProps): ReactElement {
   const base = `/invoices/aggregate/${encodeURIComponent(id)}`
   const tenantQuery = `tenantId=${encodeURIComponent(tenantId)}`
 
@@ -220,13 +258,21 @@ function ActionButtons({ invoice, tenantId, id }: { invoice: InvoiceReadDto; ten
   }
 
   if (invoice.status === 'Approved') {
+    const canReopen = invoice.reopenAllowed === true
     return (
       <div className="invoice-aggregate-detail__actions">
         <Link to={`${base}/submit?${tenantQuery}`} className="ui-button ui-button--primary">
           Wyślij do KSeF
         </Link>
-        <button type="button" className="ui-button ui-button--secondary" aria-label="Odblokuj do edycji" title="INV-VAL-102">
-          Odblokuj do edycji
+        <button
+          type="button"
+          className="ui-button ui-button--secondary"
+          data-testid="reopen-button"
+          disabled={!canReopen || isReopening}
+          title={!canReopen ? 'INV-VAL-102' : undefined}
+          onClick={onReopen}
+        >
+          {isReopening ? 'Cofanie...' : 'Odblokuj do edycji'}
         </button>
       </div>
     )

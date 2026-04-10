@@ -36,7 +36,11 @@ public static class DependencyInjection
 
         services.AddScoped<InvoiceReadDtoProjector>();
         services.AddScoped<IInvoiceReadModelProjector<InvoiceReadDto>, InvoiceReadDtoProjector>();
-        services.AddScoped<Func<PrintVariant, InvoicePrintModelProjector>>(_ => variant => new InvoicePrintModelProjector(variant));
+        services.AddScoped<Func<PrintVariant, InvoicePrintModelProjector>>(sp =>
+        {
+            var policy = sp.GetRequiredService<IApprovedEditPolicy>();
+            return variant => new InvoicePrintModelProjector(variant, policy);
+        });
         services.AddScoped<Func<PrintVariant, IInvoiceReadModelProjector<InvoicePrintModel>>>(sp =>
         {
             var factory = sp.GetRequiredService<Func<PrintVariant, InvoicePrintModelProjector>>();

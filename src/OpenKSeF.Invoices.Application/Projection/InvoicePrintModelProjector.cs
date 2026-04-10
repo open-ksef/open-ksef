@@ -1,5 +1,6 @@
 using OpenKSeF.Invoices.Contracts.Dtos;
 using OpenKSeF.Invoices.Domain.Aggregates;
+using OpenKSeF.Invoices.Domain.Policies;
 using OpenKSeF.Invoices.Domain.Projection;
 
 namespace OpenKSeF.Invoices.Application.Projection;
@@ -13,10 +14,10 @@ public sealed class InvoicePrintModelProjector : IInvoiceReadModelProjector<Invo
     private readonly InvoiceReadDtoProjector _dtoProjector;
     private readonly PrintVariant _variant;
 
-    public InvoicePrintModelProjector(PrintVariant variant)
+    public InvoicePrintModelProjector(PrintVariant variant, IApprovedEditPolicy approvedEditPolicy)
     {
         _variant = variant;
-        _dtoProjector = new InvoiceReadDtoProjector();
+        _dtoProjector = new InvoiceReadDtoProjector(approvedEditPolicy);
     }
 
     public InvoicePrintModel Project(Invoice invoice)

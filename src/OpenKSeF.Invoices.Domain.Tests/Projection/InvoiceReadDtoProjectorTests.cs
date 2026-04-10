@@ -5,6 +5,7 @@ using OpenKSeF.Invoices.Domain.Entities;
 using OpenKSeF.Invoices.Domain.Enums;
 using OpenKSeF.Invoices.Domain.Snapshots;
 using OpenKSeF.Invoices.Domain.ValueObjects;
+using OpenKSeF.Invoices.Domain.Tests.TestSupport;
 
 namespace OpenKSeF.Invoices.Domain.Tests.ProjectionTests;
 
@@ -15,12 +16,13 @@ public class InvoiceReadDtoProjectorTests
     private static readonly SellerSnapshot Seller = new(new PartyName("Seller Sp. z o.o."), new Nip("1234567890"));
     private static readonly BuyerSnapshot Buyer =
         new(new PartyName("Buyer SA"), BuyerKind.Business, new Nip("9876543210"));
+    private static readonly InvoiceReadDtoProjector Projector = new(new AlwaysAllowReopenPolicy());
 
     [Fact]
     public void Project_MapsIdentityFields()
     {
         var invoice = MakeDraftInvoice("FV/2026/001");
-        var projector = new InvoiceReadDtoProjector();
+        var projector = Projector;
 
         var dto = projector.Project(invoice);
 
@@ -35,7 +37,7 @@ public class InvoiceReadDtoProjectorTests
     public void Project_MapsSellerAndBuyer()
     {
         var invoice = MakeDraftInvoice("FV/2026/002");
-        var dto = new InvoiceReadDtoProjector().Project(invoice);
+        var dto = Projector.Project(invoice);
 
         Assert.Equal("Seller Sp. z o.o.", dto.Seller.Name);
         Assert.Equal("1234567890", dto.Seller.Nip);
@@ -47,7 +49,7 @@ public class InvoiceReadDtoProjectorTests
     public void Project_MapsTotals()
     {
         var invoice = MakeDraftInvoice("FV/2026/003");
-        var dto = new InvoiceReadDtoProjector().Project(invoice);
+        var dto = Projector.Project(invoice);
 
         Assert.Equal(100m, dto.TotalNet.Amount);
         Assert.True(dto.TotalVat.Amount > 0);
@@ -58,7 +60,7 @@ public class InvoiceReadDtoProjectorTests
     public void Project_MapsLines()
     {
         var invoice = MakeDraftInvoice("FV/2026/004");
-        var dto = new InvoiceReadDtoProjector().Project(invoice);
+        var dto = Projector.Project(invoice);
 
         var line = Assert.Single(dto.Lines);
         Assert.Equal("Test service", line.Description);
@@ -84,7 +86,7 @@ public class InvoiceReadDtoProjectorTests
             1, "Line", 1m, new Money(100m, Pln), PricingMode.Net, VatRate.Zero));
         correction.RecalculateTotals();
 
-        var dto = new InvoiceReadDtoProjector().Project(correction);
+        var dto = Projector.Project(correction);
 
         Assert.NotNull(dto.CorrectionReference);
         Assert.Equal(originalId.Value, dto.CorrectionReference.OriginalInvoiceId);
@@ -102,7 +104,7 @@ public class InvoiceReadDtoProjectorTests
         invoice.AddAdvanceAllocation(
             new AdvanceAllocation(advId, new DocumentNumber("ADV/1"), new Money(300m, Pln)));
 
-        var dto = new InvoiceReadDtoProjector().Project(invoice);
+        var dto = Projector.Project(invoice);
 
         var alloc = Assert.Single(dto.SettledAdvanceAllocations);
         Assert.Equal(advId.Value, alloc.AdvanceInvoiceId);
@@ -121,10 +123,23 @@ public class InvoiceReadDtoProjectorTests
             new DateTime(2026, 4, 10, 12, 0, 0, DateTimeKind.Utc));
         invoice.RecordDuplicateIssue(new DateTime(2026, 4, 10, 13, 0, 0, DateTimeKind.Utc), "admin");
 
-        var dto = new InvoiceReadDtoProjector().Project(invoice);
+        var dto = Projector.Project(invoice);
 
         var dup = Assert.Single(dto.DuplicateIssuances);
         Assert.Equal("admin", dup.IssuedBy);
+    }
+
+    [Fact]
+    public void Project_MapsReopenAllowed_FromPolicy()
+    {
+        var invoice = MakeDraftInvoice("FV/2026/006");
+        invoice.Approve(new DateTime(2026, 4, 10, 10, 0, 0, DateTimeKind.Utc));
+
+        var allowProjector = new InvoiceReadDtoProjector(new AlwaysAllowReopenPolicy());
+        var denyProjector = new InvoiceReadDtoProjector(new NeverAllowReopenPolicy());
+
+        Assert.True(allowProjector.Project(invoice).ReopenAllowed);
+        Assert.False(denyProjector.Project(invoice).ReopenAllowed);
     }
 
     private static Invoice MakeDraftInvoice(string number)

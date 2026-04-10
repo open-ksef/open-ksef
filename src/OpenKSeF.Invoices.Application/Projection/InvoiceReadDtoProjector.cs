@@ -1,5 +1,6 @@
 using OpenKSeF.Invoices.Contracts.Dtos;
 using OpenKSeF.Invoices.Domain.Aggregates;
+using OpenKSeF.Invoices.Domain.Policies;
 using OpenKSeF.Invoices.Domain.Projection;
 
 namespace OpenKSeF.Invoices.Application.Projection;
@@ -8,7 +9,7 @@ namespace OpenKSeF.Invoices.Application.Projection;
 /// Projects an <see cref="Invoice"/> aggregate to an API-facing <see cref="InvoiceReadDto"/>.
 /// Controllers and query handlers depend on this projector — never on aggregate internals.
 /// </summary>
-public sealed class InvoiceReadDtoProjector : IInvoiceReadModelProjector<InvoiceReadDto>
+public sealed class InvoiceReadDtoProjector(IApprovedEditPolicy approvedEditPolicy) : IInvoiceReadModelProjector<InvoiceReadDto>
 {
     public InvoiceReadDto Project(Invoice invoice)
     {
@@ -75,6 +76,7 @@ public sealed class InvoiceReadDtoProjector : IInvoiceReadModelProjector<Invoice
                 .ToList(),
             DuplicateIssuances: invoice.DuplicateIssuances
                 .Select(d => new DuplicateIssuanceReadDto(d.IssuedAt, d.IssuedBy))
-                .ToList());
+                .ToList(),
+            ReopenAllowed: approvedEditPolicy.CanReopen(invoice));
     }
 }

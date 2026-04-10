@@ -36,7 +36,9 @@ public sealed record InvoiceReadDto(
     IReadOnlyList<InvoiceLineReadDto> Lines,
     IReadOnlyList<string> AdvanceDocumentIds,
     IReadOnlyList<AdvanceAllocationReadDto> SettledAdvanceAllocations,
-    IReadOnlyList<DuplicateIssuanceReadDto> DuplicateIssuances);
+    IReadOnlyList<DuplicateIssuanceReadDto> DuplicateIssuances,
+    /// <summary>True when the current tenant policy allows reopening this invoice to Draft.</summary>
+    bool ReopenAllowed);
 
 public sealed record PartyReadDto(string Name, string? Nip);
 

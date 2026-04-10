@@ -259,6 +259,7 @@ export const invoiceReadDtoSchema = z.object({
   advanceDocumentIds: z.array(z.string()),
   settledAdvanceAllocations: z.array(advanceAllocationReadDtoSchema),
   duplicateIssuances: z.array(duplicateIssuanceReadDtoSchema),
+  reopenAllowed: z.boolean().optional(),
 })
 
 export const duplicatePrintInfoSchema = z.object({

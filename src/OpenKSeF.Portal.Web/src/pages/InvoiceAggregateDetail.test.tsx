@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getAggregateInvoice } from '@/api/invoicesAggregateApi'
+import { InvoiceValidationError, getAggregateInvoice, reopenInvoice } from '@/api/invoicesAggregateApi'
 import { listTenants } from '@/api/endpoints/tenants'
 import { InvoiceAggregateDetailPage } from './InvoiceAggregateDetail'
 
@@ -15,6 +15,7 @@ vi.mock('@/api/endpoints/tenants', () => ({
 
 vi.mock('@/api/invoicesAggregateApi', () => ({
   getAggregateInvoice: vi.fn(),
+  reopenInvoice: vi.fn(),
 }))
 
 function flushPromises() {
@@ -296,6 +297,54 @@ describe('InvoiceAggregateDetailPage', () => {
 
     expect(container.textContent).toContain('ZAL/2026/01/001')
     expect(container.textContent).toContain('ZAL/2026/02/001')
+  })
+
+  it('UIA-003 reopen happy path: button enabled when reopenAllowed, calls reopenInvoice on click', async () => {
+    vi.mocked(listTenants).mockResolvedValue(defaultTenant)
+    vi.mocked(getAggregateInvoice).mockResolvedValue({ ...approvedInvoice, reopenAllowed: true })
+    vi.mocked(reopenInvoice).mockResolvedValue({ ...approvedInvoice, status: 'Draft', approvedAt: null, reopenAllowed: false })
+
+    const { router } = renderPage()
+    await act(async () => {
+      root.render(<RouterProvider router={router} />)
+      await flushPromises()
+      await flushPromises()
+    })
+
+    await act(async () => {
+      await waitFor(() => container.querySelector('[data-testid="aggregate-invoice-detail"]') !== null)
+    })
+
+    const reopenBtn = container.querySelector<HTMLButtonElement>('[data-testid="reopen-button"]')
+    expect(reopenBtn).not.toBeNull()
+    expect(reopenBtn?.disabled).toBe(false)
+
+    await act(async () => {
+      reopenBtn?.click()
+      await flushPromises()
+    })
+
+    expect(vi.mocked(reopenInvoice)).toHaveBeenCalledWith('tenant-1', 'inv-uuid-001')
+  })
+
+  it('UIA-004 reopen blocked: button disabled when reopenAllowed is false', async () => {
+    vi.mocked(listTenants).mockResolvedValue(defaultTenant)
+    vi.mocked(getAggregateInvoice).mockResolvedValue({ ...approvedInvoice, reopenAllowed: false })
+
+    const { router } = renderPage()
+    await act(async () => {
+      root.render(<RouterProvider router={router} />)
+      await flushPromises()
+      await flushPromises()
+    })
+
+    await act(async () => {
+      await waitFor(() => container.querySelector('[data-testid="aggregate-invoice-detail"]') !== null)
+    })
+
+    const reopenBtn = container.querySelector<HTMLButtonElement>('[data-testid="reopen-button"]')
+    expect(reopenBtn?.disabled).toBe(true)
+    expect(reopenBtn?.title).toContain('INV-VAL-102')
   })
 
   it('UID-010 duplicate banner rendered when duplicates exist', async () => {
