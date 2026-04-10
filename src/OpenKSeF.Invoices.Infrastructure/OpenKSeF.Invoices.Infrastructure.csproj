@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\OpenKSeF.Domain\OpenKSeF.Domain.csproj" />
     <ProjectReference Include="..\OpenKSeF.Invoices.Domain\OpenKSeF.Invoices.Domain.csproj" />
   </ItemGroup>
 

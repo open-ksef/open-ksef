@@ -17,6 +17,7 @@ using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Invoices.Application;
+using OpenKSeF.Invoices.Infrastructure;
 using OpenKSeF.Sync;
 using Serilog;
 using Serilog.Context;
@@ -153,7 +154,10 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ITransferDetailsService, TransferDetailsService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();
 builder.Services.AddInvoiceApplication();
+builder.Services.AddInvoiceInfrastructure();
 builder.Services.AddSingleton<IInvoiceValidationSpecificationCatalog, InvoiceValidationSpecificationCatalog>();
+builder.Services.AddScoped<InvoiceAggregateValidationContextFactory>();
+builder.Services.AddScoped<InvoiceAggregateMutationService>();
 builder.Services.AddScoped<InvoiceValidationExceptionFilter>();
 
 // Email

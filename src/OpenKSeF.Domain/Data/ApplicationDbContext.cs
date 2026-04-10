@@ -157,6 +157,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(i => i.PaymentMethod).HasMaxLength(100);
             entity.Property(i => i.KsefDocumentNumber).HasMaxLength(100);
             entity.Property(i => i.KsefReferenceNumber).HasMaxLength(100);
+            entity.Property(i => i.AdvanceDocumentIdsJson);
+            entity.Property(i => i.SettledAdvanceAllocationsJson);
+            entity.Property(i => i.DuplicateIssuancesJson);
             entity.Property(i => i.CorrectionOriginalDocumentNumber).HasMaxLength(256);
             entity.Property(i => i.CorrectionReasonKind).HasMaxLength(50);
             entity.HasOne(i => i.Tenant)

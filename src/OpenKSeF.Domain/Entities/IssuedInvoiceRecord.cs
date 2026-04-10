@@ -56,6 +56,9 @@ public class IssuedInvoiceRecord
     public string? KsefDocumentNumber { get; set; }
     public string? KsefReferenceNumber { get; set; }
     public string? KsefRejectionReason { get; set; }
+    public string? AdvanceDocumentIdsJson { get; set; }
+    public string? SettledAdvanceAllocationsJson { get; set; }
+    public string? DuplicateIssuancesJson { get; set; }
 
     // Correction
     public Guid? CorrectionOriginalInvoiceId { get; set; }

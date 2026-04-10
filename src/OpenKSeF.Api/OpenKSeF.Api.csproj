@@ -4,6 +4,7 @@
     <ProjectReference Include="..\OpenKSeF.Domain\OpenKSeF.Domain.csproj" />
     <ProjectReference Include="..\OpenKSeF.Invoices.Application\OpenKSeF.Invoices.Application.csproj" />
     <ProjectReference Include="..\OpenKSeF.Invoices.Contracts\OpenKSeF.Invoices.Contracts.csproj" />
+    <ProjectReference Include="..\OpenKSeF.Invoices.Infrastructure\OpenKSeF.Invoices.Infrastructure.csproj" />
     <ProjectReference Include="..\OpenKSeF.Sync\OpenKSeF.Sync.csproj" />
   </ItemGroup>
 

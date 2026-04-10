@@ -4,6 +4,7 @@ using OpenKSeF.Invoices.Domain.Entities;
 using OpenKSeF.Invoices.Domain.Enums;
 using OpenKSeF.Invoices.Domain.Exceptions;
 using OpenKSeF.Invoices.Domain.Policies;
+using OpenKSeF.Invoices.Domain.Validation;
 using OpenKSeF.Invoices.Domain.ValueObjects;
 
 namespace OpenKSeF.Invoices.Application.Commands.CreateCorrectionFromOriginal;
@@ -20,9 +21,15 @@ public sealed class CreateCorrectionFromOriginalHandler(ICorrectionPolicy correc
             throw new InvoiceDomainException("Correction invoice tenant must match the original invoice tenant.");
         }
 
+        if (string.IsNullOrWhiteSpace(command.ReasonDescription))
+        {
+            throw CreateDraftValidationException("INV-VAL-081", "CorrectionReference.ReasonDescription");
+        }
+
         if (!correctionPolicy.CanCorrect(original))
         {
-            throw new InvoiceDomainException("Original invoice cannot be corrected by current policy.");
+            var code = original.Kind == DocumentKind.Proforma ? "INV-VAL-083" : "INV-VAL-080";
+            throw CreateDraftValidationException(code, "CorrectionReference");
         }
 
         var correction = Invoice.Draft(
@@ -64,4 +71,19 @@ public sealed class CreateCorrectionFromOriginalHandler(ICorrectionPolicy correc
             line.UnitOfMeasure,
             line.VatClassification,
             correctionRole);
+
+    private static InvoiceDomainException CreateDraftValidationException(string code, string path) =>
+        new(
+            $"Correction draft validation failed with {code}.",
+            stage: ValidationStage.Draft,
+            validationResult: new ValidationResult(
+            [
+                new ValidationMessage(
+                    code,
+                    ValidationSeverity.Error,
+                    ValidationStage.Draft,
+                    code,
+                    code,
+                    path)
+            ]));
 }

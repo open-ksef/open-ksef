@@ -45,19 +45,19 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E0-S4: Endpoint implementations
 > Backlog: `05:§5.4.2`
 
-- [ ] Endpoint 1 — `GET /` list with filters `status`, `kind`, `buyerKind`, `from`, `to`, `page`, `pageSize`
-- [ ] Endpoint 2 — `GET /{id}` detail via `InvoiceReadDtoProjector`
-- [ ] Endpoint 3 — `POST /` create draft
-- [ ] Endpoint 4 — `PATCH /{id}/draft` update draft
-- [ ] Endpoint 5 — `POST /{id}/approve`
-- [ ] Endpoint 6 — `POST /{id}/reopen`
-- [ ] Endpoint 7 — `POST /{id}/submit-to-ksef`
-- [ ] Endpoint 8 — `POST /{id}/ksef-acceptance`
-- [ ] Endpoint 9 — `POST /{id}/ksef-rejection`
-- [ ] Endpoint 10 — `POST /{id}/corrections`
-- [ ] Endpoint 11 — `POST /final-from-advances`
-- [ ] Endpoint 12 — `GET /{id}/print?variant=`
-- [ ] Endpoint 13 — `GET /{id}/duplicates`
+- [x] Endpoint 1 — `GET /` list with filters `status`, `kind`, `buyerKind`, `from`, `to`, `page`, `pageSize`
+- [x] Endpoint 2 — `GET /{id}` detail via `InvoiceReadDtoProjector`
+- [x] Endpoint 3 — `POST /` create draft
+- [x] Endpoint 4 — `PATCH /{id}/draft` update draft
+- [x] Endpoint 5 — `POST /{id}/approve`
+- [x] Endpoint 6 — `POST /{id}/reopen`
+- [x] Endpoint 7 — `POST /{id}/submit-to-ksef`
+- [x] Endpoint 8 — `POST /{id}/ksef-acceptance`
+- [x] Endpoint 9 — `POST /{id}/ksef-rejection`
+- [x] Endpoint 10 — `POST /{id}/corrections`
+- [x] Endpoint 11 — `POST /final-from-advances`
+- [x] Endpoint 12 — `GET /{id}/print?variant=`
+- [x] Endpoint 13 — `GET /{id}/duplicates`
 
 ### E0-S5: Contract tests (`API-###`)
 > Backlog: `06:§6.1`

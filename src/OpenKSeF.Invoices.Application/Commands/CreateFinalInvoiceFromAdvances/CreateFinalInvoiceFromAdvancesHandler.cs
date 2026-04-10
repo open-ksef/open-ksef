@@ -2,6 +2,7 @@ using OpenKSeF.Invoices.Contracts.Commands;
 using OpenKSeF.Invoices.Domain.Aggregates;
 using OpenKSeF.Invoices.Domain.Enums;
 using OpenKSeF.Invoices.Domain.Exceptions;
+using OpenKSeF.Invoices.Domain.Validation;
 using OpenKSeF.Invoices.Domain.ValueObjects;
 
 namespace OpenKSeF.Invoices.Application.Commands.CreateFinalInvoiceFromAdvances;
@@ -14,7 +15,9 @@ public sealed class CreateFinalInvoiceFromAdvancesHandler : ICreateFinalInvoiceF
         ArgumentNullException.ThrowIfNull(command);
 
         if (advances.Count == 0)
-            throw new InvoiceDomainException("At least one advance invoice must be provided.");
+        {
+            throw CreateDraftValidationException("INV-VAL-071", "AdvanceDocumentIds");
+        }
 
         ValidateCommercialConsistency(advances, new TenantId(command.TenantId));
 
@@ -40,20 +43,16 @@ public sealed class CreateFinalInvoiceFromAdvancesHandler : ICreateFinalInvoiceF
         foreach (var adv in advances)
         {
             if (adv.TenantId != expectedTenantId)
-                throw new InvoiceDomainException(
-                    "All advance invoices must belong to the same tenant as the final invoice.");
+                throw CreateDraftValidationException("INV-VAL-073", "AdvanceDocumentIds");
 
             if (adv.Seller.Nip?.Value != first.Seller.Nip?.Value)
-                throw new InvoiceDomainException(
-                    "All advance invoices must share the same seller NIP.");
+                throw CreateDraftValidationException("INV-VAL-073", "AdvanceDocumentIds");
 
             if (adv.Buyer.Nip?.Value != first.Buyer.Nip?.Value)
-                throw new InvoiceDomainException(
-                    "All advance invoices must share the same buyer NIP.");
+                throw CreateDraftValidationException("INV-VAL-073", "AdvanceDocumentIds");
 
             if (adv.Currency.Value != first.Currency.Value)
-                throw new InvoiceDomainException(
-                    "All advance invoices must share the same currency.");
+                throw CreateDraftValidationException("INV-VAL-073", "AdvanceDocumentIds");
         }
     }
 
@@ -79,4 +78,19 @@ public sealed class CreateFinalInvoiceFromAdvancesHandler : ICreateFinalInvoiceF
             }
         }
     }
+
+    private static InvoiceDomainException CreateDraftValidationException(string code, string path) =>
+        new(
+            $"Final invoice draft validation failed with {code}.",
+            stage: ValidationStage.Draft,
+            validationResult: new ValidationResult(
+            [
+                new ValidationMessage(
+                    code,
+                    ValidationSeverity.Error,
+                    ValidationStage.Draft,
+                    code,
+                    code,
+                    path)
+            ]));
 }
