@@ -149,32 +149,32 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E2-S1: Refactor invoice list
 > Backlog: `05:§5.6.1`
 
-- [ ] Refactor `src/pages/InvoiceList.tsx` in place — no parallel file
-- [ ] Merge aggregate list (`listAggregateInvoices`) and synced list (`listInvoices`) into one table with `SourceChip`
-- [ ] Filter chips: status (multi), kind (multi), buyer kind (single), source, date range
-- [ ] Row links route to `/invoices/aggregate/:id` or `/invoices/:ksefInvoiceNumber` based on source
-- [ ] Header actions "Nowa faktura" and "Finalna z zaliczek"
-- [ ] Empty state
-- [ ] Tests: `UIL-001..008`
+- [x] Refactor `src/pages/InvoiceList.tsx` in place — no parallel file
+- [x] Merge aggregate list (`listAggregateInvoices`) and synced list (`listInvoices`) into one table with `SourceChip`
+- [x] Filter chips: status (multi), kind (multi), buyer kind (single), source, date range
+- [x] Row links route to `/invoices/aggregate/:id` or `/invoices/:ksefInvoiceNumber` based on source
+- [x] Header actions "Nowa faktura" and "Finalna z zaliczek"
+- [x] Empty state
+- [x] Tests: `UIL-001..008`
 
 ### E2-S2: Aggregate invoice detail page
 > Backlog: `05:§5.6.2`
 
-- [ ] Create `src/pages/InvoiceAggregateDetail.tsx`
-- [ ] Wire `getAggregateInvoice` query
-- [ ] Render all sections from `05:§5.6.2`
-- [ ] Render status-aware action buttons (per `05:§5.8`)
-- [ ] Start polling when status is `SubmittedToKsef`
-- [ ] Tests: `UID-001..010`
+- [x] Create `src/pages/InvoiceAggregateDetail.tsx`
+- [x] Wire `getAggregateInvoice` query
+- [x] Render all sections from `05:§5.6.2`
+- [x] Render status-aware action buttons (per `05:§5.8`)
+- [x] Start polling when status is `SubmittedToKsef`
+- [x] Tests: `UID-001..010`
 
 ### E2-S3: Rename synced detail page
 > Backlog: `05:§5.11.2`
 
-- [ ] Rename `src/pages/InvoiceDetails.tsx` → `src/pages/SyncedInvoiceDetail.tsx`
-- [ ] Update `src/api/types.ts` rename (`InvoiceResponse` → `SyncedInvoiceResponse`, `InvoiceLineResponse` → `SyncedInvoiceLineResponse`)
-- [ ] Update React Query keys from `['invoices', ...]` to `['invoices', 'synced', ...]`
-- [ ] Update router entries
-- [ ] Tests: `UIR-001..005`
+- [x] Rename `src/pages/InvoiceDetails.tsx` → `src/pages/SyncedInvoiceDetail.tsx`
+- [x] Update `src/api/types.ts` rename (`InvoiceResponse` → `SyncedInvoiceResponse`, `InvoiceLineResponse` → `SyncedInvoiceLineResponse`)
+- [x] Update React Query keys from `['invoices', ...]` to `['invoices', 'synced', ...]`
+- [x] Update router entries
+- [x] Tests: `UIR-001..005`
 
 ---
 

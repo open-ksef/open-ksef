@@ -7,7 +7,7 @@ import { listTenants } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
 import { AsyncStateView } from '@/components/AsyncStateView'
 
-export function InvoiceDetailsPage(): ReactElement {
+export function SyncedInvoiceDetailPage(): ReactElement {
   const { ksefInvoiceNumber = '' } = useParams()
   const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
@@ -23,7 +23,7 @@ export function InvoiceDetailsPage(): ReactElement {
   const effectiveTenantId = tenantIdFromUrl || tenantsQuery.data?.[0]?.id || ''
 
   const invoiceQuery = useQuery({
-    queryKey: ['invoice-details', effectiveTenantId, ksefInvoiceNumber],
+    queryKey: ['invoices', 'synced', 'detail', effectiveTenantId, ksefInvoiceNumber],
     queryFn: () => getInvoiceByKSeFNumber(effectiveTenantId, ksefInvoiceNumber),
     enabled: Boolean(effectiveTenantId && ksefInvoiceNumber),
     retry: false,
@@ -40,8 +40,8 @@ export function InvoiceDetailsPage(): ReactElement {
   const paidMutation = useMutation({
     mutationFn: (isPaid: boolean) => setInvoicePaid(effectiveTenantId, invoice!.id, isPaid),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['invoice-details', effectiveTenantId, ksefInvoiceNumber] })
-      void queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      void queryClient.invalidateQueries({ queryKey: ['invoices', 'synced', 'detail', effectiveTenantId, ksefInvoiceNumber] })
+      void queryClient.invalidateQueries({ queryKey: ['invoices', 'synced'] })
     },
   })
 

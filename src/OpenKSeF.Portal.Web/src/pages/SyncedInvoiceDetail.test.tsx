@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getInvoiceByKSeFNumber } from '@/api/endpoints/invoices'
 import { listTenants } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
-import { InvoiceDetailsPage } from './InvoiceDetails'
+import { SyncedInvoiceDetailPage } from './SyncedInvoiceDetail'
 
 vi.mock('@/api/endpoints/tenants', () => ({
   listTenants: vi.fn(),
@@ -34,7 +34,7 @@ async function waitFor(assertion: () => boolean, timeoutMs = 1000): Promise<void
   throw new Error('Condition not met within timeout')
 }
 
-describe('InvoiceDetailsPage', () => {
+describe('SyncedInvoiceDetailPage', () => {
   let root: Root
   let container: HTMLDivElement
 
@@ -85,7 +85,7 @@ describe('InvoiceDetailsPage', () => {
           path: '/invoices/:ksefInvoiceNumber',
           element: (
             <QueryClientProvider client={client}>
-              <InvoiceDetailsPage />
+              <SyncedInvoiceDetailPage />
             </QueryClientProvider>
           ),
         },
@@ -131,7 +131,7 @@ describe('InvoiceDetailsPage', () => {
           path: '/invoices/:ksefInvoiceNumber',
           element: (
             <QueryClientProvider client={client}>
-              <InvoiceDetailsPage />
+              <SyncedInvoiceDetailPage />
             </QueryClientProvider>
           ),
         },

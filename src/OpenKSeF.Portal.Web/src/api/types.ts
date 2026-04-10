@@ -17,7 +17,7 @@ export interface UpdateTenantRequest {
   notificationEmail?: string | null
 }
 
-export interface InvoiceLineResponse {
+export interface SyncedInvoiceLineResponse {
   lineNumber: number
   name: string | null
   unit: string | null
@@ -30,7 +30,7 @@ export interface InvoiceLineResponse {
   vatRate: string | null
 }
 
-export interface InvoiceResponse {
+export interface SyncedInvoiceResponse {
   id: string
   ksefInvoiceNumber: string
   ksefReferenceNumber: string
@@ -49,7 +49,7 @@ export interface InvoiceResponse {
   firstSeenAt: string
   isPaid: boolean
   paidAt: string | null
-  lines?: InvoiceLineResponse[] | null
+  lines?: SyncedInvoiceLineResponse[] | null
 }
 
 export interface TransferDetailsResponse {

@@ -4,7 +4,7 @@ import type {
   CreateTenantRequest,
   CredentialStatusResponse,
   DeviceTokenResponse,
-  InvoiceResponse,
+  SyncedInvoiceResponse,
   PagedResult,
   TenantDashboardSummaryResponse,
   TenantCredentialStatusResponse,
@@ -58,9 +58,9 @@ describe('API type contracts', () => {
       firstSeenAt: '2026-02-27T01:00:00Z',
       isPaid: false,
       paidAt: null,
-    } satisfies InvoiceResponse
+    } satisfies SyncedInvoiceResponse
 
-    const paged: PagedResult<InvoiceResponse> = {
+    const paged: PagedResult<SyncedInvoiceResponse> = {
       items: [invoice],
       page: 1,
       pageSize: 20,

@@ -1,5 +1,5 @@
 import { apiClient } from '../client'
-import type { InvoiceResponse, PagedResult, TransferDetailsResponse } from '../types'
+import type { SyncedInvoiceResponse, PagedResult, TransferDetailsResponse } from '../types'
 
 export interface ListInvoicesParams extends Record<string, string | number | boolean | null | undefined> {
   page?: number
@@ -9,20 +9,20 @@ export interface ListInvoicesParams extends Record<string, string | number | boo
   dateTo?: string
 }
 
-export function listInvoices(tenantId: string, params?: ListInvoicesParams): Promise<PagedResult<InvoiceResponse>> {
-  return apiClient.get<PagedResult<InvoiceResponse>>(`/tenants/${encodeURIComponent(tenantId)}/invoices`, {
+export function listInvoices(tenantId: string, params?: ListInvoicesParams): Promise<PagedResult<SyncedInvoiceResponse>> {
+  return apiClient.get<PagedResult<SyncedInvoiceResponse>>(`/tenants/${encodeURIComponent(tenantId)}/invoices`, {
     query: params,
   })
 }
 
-export function getInvoice(tenantId: string, invoiceId: string): Promise<InvoiceResponse> {
-  return apiClient.get<InvoiceResponse>(
+export function getInvoice(tenantId: string, invoiceId: string): Promise<SyncedInvoiceResponse> {
+  return apiClient.get<SyncedInvoiceResponse>(
     `/tenants/${encodeURIComponent(tenantId)}/invoices/${encodeURIComponent(invoiceId)}`,
   )
 }
 
-export function getInvoiceByKSeFNumber(tenantId: string, ksefNumber: string): Promise<InvoiceResponse> {
-  return apiClient.get<InvoiceResponse>(
+export function getInvoiceByKSeFNumber(tenantId: string, ksefNumber: string): Promise<SyncedInvoiceResponse> {
+  return apiClient.get<SyncedInvoiceResponse>(
     `/tenants/${encodeURIComponent(tenantId)}/invoices/by-number/${encodeURIComponent(ksefNumber)}`,
   )
 }
@@ -33,8 +33,8 @@ export function getTransferDetails(tenantId: string, invoiceId: string): Promise
   )
 }
 
-export function setInvoicePaid(tenantId: string, invoiceId: string, isPaid: boolean): Promise<InvoiceResponse> {
-  return apiClient.patch<InvoiceResponse>(
+export function setInvoicePaid(tenantId: string, invoiceId: string, isPaid: boolean): Promise<SyncedInvoiceResponse> {
+  return apiClient.patch<SyncedInvoiceResponse>(
     `/tenants/${encodeURIComponent(tenantId)}/invoices/${encodeURIComponent(invoiceId)}/paid`,
     { isPaid },
   )

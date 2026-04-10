@@ -8,7 +8,8 @@ import { Callback } from '@/pages/Callback'
 import { CredentialListPage } from '@/pages/CredentialList'
 import { DashboardPage } from '@/pages/Dashboard'
 import { DeviceListPage } from '@/pages/DeviceList'
-import { InvoiceDetailsPage } from '@/pages/InvoiceDetails'
+import { InvoiceAggregateDetailPage } from '@/pages/InvoiceAggregateDetail'
+import { SyncedInvoiceDetailPage } from '@/pages/SyncedInvoiceDetail'
 import { InvoiceListPage } from '@/pages/InvoiceList'
 import { LoginPage } from '@/pages/Login'
 import { MobileSetupPage } from '@/pages/MobileSetup'
@@ -29,7 +30,15 @@ export const appRoutes: RouteObject[] = [
     children: [
       { index: true, element: <DashboardPage /> },
       { path: 'invoices', element: <InvoiceListPage /> },
-      { path: 'invoices/:ksefInvoiceNumber', element: <InvoiceDetailsPage /> },
+      { path: 'invoices/new', element: <div /> },
+      { path: 'invoices/final-from-advances', element: <div /> },
+      { path: 'invoices/aggregate/:id', element: <InvoiceAggregateDetailPage /> },
+      { path: 'invoices/aggregate/:id/edit', element: <div /> },
+      { path: 'invoices/aggregate/:id/approve', element: <div /> },
+      { path: 'invoices/aggregate/:id/submit', element: <div /> },
+      { path: 'invoices/aggregate/:id/corrections/new', element: <div /> },
+      { path: 'invoices/aggregate/:id/print', element: <div /> },
+      { path: 'invoices/:ksefInvoiceNumber', element: <SyncedInvoiceDetailPage /> },
       { path: 'tenants', element: <TenantListPage /> },
       { path: 'credentials', element: <CredentialListPage /> },
       { path: 'devices', element: <DeviceListPage /> },

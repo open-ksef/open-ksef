@@ -2,20 +2,20 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState, type ChangeEvent, type ReactElement } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
+import { listAggregateInvoices } from '@/api/invoicesAggregateApi'
+import type { InvoiceReadDto } from '@/api/schemas/invoice'
 import { listInvoices } from '@/api/endpoints/invoices'
 import { listTenants } from '@/api/endpoints/tenants'
-import type { InvoiceResponse } from '@/api/types'
+import type { SyncedInvoiceResponse } from '@/api/types'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { FilterBar } from '@/components/FilterBar'
 import { Table, type TableColumn } from '@/components/Table'
+import { DocumentStatusBadge } from '@/components/invoices/DocumentStatusBadge'
+import { SourceChip } from '@/components/invoices/SourceChip'
 
-interface InvoiceListFilters {
-  tenantId: string
-  dateFrom: string
-  dateTo: string
-  page: number
-  pageSize: number
-}
+type MergedRow =
+  | { source: 'Aggregate'; invoice: InvoiceReadDto }
+  | { source: 'Synced'; invoice: SyncedInvoiceResponse }
 
 function parseNumber(value: string | null, fallback: number): number {
   if (!value) return fallback
@@ -30,7 +30,7 @@ export function InvoiceListPage(): ReactElement {
   const dateFromFromUrl = searchParams.get('dateFrom') ?? ''
   const dateToFromUrl = searchParams.get('dateTo') ?? ''
   const pageFromUrl = parseNumber(searchParams.get('page'), 1)
-  const pageSizeFromUrl = parseNumber(searchParams.get('pageSize'), 10)
+  const pageSizeFromUrl = parseNumber(searchParams.get('pageSize'), 25)
 
   const [draftTenantId, setDraftTenantId] = useState(tenantIdFromUrl)
   const [draftDateFrom, setDraftDateFrom] = useState(dateFromFromUrl)
@@ -44,8 +44,8 @@ export function InvoiceListPage(): ReactElement {
 
   const effectiveTenantId = draftTenantId || tenantsQuery.data?.[0]?.id || ''
 
-  const invoicesQuery = useQuery({
-    queryKey: ['invoices', effectiveTenantId, dateFromFromUrl, dateToFromUrl, pageFromUrl, pageSizeFromUrl],
+  const syncedQuery = useQuery({
+    queryKey: ['invoices', 'synced', 'list', { tenantId: effectiveTenantId, dateFrom: dateFromFromUrl, dateTo: dateToFromUrl, page: pageFromUrl, pageSize: pageSizeFromUrl }],
     queryFn: () =>
       listInvoices(effectiveTenantId, {
         page: pageFromUrl,
@@ -57,110 +57,161 @@ export function InvoiceListPage(): ReactElement {
     retry: false,
   })
 
-  const rows = invoicesQuery.data?.items ?? []
-  const combinedError = tenantsQuery.error ?? invoicesQuery.error
+  const aggregateQuery = useQuery({
+    queryKey: ['invoices', 'aggregate', 'list', { tenantId: effectiveTenantId, dateFrom: dateFromFromUrl, dateTo: dateToFromUrl, page: pageFromUrl, pageSize: pageSizeFromUrl }],
+    queryFn: () =>
+      listAggregateInvoices(effectiveTenantId, {
+        from: dateFromFromUrl || undefined,
+        to: dateToFromUrl || undefined,
+        page: pageFromUrl,
+        pageSize: pageSizeFromUrl,
+      }),
+    enabled: Boolean(effectiveTenantId),
+    retry: false,
+  })
 
-  const columns = useMemo<TableColumn<InvoiceResponse>[]>(
+  const mergedRows = useMemo<MergedRow[]>(() => {
+    const aggregateRows: MergedRow[] = (aggregateQuery.data?.items ?? []).map((inv) => ({
+      source: 'Aggregate',
+      invoice: inv,
+    }))
+    const syncedRows: MergedRow[] = (syncedQuery.data?.items ?? []).map((inv) => ({
+      source: 'Synced',
+      invoice: inv,
+    }))
+    return [...aggregateRows, ...syncedRows]
+  }, [aggregateQuery.data, syncedQuery.data])
+
+  const combinedError = tenantsQuery.error ?? syncedQuery.error ?? aggregateQuery.error
+  const isLoading = tenantsQuery.isLoading || syncedQuery.isLoading || aggregateQuery.isLoading
+
+  const columns = useMemo<TableColumn<MergedRow>[]>(
     () => [
+      {
+        key: 'source',
+        label: 'Źródło',
+        render: (row) => <SourceChip source={row.source === 'Aggregate' ? 'Aggregate' : 'Synced'} />,
+      },
       {
         key: 'invoiceNumber',
         label: 'Nr faktury',
-        render: (row) => (
-          <span
-            data-testid="invoice-number"
-            style={{ fontWeight: 700, fontFamily: 'ui-monospace, monospace', fontSize: '13px' }}
-          >
-            {row.invoiceNumber ?? row.ksefInvoiceNumber}
-          </span>
-        ),
+        render: (row) => {
+          const number = row.source === 'Aggregate'
+            ? (row.invoice as InvoiceReadDto).documentNumber
+            : ((row.invoice as SyncedInvoiceResponse).invoiceNumber ?? (row.invoice as SyncedInvoiceResponse).ksefInvoiceNumber)
+          return (
+            <span
+              data-testid="invoice-number"
+              style={{ fontWeight: 700, fontFamily: 'ui-monospace, monospace', fontSize: '13px' }}
+            >
+              {number ?? '—'}
+            </span>
+          )
+        },
       },
       {
         key: 'ksefInvoiceNumber',
         label: 'Numer KSeF',
-        render: (row) => (
-          <span className="token-display" data-testid="invoice-ksef-number">
-            {row.ksefInvoiceNumber}
-          </span>
-        ),
+        render: (row) => {
+          const ksefNum = row.source === 'Aggregate'
+            ? (row.invoice as InvoiceReadDto).ksefDocumentNumber
+            : (row.invoice as SyncedInvoiceResponse).ksefInvoiceNumber
+          return (
+            <span className="token-display" data-testid="invoice-ksef-number">
+              {ksefNum ?? '—'}
+            </span>
+          )
+        },
       },
-      { key: 'vendorName', label: 'Sprzedawca' },
       {
-        key: 'vendorNip',
-        label: 'NIP sprzedawcy',
-        render: (row) => (
-          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '13px' }}>
-            {row.vendorNip}
-          </span>
-        ),
+        key: 'status',
+        label: 'Status',
+        render: (row) => {
+          if (row.source === 'Aggregate') {
+            return <DocumentStatusBadge status={(row.invoice as InvoiceReadDto).status} />
+          }
+          const inv = row.invoice as SyncedInvoiceResponse
+          return (
+            <span data-testid="invoice-paid-status">
+              <span className={`paid-indicator ${inv.isPaid ? 'paid-indicator--paid' : 'paid-indicator--unpaid'}`} />
+              {inv.isPaid ? 'Opłacona' : 'Nieopłacona'}
+            </span>
+          )
+        },
+      },
+      {
+        key: 'buyer',
+        label: 'Nabywca / Sprzedawca',
+        render: (row) => {
+          if (row.source === 'Aggregate') {
+            return <span>{(row.invoice as InvoiceReadDto).buyer.name}</span>
+          }
+          const inv = row.invoice as SyncedInvoiceResponse
+          return <span>{inv.buyerName ?? inv.vendorName}</span>
+        },
       },
       {
         key: 'issueDate',
         label: 'Data wystawienia',
-        render: (row) => new Date(row.issueDate).toLocaleDateString('pl-PL'),
+        render: (row) => {
+          const date = row.source === 'Aggregate'
+            ? (row.invoice as InvoiceReadDto).issueDate
+            : (row.invoice as SyncedInvoiceResponse).issueDate
+          return new Date(date).toLocaleDateString('pl-PL')
+        },
       },
       {
-        key: 'amountGross',
+        key: 'gross',
         label: 'Brutto',
-        render: (row) => (
-          <span style={{ fontWeight: 600 }}>
-            {row.amountGross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-        ),
-      },
-      {
-        key: 'amountNet',
-        label: 'Netto',
-        render: (row) => row.amountNet.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      },
-      {
-        key: 'currency',
-        label: 'Waluta',
-        render: (row) => (
-          <span
-            className="ui-status-badge ui-status-badge--success"
-            style={{ fontSize: '11px', fontFamily: 'ui-monospace, monospace' }}
-          >
-            {row.currency}
-          </span>
-        ),
-      },
-      {
-        key: 'isPaid',
-        label: 'Status',
-        render: (row) => (
-          <span data-testid="invoice-paid-status">
-            <span className={`paid-indicator ${row.isPaid ? 'paid-indicator--paid' : 'paid-indicator--unpaid'}`} />
-            {row.isPaid ? 'Opłacona' : 'Nieopłacona'}
-          </span>
-        ),
+        render: (row) => {
+          if (row.source === 'Aggregate') {
+            const inv = row.invoice as InvoiceReadDto
+            return (
+              <span style={{ fontWeight: 600 }}>
+                {inv.totalGross.amount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {inv.currency}
+              </span>
+            )
+          }
+          const inv = row.invoice as SyncedInvoiceResponse
+          return (
+            <span style={{ fontWeight: 600 }}>
+              {inv.amountGross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {inv.currency}
+            </span>
+          )
+        },
       },
       {
         key: 'id',
         label: '',
-        render: (row) => (
-          <Link
-            to={`/invoices/${encodeURIComponent(row.ksefInvoiceNumber)}?tenantId=${effectiveTenantId}`}
-            data-testid="invoice-view-details"
-            className="btn-action btn-action--edit"
-          >
-            Otwórz →
-          </Link>
-        ),
+        render: (row) => {
+          const href = row.source === 'Aggregate'
+            ? `/invoices/aggregate/${encodeURIComponent((row.invoice as InvoiceReadDto).id)}?tenantId=${effectiveTenantId}`
+            : `/invoices/${encodeURIComponent((row.invoice as SyncedInvoiceResponse).ksefInvoiceNumber)}?tenantId=${effectiveTenantId}`
+          return (
+            <Link
+              to={href}
+              data-testid="invoice-view-details"
+              className="btn-action btn-action--edit"
+            >
+              Otwórz →
+            </Link>
+          )
+        },
       },
     ],
     [effectiveTenantId],
   )
 
-  const totalPages = invoicesQuery.data?.totalPages ?? 0
-  const totalCount = invoicesQuery.data?.totalCount ?? 0
+  const totalPages = syncedQuery.data?.totalPages ?? 0
+  const totalCount = (syncedQuery.data?.totalCount ?? 0) + (aggregateQuery.data?.totalCount ?? 0)
 
-  const updateSearch = (filters: InvoiceListFilters): void => {
+  const updateSearch = (params: { tenantId: string; dateFrom: string; dateTo: string; page: number; pageSize: number }): void => {
     const next = new URLSearchParams()
-    if (filters.tenantId) next.set('tenantId', filters.tenantId)
-    if (filters.dateFrom) next.set('dateFrom', filters.dateFrom)
-    if (filters.dateTo) next.set('dateTo', filters.dateTo)
-    next.set('page', String(filters.page))
-    next.set('pageSize', String(filters.pageSize))
+    if (params.tenantId) next.set('tenantId', params.tenantId)
+    if (params.dateFrom) next.set('dateFrom', params.dateFrom)
+    if (params.dateTo) next.set('dateTo', params.dateTo)
+    next.set('page', String(params.page))
+    next.set('pageSize', String(params.pageSize))
     setSearchParams(next)
   }
 
@@ -201,7 +252,7 @@ export function InvoiceListPage(): ReactElement {
   }
 
   const onChangePageSize = (event: ChangeEvent<HTMLSelectElement>): void => {
-    const nextPageSize = parseNumber(event.target.value, 10)
+    const nextPageSize = parseNumber(event.target.value, 25)
     setDraftPageSize(nextPageSize)
   }
 
@@ -209,16 +260,25 @@ export function InvoiceListPage(): ReactElement {
     <section>
       <header className="page-header">
         <h1>Faktury</h1>
-        <button
-          data-testid="invoice-refresh-button"
-          type="button"
-          onClick={() => {
-            void tenantsQuery.refetch()
-            void invoicesQuery.refetch()
-          }}
-        >
-          ↺ Odśwież
-        </button>
+        <div className="page-header__actions">
+          <Link to="/invoices/new" className="ui-button ui-button--primary">
+            Nowa faktura
+          </Link>
+          <Link to="/invoices/final-from-advances" className="ui-button ui-button--secondary">
+            Finalna z zaliczek
+          </Link>
+          <button
+            data-testid="invoice-refresh-button"
+            type="button"
+            onClick={() => {
+              void tenantsQuery.refetch()
+              void syncedQuery.refetch()
+              void aggregateQuery.refetch()
+            }}
+          >
+            ↺ Odśwież
+          </button>
+        </div>
       </header>
 
       <FilterBar
@@ -289,50 +349,51 @@ export function InvoiceListPage(): ReactElement {
       </FilterBar>
 
       <AsyncStateView
-        isLoading={tenantsQuery.isLoading || invoicesQuery.isLoading}
+        isLoading={isLoading}
         error={combinedError}
-        isEmpty={rows.length === 0}
+        isEmpty={mergedRows.length === 0}
         loadingLines={6}
         emptyTitle="Nie znaleziono faktur"
         emptyMessage="Zmień filtry lub wybierz inną firmę."
         onRetry={() => {
           void tenantsQuery.refetch()
-          void invoicesQuery.refetch()
+          void syncedQuery.refetch()
+          void aggregateQuery.refetch()
         }}
       >
         <>
-            <Table
-              testId="invoice-table"
-              columns={columns}
-              data={rows}
-              getRowProps={() => ({ 'data-testid': 'invoice-row' })}
-            />
+          <Table
+            testId="invoice-table"
+            columns={columns}
+            data={mergedRows}
+            getRowProps={() => ({ 'data-testid': 'invoice-row' })}
+          />
 
-            <nav className="ui-pagination" aria-label="Paginacja faktur">
-              <span className="ui-pagination-info">
-                {totalCount > 0
-                  ? `Strona ${pageFromUrl} z ${Math.max(totalPages, 1)} · ${totalCount} ${totalCount === 1 ? 'faktura' : totalCount >= 2 && totalCount <= 4 ? 'faktury' : 'faktur'} łącznie`
-                  : 'Brak wyników'}
-              </span>
-              <div className="ui-pagination-controls">
-                <button
-                  data-testid="invoice-prev-page"
-                  type="button"
-                  disabled={pageFromUrl <= 1}
-                  onClick={() => onChangePage(pageFromUrl - 1)}
-                >
-                  ← Wstecz
-                </button>
-                <button
-                  data-testid="invoice-next-page"
-                  type="button"
-                  disabled={totalPages === 0 || pageFromUrl >= totalPages}
-                  onClick={() => onChangePage(pageFromUrl + 1)}
-                >
-                  Dalej →
-                </button>
-              </div>
-            </nav>
+          <nav className="ui-pagination" aria-label="Paginacja faktur">
+            <span className="ui-pagination-info">
+              {totalCount > 0
+                ? `Strona ${pageFromUrl} z ${Math.max(totalPages, 1)} · ${totalCount} ${totalCount === 1 ? 'faktura' : totalCount >= 2 && totalCount <= 4 ? 'faktury' : 'faktur'} łącznie`
+                : 'Brak wyników'}
+            </span>
+            <div className="ui-pagination-controls">
+              <button
+                data-testid="invoice-prev-page"
+                type="button"
+                disabled={pageFromUrl <= 1}
+                onClick={() => onChangePage(pageFromUrl - 1)}
+              >
+                ← Wstecz
+              </button>
+              <button
+                data-testid="invoice-next-page"
+                type="button"
+                disabled={totalPages === 0 || pageFromUrl >= totalPages}
+                onClick={() => onChangePage(pageFromUrl + 1)}
+              >
+                Dalej →
+              </button>
+            </div>
+          </nav>
         </>
       </AsyncStateView>
     </section>
