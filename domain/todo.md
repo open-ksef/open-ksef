@@ -128,7 +128,7 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 ### E3-S2: Correction / advance / final flows
 > Backlog: `04:L172-L186`
 
-- [ ] Implement command: `CreateCorrectionFromOriginal`. Rules: `01:L437-L447`
+- [x] Implement command: `CreateCorrectionFromOriginal`. Rules: `01:L437-L447`
 - [ ] Implement command: `CreateFinalInvoiceFromAdvances`. Rules: `01:L421-L427`, settlement: `01:L498-L509`
 - [ ] Normalize references and settlement allocations
 - [ ] Tests: correction — `03:L77-L112`, advance/final — `03:L42-L74`
