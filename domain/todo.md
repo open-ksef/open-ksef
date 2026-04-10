@@ -91,8 +91,8 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 - [x] Rules: KSeF requirement — `INV-VAL-090..093` — `02:L373-L401`
 - [x] Rules: State transition/immutability — `INV-VAL-100..102` — `02:L405-L425`
 - [x] Rules: Technical KSeF payload — `INV-VAL-110..112` — `02:L428-L448`
-- [ ] Unit tests per rule: positive + negative path
-- [ ] Create rule code -> class mapping table
+- [x] Unit tests per rule: positive + negative path
+- [x] Create rule code -> class mapping table
 
 ### Validation tests
 > Each scenario references a validation rule. Implement alongside or after E2-S2.
