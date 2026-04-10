@@ -95,11 +95,11 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E1-S2: Shared schemas
 > Backlog: `05:§5.5.4`
 
-- [ ] Create `src/api/schemas/invoice.ts` with enum schemas (`DocumentKind`, `DocumentStatus`, `BuyerKind`, `PricingMode`, `KsefSubmissionRequirement`, `KsefSubmissionState`, `CorrectionReasonKind`) matching `05:§5.3`
-- [ ] Request schemas: `createInvoiceRequestSchema`, `updateInvoiceDraftRequestSchema`, `createCorrectionFromOriginalRequestSchema`, `createFinalInvoiceFromAdvancesRequestSchema`
-- [ ] Response schemas: `invoiceReadDtoSchema`, `invoicePrintModelSchema`, `duplicatePrintInfoSchema`, `validationEnvelopeSchema`
-- [ ] Refinements: NIP mod-11 checksum, IBAN format, ISO-4217 currency
-- [ ] Create `src/api/schemas/ruleCodes.ts` with the `INV-VAL-###` registry for family grouping (no Polish strings)
+- [x] Create `src/api/schemas/invoice.ts` with enum schemas (`DocumentKind`, `DocumentStatus`, `BuyerKind`, `PricingMode`, `KsefSubmissionRequirement`, `KsefSubmissionState`, `CorrectionReasonKind`) matching `05:§5.3`
+- [x] Request schemas: `createInvoiceRequestSchema`, `updateInvoiceDraftRequestSchema`, `createCorrectionFromOriginalRequestSchema`, `createFinalInvoiceFromAdvancesRequestSchema`
+- [x] Response schemas: `invoiceReadDtoSchema`, `invoicePrintModelSchema`, `duplicatePrintInfoSchema`, `validationEnvelopeSchema`
+- [x] Refinements: NIP mod-11 checksum, IBAN format, ISO-4217 currency
+- [x] Create `src/api/schemas/ruleCodes.ts` with the `INV-VAL-###` registry for family grouping (no Polish strings)
 
 ### E1-S3: API client module
 > Backlog: `05:§5.5.3`
