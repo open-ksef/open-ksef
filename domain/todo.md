@@ -176,10 +176,10 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 ### E5-S2: Read model / projection strategy
 > Backlog: `04:L255-L265`
 
-- [ ] Project aggregate into API-friendly read DTOs
-- [ ] Decide if `SyncedInvoice` becomes read projection only
-- [ ] Create print projection model supporting English + duplicate views
-- [ ] Ensure no API endpoint reads aggregate internals without DTO/projection
+- [x] Project aggregate into API-friendly read DTOs
+- [x] Decide if `SyncedInvoice` becomes read projection only
+- [x] Create print projection model supporting English + duplicate views
+- [x] Ensure no API endpoint reads aggregate internals without DTO/projection
 
 ---
 
@@ -188,11 +188,11 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 ### E6-S1: Print model and rendering
 > Backlog: `04:L269-L280` | Design decisions: `01:L449-L463`
 
-- [ ] Create `InvoicePrintModel`
-- [ ] Implement standard print variant
-- [ ] Implement duplicate print variant (no new aggregate, metadata only) — `01:L449-L457`
-- [ ] Implement English print variant (labels only, same data) — `01:L459-L463`
-- [ ] Tests: `REG-003..004` — `03:L266-L278`, `IMM-003` — `03:L214-L218`
+- [x] Create `InvoicePrintModel`
+- [x] Implement standard print variant
+- [x] Implement duplicate print variant (no new aggregate, metadata only) — `01:L449-L457`
+- [x] Implement English print variant (labels only, same data) — `01:L459-L463`
+- [x] Tests: `REG-003..004` — `03:L266-L278`, `IMM-003` — `03:L214-L218`
 
 ---
 
