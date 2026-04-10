@@ -100,7 +100,7 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 - [x] VAT tests: `VAT-001..006` — `03:L7-L39`
 - [x] Advance tests: `ADV-001..002` — `03:L42-L52`
 - [x] Final invoice tests: `FIN-001..004` — `03:L54-L74`
-- [ ] Correction tests: `COR-001..006` — `03:L77-L112`
+- [x] Correction tests: `COR-001..006` — `03:L77-L112`
 - [ ] Proforma tests: `PRO-001..003` — `03:L115-L130`
 - [ ] Buyer classification tests: `BUY-001..005` — `03:L133-L161`
 - [ ] State transition tests: `ST-001..006` — `03:L163-L199`
