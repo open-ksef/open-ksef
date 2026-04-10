@@ -156,9 +156,9 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 ### E4-S3: Submission result handling
 > Backlog: `04:L217-L232`
 
-- [ ] Implement workflow: Submitted -> Accepted (persist KSeF identifiers, lock aggregate). Transitions: `01:L345-L350`
-- [ ] Implement workflow: Submitted -> Rejected (store rejection, allow recovery). Transitions: `01:L352-L359`
-- [ ] Tests: `ST-005..006` — `03:L186-L199`, `IMM-001..002` — `03:L201-L212`
+- [x] Implement workflow: Submitted -> Accepted (persist KSeF identifiers, lock aggregate). Transitions: `01:L345-L350`
+- [x] Implement workflow: Submitted -> Rejected (store rejection, allow recovery). Transitions: `01:L352-L359`
+- [x] Tests: `ST-005..006` — `03:L186-L199`, `IMM-001..002` — `03:L201-L212`
 
 ---
 
