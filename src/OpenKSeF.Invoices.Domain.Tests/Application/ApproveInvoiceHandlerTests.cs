@@ -41,11 +41,15 @@ public class ApproveInvoiceHandlerTests
         var invoice = MakeDraftInvoice();
         var handler = new ApproveInvoiceHandler(new ApprovalValidationService([new BlockingRule()], []));
 
-        Assert.Throws<InvoiceDomainException>(() =>
+        var exception = Assert.Throws<InvoiceDomainException>(() =>
             handler.Handle(
                 invoice,
                 new ApproveInvoiceCommand(invoice.Id.Value, DateTime.UtcNow),
                 MakeContext()));
+
+        Assert.Equal(ValidationStage.Approve, exception.Stage);
+        Assert.NotNull(exception.ValidationResult);
+        Assert.Contains(exception.ValidationResult!.Messages, message => message.Code == "INV-TEST-APPROVE");
     }
 
     private static ValidationContext MakeContext() =>

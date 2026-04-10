@@ -3,6 +3,7 @@ using OpenKSeF.Invoices.Domain.Enums;
 using OpenKSeF.Invoices.Domain.Events;
 using OpenKSeF.Invoices.Domain.Exceptions;
 using OpenKSeF.Invoices.Domain.Snapshots;
+using OpenKSeF.Invoices.Domain.Validation;
 using OpenKSeF.Invoices.Domain.ValueObjects;
 
 namespace OpenKSeF.Invoices.Domain.Aggregates;
@@ -220,7 +221,9 @@ public sealed class Invoice
     {
         if (Status is not (DocumentStatus.Draft or DocumentStatus.RejectedByKsef))
             throw new InvoiceDomainException(
-                $"Cannot approve invoice in state {Status}. Expected Draft or RejectedByKsef.");
+                $"Cannot approve invoice in state {Status}. Expected Draft or RejectedByKsef.",
+                ruleCode: "INV-VAL-100",
+                stage: ValidationStage.Approve);
 
         EnforceApprovalInvariants();
 
@@ -238,11 +241,15 @@ public sealed class Invoice
     {
         if (Status != DocumentStatus.Approved)
             throw new InvoiceDomainException(
-                $"Cannot reopen invoice in state {Status}. Expected Approved.");
+                $"Cannot reopen invoice in state {Status}. Expected Approved.",
+                ruleCode: "INV-VAL-100",
+                stage: ValidationStage.Approve);
 
         if (!allowReopen)
             throw new InvoiceDomainException(
-                "Policy does not permit reopening an approved invoice.");
+                "Policy does not permit reopening an approved invoice.",
+                ruleCode: "INV-VAL-102",
+                stage: ValidationStage.Approve);
 
         Status = DocumentStatus.Draft;
         ApprovedAt = null;
@@ -256,7 +263,9 @@ public sealed class Invoice
     {
         if (Status != DocumentStatus.Approved)
             throw new InvoiceDomainException(
-                $"Cannot submit invoice in state {Status}. Expected Approved.");
+                $"Cannot submit invoice in state {Status}. Expected Approved.",
+                ruleCode: "INV-VAL-100",
+                stage: ValidationStage.SendToKsef);
 
         if (Kind == DocumentKind.Proforma || KsefSubmissionRequirement == KsefSubmissionRequirement.Forbidden)
             throw new InvoiceDomainException(
@@ -276,7 +285,9 @@ public sealed class Invoice
 
         if (Status != DocumentStatus.SubmittedToKsef)
             throw new InvoiceDomainException(
-                $"Cannot accept invoice in state {Status}. Expected SubmittedToKsef.");
+                $"Cannot accept invoice in state {Status}. Expected SubmittedToKsef.",
+                ruleCode: "INV-VAL-100",
+                stage: ValidationStage.SendToKsef);
 
         Status = DocumentStatus.AcceptedByKsef;
         AcceptedByKsefAt = now;
@@ -291,7 +302,9 @@ public sealed class Invoice
     {
         if (Status != DocumentStatus.SubmittedToKsef)
             throw new InvoiceDomainException(
-                $"Cannot reject invoice in state {Status}. Expected SubmittedToKsef.");
+                $"Cannot reject invoice in state {Status}. Expected SubmittedToKsef.",
+                ruleCode: "INV-VAL-100",
+                stage: ValidationStage.SendToKsef);
 
         Status = DocumentStatus.RejectedByKsef;
         KsefRejectionReason = rejectionReason;
@@ -331,7 +344,8 @@ public sealed class Invoice
     {
         if (Status == DocumentStatus.AcceptedByKsef)
             throw new InvoiceDomainException(
-                "Invoice accepted by KSeF is immutable. Create a correction document instead.");
+                "Invoice accepted by KSeF is immutable. Create a correction document instead.",
+                ruleCode: "INV-VAL-101");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

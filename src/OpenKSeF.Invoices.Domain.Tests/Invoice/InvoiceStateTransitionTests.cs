@@ -3,6 +3,7 @@ using OpenKSeF.Invoices.Domain.Enums;
 using OpenKSeF.Invoices.Domain.Events;
 using OpenKSeF.Invoices.Domain.Exceptions;
 using OpenKSeF.Invoices.Domain.Snapshots;
+using OpenKSeF.Invoices.Domain.Validation;
 using OpenKSeF.Invoices.Domain.ValueObjects;
 using InvoiceLine = OpenKSeF.Invoices.Domain.Entities.InvoiceLine;
 
@@ -95,7 +96,10 @@ public class InvoiceStateTransitionTests
     {
         var inv = MakeVatInvoice();
 
-        Assert.Throws<InvoiceDomainException>(() => inv.SubmitToKsef(DateTime.UtcNow));
+        var exception = Assert.Throws<InvoiceDomainException>(() => inv.SubmitToKsef(DateTime.UtcNow));
+
+        Assert.Equal("INV-VAL-100", exception.RuleCode);
+        Assert.Equal(ValidationStage.SendToKsef, exception.Stage);
     }
 
     [Fact]
@@ -187,7 +191,10 @@ public class InvoiceStateTransitionTests
         var inv = MakeVatInvoice();
         inv.Approve(DateTime.UtcNow);
 
-        Assert.Throws<InvoiceDomainException>(() => inv.Reopen(DateTime.UtcNow, allowReopen: false));
+        var exception = Assert.Throws<InvoiceDomainException>(() => inv.Reopen(DateTime.UtcNow, allowReopen: false));
+
+        Assert.Equal("INV-VAL-102", exception.RuleCode);
+        Assert.Equal(ValidationStage.Approve, exception.Stage);
     }
 
     [Fact]

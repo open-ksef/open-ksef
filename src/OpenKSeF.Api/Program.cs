@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using OpenKSeF.Api.Filters;
 using OpenKSeF.Api.Extensions;
 using OpenKSeF.Api.Hubs;
 using OpenKSeF.Api.Push;
@@ -152,6 +153,8 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ITransferDetailsService, TransferDetailsService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();
 builder.Services.AddInvoiceApplication();
+builder.Services.AddSingleton<IInvoiceValidationSpecificationCatalog, InvoiceValidationSpecificationCatalog>();
+builder.Services.AddScoped<InvoiceValidationExceptionFilter>();
 
 // Email
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
@@ -192,7 +195,10 @@ builder.Services.AddSingleton<IPushProvider, ApnsPushProvider>(sp =>
 });
 
 // Controllers
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    options.Filters.AddService<InvoiceValidationExceptionFilter>();
+});
 
 // Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();

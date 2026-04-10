@@ -18,7 +18,10 @@ public sealed class ApproveInvoiceHandler(ApprovalValidationService validationSe
         if (result.HasErrors)
         {
             var codes = string.Join(", ", result.Messages.Select(m => m.Code));
-            throw new InvoiceDomainException($"Invoice approval blocked by validation: {codes}");
+            throw new InvoiceDomainException(
+                $"Invoice approval blocked by validation: {codes}",
+                stage: context.Stage,
+                validationResult: result);
         }
 
         invoice.Approve(command.ApprovedAt);

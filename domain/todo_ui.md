@@ -36,11 +36,11 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E0-S3: Error envelope
 > Backlog: `05:§5.4.4`
 
-- [ ] Implement `ValidationEnvelope` response type (`stage`, `messages[]`)
-- [ ] Implement middleware / exception filter mapping `ValidationResult` → 422 with envelope
-- [ ] Implement mapping for state-transition errors → 409 with envelope
-- [ ] Ensure every `INV-VAL-###` code is present in the central X2 registry before shipping
-- [ ] Localized Polish messages sourced from `02-validation-specification.md` (single source of truth)
+- [x] Implement `ValidationEnvelope` response type (`stage`, `messages[]`)
+- [x] Implement middleware / exception filter mapping `ValidationResult` → 422 with envelope
+- [x] Implement mapping for state-transition errors → 409 with envelope
+- [x] Ensure every `INV-VAL-###` code is present in the central X2 registry before shipping
+- [x] Localized Polish messages sourced from `02-validation-specification.md` (single source of truth)
 
 ### E0-S4: Endpoint implementations
 > Backlog: `05:§5.4.2`
