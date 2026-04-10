@@ -838,6 +838,26 @@ label {
   color: var(--status-rejected);
 }
 
+.invoice-source-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.invoice-source-chip--aggregate {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.invoice-source-chip--synced {
+  background: #ecfccb;
+  color: #3f6212;
+}
+
 .ui-skeleton {
   display: grid;
   gap: 10px;
