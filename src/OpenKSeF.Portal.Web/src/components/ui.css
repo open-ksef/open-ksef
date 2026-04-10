@@ -675,6 +675,56 @@ label {
 }
 
 /* ─── Skeleton ───────────────────────────────────────────────────────────── */
+.invoice-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid currentColor;
+}
+
+.invoice-status-badge__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.invoice-status-badge--draft {
+  background: #f8fafc;
+  color: var(--status-draft);
+}
+
+.invoice-status-badge--approved {
+  background: #eff6ff;
+  color: var(--status-approved);
+}
+
+.invoice-status-badge--submitted {
+  background: #f5f3ff;
+  color: var(--status-submitted);
+}
+
+.invoice-status-badge--accepted {
+  background: var(--ui-success-bg);
+  color: var(--status-accepted);
+}
+
+.invoice-status-badge--rejected {
+  background: var(--ui-error-bg);
+  color: var(--status-rejected);
+}
+
 .ui-skeleton {
   display: grid;
   gap: 10px;

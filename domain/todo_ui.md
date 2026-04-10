@@ -119,7 +119,7 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E1-S5: Shared component scaffolds
 > Backlog: `05:§5.7`
 
-- [ ] `src/components/invoices/DocumentStatusBadge.tsx` (+ test scenarios `UIS-001..005`)
+- [x] `src/components/invoices/DocumentStatusBadge.tsx` (+ test scenarios `UIS-001..005`)
 - [ ] `src/components/invoices/DocumentKindChip.tsx` (+ `UIS-006`)
 - [ ] `src/components/invoices/SourceChip.tsx`
 - [ ] `src/components/invoices/KsefSubmissionStatus.tsx` (+ `UIS-007`)
