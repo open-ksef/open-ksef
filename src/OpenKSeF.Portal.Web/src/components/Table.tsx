@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react'
 
 export interface TableColumn<T> {
-  key: keyof T
+  key: keyof T | string
   label: string
   render?: (row: T) => ReactNode
 }
@@ -39,7 +39,7 @@ export function Table<T extends object>({
               <tr key={String(rowId ?? rowIndex)} onClick={() => onRowClick?.(row)} {...rowProps}>
               {columns.map((column) => (
                 <td key={`${String(column.key)}-${rowIndex}`}>
-                  {column.render ? column.render(row) : String(row[column.key] ?? '')}
+                  {column.render ? column.render(row) : String((row as Record<string, unknown>)[String(column.key)] ?? '')}
                 </td>
               ))}
               </tr>

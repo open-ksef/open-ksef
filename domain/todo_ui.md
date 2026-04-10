@@ -183,13 +183,13 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E3-S1: Create draft form
 > Backlog: `05:§5.6.3`
 
-- [ ] Create `src/pages/InvoiceDraftCreate.tsx`
-- [ ] Wire react-hook-form with `createInvoiceRequestSchema` resolver
-- [ ] Seller prefill from current tenant
-- [ ] Live `KsefRequirementBanner` reacting to buyer kind + NIP
-- [ ] Live `TotalsSummaryCard` preview from line data
-- [ ] Submit → `createInvoiceDraft` → navigate to new detail
-- [ ] Tests: `UIC-001..009`
+- [x] Create `src/pages/InvoiceDraftCreate.tsx`
+- [x] Wire react-hook-form with `createInvoiceRequestSchema` resolver
+- [x] Seller prefill from current tenant
+- [x] Live `KsefRequirementBanner` reacting to buyer kind + NIP
+- [x] Live `TotalsSummaryCard` preview from line data
+- [x] Submit → `createInvoiceDraft` → navigate to new detail
+- [x] Tests: `UIC-001..009`
 
 ### E3-S2: Edit draft form
 > Backlog: `05:§5.6.4`

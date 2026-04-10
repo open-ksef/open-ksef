@@ -9,6 +9,7 @@ import { CredentialListPage } from '@/pages/CredentialList'
 import { DashboardPage } from '@/pages/Dashboard'
 import { DeviceListPage } from '@/pages/DeviceList'
 import { InvoiceAggregateDetailPage } from '@/pages/InvoiceAggregateDetail'
+import { InvoiceDraftCreatePage } from '@/pages/InvoiceDraftCreate'
 import { SyncedInvoiceDetailPage } from '@/pages/SyncedInvoiceDetail'
 import { InvoiceListPage } from '@/pages/InvoiceList'
 import { LoginPage } from '@/pages/Login'
@@ -30,7 +31,7 @@ export const appRoutes: RouteObject[] = [
     children: [
       { index: true, element: <DashboardPage /> },
       { path: 'invoices', element: <InvoiceListPage /> },
-      { path: 'invoices/new', element: <div /> },
+      { path: 'invoices/new', element: <InvoiceDraftCreatePage /> },
       { path: 'invoices/final-from-advances', element: <div /> },
       { path: 'invoices/aggregate/:id', element: <InvoiceAggregateDetailPage /> },
       { path: 'invoices/aggregate/:id/edit', element: <div /> },
