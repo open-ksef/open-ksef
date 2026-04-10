@@ -165,6 +165,16 @@ public sealed class Invoice
         InternalNotes = internalNotes;
     }
 
+    public void RecordDuplicateIssue(DateTime issuedAt, string? issuedBy = null)
+    {
+        if (Status != DocumentStatus.AcceptedByKsef)
+            throw new InvoiceDomainException(
+                "Duplicate issuance is available only for invoices accepted by KSeF.");
+
+        _duplicateIssuances.Add(new DuplicateMetadata(issuedAt, issuedBy));
+        Raise(new InvoiceDuplicateIssued(Id, issuedAt));
+    }
+
     /// <summary>
     /// Recalculates document totals and VAT breakdown from line items.
     /// Must be called after adding or modifying lines.
