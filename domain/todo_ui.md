@@ -76,10 +76,10 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E0-S6: Legacy rename cleanup on API side
 > Backlog: `05:§5.11`
 
-- [ ] Rename `src/OpenKSeF.Api/Models/InvoiceResponse.cs` → `SyncedInvoiceResponse.cs` in place
-- [ ] Rename `InvoiceLineResponse` → `SyncedInvoiceLineResponse`
-- [ ] Verify legacy controllers return the renamed type and JSON field names are unchanged
-- [ ] Verify: zero references to old type name `InvoiceResponse` remain in `src/OpenKSeF.Api`
+- [x] Rename `src/OpenKSeF.Api/Models/InvoiceResponse.cs` → `SyncedInvoiceResponse.cs` in place
+- [x] Rename `InvoiceLineResponse` → `SyncedInvoiceLineResponse`
+- [x] Verify legacy controllers return the renamed type and JSON field names are unchanged
+- [x] Verify: zero references to old type name `InvoiceResponse` remain in `src/OpenKSeF.Api`
 
 ---
 

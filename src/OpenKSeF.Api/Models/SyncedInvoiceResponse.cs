@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace OpenKSeF.Api.Models;
 
-public record InvoiceResponse(
+public record SyncedInvoiceResponse(
     Guid Id,
     [property: JsonPropertyName("ksefInvoiceNumber")] string KSeFInvoiceNumber,
     [property: JsonPropertyName("ksefReferenceNumber")] string KSeFReferenceNumber,
@@ -21,4 +21,4 @@ public record InvoiceResponse(
     DateTime FirstSeenAt,
     bool IsPaid,
     DateTime? PaidAt,
-    IReadOnlyList<InvoiceLineResponse>? Lines = null);
+    IReadOnlyList<SyncedInvoiceLineResponse>? Lines = null);

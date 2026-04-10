@@ -92,7 +92,7 @@ public class InvoicesSummaryControllerTests : IDisposable
         var controller = CreateController();
         var result = await controller.List() as OkObjectResult;
 
-        var paged = Assert.IsType<PagedResult<InvoiceResponse>>(result!.Value);
+        var paged = Assert.IsType<PagedResult<SyncedInvoiceResponse>>(result!.Value);
         Assert.Equal(2, paged.TotalCount);
         Assert.Equal(2, paged.Items.Count);
         Assert.DoesNotContain(paged.Items, i => i.KSeFInvoiceNumber == "C-001");
@@ -118,7 +118,7 @@ public class InvoicesSummaryControllerTests : IDisposable
         var controller = CreateController();
         var result = await controller.List(tenantId: _tenantBId) as OkObjectResult;
 
-        var paged = Assert.IsType<PagedResult<InvoiceResponse>>(result!.Value);
+        var paged = Assert.IsType<PagedResult<SyncedInvoiceResponse>>(result!.Value);
         Assert.Single(paged.Items);
         Assert.Equal("B-001", paged.Items[0].KSeFInvoiceNumber);
     }
@@ -139,7 +139,7 @@ public class InvoicesSummaryControllerTests : IDisposable
             page: 1,
             pageSize: 1) as OkObjectResult;
 
-        var paged = Assert.IsType<PagedResult<InvoiceResponse>>(result!.Value);
+        var paged = Assert.IsType<PagedResult<SyncedInvoiceResponse>>(result!.Value);
         Assert.Equal(2, paged.TotalCount);
         Assert.Single(paged.Items);
         Assert.Equal("A-003", paged.Items[0].KSeFInvoiceNumber);
@@ -158,7 +158,7 @@ public class InvoicesSummaryControllerTests : IDisposable
         var controller = CreateController();
         var result = await controller.List(page: 1, pageSize: 1000) as OkObjectResult;
 
-        var paged = Assert.IsType<PagedResult<InvoiceResponse>>(result!.Value);
+        var paged = Assert.IsType<PagedResult<SyncedInvoiceResponse>>(result!.Value);
         Assert.Equal(105, paged.TotalCount);
         Assert.Equal(100, paged.PageSize);
         Assert.Equal(100, paged.Items.Count);
@@ -173,7 +173,7 @@ public class InvoicesSummaryControllerTests : IDisposable
         var controller = CreateController();
         var result = await controller.GetByNumber("B-999") as OkObjectResult;
 
-        var invoice = Assert.IsType<InvoiceResponse>(result!.Value);
+        var invoice = Assert.IsType<SyncedInvoiceResponse>(result!.Value);
         Assert.Equal("B-999", invoice.KSeFInvoiceNumber);
     }
 

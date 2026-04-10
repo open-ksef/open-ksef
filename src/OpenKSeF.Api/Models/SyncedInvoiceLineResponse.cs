@@ -1,6 +1,6 @@
 namespace OpenKSeF.Api.Models;
 
-public record InvoiceLineResponse(
+public record SyncedInvoiceLineResponse(
     int LineNumber,
     string? Name,
     string? Unit,

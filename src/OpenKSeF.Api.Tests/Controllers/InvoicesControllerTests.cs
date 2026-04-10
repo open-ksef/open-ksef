@@ -74,7 +74,7 @@ public class InvoicesControllerTests : IDisposable
         var controller = CreateController();
         var result = await controller.List(_tenantId, dateFrom: new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)) as OkObjectResult;
 
-        var paged = Assert.IsType<PagedResult<InvoiceResponse>>(result!.Value);
+        var paged = Assert.IsType<PagedResult<SyncedInvoiceResponse>>(result!.Value);
         Assert.Single(paged.Items);
         Assert.Equal("NEW-001", paged.Items[0].KSeFInvoiceNumber);
     }
@@ -90,7 +90,7 @@ public class InvoicesControllerTests : IDisposable
         var controller = CreateController();
         var result = await controller.List(_tenantId, dateTo: new DateTime(2024, 12, 31, 0, 0, 0, DateTimeKind.Utc)) as OkObjectResult;
 
-        var paged = Assert.IsType<PagedResult<InvoiceResponse>>(result!.Value);
+        var paged = Assert.IsType<PagedResult<SyncedInvoiceResponse>>(result!.Value);
         Assert.Single(paged.Items);
         Assert.Equal("OLD-001", paged.Items[0].KSeFInvoiceNumber);
     }
@@ -110,7 +110,7 @@ public class InvoicesControllerTests : IDisposable
             dateFrom: new DateTime(2024, 3, 1, 0, 0, 0, DateTimeKind.Utc),
             dateTo: new DateTime(2024, 12, 31, 0, 0, 0, DateTimeKind.Utc)) as OkObjectResult;
 
-        var paged = Assert.IsType<PagedResult<InvoiceResponse>>(result!.Value);
+        var paged = Assert.IsType<PagedResult<SyncedInvoiceResponse>>(result!.Value);
         Assert.Single(paged.Items);
         Assert.Equal("I-2", paged.Items[0].KSeFInvoiceNumber);
     }
@@ -126,7 +126,7 @@ public class InvoicesControllerTests : IDisposable
         var result = await controller.GetByKSeFNumber(_tenantId, "KSEF-12345") as OkObjectResult;
 
         Assert.NotNull(result);
-        var response = Assert.IsType<InvoiceResponse>(result.Value);
+        var response = Assert.IsType<SyncedInvoiceResponse>(result.Value);
         Assert.Equal("KSEF-12345", response.KSeFInvoiceNumber);
     }
 
@@ -185,7 +185,7 @@ public class InvoicesControllerTests : IDisposable
         var result = await controller.SetPaid(_tenantId, invoice.Id, new SetInvoicePaidRequest(true)) as OkObjectResult;
 
         Assert.NotNull(result);
-        var response = Assert.IsType<InvoiceResponse>(result.Value);
+        var response = Assert.IsType<SyncedInvoiceResponse>(result.Value);
         Assert.True(response.IsPaid);
         Assert.NotNull(response.PaidAt);
 
@@ -207,7 +207,7 @@ public class InvoicesControllerTests : IDisposable
         var result = await controller.SetPaid(_tenantId, invoice.Id, new SetInvoicePaidRequest(false)) as OkObjectResult;
 
         Assert.NotNull(result);
-        var response = Assert.IsType<InvoiceResponse>(result.Value);
+        var response = Assert.IsType<SyncedInvoiceResponse>(result.Value);
         Assert.False(response.IsPaid);
         Assert.Null(response.PaidAt);
     }

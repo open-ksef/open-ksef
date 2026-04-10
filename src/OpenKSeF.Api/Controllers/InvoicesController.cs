@@ -36,7 +36,7 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpGet]
-    [ProducesResponseType(typeof(PagedResult<InvoiceResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PagedResult<SyncedInvoiceResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> List(
@@ -76,7 +76,7 @@ public class InvoicesController : ControllerBase
             .OrderByDescending(i => i.IssueDate)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(i => new InvoiceResponse(
+            .Select(i => new SyncedInvoiceResponse(
                 i.Id,
                 i.KSeFInvoiceNumber,
                 i.KSeFReferenceNumber,
@@ -98,7 +98,7 @@ public class InvoicesController : ControllerBase
                 null))
             .ToListAsync();
 
-        return Ok(new PagedResult<InvoiceResponse>
+        return Ok(new PagedResult<SyncedInvoiceResponse>
         {
             Items = items,
             Page = page,
@@ -108,7 +108,7 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [ProducesResponseType(typeof(InvoiceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(SyncedInvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Get(Guid tenantId, Guid id)
@@ -125,7 +125,7 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpGet("by-number/{ksefInvoiceNumber}")]
-    [ProducesResponseType(typeof(InvoiceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(SyncedInvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetByKSeFNumber(Guid tenantId, string ksefInvoiceNumber)
@@ -173,7 +173,7 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpPatch("{id:guid}/paid")]
-    [ProducesResponseType(typeof(InvoiceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(SyncedInvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> SetPaid(Guid tenantId, Guid id, [FromBody] SetInvoicePaidRequest request)
@@ -204,7 +204,7 @@ public class InvoicesController : ControllerBase
             .AnyAsync(t => t.Id == tenantId && t.UserId == _currentUser.UserId);
     }
 
-    private static InvoiceResponse ToResponse(Guid id, DateTime firstSeenAt, bool isPaid, DateTime? paidAt, InvoiceDto dto) => new(
+    private static SyncedInvoiceResponse ToResponse(Guid id, DateTime firstSeenAt, bool isPaid, DateTime? paidAt, InvoiceDto dto) => new(
         id,
         dto.Number,
         dto.ReferenceNumber,
@@ -224,7 +224,7 @@ public class InvoicesController : ControllerBase
         isPaid,
         paidAt,
         Lines: dto.Lines?
-            .Select(l => new InvoiceLineResponse(
+            .Select(l => new SyncedInvoiceLineResponse(
                 l.LineNumber, l.Name, l.Unit, l.Quantity,
                 l.UnitPriceNet, l.UnitPriceGross,
                 l.AmountNet, l.AmountGross, l.AmountVat, l.VatRate))

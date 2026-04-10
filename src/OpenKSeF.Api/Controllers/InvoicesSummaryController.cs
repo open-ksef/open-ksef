@@ -25,7 +25,7 @@ public class InvoicesSummaryController : ControllerBase
     }
 
     [HttpGet]
-    [ProducesResponseType(typeof(PagedResult<InvoiceResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PagedResult<SyncedInvoiceResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> List(
         [FromQuery] Guid? tenantId = null,
@@ -64,7 +64,7 @@ public class InvoicesSummaryController : ControllerBase
             .Select(ToInvoiceResponse())
             .ToListAsync();
 
-        return Ok(new PagedResult<InvoiceResponse>
+        return Ok(new PagedResult<SyncedInvoiceResponse>
         {
             Items = items,
             Page = page,
@@ -74,7 +74,7 @@ public class InvoicesSummaryController : ControllerBase
     }
 
     [HttpGet("by-number/{ksefInvoiceNumber}")]
-    [ProducesResponseType(typeof(InvoiceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(SyncedInvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetByNumber(
@@ -108,8 +108,8 @@ public class InvoicesSummaryController : ControllerBase
     private async Task<bool> IsTenantOwnedByCurrentUser(Guid tenantId) =>
         await _db.Tenants.AnyAsync(t => t.Id == tenantId && t.UserId == _currentUser.UserId);
 
-    private static System.Linq.Expressions.Expression<Func<SyncedInvoice, InvoiceResponse>> ToInvoiceResponse() =>
-        i => new InvoiceResponse(
+    private static System.Linq.Expressions.Expression<Func<SyncedInvoice, SyncedInvoiceResponse>> ToInvoiceResponse() =>
+        i => new SyncedInvoiceResponse(
             i.Id,
             i.KSeFInvoiceNumber,
             i.KSeFReferenceNumber,
@@ -130,7 +130,7 @@ public class InvoicesSummaryController : ControllerBase
             i.PaidAt,
             null);
 
-    private static InvoiceResponse ToDetailResponse(SyncedInvoice i) => new(
+    private static SyncedInvoiceResponse ToDetailResponse(SyncedInvoice i) => new(
         i.Id,
         i.KSeFInvoiceNumber,
         i.KSeFReferenceNumber,
@@ -151,7 +151,7 @@ public class InvoicesSummaryController : ControllerBase
         i.PaidAt,
         Lines: i.Lines
             .OrderBy(l => l.LineNumber)
-            .Select(l => new InvoiceLineResponse(
+            .Select(l => new SyncedInvoiceLineResponse(
                 l.LineNumber, l.Name, l.Unit, l.Quantity,
                 l.UnitPriceNet, l.UnitPriceGross,
                 l.AmountNet, l.AmountGross, l.AmountVat, l.VatRate))
