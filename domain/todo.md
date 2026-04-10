@@ -98,7 +98,7 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 > Each scenario references a validation rule. Implement alongside or after E2-S2.
 
 - [x] VAT tests: `VAT-001..006` — `03:L7-L39`
-- [ ] Advance tests: `ADV-001..002` — `03:L42-L52`
+- [x] Advance tests: `ADV-001..002` — `03:L42-L52`
 - [ ] Final invoice tests: `FIN-001..004` — `03:L54-L74`
 - [ ] Correction tests: `COR-001..006` — `03:L77-L112`
 - [ ] Proforma tests: `PRO-001..003` — `03:L115-L130`
