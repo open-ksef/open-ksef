@@ -19,7 +19,7 @@ describe('DocumentStatusBadge', () => {
   it.each([
     ['Draft', 'Robocza', 'draft'],
     ['Approved', 'Zatwierdzona', 'approved'],
-    ['SubmittedToKsef', 'Wyslana do KSeF', 'submitted'],
+    ['SubmittedToKsef', 'Wysłana do KSeF', 'submitted'],
     ['AcceptedByKsef', 'Zaakceptowana przez KSeF', 'accepted'],
     ['RejectedByKsef', 'Odrzucona przez KSeF', 'rejected'],
   ] as const)('renders %s with Polish label and icon', async (status, label, tone) => {

@@ -8,7 +8,7 @@ const statusPresentation: Record<
 > = {
   Draft: { label: 'Robocza', icon: 'D', tone: 'draft' },
   Approved: { label: 'Zatwierdzona', icon: 'A', tone: 'approved' },
-  SubmittedToKsef: { label: 'Wyslana do KSeF', icon: 'K', tone: 'submitted' },
+  SubmittedToKsef: { label: 'Wysłana do KSeF', icon: 'K', tone: 'submitted' },
   AcceptedByKsef: { label: 'Zaakceptowana przez KSeF', icon: 'OK', tone: 'accepted' },
   RejectedByKsef: { label: 'Odrzucona przez KSeF', icon: '!', tone: 'rejected' },
 }
