@@ -140,10 +140,10 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 ### E4-S1: Domain to KSeF payload mapping
 > Backlog: `04:L191-L202` | Naming: `01:L299-L316`
 
-- [ ] Create project `OpenKSeF.Invoices.Infrastructure`
-- [ ] Define `KsefInvoicePayload` in contracts/integration boundary
-- [ ] Implement `InvoiceToKsefPayloadMapper` in infrastructure layer
-- [ ] Ensure mapper depends on interface, not concrete open-ksef library DTOs
+- [x] Create project `OpenKSeF.Invoices.Infrastructure`
+- [x] Define `KsefInvoicePayload` in contracts/integration boundary
+- [x] Implement `InvoiceToKsefPayloadMapper` in infrastructure layer
+- [x] Ensure mapper depends on interface, not concrete open-ksef library DTOs
 
 ### E4-S2: Technical validation before submission
 > Backlog: `04:L204-L215`
