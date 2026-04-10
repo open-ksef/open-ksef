@@ -760,6 +760,84 @@ label {
   color: #b91c1c;
 }
 
+.ksef-submission-status {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--ui-radius-lg);
+  border: 1px solid currentColor;
+}
+
+.ksef-submission-status__header {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ksef-submission-status__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.ksef-submission-status__label {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ksef-submission-status__details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ksef-submission-status__details dt,
+.ksef-submission-status__details dd {
+  margin: 0;
+}
+
+.ksef-submission-status__reason {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ksef-submission-status--neutral {
+  background: #f8fafc;
+  color: #475569;
+}
+
+.ksef-submission-status--ready {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.ksef-submission-status--submitted {
+  background: #f5f3ff;
+  color: var(--status-submitted);
+}
+
+.ksef-submission-status--accepted {
+  background: var(--ui-success-bg);
+  color: var(--status-accepted);
+}
+
+.ksef-submission-status--rejected {
+  background: var(--ui-error-bg);
+  color: var(--status-rejected);
+}
+
 .ui-skeleton {
   display: grid;
   gap: 10px;
