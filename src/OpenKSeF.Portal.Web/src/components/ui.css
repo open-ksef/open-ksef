@@ -1049,6 +1049,19 @@ label {
   color: var(--severity-error);
 }
 
+.currency-select,
+.vat-rate-select {
+  display: grid;
+  gap: 4px;
+}
+
+.currency-select__label,
+.vat-rate-select__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
 .ui-skeleton {
   display: grid;
   gap: 10px;
