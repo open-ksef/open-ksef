@@ -119,6 +119,100 @@ public sealed class Invoice
         return invoice;
     }
 
+    public static Invoice Restore(
+        InvoiceId id,
+        TenantId tenantId,
+        DocumentKind kind,
+        DocumentStatus status,
+        SellerSnapshot seller,
+        BuyerSnapshot buyer,
+        CurrencyCode currency,
+        DateTime issueDate,
+        KsefSubmissionRequirement ksefRequirement,
+        KsefSubmissionState ksefSubmissionState,
+        DocumentTotals totals,
+        IReadOnlyList<VatSummary> vatBreakdown,
+        IReadOnlyList<InvoiceLine> lineItems,
+        DocumentNumber? documentNumber = null,
+        CorrectionReference? correctionReference = null,
+        string? externalReference = null,
+        DateTime? saleDate = null,
+        DateTime? dueDate = null,
+        DateTime? approvedAt = null,
+        DateTime? submittedToKsefAt = null,
+        DateTime? acceptedByKsefAt = null,
+        string? paymentMethod = null,
+        BankAccountNumber? bankAccount = null,
+        string? publicNotes = null,
+        string? internalNotes = null,
+        KsefIdentifiers? ksefIdentifiers = null,
+        string? ksefRejectionReason = null,
+        IReadOnlyList<InvoiceId>? advanceDocumentIds = null,
+        IReadOnlyList<AdvanceAllocation>? settledAdvanceAllocations = null,
+        IReadOnlyList<DuplicateMetadata>? duplicateIssuances = null)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        ArgumentNullException.ThrowIfNull(tenantId);
+        ArgumentNullException.ThrowIfNull(seller);
+        ArgumentNullException.ThrowIfNull(buyer);
+        ArgumentNullException.ThrowIfNull(currency);
+        ArgumentNullException.ThrowIfNull(totals);
+        ArgumentNullException.ThrowIfNull(vatBreakdown);
+        ArgumentNullException.ThrowIfNull(lineItems);
+
+        var invoice = new Invoice
+        {
+            Id = id,
+            TenantId = tenantId,
+            DocumentNumber = documentNumber,
+            ExternalReference = externalReference,
+            Kind = kind,
+            Status = status,
+            BuyerKind = buyer.Kind,
+            KsefSubmissionRequirement = kind == DocumentKind.Proforma
+                ? KsefSubmissionRequirement.Forbidden
+                : ksefRequirement,
+            KsefSubmissionState = ksefSubmissionState,
+            Seller = seller,
+            Buyer = buyer,
+            IssueDate = issueDate,
+            SaleDate = saleDate,
+            DueDate = dueDate,
+            ApprovedAt = approvedAt,
+            SubmittedToKsefAt = submittedToKsefAt,
+            AcceptedByKsefAt = acceptedByKsefAt,
+            Currency = currency,
+            Totals = totals,
+            VatBreakdown = vatBreakdown.ToList(),
+            PaymentMethod = paymentMethod,
+            BankAccount = bankAccount,
+            PublicNotes = publicNotes,
+            InternalNotes = internalNotes,
+            KsefIdentifiers = ksefIdentifiers,
+            KsefRejectionReason = ksefRejectionReason,
+            CorrectionReference = correctionReference
+        };
+
+        invoice._lines.AddRange(lineItems);
+
+        if (advanceDocumentIds is not null)
+        {
+            invoice._advanceDocumentIds.AddRange(advanceDocumentIds);
+        }
+
+        if (settledAdvanceAllocations is not null)
+        {
+            invoice._settledAllocations.AddRange(settledAdvanceAllocations);
+        }
+
+        if (duplicateIssuances is not null)
+        {
+            invoice._duplicateIssuances.AddRange(duplicateIssuances);
+        }
+
+        return invoice;
+    }
+
     // ── Mutation ──────────────────────────────────────────────────────────────
 
     public void AddLine(InvoiceLine line)

@@ -62,16 +62,16 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E0-S5: Contract tests (`API-###`)
 > Backlog: `06:§6.1`
 
-- [ ] `API-001..003` list and detail
-- [ ] `API-004..005` create draft happy + validation path
-- [ ] `API-006` update draft idempotency
-- [ ] `API-007` approve envelope grouping
-- [ ] `API-008` reopen policy
-- [ ] `API-009` submit-to-ksef state guard
-- [ ] `API-010` correction creation
-- [ ] `API-011` final-from-advances mixed buyers
-- [ ] `API-012..013` print variants
-- [ ] `API-014` tenant isolation
+- [x] `API-001..003` list and detail
+- [x] `API-004..005` create draft happy + validation path
+- [x] `API-006` update draft idempotency
+- [x] `API-007` approve envelope grouping
+- [x] `API-008` reopen policy
+- [x] `API-009` submit-to-ksef state guard
+- [x] `API-010` correction creation
+- [x] `API-011` final-from-advances mixed buyers
+- [x] `API-012..013` print variants
+- [x] `API-014` tenant isolation
 
 ### E0-S6: Legacy rename cleanup on API side
 > Backlog: `05:§5.11`

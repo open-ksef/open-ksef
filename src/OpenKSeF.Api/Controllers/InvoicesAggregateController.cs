@@ -291,6 +291,11 @@ public sealed class InvoicesAggregateController : ControllerBase
             return NotFound();
         }
 
+        if (invoice.Status != DocumentStatus.Approved)
+        {
+            _mutationService.Submit(invoice, _clock.UtcNow);
+        }
+
         var payload = _invoiceToKsefPayloadMapper.TryMap(invoice);
         var context = await _validationContextFactory.CreateSendToKsefAsync(invoice, mappingFailed: payload is null, ct);
         var validationResult = _ksefSubmissionValidationService.Validate(invoice, payload, context);

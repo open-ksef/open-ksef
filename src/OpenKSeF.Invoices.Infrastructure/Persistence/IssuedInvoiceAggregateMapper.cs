@@ -17,49 +17,62 @@ public sealed class IssuedInvoiceAggregateMapper
         ArgumentNullException.ThrowIfNull(record);
 
         var currency = new CurrencyCode(record.Currency);
-        var invoice = Invoice.Draft(
+        var lines = record.Lines
+            .OrderBy(line => line.LineNumber)
+            .Select(line => ToLine(line, currency))
+            .ToList();
+        var advanceDocumentIds = Deserialize(record.AdvanceDocumentIdsJson, Array.Empty<Guid>())
+            .Select(advanceDocumentId => new InvoiceId(advanceDocumentId))
+            .ToList();
+        var settledAdvanceAllocations = Deserialize(record.SettledAdvanceAllocationsJson, Array.Empty<AdvanceAllocationRecord>())
+            .Select(allocation => new AdvanceAllocation(
+                new InvoiceId(allocation.AdvanceInvoiceId),
+                new DocumentNumber(allocation.AdvanceDocumentNumber),
+                new Money(allocation.SettledAmount, currency)))
+            .ToList();
+        var duplicateIssuances = Deserialize(record.DuplicateIssuancesJson, Array.Empty<DuplicateIssuanceRecord>())
+            .Select(duplicate => new DuplicateMetadata(duplicate.IssuedAt, duplicate.IssuedBy))
+            .ToList();
+
+        return Invoice.Restore(
             new InvoiceId(record.Id),
             new TenantId(record.TenantId),
             ParseEnum<DocumentKind>(record.Kind),
+            ParseEnum<DocumentStatus>(record.Status),
             new SellerSnapshot(new PartyName(record.SellerName), new Nip(record.SellerNip)),
-            new BuyerSnapshot(new PartyName(record.BuyerName), ParseEnum<BuyerKind>(record.BuyerKind), string.IsNullOrWhiteSpace(record.BuyerNip) ? null : new Nip(record.BuyerNip)),
+            new BuyerSnapshot(
+                new PartyName(record.BuyerName),
+                ParseEnum<BuyerKind>(record.BuyerKind),
+                string.IsNullOrWhiteSpace(record.BuyerNip) ? null : new Nip(record.BuyerNip)),
             currency,
             record.IssueDate,
             ParseEnum<KsefSubmissionRequirement>(record.KsefSubmissionRequirement),
+            ParseEnum<KsefSubmissionState>(record.KsefSubmissionState),
+            new DocumentTotals(
+                new Money(record.TotalNet, currency),
+                new Money(record.TotalVat, currency),
+                new Money(record.TotalGross, currency)),
+            BuildVatBreakdown(lines, currency),
+            lines,
             string.IsNullOrWhiteSpace(record.DocumentNumber) ? null : new DocumentNumber(record.DocumentNumber),
             CreateCorrectionReference(record),
-            record.ExternalReference);
-
-        invoice.SetIssueDates(record.IssueDate, record.SaleDate, record.DueDate);
-        invoice.SetCommercialData(record.PaymentMethod, record.PublicNotes, record.InternalNotes);
-
-        foreach (var line in record.Lines.OrderBy(line => line.LineNumber))
-        {
-            invoice.AddLine(ToLine(line, currency));
-        }
-
-        foreach (var advanceDocumentId in Deserialize(record.AdvanceDocumentIdsJson, Array.Empty<Guid>()))
-        {
-            invoice.AddAdvanceDocumentId(new InvoiceId(advanceDocumentId));
-        }
-
-        foreach (var allocation in Deserialize(record.SettledAdvanceAllocationsJson, Array.Empty<AdvanceAllocationRecord>()))
-        {
-            invoice.AddAdvanceAllocation(new AdvanceAllocation(
-                new InvoiceId(allocation.AdvanceInvoiceId),
-                new DocumentNumber(allocation.AdvanceDocumentNumber),
-                new Money(allocation.SettledAmount, currency)));
-        }
-
-        invoice.RecalculateTotals();
-        ApplyState(record, invoice);
-
-        foreach (var duplicate in Deserialize(record.DuplicateIssuancesJson, Array.Empty<DuplicateIssuanceRecord>()))
-        {
-            invoice.RecordDuplicateIssue(duplicate.IssuedAt, duplicate.IssuedBy);
-        }
-
-        return invoice;
+            record.ExternalReference,
+            record.SaleDate,
+            record.DueDate,
+            record.ApprovedAt,
+            record.SubmittedToKsefAt,
+            record.AcceptedByKsefAt,
+            record.PaymentMethod,
+            null,
+            record.PublicNotes,
+            record.InternalNotes,
+            string.IsNullOrWhiteSpace(record.KsefDocumentNumber) || string.IsNullOrWhiteSpace(record.KsefReferenceNumber)
+                ? null
+                : new KsefIdentifiers(record.KsefDocumentNumber, record.KsefReferenceNumber),
+            record.KsefRejectionReason,
+            advanceDocumentIds,
+            settledAdvanceAllocations,
+            duplicateIssuances);
     }
 
     public void Apply(Invoice invoice, IssuedInvoiceRecord record)
@@ -116,64 +129,39 @@ public sealed class IssuedInvoiceAggregateMapper
         record.CorrectionReasonKind = invoice.CorrectionReference?.ReasonKind.ToString();
         record.CorrectionReasonDescription = invoice.CorrectionReference?.ReasonDescription;
 
-        record.Lines.Clear();
+        var existingLines = record.Lines.ToDictionary(line => line.Id);
+        var currentLineIds = invoice.LineItems.Select(line => line.LineId.Value).ToHashSet();
+
+        foreach (var orphanedLine in record.Lines.Where(line => !currentLineIds.Contains(line.Id)).ToList())
+        {
+            record.Lines.Remove(orphanedLine);
+        }
+
         foreach (var line in invoice.LineItems)
         {
-            record.Lines.Add(new IssuedInvoiceLineRecord
+            if (!existingLines.TryGetValue(line.LineId.Value, out var lineRecord))
             {
-                Id = line.LineId.Value,
-                IssuedInvoiceId = invoice.Id.Value,
-                LineNumber = line.LineNumber,
-                Description = line.Description,
-                Quantity = line.Quantity,
-                UnitOfMeasure = line.UnitOfMeasure,
-                PricingMode = line.PricingMode.ToString(),
-                UnitPrice = line.UnitPrice.Amount,
-                DiscountPercent = line.Discount?.Value,
-                VatRate = line.VatRate.ToString(),
-                VatClassification = line.VatClassification?.Code,
-                CorrectionRole = line.CorrectionRole.ToString(),
-                NetAmount = line.NetAmount.Amount,
-                VatAmount = line.VatAmount.Amount,
-                GrossAmount = line.GrossAmount.Amount
-            });
-        }
-    }
+                lineRecord = new IssuedInvoiceLineRecord
+                {
+                    Id = line.LineId.Value,
+                    IssuedInvoiceId = invoice.Id.Value
+                };
+                record.Lines.Add(lineRecord);
+            }
 
-    private static void ApplyState(IssuedInvoiceRecord record, Invoice invoice)
-    {
-        var status = ParseEnum<DocumentStatus>(record.Status);
-        var approvedAt = record.ApprovedAt ?? record.UpdatedAt;
-        var submittedAt = record.SubmittedToKsefAt ?? approvedAt;
-        var acceptedAt = record.AcceptedByKsefAt ?? submittedAt;
-
-        switch (status)
-        {
-            case DocumentStatus.Draft:
-                return;
-            case DocumentStatus.Approved:
-                invoice.Approve(approvedAt);
-                return;
-            case DocumentStatus.SubmittedToKsef:
-                invoice.Approve(approvedAt);
-                invoice.SubmitToKsef(submittedAt);
-                return;
-            case DocumentStatus.AcceptedByKsef:
-                invoice.Approve(approvedAt);
-                invoice.SubmitToKsef(submittedAt);
-                invoice.AcceptByKsef(
-                    new KsefIdentifiers(
-                        record.KsefDocumentNumber ?? "UNKNOWN",
-                        record.KsefReferenceNumber ?? "UNKNOWN"),
-                    acceptedAt);
-                return;
-            case DocumentStatus.RejectedByKsef:
-                invoice.Approve(approvedAt);
-                invoice.SubmitToKsef(submittedAt);
-                invoice.RejectByKsef(record.KsefRejectionReason ?? string.Empty, record.UpdatedAt);
-                return;
-            default:
-                throw new InvalidOperationException($"Unsupported invoice status '{record.Status}'.");
+            lineRecord.LineNumber = line.LineNumber;
+            lineRecord.Description = line.Description;
+            lineRecord.Quantity = line.Quantity;
+            lineRecord.UnitOfMeasure = line.UnitOfMeasure;
+            lineRecord.PricingMode = line.PricingMode.ToString();
+            lineRecord.UnitPrice = line.UnitPrice.Amount;
+            lineRecord.DiscountPercent = line.Discount?.Value;
+            lineRecord.VatRate = line.VatRate.ToString();
+            lineRecord.VatClassification = line.VatClassification?.Code;
+            lineRecord.CorrectionRole = line.CorrectionRole.ToString();
+            lineRecord.NetAmount = line.NetAmount.Amount;
+            lineRecord.VatAmount = line.VatAmount.Amount;
+            lineRecord.GrossAmount = line.GrossAmount.Amount;
         }
     }
 
@@ -182,13 +170,17 @@ public sealed class IssuedInvoiceAggregateMapper
         var vatRate = ParseVatRate(line.VatRate);
         var discount = line.DiscountPercent.HasValue ? new Percentage(line.DiscountPercent.Value) : null;
 
-        return InvoiceLine.Create(
+        return InvoiceLine.Restore(
+            new LineId(line.Id),
             line.LineNumber,
             line.Description,
             line.Quantity,
             new Money(line.UnitPrice, currency),
             ParseEnum<PricingMode>(line.PricingMode),
             vatRate,
+            new Money(line.NetAmount, currency),
+            new Money(line.VatAmount, currency),
+            new Money(line.GrossAmount, currency),
             discount,
             line.UnitOfMeasure,
             string.IsNullOrWhiteSpace(line.VatClassification) ? null : new VatClassification(line.VatClassification),
@@ -241,6 +233,20 @@ public sealed class IssuedInvoiceAggregateMapper
         }
 
         return JsonSerializer.Deserialize<T>(json, JsonOptions) ?? fallback;
+    }
+
+    private static IReadOnlyList<VatSummary> BuildVatBreakdown(
+        IReadOnlyList<InvoiceLine> lines,
+        CurrencyCode currency)
+    {
+        return lines
+            .GroupBy(line => line.VatRate)
+            .Select(group => new VatSummary(
+                group.Key,
+                new Money(group.Sum(line => line.NetAmount.Amount), currency),
+                new Money(group.Sum(line => line.VatAmount.Amount), currency),
+                new Money(group.Sum(line => line.GrossAmount.Amount), currency)))
+            .ToList();
     }
 
     private sealed record AdvanceAllocationRecord(

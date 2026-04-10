@@ -60,6 +60,48 @@ public sealed class InvoiceLine
         return line;
     }
 
+    public static InvoiceLine Restore(
+        LineId lineId,
+        int lineNumber,
+        string description,
+        decimal quantity,
+        Money unitPrice,
+        PricingMode pricingMode,
+        VatRate vatRate,
+        Money netAmount,
+        Money vatAmount,
+        Money grossAmount,
+        Percentage? discount = null,
+        string? unitOfMeasure = null,
+        VatClassification? vatClassification = null,
+        CorrectionRole correctionRole = CorrectionRole.Normal)
+    {
+        ArgumentNullException.ThrowIfNull(lineId);
+        ArgumentNullException.ThrowIfNull(unitPrice);
+        ArgumentNullException.ThrowIfNull(vatRate);
+        ArgumentNullException.ThrowIfNull(netAmount);
+        ArgumentNullException.ThrowIfNull(vatAmount);
+        ArgumentNullException.ThrowIfNull(grossAmount);
+
+        return new InvoiceLine
+        {
+            LineId = lineId,
+            LineNumber = lineNumber,
+            Description = description ?? string.Empty,
+            Quantity = quantity,
+            UnitOfMeasure = unitOfMeasure,
+            UnitPrice = unitPrice,
+            PricingMode = pricingMode,
+            Discount = discount,
+            VatRate = vatRate,
+            VatClassification = vatClassification,
+            CorrectionRole = correctionRole,
+            NetAmount = netAmount,
+            VatAmount = vatAmount,
+            GrossAmount = grossAmount
+        };
+    }
+
     private void Recalculate()
     {
         var discountFactor = 1m - (Discount?.AsFraction ?? 0m);
