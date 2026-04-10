@@ -237,13 +237,13 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E5-S1: Correction flow
 > Backlog: `05:§5.6.6`
 
-- [ ] Create `src/pages/InvoiceCorrectionCreate.tsx`
-- [ ] Load original read-only
-- [ ] `InvoiceLineEditor` in correction variant (before/after)
-- [ ] `CorrectionReasonSelect` covering all `CorrectionReasonKind`
-- [ ] Submit → `createCorrectionFromOriginal`
-- [ ] Hide "Utwórz korektę" on proforma detail (`COR-005`)
-- [ ] Tests: `UIX-001..008`
+- [x] Create `src/pages/InvoiceCorrectionCreate.tsx`
+- [x] Load original read-only
+- [x] `InvoiceLineEditor` in correction variant (before/after)
+- [x] `CorrectionReasonSelect` covering all `CorrectionReasonKind`
+- [x] Submit → `createCorrectionFromOriginal`
+- [x] Hide "Utwórz korektę" on proforma detail (`COR-005`)
+- [x] Tests: `UIX-001..008`
 
 ### E5-S2: Final-from-advances flow
 > Backlog: `05:§5.6.7`

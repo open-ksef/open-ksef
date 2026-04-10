@@ -188,6 +188,32 @@ describe('InvoiceAggregateDetailPage', () => {
     expect(container.textContent).not.toContain('Edytuj')
   })
 
+  it('UIX-006 proforma accepted status hides Utwórz korekte button', async () => {
+    vi.mocked(listTenants).mockResolvedValue(defaultTenant)
+    vi.mocked(getAggregateInvoice).mockResolvedValue({
+      ...approvedInvoice,
+      kind: 'Proforma',
+      status: 'AcceptedByKsef',
+      ksefSubmissionState: 'Accepted',
+      ksefDocumentNumber: 'KSeF-001',
+      ksefReferenceNumber: 'REF-001',
+    })
+
+    const { router } = renderPage()
+    await act(async () => {
+      root.render(<RouterProvider router={router} />)
+      await flushPromises()
+      await flushPromises()
+    })
+
+    await act(async () => {
+      await waitFor(() => container.querySelector('[data-testid="aggregate-invoice-detail"]') !== null)
+    })
+
+    expect(container.textContent).not.toContain('Utwórz korektę')
+    expect(container.textContent).toContain('Drukuj')
+  })
+
   it('UID-006 accepted status shows print button and KSeF identifiers', async () => {
     vi.mocked(listTenants).mockResolvedValue(defaultTenant)
     vi.mocked(getAggregateInvoice).mockResolvedValue({

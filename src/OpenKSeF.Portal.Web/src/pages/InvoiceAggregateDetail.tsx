@@ -292,9 +292,11 @@ function ActionButtons({ invoice, tenantId, id, onReopen, isReopening }: ActionB
         <Link to={`${base}/print?${tenantQuery}`} className="ui-button ui-button--secondary">
           Drukuj
         </Link>
-        <Link to={`${base}/corrections/new?${tenantQuery}`} className="ui-button ui-button--secondary">
-          Utwórz korektę
-        </Link>
+        {invoice.kind !== 'Proforma' ? (
+          <Link to={`${base}/corrections/new?${tenantQuery}`} className="ui-button ui-button--secondary">
+            Utwórz korektę
+          </Link>
+        ) : null}
       </div>
     )
   }
