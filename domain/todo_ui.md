@@ -123,7 +123,7 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 - [x] `src/components/invoices/DocumentKindChip.tsx` (+ `UIS-006`)
 - [x] `src/components/invoices/SourceChip.tsx`
 - [x] `src/components/invoices/KsefSubmissionStatus.tsx` (+ `UIS-007`)
-- [ ] `src/components/invoices/KsefRequirementBanner.tsx`
+- [x] `src/components/invoices/KsefRequirementBanner.tsx`
 - [ ] `src/components/invoices/KsefIdentifiersCard.tsx`
 - [ ] `src/components/invoices/ValidationMessageList.tsx` (+ `UIV-001..008`)
 - [ ] `src/components/invoices/MoneyInput.tsx` / `MoneyDisplay.tsx`

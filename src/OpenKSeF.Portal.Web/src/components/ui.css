@@ -858,6 +858,46 @@ label {
   color: #3f6212;
 }
 
+.ksef-requirement-banner {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: var(--ui-radius-lg);
+  border: 1px solid currentColor;
+}
+
+.ksef-requirement-banner__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ksef-requirement-banner__detail {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ksef-requirement-banner--required {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.ksef-requirement-banner--optional {
+  background: #f8fafc;
+  color: #475569;
+}
+
+.ksef-requirement-banner--forbidden {
+  background: var(--ui-error-bg);
+  color: var(--status-rejected);
+}
+
+.ksef-requirement-banner--na {
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
 .ui-skeleton {
   display: grid;
   gap: 10px;
