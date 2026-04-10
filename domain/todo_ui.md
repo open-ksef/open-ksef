@@ -28,10 +28,10 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E0-S2: Request/response DTOs
 > Backlog: `05:§5.4.2`
 
-- [ ] Define request DTOs in `OpenKSeF.Invoices.Contracts/Dtos/Requests/` — `CreateInvoiceRequest`, `UpdateInvoiceDraftRequest`, `ApproveInvoiceRequest`, `ReopenInvoiceRequest`, `CreateCorrectionFromOriginalRequest`, `CreateFinalInvoiceFromAdvancesRequest`, `RecordKsefAcceptanceRequest`, `RecordKsefRejectionRequest`
-- [ ] Decide mapping strategy command-contract → request-DTO (reuse existing command records directly or wrap)
-- [ ] Reuse existing `InvoiceReadDto`, `InvoicePrintModel`, `DuplicatePrintInfo` without modification
-- [ ] Document enum JSON format (PascalCase strings) in a single JsonConverter
+- [x] Define request DTOs in `OpenKSeF.Invoices.Contracts/Dtos/Requests/` — `CreateInvoiceRequest`, `UpdateInvoiceDraftRequest`, `ApproveInvoiceRequest`, `ReopenInvoiceRequest`, `CreateCorrectionFromOriginalRequest`, `CreateFinalInvoiceFromAdvancesRequest`, `RecordKsefAcceptanceRequest`, `RecordKsefRejectionRequest`
+- [x] Decide mapping strategy command-contract → request-DTO (reuse existing command records directly or wrap)
+- [x] Reuse existing `InvoiceReadDto`, `InvoicePrintModel`, `DuplicatePrintInfo` without modification
+- [x] Document enum JSON format (PascalCase strings) in a single JsonConverter
 
 ### E0-S3: Error envelope
 > Backlog: `05:§5.4.4`
