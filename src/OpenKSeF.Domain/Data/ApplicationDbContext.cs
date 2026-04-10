@@ -19,6 +19,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
     public DbSet<SystemConfig> SystemConfigs => Set<SystemConfig>();
 
+    // Issuing domain — new Invoice aggregate persistence
+    public DbSet<IssuedInvoiceRecord> IssuedInvoices => Set<IssuedInvoiceRecord>();
+    public DbSet<IssuedInvoiceLineRecord> IssuedInvoiceLines => Set<IssuedInvoiceLineRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -47,9 +51,10 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // InvoiceHeader
+        // InvoiceHeader (persisted as SyncedInvoices — legacy synced read model)
         modelBuilder.Entity<InvoiceHeader>(entity =>
         {
+            entity.ToTable("SyncedInvoices");
             entity.HasKey(i => i.Id);
             entity.HasIndex(i => new { i.TenantId, i.KSeFInvoiceNumber }).IsUnique();
             entity.HasIndex(i => i.IssueDate);
@@ -72,9 +77,10 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // InvoiceLine
+        // InvoiceLine (persisted as SyncedInvoiceLines — legacy synced read model)
         modelBuilder.Entity<InvoiceLine>(entity =>
         {
+            entity.ToTable("SyncedInvoiceLines");
             entity.HasKey(l => l.Id);
             entity.HasIndex(l => l.InvoiceHeaderId);
             entity.Property(l => l.Name).HasMaxLength(512);
@@ -122,6 +128,63 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(s => s.Key);
             entity.Property(s => s.Key).HasMaxLength(128);
             entity.Property(s => s.Value).IsRequired();
+        });
+
+        // IssuedInvoiceRecord — new Invoice aggregate (issuing domain)
+        modelBuilder.Entity<IssuedInvoiceRecord>(entity =>
+        {
+            entity.HasKey(i => i.Id);
+            entity.ToTable("IssuedInvoices");
+            entity.HasIndex(i => i.TenantId);
+            entity.HasIndex(i => new { i.TenantId, i.DocumentNumber }).IsUnique().HasFilter("\"DocumentNumber\" IS NOT NULL");
+            entity.Property(i => i.Kind).IsRequired().HasMaxLength(50);
+            entity.Property(i => i.Status).IsRequired().HasMaxLength(50);
+            entity.Property(i => i.BuyerKind).IsRequired().HasMaxLength(50);
+            entity.Property(i => i.KsefSubmissionRequirement).IsRequired().HasMaxLength(50);
+            entity.Property(i => i.KsefSubmissionState).IsRequired().HasMaxLength(50);
+            entity.Property(i => i.SellerName).IsRequired().HasMaxLength(500);
+            entity.Property(i => i.SellerNip).IsRequired().HasMaxLength(10);
+            entity.Property(i => i.BuyerName).IsRequired().HasMaxLength(500);
+            entity.Property(i => i.BuyerNip).HasMaxLength(10);
+            entity.Property(i => i.Currency).IsRequired().HasMaxLength(3).HasDefaultValue("PLN");
+            entity.Property(i => i.TotalNet).HasPrecision(18, 2);
+            entity.Property(i => i.TotalVat).HasPrecision(18, 2);
+            entity.Property(i => i.TotalGross).HasPrecision(18, 2);
+            entity.Property(i => i.DocumentNumber).HasMaxLength(256);
+            entity.Property(i => i.ExternalReference).HasMaxLength(256);
+            entity.Property(i => i.PaymentMethod).HasMaxLength(100);
+            entity.Property(i => i.KsefDocumentNumber).HasMaxLength(100);
+            entity.Property(i => i.KsefReferenceNumber).HasMaxLength(100);
+            entity.Property(i => i.CorrectionOriginalDocumentNumber).HasMaxLength(256);
+            entity.Property(i => i.CorrectionReasonKind).HasMaxLength(50);
+            entity.HasOne(i => i.Tenant)
+                .WithMany()
+                .HasForeignKey(i => i.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // IssuedInvoiceLineRecord
+        modelBuilder.Entity<IssuedInvoiceLineRecord>(entity =>
+        {
+            entity.HasKey(l => l.Id);
+            entity.ToTable("IssuedInvoiceLines");
+            entity.HasIndex(l => l.IssuedInvoiceId);
+            entity.Property(l => l.Description).IsRequired().HasMaxLength(512);
+            entity.Property(l => l.UnitOfMeasure).HasMaxLength(50);
+            entity.Property(l => l.PricingMode).IsRequired().HasMaxLength(20);
+            entity.Property(l => l.VatRate).IsRequired().HasMaxLength(50);
+            entity.Property(l => l.VatClassification).HasMaxLength(100);
+            entity.Property(l => l.CorrectionRole).HasMaxLength(30);
+            entity.Property(l => l.Quantity).HasPrecision(18, 6);
+            entity.Property(l => l.UnitPrice).HasPrecision(18, 6);
+            entity.Property(l => l.DiscountPercent).HasPrecision(5, 2);
+            entity.Property(l => l.NetAmount).HasPrecision(18, 2);
+            entity.Property(l => l.VatAmount).HasPrecision(18, 2);
+            entity.Property(l => l.GrossAmount).HasPrecision(18, 2);
+            entity.HasOne(l => l.IssuedInvoice)
+                .WithMany(i => i.Lines)
+                .HasForeignKey(l => l.IssuedInvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

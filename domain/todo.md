@@ -167,11 +167,11 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 ### E5-S1: Invoice persistence model
 > Backlog: `04:L237-L253`
 
-- [ ] Create EF persistence model / repository for new `Invoice` aggregate
-- [ ] Keep sync/browse model (`SyncedInvoice`) operational for existing read paths
-- [ ] Execute PostgreSQL rename: `InvoiceHeader` -> `synced_invoices`, `InvoiceLine` -> `synced_invoice_lines` (tables, PK/FK, indexes). Migration notes: `01:L17-L20`
-- [ ] Document migration rollback path
-- [ ] Define coexistence strategy for old + new persistence
+- [x] Create EF persistence model / repository for new `Invoice` aggregate
+- [x] Keep sync/browse model (`SyncedInvoice`) operational for existing read paths
+- [x] Execute PostgreSQL rename: `InvoiceHeader` -> `synced_invoices`, `InvoiceLine` -> `synced_invoice_lines` (tables, PK/FK, indexes). Migration notes: `01:L17-L20`
+- [x] Document migration rollback path
+- [x] Define coexistence strategy for old + new persistence
 
 ### E5-S2: Read model / projection strategy
 > Backlog: `04:L255-L265`
