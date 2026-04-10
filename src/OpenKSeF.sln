@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenKSeF.Invoices.Domain.Te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenKSeF.Invoices.Application", "OpenKSeF.Invoices.Application\OpenKSeF.Invoices.Application.csproj", "{3F253708-BD95-4356-83B5-767509EDE40B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenKSeF.Invoices.Contracts", "OpenKSeF.Invoices.Contracts\OpenKSeF.Invoices.Contracts.csproj", "{C513CD21-5382-4F66-B31F-5A51BAD10FCE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -153,6 +155,18 @@ Global
 		{3F253708-BD95-4356-83B5-767509EDE40B}.Release|x64.Build.0 = Release|Any CPU
 		{3F253708-BD95-4356-83B5-767509EDE40B}.Release|x86.ActiveCfg = Release|Any CPU
 		{3F253708-BD95-4356-83B5-767509EDE40B}.Release|x86.Build.0 = Release|Any CPU
+		{C513CD21-5382-4F66-B31F-5A51BAD10FCE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C513CD21-5382-4F66-B31F-5A51BAD10FCE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C513CD21-5382-4F66-B31F-5A51BAD10FCE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C513CD21-5382-4F66-B31F-5A51BAD10FCE}.Debug|x64.Build.0 = Debug|Any CPU
+		{C513CD21-5382-4F66-B31F-5A51BAD10FCE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C513CD21-5382-4F66-B31F-5A51BAD10FCE}.Debug|x86.Build.0 = Debug|Any CPU
+		{C513CD21-5382-4F66-B31F-5A51BAD10FCE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C513CD21-5382-4F66-B31F-5A51BAD10FCE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C513CD21-5382-4F66-B31F-5A51BAD10FCE}.Release|x64.ActiveCfg = Release|Any CPU
+		{C513CD21-5382-4F66-B31F-5A51BAD10FCE}.Release|x64.Build.0 = Release|Any CPU
+		{C513CD21-5382-4F66-B31F-5A51BAD10FCE}.Release|x86.ActiveCfg = Release|Any CPU
+		{C513CD21-5382-4F66-B31F-5A51BAD10FCE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

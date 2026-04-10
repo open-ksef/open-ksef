@@ -117,7 +117,7 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 > Backlog: `04:L158-L170`
 
 - [x] Create project `OpenKSeF.Invoices.Application`
-- [ ] Create project `OpenKSeF.Invoices.Contracts` (request/response DTOs)
+- [x] Create project `OpenKSeF.Invoices.Contracts` (request/response DTOs)
 - [ ] Implement command: `CreateInvoice`
 - [ ] Implement command: `UpdateInvoiceDraft`
 - [ ] Implement command: `ApproveInvoice` (runs hard validation pipeline)
