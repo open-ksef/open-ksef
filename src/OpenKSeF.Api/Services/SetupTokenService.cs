@@ -17,13 +17,26 @@ public class SetupTokenService : ISetupTokenService
     private readonly string _issuer;
     private static readonly TimeSpan TokenLifetime = TimeSpan.FromMinutes(5);
 
-    public SetupTokenService(IConfiguration configuration)
+    private const string DevFallbackKey = "dev-setup-token-key-must-be-32b!";
+
+    public SetupTokenService(IConfiguration configuration, IHostEnvironment environment, ILogger<SetupTokenService> logger)
     {
         var keyBase64 = configuration["ENCRYPTION_KEY"];
         if (string.IsNullOrEmpty(keyBase64))
-            _signingKey = Encoding.UTF8.GetBytes("dev-setup-token-key-must-be-32b!");
+        {
+            if (!environment.IsDevelopment())
+                throw new InvalidOperationException(
+                    "ENCRYPTION_KEY is not configured. Run the admin setup wizard or set the ENCRYPTION_KEY environment variable. " +
+                    "Generate one with: openssl rand -base64 32");
+
+            _signingKey = Encoding.UTF8.GetBytes(DevFallbackKey);
+            logger.LogWarning(
+                "ENCRYPTION_KEY not set — using dev fallback key for setup tokens. Set ENCRYPTION_KEY before exposing this instance.");
+        }
         else
+        {
             _signingKey = Convert.FromBase64String(keyBase64);
+        }
 
         _issuer = "openksef-setup";
     }

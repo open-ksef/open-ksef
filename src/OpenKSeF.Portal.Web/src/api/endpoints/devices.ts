@@ -19,8 +19,8 @@ export function registerDevice(request: RegisterDeviceRequest): Promise<MessageR
   return apiClient.post<MessageResponse>('/devices/register', request)
 }
 
-export function unregisterDevice(token: string): Promise<void> {
-  return apiClient.delete<void>(`/devices/${encodeURIComponent(token)}`)
+export function unregisterDevice(id: string): Promise<void> {
+  return apiClient.delete<void>(`/devices/${encodeURIComponent(id)}`)
 }
 
 export interface TestNotificationResponse {
@@ -28,6 +28,6 @@ export interface TestNotificationResponse {
   error?: string
 }
 
-export function sendTestNotification(token: string): Promise<TestNotificationResponse> {
-  return apiClient.post<TestNotificationResponse>(`/devices/${encodeURIComponent(token)}/test-notification`)
+export function sendTestNotification(id: string): Promise<TestNotificationResponse> {
+  return apiClient.post<TestNotificationResponse>(`/devices/${encodeURIComponent(id)}/test-notification`)
 }

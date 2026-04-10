@@ -1,6 +1,9 @@
+using System.Threading.RateLimiting;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -138,6 +141,12 @@ builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
+// Memory cache (may be used by framework internals)
+builder.Services.AddMemoryCache();
+
+// Setup session (server-side opaque token store for admin setup wizard)
+builder.Services.AddSingleton<ISetupSessionService, SetupSessionService>();
+
 // Mobile setup token services
 builder.Services.AddSingleton<ISetupTokenService, SetupTokenService>();
 builder.Services.AddHttpClient("keycloak");
@@ -186,6 +195,55 @@ builder.Services.AddSingleton<IPushProvider, ApnsPushProvider>(sp =>
         BaseAddress = new Uri(builder.Configuration["APNs:BaseUrl"] ?? "https://api.push.apple.com")
     };
     return new ApnsPushProvider(httpClient, builder.Configuration, sp.GetRequiredService<ILogger<ApnsPushProvider>>());
+});
+
+// Rate limiting
+// UseForwardedHeaders (called in the pipeline below) populates RemoteIpAddress with
+// the real client IP before any rate-limit policy runs, so it is safe to partition on
+// RemoteIpAddress here. Never read X-Forwarded-For directly — it is client-controllable.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Strict limit for setup authentication: 5 attempts per 15 minutes per IP
+    options.AddPolicy("setup-auth", context =>
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(15),
+            PermitLimit = 5,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+
+    // Strict limit for setup apply: 5 attempts per 15 minutes per IP
+    options.AddPolicy("setup-apply", context =>
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(15),
+            PermitLimit = 5,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+
+    // Global baseline: 120 requests per minute per IP (sliding window)
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetSlidingWindowLimiter(ip, _ => new SlidingWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(1),
+            PermitLimit = 120,
+            SegmentsPerWindow = 6,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
 });
 
 // Controllers
@@ -247,6 +305,14 @@ if (!string.IsNullOrEmpty(ksefEnv))
     var ksefOptions = app.Services.GetRequiredService<KSeF.Client.DI.KSeFClientOptions>();
     ksefOptions.BaseUrl = OpenKSeF.Sync.DependencyInjection.ResolveKSeFEnvironment(ksefEnv);
 }
+
+// Trust forwarded headers from nginx proxy (X-Forwarded-For, X-Forwarded-Proto)
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
+app.UseRateLimiter();
 
 // Correlation ID middleware
 app.Use(async (context, next) =>

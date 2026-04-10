@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using OpenKSeF.Api.Controllers;
@@ -14,19 +13,19 @@ public class SystemSetupControllerTests
 {
     private readonly ISystemConfigService _systemConfig;
     private readonly ISystemSetupService _setupService;
-    private readonly IConfiguration _configuration;
+    private readonly ISetupSessionService _sessionService;
     private readonly ILogger<SystemSetupController> _logger;
 
     public SystemSetupControllerTests()
     {
         _systemConfig = Substitute.For<ISystemConfigService>();
         _setupService = Substitute.For<ISystemSetupService>();
-        _configuration = new ConfigurationBuilder().Build();
+        _sessionService = Substitute.For<ISetupSessionService>();
         _logger = Substitute.For<ILogger<SystemSetupController>>();
     }
 
     private SystemSetupController CreateController() =>
-        new(_systemConfig, _setupService, _configuration, _logger);
+        new(_systemConfig, _setupService, _sessionService, _logger);
 
     [Fact]
     public void GetSetupStatus_NotInitialized_ReturnsFalse()
@@ -82,13 +81,14 @@ public class SystemSetupControllerTests
     {
         _systemConfig.IsInitialized.Returns(false);
         _setupService.AuthenticateAdminAsync("admin", "admin").Returns("kc-token-123");
+        _sessionService.CreateSession("admin", "admin").Returns("opaque-session-token");
         var controller = CreateController();
         var request = new SetupAuthenticateRequest("admin", "admin");
 
         var result = await controller.Authenticate(request) as OkObjectResult;
 
         var response = Assert.IsType<SetupAuthenticateResponse>(result!.Value);
-        Assert.False(string.IsNullOrEmpty(response.SetupToken));
+        Assert.Equal("opaque-session-token", response.SetupToken);
         Assert.Equal(600, response.ExpiresInSeconds);
     }
 
@@ -132,6 +132,7 @@ public class SystemSetupControllerTests
     public async Task Apply_InvalidToken_ReturnsBadRequest()
     {
         _systemConfig.IsInitialized.Returns(false);
+        _sessionService.RedeemSession("not-a-valid-session").Returns((ValueTuple<string, string>?)null);
         var controller = CreateController();
         var request = new SetupApplyRequest
         {
@@ -141,8 +142,35 @@ public class SystemSetupControllerTests
             AdminPassword = "Test1234!",
         };
 
-        var result = await controller.Apply("not-a-valid-jwt", request, CancellationToken.None) as BadRequestObjectResult;
+        var result = await controller.Apply("not-a-valid-session", request, CancellationToken.None) as BadRequestObjectResult;
 
         Assert.NotNull(result);
+    }
+
+    [Fact]
+    public async Task Apply_ValidToken_IsConsumedOnce()
+    {
+        _systemConfig.IsInitialized.Returns(false);
+        _sessionService.RedeemSession("valid-session")
+            .Returns(("admin", "secret"), (ValueTuple<string, string>?)null);
+        _setupService.AuthenticateAdminAsync("admin", "secret").Returns("kc-token");
+        _setupService.ApplySetupAsync(Arg.Any<SetupApplyRequest>(), "kc-token", "admin", Arg.Any<CancellationToken>())
+            .Returns(new SetupApplyResponse(true, null, null, null));
+        var controller = CreateController();
+        var request = new SetupApplyRequest
+        {
+            ExternalBaseUrl = "http://localhost:8080",
+            KSeFBaseUrl = "test",
+            AdminEmail = "admin@example.com",
+            AdminPassword = "Test1234!",
+        };
+
+        var firstResult = await controller.Apply("valid-session", request, CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(firstResult);
+
+        // Session has been redeemed — second call returns null
+        var secondAttemptCredentials = _sessionService.RedeemSession("valid-session");
+        Assert.Null(secondAttemptCredentials);
     }
 }

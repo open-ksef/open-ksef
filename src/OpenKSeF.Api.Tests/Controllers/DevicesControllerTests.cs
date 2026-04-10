@@ -159,9 +159,10 @@ public class DevicesControllerTests : IDisposable
     public async Task Unregister_RemovesExistingToken()
     {
         var now = DateTime.UtcNow;
+        var deviceId = Guid.NewGuid();
         _db.DeviceTokens.Add(new DeviceToken
         {
-            Id = Guid.NewGuid(),
+            Id = deviceId,
             UserId = _userId,
             Token = "token-to-remove",
             Platform = Platform.Android,
@@ -171,7 +172,7 @@ public class DevicesControllerTests : IDisposable
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
-        var result = await controller.Unregister("token-to-remove");
+        var result = await controller.Unregister(deviceId);
 
         Assert.IsType<NoContentResult>(result);
         Assert.Equal(0, await _db.DeviceTokens.CountAsync());
@@ -181,7 +182,7 @@ public class DevicesControllerTests : IDisposable
     public async Task Unregister_NonexistentToken_ReturnsNotFound()
     {
         var controller = CreateController();
-        var result = await controller.Unregister("nonexistent-token");
+        var result = await controller.Unregister(Guid.NewGuid());
 
         Assert.IsType<NotFoundResult>(result);
     }
@@ -201,9 +202,10 @@ public class DevicesControllerTests : IDisposable
     public async Task TestNotification_ExistingDevice_ReturnsSuccess()
     {
         var now = DateTime.UtcNow;
+        var deviceId = Guid.NewGuid();
         _db.DeviceTokens.Add(new DeviceToken
         {
-            Id = Guid.NewGuid(),
+            Id = deviceId,
             UserId = _userId,
             Token = "test-push-token",
             Platform = Platform.Android,
@@ -216,7 +218,7 @@ public class DevicesControllerTests : IDisposable
             .Returns(true);
 
         var controller = CreateController();
-        var result = await controller.TestNotification("test-push-token") as OkObjectResult;
+        var result = await controller.TestNotification(deviceId) as OkObjectResult;
 
         Assert.NotNull(result);
     }
@@ -225,7 +227,7 @@ public class DevicesControllerTests : IDisposable
     public async Task TestNotification_NonexistentDevice_ReturnsNotFound()
     {
         var controller = CreateController();
-        var result = await controller.TestNotification("no-such-token");
+        var result = await controller.TestNotification(Guid.NewGuid());
 
         Assert.IsType<NotFoundResult>(result);
     }
@@ -234,9 +236,10 @@ public class DevicesControllerTests : IDisposable
     public async Task TestNotification_OtherUserDevice_ReturnsNotFound()
     {
         var now = DateTime.UtcNow;
+        var deviceId = Guid.NewGuid();
         _db.DeviceTokens.Add(new DeviceToken
         {
-            Id = Guid.NewGuid(),
+            Id = deviceId,
             UserId = "other-user",
             Token = "other-user-token",
             Platform = Platform.iOS,
@@ -246,7 +249,7 @@ public class DevicesControllerTests : IDisposable
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
-        var result = await controller.TestNotification("other-user-token");
+        var result = await controller.TestNotification(deviceId);
 
         Assert.IsType<NotFoundResult>(result);
     }
