@@ -138,6 +138,20 @@ public class CreateFinalInvoiceFromAdvancesHandlerTests
             new CreateFinalInvoiceFromAdvancesHandler().Handle([adv1, adv2], command));
     }
 
+    [Fact]
+    public void Handle_Throws_WhenAdvanceTenantDiffersFromCommandTenant()
+    {
+        var foreignTenant = new TenantId(Guid.NewGuid());
+        var adv = MakeAdvanceInvoiceWithTenant(foreignTenant, "ADV/2026/040");
+        var command = new CreateFinalInvoiceFromAdvancesCommand(
+            Tenant.Value,
+            new DateTime(2026, 4, 20),
+            [new AdvanceSettlementEntry(adv.Id.Value, "ADV/2026/040", 100m)]);
+
+        Assert.Throws<InvoiceDomainException>(() =>
+            new CreateFinalInvoiceFromAdvancesHandler().Handle([adv], command));
+    }
+
     private static Invoice MakeApprovedAdvanceInvoice(string number)
     {
         var invoice = Invoice.Draft(
@@ -186,12 +200,27 @@ public class CreateFinalInvoiceFromAdvancesHandlerTests
 
     private static Invoice MakeAdvanceInvoiceWithCurrency(CurrencyCode currency, string number)
     {
+        return MakeAdvanceInvoice(Tenant, Seller, Buyer, currency, number);
+    }
+
+    private static Invoice MakeAdvanceInvoiceWithTenant(TenantId tenant, string number)
+    {
+        return MakeAdvanceInvoice(tenant, Seller, Buyer, Pln, number);
+    }
+
+    private static Invoice MakeAdvanceInvoice(
+        TenantId tenant,
+        SellerSnapshot seller,
+        BuyerSnapshot buyer,
+        CurrencyCode currency,
+        string number)
+    {
         var invoice = Invoice.Draft(
             InvoiceId.New(),
-            Tenant,
+            tenant,
             DocumentKind.AdvanceInvoice,
-            Seller,
-            Buyer,
+            seller,
+            buyer,
             currency,
             new DateTime(2026, 4, 10),
             KsefSubmissionRequirement.Required,

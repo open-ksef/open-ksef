@@ -15,6 +15,11 @@ public sealed class CreateCorrectionFromOriginalHandler(ICorrectionPolicy correc
         ArgumentNullException.ThrowIfNull(original);
         ArgumentNullException.ThrowIfNull(command);
 
+        if (original.TenantId.Value != command.TenantId)
+        {
+            throw new InvoiceDomainException("Correction invoice tenant must match the original invoice tenant.");
+        }
+
         if (!correctionPolicy.CanCorrect(original))
         {
             throw new InvoiceDomainException("Original invoice cannot be corrected by current policy.");

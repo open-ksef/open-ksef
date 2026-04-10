@@ -1,3 +1,4 @@
+using System.Globalization;
 using OpenKSeF.Invoices.Domain.Aggregates;
 using OpenKSeF.Invoices.Domain.Entities;
 using OpenKSeF.Invoices.Domain.Enums;
@@ -92,6 +93,47 @@ public class InvoiceToKsefPayloadMapperTests
         Assert.Contains("Test line", payload.InvoiceXml);
         // VAT rate 23
         Assert.Contains("23", payload.InvoiceXml);
+    }
+
+    [Fact]
+    public void TryMap_UsesInvariantCultureForNumericFields()
+    {
+        var previousCulture = CultureInfo.CurrentCulture;
+        var previousUiCulture = CultureInfo.CurrentUICulture;
+        CultureInfo.CurrentCulture = new CultureInfo("pl-PL");
+        CultureInfo.CurrentUICulture = new CultureInfo("pl-PL");
+
+        try
+        {
+            var invoice = Invoice.Draft(
+                InvoiceId.New(), Tenant, DocumentKind.VatInvoice, Seller, Buyer,
+                Pln, new DateTime(2026, 4, 10), KsefSubmissionRequirement.Required,
+                documentNumber: new DocumentNumber("FV/2026/006"));
+
+            invoice.AddLine(InvoiceLine.Create(
+                1, "Invariant line", 1.5m,
+                new Money(100m, Pln),
+                PricingMode.Net,
+                VatRate.OfPercentage(new Percentage(23))));
+            invoice.RecalculateTotals();
+            invoice.Approve(new DateTime(2026, 4, 10, 10, 0, 0, DateTimeKind.Utc));
+
+            var payload = new InvoiceToKsefPayloadMapper().TryMap(invoice)!;
+
+            Assert.Contains(">1.5<", payload.InvoiceXml);
+            Assert.Contains(">150.00<", payload.InvoiceXml);
+            Assert.Contains(">34.50<", payload.InvoiceXml);
+            Assert.Contains(">184.50<", payload.InvoiceXml);
+            Assert.DoesNotContain(">1,5<", payload.InvoiceXml);
+            Assert.DoesNotContain(">150,00<", payload.InvoiceXml);
+            Assert.DoesNotContain(">34,50<", payload.InvoiceXml);
+            Assert.DoesNotContain(">184,50<", payload.InvoiceXml);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+            CultureInfo.CurrentUICulture = previousUiCulture;
+        }
     }
 
     private static Invoice MakeApprovedInvoice(string number)

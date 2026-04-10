@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Xml.Linq;
 using OpenKSeF.Invoices.Domain.Aggregates;
 using OpenKSeF.Invoices.Domain.Enums;
@@ -53,7 +54,7 @@ public sealed class InvoiceToKsefPayloadMapper : IInvoiceToKsefPayloadMapper
                 new XElement(Fa + "P_1", invoice.IssueDate.ToString("yyyy-MM-dd")),
                 new XElement(Fa + "P_2", invoice.DocumentNumber!.Value),
                 new XElement(Fa + "RodzajFaktury", MapKind(invoice.Kind)),
-                new XElement(Fa + "P_15", invoice.Totals.GrossTotal.Amount.ToString("F2")),
+                new XElement(Fa + "P_15", FormatAmount(invoice.Totals.GrossTotal.Amount)),
                 BuildLines(invoice),
                 BuildVatSummaries(invoice)));
 
@@ -84,12 +85,12 @@ public sealed class InvoiceToKsefPayloadMapper : IInvoiceToKsefPayloadMapper
                 new XElement(Fa + "NrWierszaFa", line.LineNumber),
                 new XElement(Fa + "P_7", line.Description),
                 new XElement(Fa + "P_8A", line.UnitOfMeasure ?? "szt."),
-                new XElement(Fa + "P_8B", line.Quantity.ToString("G")),
-                new XElement(Fa + "P_9A", line.NetAmount.Amount.ToString("F2")),
-                new XElement(Fa + "P_11", line.VatAmount.Amount.ToString("F2")),
+                new XElement(Fa + "P_8B", FormatNumber(line.Quantity)),
+                new XElement(Fa + "P_9A", FormatAmount(line.NetAmount.Amount)),
+                new XElement(Fa + "P_11", FormatAmount(line.VatAmount.Amount)),
                 new XElement(Fa + "P_12", line.VatRate.IsExempt
                     ? "zw"
-                    : line.VatRate.Rate!.Value.ToString("G")))
+                    : FormatNumber(line.VatRate.Rate!.Value)))
             );
 
         }
@@ -104,10 +105,16 @@ public sealed class InvoiceToKsefPayloadMapper : IInvoiceToKsefPayloadMapper
             summaryEl.Add(new XElement(Fa + "PodatekVAT",
                 new XElement(Fa + "P_05", vat.Rate.IsExempt
                     ? "zw"
-                    : vat.Rate.Rate!.Value.ToString("G")),
-                new XElement(Fa + "P_06", vat.TaxableBase.Amount.ToString("F2")),
-                new XElement(Fa + "P_07", vat.VatAmount.Amount.ToString("F2"))));
+                    : FormatNumber(vat.Rate.Rate!.Value)),
+                new XElement(Fa + "P_06", FormatAmount(vat.TaxableBase.Amount)),
+                new XElement(Fa + "P_07", FormatAmount(vat.VatAmount.Amount))));
         }
         return summaryEl;
     }
+
+    private static string FormatAmount(decimal value) =>
+        value.ToString("F2", CultureInfo.InvariantCulture);
+
+    private static string FormatNumber(decimal value) =>
+        value.ToString("G", CultureInfo.InvariantCulture);
 }

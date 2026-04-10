@@ -16,7 +16,7 @@ public sealed class CreateFinalInvoiceFromAdvancesHandler : ICreateFinalInvoiceF
         if (advances.Count == 0)
             throw new InvoiceDomainException("At least one advance invoice must be provided.");
 
-        ValidateCommercialConsistency(advances);
+        ValidateCommercialConsistency(advances, new TenantId(command.TenantId));
 
         var first = advances[0];
         var final = Invoice.Draft(
@@ -34,11 +34,15 @@ public sealed class CreateFinalInvoiceFromAdvancesHandler : ICreateFinalInvoiceF
         return final;
     }
 
-    private static void ValidateCommercialConsistency(IReadOnlyList<Invoice> advances)
+    private static void ValidateCommercialConsistency(IReadOnlyList<Invoice> advances, TenantId expectedTenantId)
     {
         var first = advances[0];
         foreach (var adv in advances)
         {
+            if (adv.TenantId != expectedTenantId)
+                throw new InvoiceDomainException(
+                    "All advance invoices must belong to the same tenant as the final invoice.");
+
             if (adv.Seller.Nip?.Value != first.Seller.Nip?.Value)
                 throw new InvoiceDomainException(
                     "All advance invoices must share the same seller NIP.");

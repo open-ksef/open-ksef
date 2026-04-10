@@ -56,6 +56,22 @@ public class CreateCorrectionFromOriginalHandlerTests
                     "Blocked")));
     }
 
+    [Fact]
+    public void Handle_Throws_WhenCommandTenantDiffersFromOriginalTenant()
+    {
+        var original = MakeAcceptedOriginalInvoice();
+        var handler = new CreateCorrectionFromOriginalHandler(new DefaultCorrectionPolicy());
+
+        Assert.Throws<InvoiceDomainException>(() =>
+            handler.Handle(
+                original,
+                new CreateCorrectionFromOriginalCommand(
+                    Guid.NewGuid(),
+                    new DateTime(2026, 04, 11),
+                    CorrectionReasonKind.ValueChange,
+                    "Cross-tenant correction")));
+    }
+
     private static Invoice MakeDraftOriginalInvoice()
     {
         var invoice = Invoice.Draft(
