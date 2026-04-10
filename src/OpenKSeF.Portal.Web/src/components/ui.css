@@ -1145,6 +1145,38 @@ label {
   color: var(--ui-text);
 }
 
+.document-number-preview {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-card);
+}
+
+.document-number-preview__title,
+.document-number-preview__value,
+.document-number-preview__reference {
+  margin: 0;
+}
+
+.document-number-preview__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ui-text);
+}
+
+.document-number-preview__value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ui-primary);
+}
+
+.document-number-preview__reference {
+  font-size: 13px;
+  color: var(--ui-text-muted);
+}
+
 .ui-skeleton {
   display: grid;
   gap: 10px;
