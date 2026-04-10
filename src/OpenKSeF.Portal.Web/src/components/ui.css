@@ -929,6 +929,78 @@ label {
   margin: 0;
 }
 
+.validation-message-list {
+  display: grid;
+  gap: 14px;
+}
+
+.validation-message-list__group {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-card);
+}
+
+.validation-message-list__group-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ui-text);
+}
+
+.validation-message-list__items {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.validation-message-list__item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: var(--ui-radius-md);
+  border: 1px solid transparent;
+}
+
+.validation-message-list__item--error {
+  background: var(--ui-error-bg);
+  border-color: #fecaca;
+}
+
+.validation-message-list__item--warning {
+  background: var(--ui-warning-bg);
+  border-color: #fde68a;
+}
+
+.validation-message-list__body {
+  display: grid;
+  gap: 4px;
+}
+
+.validation-message-list__text,
+.validation-message-list__field {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.validation-message-list__field {
+  color: var(--ui-text-muted);
+}
+
+.validation-message-list__code {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  align-self: start;
+}
+
 .ui-skeleton {
   display: grid;
   gap: 10px;
