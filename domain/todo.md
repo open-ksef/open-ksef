@@ -105,7 +105,7 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 - [x] Buyer classification tests: `BUY-001..005` — `03:L133-L161`
 - [x] State transition tests: `ST-001..006` — `03:L163-L199`
 - [x] Immutability tests: `IMM-001..003` — `03:L201-L218`
-- [ ] Config/policy tests: `CFG-001..005` — `03:L220-L249`
+- [x] Config/policy tests: `CFG-001..005` — `03:L220-L249`
 - [ ] Regression tests: `REG-001..004` — `03:L251-L278`
 - [ ] KSeF technical failure tests: `KTF-001..003` — `03:L280-L297`
 
