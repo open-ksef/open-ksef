@@ -120,7 +120,7 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 - [x] Create project `OpenKSeF.Invoices.Contracts` (request/response DTOs)
 - [x] Implement command: `CreateInvoice`
 - [x] Implement command: `UpdateInvoiceDraft`
-- [ ] Implement command: `ApproveInvoice` (runs hard validation pipeline)
+- [x] Implement command: `ApproveInvoice` (runs hard validation pipeline)
 - [ ] Implement command: `ReopenInvoice` (uses `IApprovedEditPolicy`). Policy context: `01:L331-L337`
 - [ ] Ensure no controller mutates aggregate state directly
 - [ ] Tests: state transition flows — `03:L163-L199` (ST-001..ST-004)
