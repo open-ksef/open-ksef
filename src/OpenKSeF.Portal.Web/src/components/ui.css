@@ -1062,6 +1062,63 @@ label {
   color: var(--ui-text);
 }
 
+.party-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-card);
+}
+
+.party-card__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ui-text);
+}
+
+.party-card__details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.party-card__details dt,
+.party-card__details dd {
+  margin: 0;
+}
+
+.party-form-section {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+}
+
+.party-form-section__title {
+  padding: 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ui-text);
+}
+
+.party-form-section__field {
+  display: grid;
+  gap: 4px;
+}
+
+.party-form-section__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
 .ui-skeleton {
   display: grid;
   gap: 10px;

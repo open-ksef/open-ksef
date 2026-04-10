@@ -130,7 +130,7 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 - [x] `src/components/invoices/NipInput.tsx` (mod-11 check)
 - [x] `src/components/invoices/CurrencySelect.tsx`
 - [x] `src/components/invoices/VatRateSelect.tsx`
-- [ ] `src/components/invoices/PartyCard.tsx` / `PartyFormSection.tsx`
+- [x] `src/components/invoices/PartyCard.tsx` / `PartyFormSection.tsx`
 - [ ] `src/components/invoices/IssueDatesFieldset.tsx`
 - [ ] `src/components/invoices/DocumentNumberPreview.tsx`
 - [ ] `src/components/invoices/TotalsSummaryCard.tsx`
