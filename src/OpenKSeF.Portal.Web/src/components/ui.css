@@ -1001,6 +1001,38 @@ label {
   align-self: start;
 }
 
+.money-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.money-input {
+  display: grid;
+  gap: 4px;
+}
+
+.money-input__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
+.money-input__control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.money-input__currency {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ui-text-muted);
+  white-space: nowrap;
+}
+
 .ui-skeleton {
   display: grid;
   gap: 10px;
