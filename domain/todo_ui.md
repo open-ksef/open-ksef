@@ -215,12 +215,12 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E4-S1: Approve review screen
 > Backlog: `05:§5.6.5`
 
-- [ ] Create `src/pages/InvoiceApproveReview.tsx`
-- [ ] Render read-only invoice with client-side preview of errors
-- [ ] "Zatwierdź" button dispatches `approveInvoice`
-- [ ] On failure, render `ValidationMessageList` grouped by family
-- [ ] Navigate to detail on success
-- [ ] Tests: `UIA-001..002`, `UIA-005..006`
+- [x] Create `src/pages/InvoiceApproveReview.tsx`
+- [x] Render read-only invoice with client-side preview of errors
+- [x] "Zatwierdź" button dispatches `approveInvoice`
+- [x] On failure, render `ValidationMessageList` grouped by family
+- [x] Navigate to detail on success
+- [x] Tests: `UIA-001..002`, `UIA-005..006`
 
 ### E4-S2: Reopen flow
 > Backlog: `05:§5.8`
