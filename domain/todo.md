@@ -87,7 +87,7 @@ Line references use format `01:L44-L64` = file 01, lines 44–64.
 - [x] Rules: Lines/totals — `INV-VAL-050..053` — `02:L248-L275`
 - [x] Rules: VAT — `INV-VAL-060..064` — `02:L278-L312`
 - [x] Rules: Advance/final — `INV-VAL-070..073` — `02:L315-L341`
-- [ ] Rules: Correction — `INV-VAL-080..083` — `02:L344-L370`
+- [x] Rules: Correction — `INV-VAL-080..083` — `02:L344-L370`
 - [ ] Rules: KSeF requirement — `INV-VAL-090..093` — `02:L373-L401`
 - [ ] Rules: State transition/immutability — `INV-VAL-100..102` — `02:L405-L425`
 - [ ] Rules: Technical KSeF payload — `INV-VAL-110..112` — `02:L428-L448`
