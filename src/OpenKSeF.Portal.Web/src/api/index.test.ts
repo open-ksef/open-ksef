@@ -7,6 +7,8 @@ describe('api index exports', () => {
     expect(api.ApiClient).toBeDefined()
     expect(api.apiClient).toBeDefined()
     expect(api.ApiError).toBeDefined()
+    expect(api.InvoiceValidationError).toBeDefined()
+    expect(api.listAggregateInvoices).toBeTypeOf('function')
     expect(api.normalizeError).toBeDefined()
   })
 

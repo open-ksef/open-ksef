@@ -104,10 +104,10 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E1-S3: API client module
 > Backlog: `05:§5.5.3`
 
-- [ ] Create `src/api/invoicesAggregateApi.ts` with typed functions per endpoint
-- [ ] Implement `InvoiceValidationError` class carrying `stage` and `messages[]`
-- [ ] Throw `InvoiceValidationError` from non-2xx responses so callers can catch it uniformly
-- [ ] Parse every response through zod so shape drift is caught at call-site
+- [x] Create `src/api/invoicesAggregateApi.ts` with typed functions per endpoint
+- [x] Implement `InvoiceValidationError` class carrying `stage` and `messages[]`
+- [x] Throw `InvoiceValidationError` from non-2xx responses so callers can catch it uniformly
+- [x] Parse every response through zod so shape drift is caught at call-site
 
 ### E1-S4: CSS variables
 > Backlog: `05:§5.5.6`
