@@ -12,6 +12,13 @@
   --ui-warning-bg: #fef3c7;
   --ui-error: #dc2626;
   --ui-error-bg: #fee2e2;
+  --status-draft: #64748b;
+  --status-approved: #2563eb;
+  --status-submitted: #7c3aed;
+  --status-accepted: #059669;
+  --status-rejected: #dc2626;
+  --severity-error: #dc2626;
+  --severity-warning: #d97706;
 
   /* Sidebar */
   --ui-sidebar-bg: #1e1b4b;
@@ -1253,6 +1260,10 @@ dd {
   color: var(--ui-primary);
 }
 
+.print-only {
+  display: none !important;
+}
+
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 1279px) {
   .dashboard-grid {
@@ -1829,4 +1840,53 @@ dd {
   color: #92400e;
   font-weight: 500;
   width: 100%;
+}
+
+@media print {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  .app-shell,
+  .app-content {
+    display: block;
+    min-height: auto;
+    background: #ffffff;
+  }
+
+  .app-sidebar,
+  .mobile-nav-toggle,
+  .sidebar-footer,
+  .screen-only {
+    display: none !important;
+  }
+
+  .app-main {
+    padding: 0;
+    background: #ffffff;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .ui-table-wrap,
+  .invoice-lines-card,
+  .transfer-details-card,
+  dl {
+    background: #ffffff;
+    box-shadow: none;
+    border: 1px solid #d1d5db;
+  }
+
+  a,
+  a:visited {
+    color: inherit;
+    text-decoration: none;
+  }
 }

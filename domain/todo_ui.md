@@ -112,9 +112,9 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E1-S4: CSS variables
 > Backlog: `05:§5.5.6`
 
-- [ ] Add `--status-draft`, `--status-approved`, `--status-submitted`, `--status-accepted`, `--status-rejected` to `src/components/ui.css`
-- [ ] Add `--severity-error`, `--severity-warning`
-- [ ] Define `@media print` stylesheet scaffold for print-only layout
+- [x] Add `--status-draft`, `--status-approved`, `--status-submitted`, `--status-accepted`, `--status-rejected` to `src/components/ui.css`
+- [x] Add `--severity-error`, `--severity-warning`
+- [x] Define `@media print` stylesheet scaffold for print-only layout
 
 ### E1-S5: Shared component scaffolds
 > Backlog: `05:§5.7`
