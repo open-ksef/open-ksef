@@ -1119,6 +1119,32 @@ label {
   color: var(--ui-text);
 }
 
+.issue-dates-fieldset {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+}
+
+.issue-dates-fieldset__title {
+  padding: 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ui-text);
+}
+
+.issue-dates-fieldset__field {
+  display: grid;
+  gap: 4px;
+}
+
+.issue-dates-fieldset__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
 .ui-skeleton {
   display: grid;
   gap: 10px;
