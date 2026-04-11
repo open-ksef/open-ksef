@@ -314,13 +314,13 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E8-S2: Status/kind badges
 > Backlog: `05:§5.10.2`
 
-- [ ] Create `Controls/DocumentStatusBadge.xaml`
-- [ ] Create `Controls/DocumentKindBadge.xaml`
-- [ ] Create `Controls/KsefStatusBadge.xaml`
-- [ ] Bind on `InvoiceListPage.xaml` and `InvoiceDetailsPage.xaml`
-- [ ] Neutral "Sync" pill fallback for rows without status
-- [ ] Polish strings only
-- [ ] Tests: `MOB-004..006`
+- [x] Create `Controls/DocumentStatusBadge.xaml`
+- [x] Create `Controls/DocumentKindBadge.xaml`
+- [x] Create `Controls/KsefStatusBadge.xaml`
+- [x] Bind on `InvoiceListPage.xaml` and `InvoiceDetailsPage.xaml`
+- [x] Neutral "Sync" pill fallback for rows without status
+- [x] Polish strings only
+- [x] Tests: `MOB-004..006`
 
 ### E8-S3: Smoke verification
 > Backlog: `05:§5.10.3`
