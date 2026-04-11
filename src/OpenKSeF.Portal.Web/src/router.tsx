@@ -14,6 +14,7 @@ import { InvoiceCorrectionCreatePage } from '@/pages/InvoiceCorrectionCreate'
 import { InvoiceDraftCreatePage } from '@/pages/InvoiceDraftCreate'
 import { InvoiceFinalFromAdvancesPage } from '@/pages/InvoiceFinalFromAdvances'
 import { InvoiceKsefSubmitPage } from '@/pages/InvoiceKsefSubmit'
+import { InvoicePrintViewPage } from '@/pages/InvoicePrintView'
 import { InvoiceDraftEditPage } from '@/pages/InvoiceDraftEdit'
 import { SyncedInvoiceDetailPage } from '@/pages/SyncedInvoiceDetail'
 import { InvoiceListPage } from '@/pages/InvoiceList'
@@ -43,7 +44,7 @@ export const appRoutes: RouteObject[] = [
       { path: 'invoices/aggregate/:id/approve', element: <InvoiceApproveReviewPage /> },
       { path: 'invoices/aggregate/:id/submit', element: <InvoiceKsefSubmitPage /> },
       { path: 'invoices/aggregate/:id/corrections/new', element: <InvoiceCorrectionCreatePage /> },
-      { path: 'invoices/aggregate/:id/print', element: <div /> },
+      { path: 'invoices/aggregate/:id/print', element: <InvoicePrintViewPage /> },
       { path: 'invoices/:ksefInvoiceNumber', element: <SyncedInvoiceDetailPage /> },
       { path: 'tenants', element: <TenantListPage /> },
       { path: 'credentials', element: <CredentialListPage /> },

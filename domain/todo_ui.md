@@ -248,12 +248,12 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E5-S2: Final-from-advances flow
 > Backlog: `05:§5.6.7`
 
-- [ ] Create `src/pages/InvoiceFinalFromAdvances.tsx`
-- [ ] Buyer picker sourced from advances list
-- [ ] `AdvanceAllocationPicker` with running total
-- [ ] Final header (issue date, due date) confirmation
-- [ ] Submit → `createFinalInvoiceFromAdvances`
-- [ ] Tests: `UIF-001..006`
+- [x] Create `src/pages/InvoiceFinalFromAdvances.tsx`
+- [x] Buyer picker sourced from advances list
+- [x] `AdvanceAllocationPicker` with running total
+- [x] Final header (issue date, due date) confirmation
+- [x] Submit → `createFinalInvoiceFromAdvances`
+- [x] Tests: `UIF-001..006`
 
 ---
 
@@ -262,18 +262,18 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E6-S1: Submit screen
 > Backlog: `05:§5.6.9`
 
-- [ ] Create `src/pages/InvoiceKsefSubmit.tsx`
-- [ ] `submitInvoiceToKsef` mutation
-- [ ] Polling with 3s interval on `getAggregateInvoice` until `Accepted` or `Rejected`, max 2 minutes
-- [ ] Fallback manual "Odśwież" button after timeout
-- [ ] Tests: `UIK-001..006`
+- [x] Create `src/pages/InvoiceKsefSubmit.tsx`
+- [x] `submitInvoiceToKsef` mutation
+- [x] Polling with 3s interval on `getAggregateInvoice` until `Accepted` or `Rejected`, max 2 minutes
+- [x] Fallback manual "Odśwież" button after timeout
+- [x] Tests: `UIK-001..006`
 
 ### E6-S2: Post-transition UX
 > Backlog: `05:§5.8`
 
-- [ ] Accepted: show identifiers, "Drukuj" button, navigate-to-detail
-- [ ] Rejected: show rejection reason, "Popraw i zatwierdź ponownie", "Utwórz korektę"
-- [ ] Tests: `UIK-002..003`
+- [x] Accepted: show identifiers, "Drukuj" button, navigate-to-detail
+- [x] Rejected: show rejection reason, "Popraw i zatwierdź ponownie", "Utwórz korektę"
+- [x] Tests: `UIK-002..003`
 
 ---
 
@@ -282,19 +282,19 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E7-S1: Print viewer
 > Backlog: `05:§5.6.8`
 
-- [ ] Create `src/pages/InvoicePrintView.tsx`
-- [ ] `PrintVariantSwitcher` with three segments
-- [ ] `getInvoicePrint` query with variant parameter
-- [ ] `@media print` layout hiding navigation
-- [ ] Duplicate disabled before acceptance with tooltip referencing `IMM-003`
-- [ ] Tests: `UIP-001..008`
+- [x] Create `src/pages/InvoicePrintView.tsx`
+- [x] `PrintVariantSwitcher` with three segments
+- [x] `getInvoicePrint` query with variant parameter
+- [x] `@media print` layout hiding navigation
+- [x] Duplicate disabled before acceptance with tooltip referencing `IMM-003`
+- [x] Tests: `UIP-001..008`
 
 ### E7-S2: English labels from backend
 > Backlog: `UI-ASSUMPTION-004`, `05:§5.6.8`
 
-- [ ] Verify no English literals exist in portal source for invoice labels
-- [ ] All English strings sourced from `PrintLabels` in response
-- [ ] Tests: `UIP-002..003`
+- [x] Verify no English literals exist in portal source for invoice labels
+- [x] All English strings sourced from `PrintLabels` in response
+- [x] Tests: `UIP-002..003`
 
 ---
 
