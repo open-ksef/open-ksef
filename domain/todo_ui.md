@@ -325,15 +325,15 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E8-S3: Smoke verification
 > Backlog: `05:§5.10.3`
 
-- [ ] Appium Android smoke tier passes against renamed DTOs
-- [ ] No regressions in existing invoice list / detail / transfer copy flows
+- [x] Appium Android smoke tier passes against renamed DTOs
+- [x] No regressions in existing invoice list / detail / transfer copy flows
 
 ### E8-S4: Optional — backend legacy controller status projection
 > Backlog: `05:§5.10.2`
 
-- [ ] Decide whether legacy `InvoicesController` should additionally project aggregate status for synced rows that have a matching aggregate
-- [ ] If yes: extend `SyncedInvoiceResponse` with optional `status`, `kind`, `ksefSubmissionState`
-- [ ] If no: document that mobile badges remain neutral "Sync" until mobile adopts the aggregate controller
+- [x] Decide whether legacy `InvoicesController` should additionally project aggregate status for synced rows that have a matching aggregate â€” decision: no for the v1 mobile slice
+- [x] Keep legacy `SyncedInvoiceResponse` unchanged; do not add optional `status`, `kind`, `ksefSubmissionState`
+- [x] Document that mobile badges remain neutral "Sync" until mobile adopts the aggregate controller
 
 ---
 
