@@ -99,9 +99,9 @@ export function InvoiceLineEditor({
             type="button"
             className="invoice-line-editor__remove"
             onClick={() => handleRemove(index)}
-            aria-label={`Usun pozycje ${index + 1}`}
+            aria-label={`Usuń pozycję ${index + 1}`}
           >
-            Usun
+            Usuń
           </button>
           {allowReorder ? (
             <div className="invoice-line-editor__reorder">
