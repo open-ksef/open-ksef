@@ -9,6 +9,9 @@ Artifacts prepared from analysis of:
 - `02-validation-specification.md` — validation catalog, rule codes, severity, execution stages
 - `03-test-scenarios.md` — Given/When/Then scenarios for positive, negative, edge, and regression cases
 - `04-refactor-backlog.md` — backlog and rollout plan for refactoring OpenKSeF toward clean architecture
+- `05-ui-specification.md` — portal and mobile UI specification; API boundary, React components, print variants, mobile slice (see ADR-002 for print-variant decision)
+- `06-ui-test-scenarios.md` — Given/When/Then UI test scenarios (`API-###`, `UIX-###`, `MOB-###`)
+- `todo_ui.md` — implementation task list for the UI layer; tracks status per iteration (E0–E8, cross-cutting X1–X7)
 
 ## Design intent
 This documentation targets a refactor of OpenKSeF from a sync/browse-oriented read model toward a domain-capable invoicing module that:

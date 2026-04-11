@@ -339,11 +339,11 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 
 ## Cross-cutting tasks
 
-- [ ] **X1 Rename cleanup (portal)** — zero references to `InvoiceResponse` / `InvoiceLineResponse` remain in `src/OpenKSeF.Portal.Web`. Scenario `UIR-003`. (`05:§5.11.2`)
-- [ ] **X2 Rename cleanup (mobile)** — zero references to `InvoiceDto` / `InvoiceLineDto` / `CachedInvoice` remain in `src/OpenKSeF.Mobile`. Scenario `MOB-007`. (`05:§5.10.1`)
-- [ ] **X3 Rule-code governance** — CI test enforces that every code surfaced by `InvoicesAggregateController` exists in the registry driving the existing domain X2 uniqueness test. (`05:§5.9.4`)
-- [ ] **X4 Architectural guard** — portal test verifies that draft/approve/reopen/submit/correction/final flows never call the legacy `InvoicesController` mutation endpoints (only `/paid` stays legacy). (`04:L294-L296`, `05:§5.11.3`)
-- [ ] **X5 Accessibility baseline** — automated check that every status badge has non-color differentiators (icon + text) and every modal traps focus. (`05:§5.13`, `UIV-008`)
-- [ ] **X6 Docs index** — update `domain/README.md` with the three new files (`05-ui-specification.md`, `06-ui-test-scenarios.md`, `todo_ui.md`) and mention ADR-002 tie-in for print variants
-- [ ] **X7 Shape-drift detection** — zod response parsing throws in dev mode when the backend sends unknown enum values; CI treats this as a failure during integration tests
+- [x] **X1 Rename cleanup (portal)** — zero references to `InvoiceResponse` / `InvoiceLineResponse` remain in `src/OpenKSeF.Portal.Web`. Scenario `UIR-003`. (`05:§5.11.2`)
+- [x] **X2 Rename cleanup (mobile)** — zero references to `InvoiceDto` / `InvoiceLineDto` / `CachedInvoice` remain in `src/OpenKSeF.Mobile`. Scenario `MOB-007`. (`05:§5.10.1`)
+- [x] **X3 Rule-code governance** — CI test enforces that every code surfaced by `InvoicesAggregateController` exists in the registry driving the existing domain X2 uniqueness test. (`05:§5.9.4`)
+- [x] **X4 Architectural guard** — portal test verifies that draft/approve/reopen/submit/correction/final flows never call the legacy `InvoicesController` mutation endpoints (only `/paid` stays legacy). (`04:L294-L296`, `05:§5.11.3`)
+- [x] **X5 Accessibility baseline** — automated check that every status badge has non-color differentiators (icon + text) and every modal traps focus. (`05:§5.13`, `UIV-008`)
+- [x] **X6 Docs index** — update `domain/README.md` with the three new files (`05-ui-specification.md`, `06-ui-test-scenarios.md`, `todo_ui.md`) and mention ADR-002 tie-in for print variants
+- [x] **X7 Shape-drift detection** — zod response parsing throws in dev mode when the backend sends unknown enum values; CI treats this as a failure during integration tests
 
