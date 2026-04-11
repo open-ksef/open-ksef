@@ -303,13 +303,13 @@ This list assumes the domain layer in `todo.md` is fully complete (all iteration
 ### E8-S1: DTO rename
 > Backlog: `05:§5.10.1`
 
-- [ ] `Models/InvoiceDto.cs` → `SyncedInvoiceDto.cs` (rename in place)
-- [ ] `Models/InvoiceLineDto.cs` → `SyncedInvoiceLineDto.cs`
-- [ ] `Models/CachedInvoice.cs` → `CachedSyncedInvoice.cs`
-- [ ] Update `IApiService` method signatures
-- [ ] Update XAML `x:DataType` bindings and code-behind
-- [ ] Bump SQLite schema version and clear cache on upgrade
-- [ ] Tests: `MOB-001..003`, `MOB-007`
+- [x] `Models/InvoiceDto.cs` → `SyncedInvoiceDto.cs` (rename in place)
+- [x] `Models/InvoiceLineDto.cs` → `SyncedInvoiceLineDto.cs`
+- [x] `Models/CachedInvoice.cs` → `CachedSyncedInvoice.cs`
+- [x] Update `IApiService` method signatures
+- [x] Update XAML `x:DataType` bindings and code-behind
+- [x] Bump SQLite schema version and clear cache on upgrade
+- [x] Tests: `MOB-001..003`, `MOB-007`
 
 ### E8-S2: Status/kind badges
 > Backlog: `05:§5.10.2`
