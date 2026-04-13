@@ -225,8 +225,9 @@ describe('client-side rule mirroring', () => {
       dueDate: '2026-04-09',
     })
     expect(result.success).toBe(false)
-    expect(result.error?.issues[0].params?.ruleCode).toBe('INV-VAL-021')
-    expect(result.error?.issues[0].params?.severity).toBe('Warning')
+    const issue = result.error?.issues[0] as { params?: { ruleCode?: string; severity?: string } } | undefined
+    expect(issue?.params?.ruleCode).toBe('INV-VAL-021')
+    expect(issue?.params?.severity).toBe('Warning')
   })
 
   it('INV-VAL-021: passes when due date equals or follows issue date', () => {

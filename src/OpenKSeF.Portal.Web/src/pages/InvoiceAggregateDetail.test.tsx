@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { InvoiceValidationError, getAggregateInvoice, reopenInvoice } from '@/api/invoicesAggregateApi'
+import { getAggregateInvoice, reopenInvoice } from '@/api/invoicesAggregateApi'
 import { listTenants } from '@/api/endpoints/tenants'
 import { InvoiceAggregateDetailPage } from './InvoiceAggregateDetail'
 

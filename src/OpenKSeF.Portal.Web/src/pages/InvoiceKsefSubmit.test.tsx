@@ -6,6 +6,7 @@ import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { InvoiceValidationError, getAggregateInvoice, submitInvoiceToKsef } from '@/api/invoicesAggregateApi'
+import { type InvoiceReadDto } from '@/api/schemas/invoice'
 import { InvoiceKsefSubmitPage } from './InvoiceKsefSubmit'
 
 vi.mock('@/api/invoicesAggregateApi', async (importOriginal) => {
@@ -30,11 +31,11 @@ async function waitFor(assertion: () => boolean, timeoutMs = 2000): Promise<void
   throw new Error('Condition not met within timeout')
 }
 
-function makeInvoice(overrides: Partial<ReturnType<typeof baseInvoice>> = {}) {
+function makeInvoice(overrides: Partial<InvoiceReadDto> = {}): InvoiceReadDto {
   return { ...baseInvoice(), ...overrides }
 }
 
-function baseInvoice() {
+function baseInvoice(): InvoiceReadDto {
   return {
     id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     tenantId: 'tenant-1',
@@ -189,7 +190,7 @@ describe('InvoiceKsefSubmitPage', () => {
     vi.mocked(getAggregateInvoice).mockResolvedValue(makeInvoice())
     vi.mocked(submitInvoiceToKsef).mockRejectedValue(
       new InvoiceValidationError(422, {
-        stage: 'KsefSubmission',
+        stage: 'SendToKsef',
         messages: [
           {
             code: 'INV-VAL-092',
@@ -228,7 +229,7 @@ describe('InvoiceKsefSubmitPage', () => {
     vi.mocked(getAggregateInvoice).mockResolvedValue(makeInvoice())
     vi.mocked(submitInvoiceToKsef).mockRejectedValue(
       new InvoiceValidationError(422, {
-        stage: 'KsefSubmission',
+        stage: 'SendToKsef',
         messages: [
           {
             code: 'INV-VAL-111',
@@ -267,7 +268,7 @@ describe('InvoiceKsefSubmitPage', () => {
     vi.mocked(getAggregateInvoice).mockResolvedValue(makeInvoice())
     vi.mocked(submitInvoiceToKsef).mockRejectedValue(
       new InvoiceValidationError(422, {
-        stage: 'KsefSubmission',
+        stage: 'SendToKsef',
         messages: [
           {
             code: 'INV-VAL-093',

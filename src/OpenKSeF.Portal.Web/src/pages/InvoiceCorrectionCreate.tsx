@@ -3,7 +3,7 @@ import { useState, type ReactElement } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { InvoiceValidationError, createCorrectionFromOriginal, getAggregateInvoice } from '@/api/invoicesAggregateApi'
-import { correctionReasonKindSchema, type InvoiceReadDto, type ValidationEnvelope } from '@/api/schemas/invoice'
+import { correctionReasonKindSchema, type CorrectionReasonKind, type InvoiceReadDto, type ValidationEnvelope } from '@/api/schemas/invoice'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { InvoiceLineEditor, type InvoiceLineFormValue } from '@/components/invoices/InvoiceLineEditor'
 import { PartyCard } from '@/components/invoices/PartyCard'
@@ -19,7 +19,7 @@ export function InvoiceCorrectionCreatePage(): ReactElement {
   const tenantId = searchParams.get('tenantId') ?? ''
 
   const [issueDate, setIssueDate] = useState('')
-  const [reasonKind, setReasonKind] = useState<string>('ValueChange')
+  const [reasonKind, setReasonKind] = useState<CorrectionReasonKind>('ValueChange')
   const [reasonDescription, setReasonDescription] = useState('')
   const [serverValidation, setServerValidation] = useState<ValidationEnvelope | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -138,7 +138,7 @@ export function InvoiceCorrectionCreatePage(): ReactElement {
                     id="correction-reason-kind"
                     data-testid="reason-kind-select"
                     value={reasonKind}
-                    onChange={(e) => setReasonKind(e.target.value)}
+                    onChange={(e) => setReasonKind(e.target.value as CorrectionReasonKind)}
                   >
                     {CORRECTION_REASON_KINDS.map((kind) => (
                       <option key={kind} value={kind}>

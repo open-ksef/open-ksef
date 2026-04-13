@@ -42,8 +42,8 @@ services:
     image: openksef-api:dev-local
     container_name: openksef-api
     build:
-      context: ./src
-      dockerfile: OpenKSeF.Api/Dockerfile
+      context: .
+      dockerfile: src/OpenKSeF.Api/Dockerfile
       args:
         NUGET_CIRFMF_USER: ${NUGET_CIRFMF_USER:-}
         NUGET_CIRFMF_PAT: ${NUGET_CIRFMF_PAT:-}

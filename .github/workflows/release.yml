@@ -79,7 +79,7 @@ jobs:
       - name: Build & push API
         uses: docker/build-push-action@v6
         with:
-          context: ./src
+          context: .
           file: ./src/OpenKSeF.Api/Dockerfile
           push: true
           tags: |

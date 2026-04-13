@@ -42,10 +42,10 @@ describe('Portal architectural guard (X4)', () => {
       }
     }
 
-    expect(violations).toEqual(
-      [],
+    expect(
+      violations,
       `Mutation pages must not import from legacy @/api/endpoints/invoices. Violations: ${violations.join(', ')}`,
-    )
+    ).toEqual([])
   })
 
   it('aggregate detail page uses aggregate API for reopen', () => {
