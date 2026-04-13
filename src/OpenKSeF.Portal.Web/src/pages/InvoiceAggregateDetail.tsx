@@ -76,14 +76,14 @@ export function InvoiceAggregateDetailPage(): ReactElement {
     <section>
       <Link
         data-testid="aggregate-detail-back-link"
-        to={tenantIdFromUrl ? `/invoices?tenantId=${encodeURIComponent(tenantIdFromUrl)}` : '/invoices'}
+        to={tenantIdFromUrl ? `/invoices/sales?tenantId=${encodeURIComponent(tenantIdFromUrl)}` : '/invoices/sales'}
         className="back-link"
       >
-        ← Powrót do faktur
+        ← Powrót do faktur sprzedaży
       </Link>
 
       <header className="page-header">
-        <h1>Szczegóły faktury</h1>
+        <h1>Faktura sprzedaży</h1>
       </header>
 
       <AsyncStateView
@@ -96,74 +96,90 @@ export function InvoiceAggregateDetailPage(): ReactElement {
         onRetry={() => void invoiceQuery.refetch()}
       >
         {invoice ? (
-          <div className="invoice-aggregate-detail" data-testid="aggregate-invoice-detail">
-            <HeaderSection invoice={invoice} />
+          <div className="invoice-doc" data-testid="aggregate-invoice-detail">
+            {/* Header */}
+            <div className="invoice-doc-header">
+              <HeaderSection invoice={invoice} />
+            </div>
 
-            <div className="invoice-aggregate-detail__parties">
+            {/* Parties */}
+            <div className="invoice-doc-parties">
               <PartyCard party={invoice.seller} title="Sprzedawca" />
               <PartyCard party={invoice.buyer} title="Nabywca" />
             </div>
 
+            {/* Dates */}
             <DatesSection invoice={invoice} />
 
+            {/* Commercial / Notes */}
             {invoice.paymentMethod ? (
-              <div className="invoice-aggregate-detail__commercial">
+              <div className="invoice-doc-commercial">
                 <p><strong>Forma płatności:</strong> {invoice.paymentMethod}</p>
               </div>
             ) : null}
 
             {invoice.publicNotes ? (
-              <div className="invoice-aggregate-detail__notes">
+              <div className="invoice-doc-notes">
                 <p><strong>Uwagi:</strong> {invoice.publicNotes}</p>
               </div>
             ) : null}
 
+            {/* Lines */}
             <InvoiceLineTable
               lines={invoice.lines}
               showCorrectionColumns={invoice.kind === 'CorrectionInvoice'}
             />
 
-            <TotalsSummaryCard
-              net={invoice.totalNet}
-              vat={invoice.totalVat}
-              gross={invoice.totalGross}
-              currency={invoice.currency}
-            />
+            {/* Totals */}
+            <div className="invoice-doc-totals">
+              <TotalsSummaryCard
+                net={invoice.totalNet}
+                vat={invoice.totalVat}
+                gross={invoice.totalGross}
+                currency={invoice.currency}
+              />
+            </div>
 
-            {invoice.correctionReference ? (
-              <CorrectionReferenceCard reference={invoice.correctionReference} />
-            ) : null}
+            {/* Supplements */}
+            <div className="invoice-doc-supplements">
+              {invoice.correctionReference ? (
+                <CorrectionReferenceCard reference={invoice.correctionReference} />
+              ) : null}
 
-            {invoice.settledAdvanceAllocations.length > 0 ? (
-              <AdvanceAllocationList allocations={invoice.settledAdvanceAllocations} />
-            ) : null}
+              {invoice.settledAdvanceAllocations.length > 0 ? (
+                <AdvanceAllocationList allocations={invoice.settledAdvanceAllocations} />
+              ) : null}
 
-            {invoice.duplicateIssuances.length > 0 ? (
-              <DuplicateIssuanceBanner issuances={invoice.duplicateIssuances} />
-            ) : null}
+              {invoice.duplicateIssuances.length > 0 ? (
+                <DuplicateIssuanceBanner issuances={invoice.duplicateIssuances} />
+              ) : null}
 
-            <KsefIdentifiersCard
-              ksefDocumentNumber={invoice.ksefDocumentNumber}
-              ksefReferenceNumber={invoice.ksefReferenceNumber}
-            />
+              <KsefIdentifiersCard
+                ksefDocumentNumber={invoice.ksefDocumentNumber}
+                ksefReferenceNumber={invoice.ksefReferenceNumber}
+              />
 
-            {invoice.ksefRejectionReason ? (
-              <div className="invoice-aggregate-detail__rejection" role="alert">
-                <strong>Powód odrzucenia przez KSeF:</strong> {invoice.ksefRejectionReason}
-              </div>
-            ) : null}
+              {invoice.ksefRejectionReason ? (
+                <div className="invoice-aggregate-detail__rejection" role="alert">
+                  <strong>Powód odrzucenia przez KSeF:</strong> {invoice.ksefRejectionReason}
+                </div>
+              ) : null}
+            </div>
 
-            {reopenError ? <p role="alert">{reopenError}</p> : null}
-            <ActionButtons
-              invoice={invoice}
-              tenantId={effectiveTenantId}
-              id={id}
-              onReopen={() => {
-                setReopenError(null)
-                void reopenMutation.mutate()
-              }}
-              isReopening={reopenMutation.isPending}
-            />
+            {/* Footer actions */}
+            <div className="invoice-doc-footer">
+              {reopenError ? <p role="alert">{reopenError}</p> : null}
+              <ActionButtons
+                invoice={invoice}
+                tenantId={effectiveTenantId}
+                id={id}
+                onReopen={() => {
+                  setReopenError(null)
+                  void reopenMutation.mutate()
+                }}
+                isReopening={reopenMutation.isPending}
+              />
+            </div>
           </div>
         ) : null}
       </AsyncStateView>
@@ -173,62 +189,64 @@ export function InvoiceAggregateDetailPage(): ReactElement {
 
 function HeaderSection({ invoice }: { invoice: InvoiceReadDto }): ReactElement {
   return (
-    <div className="invoice-aggregate-detail__header">
-      <div className="invoice-aggregate-detail__header-top">
-        <h2 className="invoice-aggregate-detail__number">{invoice.documentNumber ?? '—'}</h2>
-        <DocumentKindChip kind={invoice.kind} />
-        <DocumentStatusBadge status={invoice.status} />
+    <>
+      <h2 className="invoice-doc-header__number">{invoice.documentNumber ?? '—'}</h2>
+      <DocumentKindChip kind={invoice.kind} />
+      <DocumentStatusBadge status={invoice.status} />
+      <div className="invoice-doc-header__meta">
+        <KsefRequirementBanner requirement={invoice.ksefSubmissionRequirement} />
+        <KsefSubmissionStatus
+          state={invoice.ksefSubmissionState}
+          identifiers={
+            invoice.ksefDocumentNumber || invoice.ksefReferenceNumber
+              ? { ksefDocumentNumber: invoice.ksefDocumentNumber, ksefReferenceNumber: invoice.ksefReferenceNumber }
+              : undefined
+          }
+          rejectionReason={invoice.ksefRejectionReason ?? undefined}
+        />
       </div>
-      <KsefRequirementBanner requirement={invoice.ksefSubmissionRequirement} />
-      <KsefSubmissionStatus
-        state={invoice.ksefSubmissionState}
-        identifiers={
-          invoice.ksefDocumentNumber || invoice.ksefReferenceNumber
-            ? { ksefDocumentNumber: invoice.ksefDocumentNumber, ksefReferenceNumber: invoice.ksefReferenceNumber }
-            : undefined
-        }
-        rejectionReason={invoice.ksefRejectionReason ?? undefined}
-      />
-    </div>
+    </>
   )
 }
 
 function DatesSection({ invoice }: { invoice: InvoiceReadDto }): ReactElement {
   return (
-    <dl className="invoice-aggregate-detail__dates">
-      <dt>Data wystawienia</dt>
-      <dd>{new Date(invoice.issueDate).toLocaleDateString('pl-PL')}</dd>
+    <div className="invoice-doc-dates">
+      <div className="invoice-doc-date-item">
+        <span className="invoice-doc-date-item__label">Data wystawienia</span>
+        <span className="invoice-doc-date-item__value">{new Date(invoice.issueDate).toLocaleDateString('pl-PL')}</span>
+      </div>
       {invoice.saleDate ? (
-        <>
-          <dt>Data sprzedaży</dt>
-          <dd>{new Date(invoice.saleDate).toLocaleDateString('pl-PL')}</dd>
-        </>
+        <div className="invoice-doc-date-item">
+          <span className="invoice-doc-date-item__label">Data sprzedaży</span>
+          <span className="invoice-doc-date-item__value">{new Date(invoice.saleDate).toLocaleDateString('pl-PL')}</span>
+        </div>
       ) : null}
       {invoice.dueDate ? (
-        <>
-          <dt>Termin płatności</dt>
-          <dd>{new Date(invoice.dueDate).toLocaleDateString('pl-PL')}</dd>
-        </>
+        <div className="invoice-doc-date-item">
+          <span className="invoice-doc-date-item__label">Termin płatności</span>
+          <span className="invoice-doc-date-item__value">{new Date(invoice.dueDate).toLocaleDateString('pl-PL')}</span>
+        </div>
       ) : null}
       {invoice.approvedAt ? (
-        <>
-          <dt>Zatwierdzona</dt>
-          <dd>{new Date(invoice.approvedAt).toLocaleString('pl-PL')}</dd>
-        </>
+        <div className="invoice-doc-date-item">
+          <span className="invoice-doc-date-item__label">Zatwierdzona</span>
+          <span className="invoice-doc-date-item__value">{new Date(invoice.approvedAt).toLocaleString('pl-PL')}</span>
+        </div>
       ) : null}
       {invoice.submittedToKsefAt ? (
-        <>
-          <dt>Wysłana do KSeF</dt>
-          <dd>{new Date(invoice.submittedToKsefAt).toLocaleString('pl-PL')}</dd>
-        </>
+        <div className="invoice-doc-date-item">
+          <span className="invoice-doc-date-item__label">Wysłana do KSeF</span>
+          <span className="invoice-doc-date-item__value">{new Date(invoice.submittedToKsefAt).toLocaleString('pl-PL')}</span>
+        </div>
       ) : null}
       {invoice.acceptedByKsefAt ? (
-        <>
-          <dt>Zaakceptowana przez KSeF</dt>
-          <dd>{new Date(invoice.acceptedByKsefAt).toLocaleString('pl-PL')}</dd>
-        </>
+        <div className="invoice-doc-date-item">
+          <span className="invoice-doc-date-item__label">Zaakceptowana przez KSeF</span>
+          <span className="invoice-doc-date-item__value">{new Date(invoice.acceptedByKsefAt).toLocaleString('pl-PL')}</span>
+        </div>
       ) : null}
-    </dl>
+    </div>
   )
 }
 
@@ -246,7 +264,7 @@ function ActionButtons({ invoice, tenantId, id, onReopen, isReopening }: ActionB
 
   if (invoice.status === 'Draft') {
     return (
-      <div className="invoice-aggregate-detail__actions">
+      <div className="invoice-doc-footer__actions">
         <Link to={`${base}/edit?${tenantQuery}`} className="ui-button ui-button--secondary">
           Edytuj
         </Link>
@@ -260,7 +278,7 @@ function ActionButtons({ invoice, tenantId, id, onReopen, isReopening }: ActionB
   if (invoice.status === 'Approved') {
     const canReopen = invoice.reopenAllowed === true
     return (
-      <div className="invoice-aggregate-detail__actions">
+      <div className="invoice-doc-footer__actions">
         <Link to={`${base}/submit?${tenantQuery}`} className="ui-button ui-button--primary">
           Wyślij do KSeF
         </Link>
@@ -280,15 +298,15 @@ function ActionButtons({ invoice, tenantId, id, onReopen, isReopening }: ActionB
 
   if (invoice.status === 'SubmittedToKsef') {
     return (
-      <div className="invoice-aggregate-detail__actions">
-        <p className="invoice-aggregate-detail__polling-notice">Oczekiwanie na odpowiedź KSeF...</p>
+      <div className="invoice-doc-footer__actions">
+        <p className="text-muted">Oczekiwanie na odpowiedź KSeF...</p>
       </div>
     )
   }
 
   if (invoice.status === 'AcceptedByKsef') {
     return (
-      <div className="invoice-aggregate-detail__actions">
+      <div className="invoice-doc-footer__actions">
         <Link to={`${base}/print?${tenantQuery}`} className="ui-button ui-button--secondary">
           Drukuj
         </Link>
@@ -303,7 +321,7 @@ function ActionButtons({ invoice, tenantId, id, onReopen, isReopening }: ActionB
 
   if (invoice.status === 'RejectedByKsef') {
     return (
-      <div className="invoice-aggregate-detail__actions">
+      <div className="invoice-doc-footer__actions">
         <Link to={`${base}/approve?${tenantQuery}`} className="ui-button ui-button--primary">
           Zatwierdź ponownie
         </Link>
@@ -314,5 +332,5 @@ function ActionButtons({ invoice, tenantId, id, onReopen, isReopening }: ActionB
     )
   }
 
-  return <div className="invoice-aggregate-detail__actions" />
+  return <div className="invoice-doc-footer__actions" />
 }

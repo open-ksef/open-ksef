@@ -52,6 +52,10 @@ export function SyncedInvoiceDetailPage(): ReactElement {
 
   const transfer = transferQuery.data
 
+  const backHref = tenantIdFromUrl
+    ? `/invoices/purchases?tenantId=${encodeURIComponent(tenantIdFromUrl)}`
+    : '/invoices/purchases'
+
   function handleCopyTransferText(): void {
     if (!transfer) return
     void navigator.clipboard.writeText(transfer.transferText).then(() => {
@@ -64,14 +68,14 @@ export function SyncedInvoiceDetailPage(): ReactElement {
     <section>
       <Link
         data-testid="invoice-details-back-link"
-        to={tenantIdFromUrl ? `/invoices?tenantId=${encodeURIComponent(tenantIdFromUrl)}` : '/invoices'}
+        to={backHref}
         className="back-link"
       >
-        ← Powrót do faktur
+        ← Powrót do faktur zakupu
       </Link>
 
       <header className="page-header">
-        <h1>Szczegóły faktury</h1>
+        <h1>Faktura zakupu</h1>
       </header>
 
       <AsyncStateView
@@ -84,137 +88,73 @@ export function SyncedInvoiceDetailPage(): ReactElement {
         onRetry={() => void invoiceQuery.refetch()}
       >
         {invoice ? (
-          <>
-            <div className="invoice-detail-card" data-testid="invoice-details-card">
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">Numer KSeF</span>
-                <span
-                  className="invoice-detail-value invoice-detail-value--mono"
-                  data-testid="invoice-detail-ksef-number"
-                >
-                  {invoice.ksefInvoiceNumber}
-                </span>
-              </div>
-
-              {invoice.invoiceNumber && (
-                <div className="invoice-detail-row">
-                  <span className="invoice-detail-label">Numer faktury</span>
-                  <span
-                    className="invoice-detail-value invoice-detail-value--mono"
-                    data-testid="invoice-detail-invoice-number"
-                  >
-                    {invoice.invoiceNumber}
-                  </span>
-                </div>
-              )}
-
+          <div className="invoice-doc" data-testid="invoice-details-card">
+            {/* Header */}
+            <div className="invoice-doc-header">
+              <h2 className="invoice-doc-header__number" data-testid="invoice-detail-invoice-number">
+                {invoice.invoiceNumber ?? invoice.ksefInvoiceNumber}
+              </h2>
               {invoice.invoiceType && (
-                <div className="invoice-detail-row">
-                  <span className="invoice-detail-label">Typ faktury</span>
-                  <span className="invoice-detail-value" data-testid="invoice-detail-invoice-type">
-                    {invoice.invoiceType.toUpperCase()}
-                  </span>
-                </div>
+                <span className="invoice-kind-chip invoice-kind-chip--vat" data-testid="invoice-detail-invoice-type">
+                  {invoice.invoiceType.toUpperCase()}
+                </span>
               )}
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">Sprzedawca</span>
-                <span className="invoice-detail-value" data-testid="invoice-detail-vendor-name">
-                  {invoice.vendorName}
-                </span>
-              </div>
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">NIP sprzedawcy</span>
-                <span
-                  className="invoice-detail-value"
-                  data-testid="invoice-detail-vendor-nip"
-                  style={{ fontFamily: 'ui-monospace, monospace' }}
-                >
-                  {invoice.vendorNip}
-                </span>
-              </div>
-
-              {invoice.buyerName && (
-                <div className="invoice-detail-row">
-                  <span className="invoice-detail-label">Nabywca</span>
-                  <span className="invoice-detail-value" data-testid="invoice-detail-buyer-name">
-                    {invoice.buyerName}
-                  </span>
-                </div>
-              )}
-
-              {invoice.buyerNip && (
-                <div className="invoice-detail-row">
-                  <span className="invoice-detail-label">NIP nabywcy</span>
-                  <span
-                    className="invoice-detail-value"
-                    data-testid="invoice-detail-buyer-nip"
-                    style={{ fontFamily: 'ui-monospace, monospace' }}
-                  >
-                    {invoice.buyerNip}
-                  </span>
-                </div>
-              )}
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">Data wystawienia</span>
-                <span className="invoice-detail-value" data-testid="invoice-detail-issue-date">
-                  {new Date(invoice.issueDate).toLocaleDateString('pl-PL')}
-                </span>
-              </div>
-
-              {invoice.acquisitionDate && (
-                <div className="invoice-detail-row">
-                  <span className="invoice-detail-label">Data przyjęcia w KSeF</span>
-                  <span className="invoice-detail-value" data-testid="invoice-detail-acquisition-date">
-                    {new Date(invoice.acquisitionDate).toLocaleDateString('pl-PL')}
-                  </span>
-                </div>
-              )}
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">Kwota netto</span>
-                <span className="invoice-detail-value" data-testid="invoice-detail-amount-net">
-                  {invoice.amountNet.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency}
-                </span>
-              </div>
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">VAT</span>
-                <span className="invoice-detail-value" data-testid="invoice-detail-amount-vat">
-                  {invoice.amountVat.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency}
-                </span>
-              </div>
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">Kwota brutto</span>
-                <span
-                  className="invoice-detail-value invoice-detail-value--amount"
-                  data-testid="invoice-detail-amount"
-                >
-                  {invoice.amountGross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency}
-                </span>
-              </div>
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">Status płatności</span>
-                <span className="invoice-detail-value" data-testid="invoice-detail-paid-status">
-                  <span className={`payment-status-badge ${invoice.isPaid ? 'payment-status-badge--paid' : 'payment-status-badge--unpaid'}`}>
-                    {invoice.isPaid ? 'Opłacona' : 'Nieopłacona'}
-                  </span>
-                  {invoice.isPaid && invoice.paidAt && (
-                    <span className="payment-status-date">
-                      {new Date(invoice.paidAt).toLocaleDateString('pl-PL')}
-                    </span>
-                  )}
+              <div className="invoice-doc-header__meta">
+                <span className="token-display" data-testid="invoice-detail-ksef-number">
+                  KSeF: {invoice.ksefInvoiceNumber}
                 </span>
               </div>
             </div>
 
+            {/* Parties */}
+            <div className="invoice-doc-parties">
+              <div className="invoice-doc-party">
+                <p className="invoice-doc-party__title">Sprzedawca</p>
+                <p className="invoice-doc-party__name" data-testid="invoice-detail-vendor-name">
+                  {invoice.vendorName}
+                </p>
+                <p className="invoice-doc-party__nip" data-testid="invoice-detail-vendor-nip">
+                  NIP: {invoice.vendorNip}
+                </p>
+              </div>
+              {(invoice.buyerName || invoice.buyerNip) && (
+                <div className="invoice-doc-party">
+                  <p className="invoice-doc-party__title">Nabywca</p>
+                  {invoice.buyerName && (
+                    <p className="invoice-doc-party__name" data-testid="invoice-detail-buyer-name">
+                      {invoice.buyerName}
+                    </p>
+                  )}
+                  {invoice.buyerNip && (
+                    <p className="invoice-doc-party__nip" data-testid="invoice-detail-buyer-nip">
+                      NIP: {invoice.buyerNip}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Dates */}
+            <div className="invoice-doc-dates">
+              <div className="invoice-doc-date-item">
+                <span className="invoice-doc-date-item__label">Data wystawienia</span>
+                <span className="invoice-doc-date-item__value" data-testid="invoice-detail-issue-date">
+                  {new Date(invoice.issueDate).toLocaleDateString('pl-PL')}
+                </span>
+              </div>
+              {invoice.acquisitionDate && (
+                <div className="invoice-doc-date-item">
+                  <span className="invoice-doc-date-item__label">Przyjęto w KSeF</span>
+                  <span className="invoice-doc-date-item__value" data-testid="invoice-detail-acquisition-date">
+                    {new Date(invoice.acquisitionDate).toLocaleDateString('pl-PL')}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Line items */}
             {invoice.lines && invoice.lines.length > 0 && (
-              <div className="invoice-lines-card" data-testid="invoice-lines">
-                <h2 className="invoice-lines-title">Pozycje faktury</h2>
+              <div data-testid="invoice-lines">
                 <div className="invoice-lines-table-wrapper">
                   <table className="invoice-lines-table">
                     <thead>
@@ -252,7 +192,45 @@ export function SyncedInvoiceDetailPage(): ReactElement {
               </div>
             )}
 
-            <div className="payment-actions" data-testid="payment-actions">
+            {/* Totals */}
+            <div className="invoice-doc-totals">
+              <div className="invoice-detail-card">
+                <div className="invoice-detail-row">
+                  <span className="invoice-detail-label">Kwota netto</span>
+                  <span className="invoice-detail-value" data-testid="invoice-detail-amount-net">
+                    {invoice.amountNet.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency}
+                  </span>
+                </div>
+                <div className="invoice-detail-row">
+                  <span className="invoice-detail-label">VAT</span>
+                  <span className="invoice-detail-value" data-testid="invoice-detail-amount-vat">
+                    {invoice.amountVat.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency}
+                  </span>
+                </div>
+                <div className="invoice-detail-row">
+                  <span className="invoice-detail-label">Kwota brutto</span>
+                  <span
+                    className="invoice-detail-value invoice-detail-value--amount"
+                    data-testid="invoice-detail-amount"
+                  >
+                    {invoice.amountGross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer: payment status + action */}
+            <div className="invoice-doc-footer" data-testid="payment-actions">
+              <span className="invoice-detail-value" data-testid="invoice-detail-paid-status">
+                <span className={`payment-status-badge ${invoice.isPaid ? 'payment-status-badge--paid' : 'payment-status-badge--unpaid'}`}>
+                  {invoice.isPaid ? 'Opłacona' : 'Nieopłacona'}
+                </span>
+                {invoice.isPaid && invoice.paidAt && (
+                  <span className="payment-status-date">
+                    {new Date(invoice.paidAt).toLocaleDateString('pl-PL')}
+                  </span>
+                )}
+              </span>
               <button
                 className={`ui-button ${invoice.isPaid ? 'ui-button--secondary' : 'ui-button--primary'} mark-paid-btn`}
                 data-testid="toggle-paid-btn"
@@ -269,71 +247,74 @@ export function SyncedInvoiceDetailPage(): ReactElement {
                 <span className="payment-actions-error">Nie udało się zmienić statusu płatności.</span>
               )}
             </div>
-
-            <div className="transfer-details-card" data-testid="transfer-details">
-              <h2 className="transfer-details-title">Dane do przelewu</h2>
-              {transferQuery.isLoading ? (
-                <p className="text-muted">Ładowanie danych przelewu...</p>
-              ) : transfer ? (
-                <>
-                  <div className="invoice-detail-row">
-                    <span className="invoice-detail-label">Odbiorca</span>
-                    <span className="invoice-detail-value" data-testid="transfer-recipient">
-                      {transfer.recipientName}
-                    </span>
-                  </div>
-                  <div className="invoice-detail-row">
-                    <span className="invoice-detail-label">NIP</span>
-                    <span className="invoice-detail-value" data-testid="transfer-nip" style={{ fontFamily: 'ui-monospace, monospace' }}>
-                      {transfer.recipientNip}
-                    </span>
-                  </div>
-                  <div className="invoice-detail-row">
-                    <span className="invoice-detail-label">Nr rachunku</span>
-                    <span className="invoice-detail-value" data-testid="transfer-account" style={{ fontFamily: 'ui-monospace, monospace' }}>
-                      {transfer.recipientAccount ?? 'brak'}
-                    </span>
-                  </div>
-                  <div className="invoice-detail-row">
-                    <span className="invoice-detail-label">Kwota</span>
-                    <span className="invoice-detail-value invoice-detail-value--amount" data-testid="transfer-amount">
-                      {transfer.amount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {transfer.currency}
-                    </span>
-                  </div>
-                  <div className="invoice-detail-row">
-                    <span className="invoice-detail-label">Tytuł przelewu</span>
-                    <span className="invoice-detail-value" data-testid="transfer-title">
-                      {transfer.title}
-                    </span>
-                  </div>
-
-                  <div className="transfer-copy-section">
-                    <button
-                      className="ui-button ui-button--secondary"
-                      data-testid="copy-transfer-btn"
-                      onClick={handleCopyTransferText}
-                    >
-                      {copySuccess ? 'Skopiowano!' : 'Kopiuj dane przelewu'}
-                    </button>
-                  </div>
-
-                  <div className="qr-code-section" data-testid="qr-code-section">
-                    <h3 className="qr-code-title">Kod QR do przelewu</h3>
-                    <img
-                      src={transfer.qrCodeBase64}
-                      alt="Kod QR do przelewu"
-                      className="qr-code-image"
-                      data-testid="qr-code-image"
-                    />
-                  </div>
-                </>
-              ) : transferQuery.isError ? (
-                <p className="text-error">Nie udało się załadować danych przelewu.</p>
-              ) : null}
-            </div>
-          </>
+          </div>
         ) : null}
       </AsyncStateView>
+
+      {/* Transfer details card (outside invoice-doc so it stands alone) */}
+      {invoice && (
+        <div className="transfer-details-card" data-testid="transfer-details">
+          <h2 className="transfer-details-title">Dane do przelewu</h2>
+          {transferQuery.isLoading ? (
+            <p className="text-muted">Ładowanie danych przelewu...</p>
+          ) : transfer ? (
+            <>
+              <div className="invoice-detail-row">
+                <span className="invoice-detail-label">Odbiorca</span>
+                <span className="invoice-detail-value" data-testid="transfer-recipient">
+                  {transfer.recipientName}
+                </span>
+              </div>
+              <div className="invoice-detail-row">
+                <span className="invoice-detail-label">NIP</span>
+                <span className="invoice-detail-value" data-testid="transfer-nip" style={{ fontFamily: 'ui-monospace, monospace' }}>
+                  {transfer.recipientNip}
+                </span>
+              </div>
+              <div className="invoice-detail-row">
+                <span className="invoice-detail-label">Nr rachunku</span>
+                <span className="invoice-detail-value" data-testid="transfer-account" style={{ fontFamily: 'ui-monospace, monospace' }}>
+                  {transfer.recipientAccount ?? 'brak'}
+                </span>
+              </div>
+              <div className="invoice-detail-row">
+                <span className="invoice-detail-label">Kwota</span>
+                <span className="invoice-detail-value invoice-detail-value--amount" data-testid="transfer-amount">
+                  {transfer.amount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {transfer.currency}
+                </span>
+              </div>
+              <div className="invoice-detail-row">
+                <span className="invoice-detail-label">Tytuł przelewu</span>
+                <span className="invoice-detail-value" data-testid="transfer-title">
+                  {transfer.title}
+                </span>
+              </div>
+
+              <div className="transfer-copy-section">
+                <button
+                  className="ui-button ui-button--secondary"
+                  data-testid="copy-transfer-btn"
+                  onClick={handleCopyTransferText}
+                >
+                  {copySuccess ? 'Skopiowano!' : 'Kopiuj dane przelewu'}
+                </button>
+              </div>
+
+              <div className="qr-code-section" data-testid="qr-code-section">
+                <h3 className="qr-code-title">Kod QR do przelewu</h3>
+                <img
+                  src={transfer.qrCodeBase64}
+                  alt="Kod QR do przelewu"
+                  className="qr-code-image"
+                  data-testid="qr-code-image"
+                />
+              </div>
+            </>
+          ) : transferQuery.isError ? (
+            <p className="text-error">Nie udało się załadować danych przelewu.</p>
+          ) : null}
+        </div>
+      )}
     </section>
   )
 }

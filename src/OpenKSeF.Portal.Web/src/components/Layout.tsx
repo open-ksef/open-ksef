@@ -1,11 +1,18 @@
 import { useState, type ReactElement } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
 import { useAuth } from '@/auth/useAuth'
 
-const navItems = [
+const topNavItems = [
   { to: '/', label: 'Pulpit', icon: '⊞', end: true },
-  { to: '/invoices', label: 'Faktury', icon: '≡' },
+]
+
+const invoiceChildren = [
+  { to: '/invoices/purchases', label: 'Zakupy' },
+  { to: '/invoices/sales', label: 'Sprzedaż' },
+]
+
+const bottomNavItems = [
   { to: '/tenants', label: 'Firmy', icon: '◉' },
   { to: '/credentials', label: 'Dane logowania', icon: '⚿' },
   { to: '/devices', label: 'Urządzenia', icon: '◈' },
@@ -23,6 +30,10 @@ function getInitials(name: string | undefined | null): string {
 export function Layout(): ReactElement {
   const { user, logout } = useAuth()
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
+  const location = useLocation()
+
+  const isOnInvoices = location.pathname.startsWith('/invoices')
+  const [isInvoicesOpen, setIsInvoicesOpen] = useState(isOnInvoices)
 
   const displayName = user?.profile?.name ?? user?.profile?.email ?? 'Użytkownik'
   const initials = getInitials(user?.profile?.name ?? user?.profile?.email)
@@ -41,11 +52,54 @@ export function Layout(): ReactElement {
           data-open={isMobileNavOpen}
           aria-label="Nawigacja główna"
         >
-          {navItems.map((item) => (
+          {topNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
+              className="sidebar-nav-link"
+              onClick={() => setIsMobileNavOpen(false)}
+            >
+              <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+
+          <div className="sidebar-nav-group">
+            <button
+              type="button"
+              data-testid="invoices-nav-toggle"
+              className={`sidebar-nav-group__toggle${isOnInvoices ? ' active' : ''}`}
+              onClick={() => setIsInvoicesOpen((prev) => !prev)}
+            >
+              <span className="nav-icon" aria-hidden="true">≡</span>
+              <span>Faktury</span>
+              <span className={`sidebar-nav-group__chevron${isInvoicesOpen ? ' sidebar-nav-group__chevron--open' : ''}`}>
+                ▾
+              </span>
+            </button>
+
+            <div
+              className={`sidebar-nav-group__children${isInvoicesOpen ? ' sidebar-nav-group__children--open' : ''}`}
+              data-testid="invoices-nav-children"
+            >
+              {invoiceChildren.map((child) => (
+                <NavLink
+                  key={child.to}
+                  to={child.to}
+                  className="sidebar-nav-group__child"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  {child.label}
+                </NavLink>
+              ))}
+            </div>
+          </div>
+
+          {bottomNavItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
               className="sidebar-nav-link"
               onClick={() => setIsMobileNavOpen(false)}
             >

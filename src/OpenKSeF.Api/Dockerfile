@@ -4,6 +4,7 @@ ARG NUGET_CIRFMF_PAT
 WORKDIR /src
 
 COPY src/ .
+COPY domain/ ../domain/
 
 RUN if [ -n "$NUGET_CIRFMF_PAT" ]; then \
       dotnet nuget update source CIRFMF --source https://nuget.pkg.github.com/CIRFMF/index.json \

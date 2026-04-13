@@ -46,7 +46,7 @@ describe('SyncedInvoiceDetailPage', () => {
     root = createRoot(container)
   })
 
-  it('renders details card with required fields', async () => {
+  it('renders details card with required fields in invoice-doc layout', async () => {
     vi.mocked(listTenants).mockResolvedValue([
       {
         id: 'tenant-1',
@@ -109,7 +109,11 @@ describe('SyncedInvoiceDetailPage', () => {
     expect(container.querySelector('[data-testid="invoice-detail-issue-date"]')?.textContent).toContain('2026')
     expect(container.querySelector('[data-testid="invoice-detail-amount"]')?.textContent).toContain('199')
     expect(container.querySelector('[data-testid="invoice-detail-amount"]')?.textContent).toContain('PLN')
-    expect(container.querySelector('[data-testid="invoice-details-back-link"]')).toBeTruthy()
+
+    // back-link now goes to /invoices/purchases
+    const backLink = container.querySelector<HTMLAnchorElement>('[data-testid="invoice-details-back-link"]')
+    expect(backLink).toBeTruthy()
+    expect(backLink?.getAttribute('href')).toContain('/invoices/purchases')
   })
 
   it('renders not found state for 404 errors', async () => {

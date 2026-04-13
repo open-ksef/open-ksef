@@ -51,4 +51,54 @@ describe('Layout', () => {
 
     expect(nav?.getAttribute('data-open')).toBe('true')
   })
+
+  it('shows Faktury nav group toggle button', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <Layout />
+        </MemoryRouter>,
+      )
+    })
+
+    const toggle = container.querySelector('[data-testid="invoices-nav-toggle"]')
+    expect(toggle).toBeTruthy()
+    expect(toggle?.textContent).toContain('Faktury')
+  })
+
+  it('toggles Faktury children on click', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <Layout />
+        </MemoryRouter>,
+      )
+    })
+
+    const toggle = container.querySelector<HTMLButtonElement>('[data-testid="invoices-nav-toggle"]')
+    const children = container.querySelector('[data-testid="invoices-nav-children"]')
+
+    expect(children?.className).not.toContain('--open')
+
+    await act(async () => {
+      toggle?.click()
+    })
+
+    expect(children?.className).toContain('--open')
+  })
+
+  it('shows Zakupy and Sprzedaż links inside Faktury group', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/invoices/purchases']}>
+          <Layout />
+        </MemoryRouter>,
+      )
+    })
+
+    const links = [...container.querySelectorAll('.sidebar-nav-group__child')]
+    const labels = links.map((l) => l.textContent)
+    expect(labels).toContain('Zakupy')
+    expect(labels.some((l) => l?.includes('Sprzeda'))).toBe(true)
+  })
 })

@@ -18,6 +18,8 @@ import { InvoicePrintViewPage } from '@/pages/InvoicePrintView'
 import { InvoiceDraftEditPage } from '@/pages/InvoiceDraftEdit'
 import { SyncedInvoiceDetailPage } from '@/pages/SyncedInvoiceDetail'
 import { InvoiceListPage } from '@/pages/InvoiceList'
+import { PurchaseInvoiceListPage } from '@/pages/PurchaseInvoiceList'
+import { SalesInvoiceListPage } from '@/pages/SalesInvoiceList'
 import { LoginPage } from '@/pages/Login'
 import { MobileSetupPage } from '@/pages/MobileSetup'
 import { NotFoundPage } from '@/pages/NotFound'
@@ -37,6 +39,8 @@ export const appRoutes: RouteObject[] = [
     children: [
       { index: true, element: <DashboardPage /> },
       { path: 'invoices', element: <InvoiceListPage /> },
+      { path: 'invoices/purchases', element: <PurchaseInvoiceListPage /> },
+      { path: 'invoices/sales', element: <SalesInvoiceListPage /> },
       { path: 'invoices/new', element: <InvoiceDraftCreatePage /> },
       { path: 'invoices/final-from-advances', element: <InvoiceFinalFromAdvancesPage /> },
       { path: 'invoices/aggregate/:id', element: <InvoiceAggregateDetailPage /> },
