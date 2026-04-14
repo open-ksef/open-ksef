@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using OpenKSeF.Domain.Entities;
 
 namespace OpenKSeF.Domain.Data;
@@ -191,5 +192,29 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(l => l.IssuedInvoiceId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        // Normalize all DateTime/DateTime? properties to UTC before persisting.
+        // Npgsql requires DateTimeKind.Utc for 'timestamp with time zone' columns.
+        // IssueDate and other date fields come from JSON with DateTimeKind.Unspecified.
+        var utcConverter = new ValueConverter<DateTime, DateTime>(
+            v => v.Kind == DateTimeKind.Utc ? v : DateTime.SpecifyKind(v, DateTimeKind.Utc),
+            v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+
+        var utcNullableConverter = new ValueConverter<DateTime?, DateTime?>(
+            v => v.HasValue
+                ? (v.Value.Kind == DateTimeKind.Utc ? v : DateTime.SpecifyKind(v.Value, DateTimeKind.Utc))
+                : v,
+            v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : v);
+
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            foreach (var property in entityType.GetProperties())
+            {
+                if (property.ClrType == typeof(DateTime))
+                    property.SetValueConverter(utcConverter);
+                else if (property.ClrType == typeof(DateTime?))
+                    property.SetValueConverter(utcNullableConverter);
+            }
+        }
     }
 }
