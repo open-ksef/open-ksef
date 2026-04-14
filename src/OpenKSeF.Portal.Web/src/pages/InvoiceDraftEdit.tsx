@@ -10,8 +10,6 @@ import { InvoiceValidationError, getAggregateInvoice, updateInvoiceDraft } from 
 import { updateInvoiceDraftRequestSchema, type InvoiceReadDto, type ValidationEnvelope } from '@/api/schemas/invoice'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { InvoiceLineEditor, type InvoiceLineFormValue } from '@/components/invoices/InvoiceLineEditor'
-import { IssueDatesFieldset } from '@/components/invoices/IssueDatesFieldset'
-import { PartyCard } from '@/components/invoices/PartyCard'
 import { TotalsSummaryCard } from '@/components/invoices/TotalsSummaryCard'
 import { ValidationMessageList } from '@/components/invoices/ValidationMessageList'
 
@@ -138,13 +136,12 @@ export function InvoiceDraftEditPage(): ReactElement {
   })
 
   return (
-    <section>
-      <Link className="back-link" to={detailPath(id, tenantId)}>
-        ← Powrot do szczegolow
-      </Link>
-
-      <header className="page-header">
-        <h1>Edycja szkicu faktury</h1>
+    <section className="ide-page">
+      <header className="ide-page-header">
+        <Link className="ide-back-link" to={detailPath(id, tenantId)}>
+          ← Powrót
+        </Link>
+        <h1 className="ide-page-title">Edycja szkicu faktury</h1>
       </header>
 
       <AsyncStateView
@@ -156,133 +153,172 @@ export function InvoiceDraftEditPage(): ReactElement {
         onRetry={() => void invoiceQuery.refetch()}
       >
         {invoice ? (
-          <form className="invoice-draft-edit" onSubmit={(event) => void onSubmit(event)}>
-            <div className="invoice-draft-edit__parties">
-              <PartyCard party={invoice.seller} title="Sprzedawca" />
-              <PartyCard party={invoice.buyer} title="Nabywca" />
-            </div>
+          <form className="ide-form" onSubmit={(event) => void onSubmit(event)}>
+            {/* ── Main content column ────────────────────────── */}
+            <div className="ide-main">
 
-            <section className="invoice-draft-edit__section">
-              <IssueDatesFieldset
-                value={{ issueDate, saleDate, dueDate }}
-                onChange={(next) => {
-                  form.setValue('issueDate', next.issueDate, { shouldDirty: true })
-                  form.setValue('saleDate', next.saleDate ?? '', { shouldDirty: true })
-                  form.setValue('dueDate', next.dueDate ?? '', { shouldDirty: true })
-                }}
-              />
-            </section>
+              {/* Parties */}
+              <section className="ide-card ide-parties">
+                <div className="ide-party">
+                  <span className="ide-party__role">Sprzedawca</span>
+                  <span className="ide-party__name">{invoice.seller.name}</span>
+                  <span className="ide-party__nip">NIP: {invoice.seller.nip ?? '—'}</span>
+                </div>
+                <div className="ide-party-divider" aria-hidden="true" />
+                <div className="ide-party">
+                  <span className="ide-party__role">Nabywca</span>
+                  <span className="ide-party__name">{invoice.buyer.name}</span>
+                  <span className="ide-party__nip">NIP: {invoice.buyer.nip ?? '—'}</span>
+                </div>
+              </section>
 
-            <section className="invoice-draft-edit__section">
-              <label htmlFor="edit-document-number">
-                <span>Numer dokumentu</span>
-                <input
-                  id="edit-document-number"
-                  data-testid="edit-document-number"
-                  type="text"
-                  value={documentNumber}
-                  onChange={(event) => form.setValue('documentNumber', event.target.value, { shouldDirty: true })}
-                  onInput={(event) => form.setValue('documentNumber', event.currentTarget.value, { shouldDirty: true })}
-                />
-              </label>
-
-              <label htmlFor="edit-external-reference">
-                <span>Referencja zewnetrzna</span>
-                <input
-                  id="edit-external-reference"
-                  data-testid="edit-external-reference"
-                  type="text"
-                  value={externalReference}
-                  onChange={(event) => form.setValue('externalReference', event.target.value, { shouldDirty: true })}
-                  onInput={(event) => form.setValue('externalReference', event.currentTarget.value, { shouldDirty: true })}
-                />
-              </label>
-
-              <label htmlFor="edit-payment-method">
-                <span>Forma platnosci</span>
-                <input
-                  id="edit-payment-method"
-                  data-testid="edit-payment-method"
-                  type="text"
-                  value={paymentMethod}
-                  onChange={(event) => form.setValue('paymentMethod', event.target.value, { shouldDirty: true })}
-                  onInput={(event) => form.setValue('paymentMethod', event.currentTarget.value, { shouldDirty: true })}
-                />
-              </label>
-            </section>
-
-            <section className="invoice-draft-edit__section">
-              <label htmlFor="edit-public-notes">
-                <span>Uwagi publiczne</span>
-                <textarea
-                  id="edit-public-notes"
-                  data-testid="edit-public-notes"
-                  value={publicNotes}
-                  onChange={(event) => form.setValue('publicNotes', event.target.value, { shouldDirty: true })}
-                  onInput={(event) => form.setValue('publicNotes', event.currentTarget.value, { shouldDirty: true })}
-                />
-              </label>
-
-              <label htmlFor="edit-internal-notes">
-                <span>Uwagi wewnetrzne</span>
-                <textarea
-                  id="edit-internal-notes"
-                  data-testid="edit-internal-notes"
-                  value={internalNotes}
-                  onChange={(event) => form.setValue('internalNotes', event.target.value, { shouldDirty: true })}
-                  onInput={(event) => form.setValue('internalNotes', event.currentTarget.value, { shouldDirty: true })}
-                />
-              </label>
-            </section>
-
-            <section className="invoice-draft-edit__section">
-              <h2>Pozycje</h2>
-              <InvoiceLineEditor
-                value={lines}
-                onChange={setLines}
-                mode="create"
-                pricingMode="Net"
-                allowReorder
-              />
-            </section>
-
-            <TotalsSummaryCard
-              net={totals.net}
-              vat={totals.vat}
-              gross={totals.gross}
-              currency={invoice.currency}
-            />
-
-            {serverValidation ? (
-              <>
-                <ValidationMessageList stage={serverValidation.stage} messages={serverValidation.messages} />
-                {serverValidation.messages.some((message) => message.code === 'INV-VAL-101') ? (
-                  <div role="alertdialog" aria-label="Blad zmiany stanu">
-                    Faktura została w międzyczasie zatwierdzona
+              {/* Dates + document details */}
+              <section className="ide-card">
+                <h2 className="ide-section-title">Daty i szczegóły dokumentu</h2>
+                <div className="ide-meta-grid">
+                  <div className="ide-field">
+                    <label className="ide-label" htmlFor="edit-issue-date">Data wystawienia</label>
+                    <input
+                      id="edit-issue-date"
+                      type="date"
+                      value={issueDate}
+                      onChange={(e) => form.setValue('issueDate', e.target.value, { shouldDirty: true })}
+                    />
                   </div>
-                ) : null}
-              </>
-            ) : null}
+                  <div className="ide-field">
+                    <label className="ide-label" htmlFor="edit-sale-date">Data sprzedaży</label>
+                    <input
+                      id="edit-sale-date"
+                      type="date"
+                      value={saleDate}
+                      onChange={(e) => form.setValue('saleDate', e.target.value, { shouldDirty: true })}
+                    />
+                  </div>
+                  <div className="ide-field">
+                    <label className="ide-label" htmlFor="edit-due-date">Termin płatności</label>
+                    <input
+                      id="edit-due-date"
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => form.setValue('dueDate', e.target.value, { shouldDirty: true })}
+                    />
+                  </div>
+                  <div className="ide-field">
+                    <label className="ide-label" htmlFor="edit-document-number">Numer dokumentu</label>
+                    <input
+                      id="edit-document-number"
+                      data-testid="edit-document-number"
+                      type="text"
+                      value={documentNumber}
+                      onChange={(e) => form.setValue('documentNumber', e.target.value, { shouldDirty: true })}
+                      onInput={(e) => form.setValue('documentNumber', e.currentTarget.value, { shouldDirty: true })}
+                    />
+                  </div>
+                  <div className="ide-field">
+                    <label className="ide-label" htmlFor="edit-payment-method">Forma płatności</label>
+                    <input
+                      id="edit-payment-method"
+                      data-testid="edit-payment-method"
+                      type="text"
+                      value={paymentMethod}
+                      onChange={(e) => form.setValue('paymentMethod', e.target.value, { shouldDirty: true })}
+                      onInput={(e) => form.setValue('paymentMethod', e.currentTarget.value, { shouldDirty: true })}
+                    />
+                  </div>
+                  <div className="ide-field">
+                    <label className="ide-label" htmlFor="edit-external-reference">Referencja zewnętrzna</label>
+                    <input
+                      id="edit-external-reference"
+                      data-testid="edit-external-reference"
+                      type="text"
+                      value={externalReference}
+                      onChange={(e) => form.setValue('externalReference', e.target.value, { shouldDirty: true })}
+                      onInput={(e) => form.setValue('externalReference', e.currentTarget.value, { shouldDirty: true })}
+                    />
+                  </div>
+                </div>
+              </section>
 
-            {submitError ? <p role="alert">{submitError}</p> : null}
+              {/* Line items */}
+              <section className="ide-card">
+                <h2 className="ide-section-title">Pozycje</h2>
+                <InvoiceLineEditor
+                  value={lines}
+                  onChange={setLines}
+                  mode="create"
+                  pricingMode="Net"
+                  allowReorder
+                />
+              </section>
 
-            <div className="invoice-draft-edit__actions">
-              <Link
-                className="ui-button ui-button--secondary"
-                data-testid="edit-cancel-button"
-                to={detailPath(invoice.id, tenantId)}
-              >
-                Anuluj
-              </Link>
-              <button
-                className="ui-button ui-button--primary"
-                data-testid="edit-submit-button"
-                type="submit"
-                disabled={mutation.isPending}
-              >
-                {mutation.isPending ? 'Zapisywanie...' : 'Zapisz zmiany'}
-              </button>
+              {/* Notes */}
+              <section className="ide-card ide-notes-grid">
+                <div className="ide-field">
+                  <label className="ide-label" htmlFor="edit-public-notes">Uwagi publiczne</label>
+                  <textarea
+                    id="edit-public-notes"
+                    data-testid="edit-public-notes"
+                    rows={3}
+                    value={publicNotes}
+                    onChange={(e) => form.setValue('publicNotes', e.target.value, { shouldDirty: true })}
+                    onInput={(e) => form.setValue('publicNotes', e.currentTarget.value, { shouldDirty: true })}
+                  />
+                </div>
+                <div className="ide-field">
+                  <label className="ide-label" htmlFor="edit-internal-notes">Uwagi wewnętrzne</label>
+                  <textarea
+                    id="edit-internal-notes"
+                    data-testid="edit-internal-notes"
+                    rows={3}
+                    value={internalNotes}
+                    onChange={(e) => form.setValue('internalNotes', e.target.value, { shouldDirty: true })}
+                    onInput={(e) => form.setValue('internalNotes', e.currentTarget.value, { shouldDirty: true })}
+                  />
+                </div>
+              </section>
+
             </div>
+
+            {/* ── Sticky sidebar ─────────────────────────────── */}
+            <aside className="ide-sidebar">
+              <TotalsSummaryCard
+                net={totals.net}
+                vat={totals.vat}
+                gross={totals.gross}
+                currency={invoice.currency}
+              />
+
+              {serverValidation ? (
+                <div className="ide-validation">
+                  <ValidationMessageList stage={serverValidation.stage} messages={serverValidation.messages} />
+                  {serverValidation.messages.some((m) => m.code === 'INV-VAL-101') ? (
+                    <div role="alertdialog" aria-label="Blad zmiany stanu" className="ide-validation__alert">
+                      Faktura została w międzyczasie zatwierdzona
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {submitError ? <p role="alert" className="ide-submit-error">{submitError}</p> : null}
+
+              <div className="ide-sidebar-actions">
+                <button
+                  className="ui-button ui-button--primary ui-button--lg"
+                  data-testid="edit-submit-button"
+                  type="submit"
+                  disabled={mutation.isPending}
+                >
+                  {mutation.isPending ? 'Zapisywanie…' : '✓ Zapisz zmiany'}
+                </button>
+                <Link
+                  className="ui-button ui-button--secondary"
+                  data-testid="edit-cancel-button"
+                  to={detailPath(invoice.id, tenantId)}
+                >
+                  Anuluj
+                </Link>
+              </div>
+            </aside>
           </form>
         ) : null}
       </AsyncStateView>

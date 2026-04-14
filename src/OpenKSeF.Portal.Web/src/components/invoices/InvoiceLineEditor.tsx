@@ -69,6 +69,14 @@ export function InvoiceLineEditor({
 
   return (
     <div className="invoice-line-editor" role="group" aria-label="Pozycje faktury" onKeyDown={handleKeyDown}>
+      <div className="invoice-line-editor__header" aria-hidden="true">
+        <span className="invoice-line-editor__header-cell">Opis</span>
+        <span className="invoice-line-editor__header-cell">Ilość</span>
+        <span className="invoice-line-editor__header-cell">J.m.</span>
+        <span className="invoice-line-editor__header-cell">Cena jedn.</span>
+        <span className="invoice-line-editor__header-cell">Stawka VAT</span>
+        <span />
+      </div>
       {value.map((line, index) => (
         <div className="invoice-line-editor__row" key={index}>
           {mode === 'correction' && line.correctionBefore ? (
@@ -83,7 +91,7 @@ export function InvoiceLineEditor({
               />
             </div>
           ) : null}
-          <div className={mode === 'correction' ? 'invoice-line-editor__correction-after' : undefined}>
+          <div className={mode === 'correction' ? 'invoice-line-editor__correction-after' : 'invoice-line-editor__fields'}>
             {mode === 'correction' ? (
               <span className="invoice-line-editor__correction-label">Po korekcie</span>
             ) : null}
@@ -95,38 +103,42 @@ export function InvoiceLineEditor({
               onChange={(updated) => handleChange(index, updated)}
             />
           </div>
-          <button
-            type="button"
-            className="invoice-line-editor__remove"
-            onClick={() => handleRemove(index)}
-            aria-label={`Usuń pozycję ${index + 1}`}
-          >
-            Usuń
-          </button>
-          {allowReorder ? (
-            <div className="invoice-line-editor__reorder">
-              <button
-                type="button"
-                data-testid={`line-move-up-${index}`}
-                onClick={() => handleMove(index, -1)}
-                disabled={index === 0}
-              >
-                W gore
-              </button>
-              <button
-                type="button"
-                data-testid={`line-move-down-${index}`}
-                onClick={() => handleMove(index, 1)}
-                disabled={index === value.length - 1}
-              >
-                W dol
-              </button>
-            </div>
-          ) : null}
+          <div className="invoice-line-editor__actions">
+            <button
+              type="button"
+              className="invoice-line-editor__remove"
+              onClick={() => handleRemove(index)}
+              aria-label={`Usuń pozycję ${index + 1}`}
+            >
+              ✕
+            </button>
+            {allowReorder ? (
+              <div className="invoice-line-editor__reorder">
+                <button
+                  type="button"
+                  data-testid={`line-move-up-${index}`}
+                  onClick={() => handleMove(index, -1)}
+                  disabled={index === 0}
+                  aria-label="Przesuń wyżej"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  data-testid={`line-move-down-${index}`}
+                  onClick={() => handleMove(index, 1)}
+                  disabled={index === value.length - 1}
+                  aria-label="Przesuń niżej"
+                >
+                  ↓
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       ))}
       <button type="button" className="invoice-line-editor__add" onClick={handleAdd}>
-        Dodaj pozycje
+        + Dodaj pozycję
       </button>
     </div>
   )
@@ -148,70 +160,62 @@ function LineFields({ line, index, prefix, disabled, onChange }: LineFieldsProps
   }
 
   return (
-    <div className="invoice-line-editor__fields">
-      <label htmlFor={id('description')}>
-        Opis
-        <input
-          id={id('description')}
-          type="text"
-          value={line.description}
-          disabled={disabled}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => update({ description: event.target.value })}
-        />
-      </label>
-      <label htmlFor={id('quantity')}>
-        Ilosc
-        <input
-          id={id('quantity')}
-          type="text"
-          inputMode="decimal"
-          value={line.quantity}
-          disabled={disabled}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => {
-            const parsed = Number(event.target.value)
-            if (!Number.isNaN(parsed)) update({ quantity: parsed })
-          }}
-        />
-      </label>
-      <label htmlFor={id('unitOfMeasure')}>
-        J.m.
-        <input
-          id={id('unitOfMeasure')}
-          type="text"
-          value={line.unitOfMeasure}
-          disabled={disabled}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => update({ unitOfMeasure: event.target.value })}
-        />
-      </label>
-      <label htmlFor={id('unitPrice')}>
-        Cena jedn.
-        <input
-          id={id('unitPrice')}
-          type="text"
-          inputMode="decimal"
-          value={line.unitPrice}
-          disabled={disabled}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => {
-            const parsed = Number(event.target.value.replace(',', '.'))
-            if (!Number.isNaN(parsed)) update({ unitPrice: parsed })
-          }}
-        />
-      </label>
-      <label htmlFor={id('vatRate')}>
-        Stawka VAT
-        <select
-          id={id('vatRate')}
-          value={line.vatRate}
-          disabled={disabled}
-          onChange={(event: ChangeEvent<HTMLSelectElement>) => update({ vatRate: event.target.value })}
-        >
-          {['23%', '8%', '5%', '0%', 'zw', 'np'].map((rate) => (
-            <option key={rate} value={rate}>
-              {rate}
-            </option>
-          ))}
-        </select>
-      </label>
-    </div>
+    <>
+      <input
+        id={id('description')}
+        aria-label="Opis"
+        type="text"
+        placeholder="Opis towaru lub usługi"
+        value={line.description}
+        disabled={disabled}
+        onChange={(event: ChangeEvent<HTMLInputElement>) => update({ description: event.target.value })}
+      />
+      <input
+        id={id('quantity')}
+        aria-label="Ilość"
+        type="text"
+        inputMode="decimal"
+        value={line.quantity}
+        disabled={disabled}
+        onChange={(event: ChangeEvent<HTMLInputElement>) => {
+          const parsed = Number(event.target.value)
+          if (!Number.isNaN(parsed)) update({ quantity: parsed })
+        }}
+      />
+      <input
+        id={id('unitOfMeasure')}
+        aria-label="Jednostka miary"
+        type="text"
+        placeholder="szt."
+        value={line.unitOfMeasure}
+        disabled={disabled}
+        onChange={(event: ChangeEvent<HTMLInputElement>) => update({ unitOfMeasure: event.target.value })}
+      />
+      <input
+        id={id('unitPrice')}
+        aria-label="Cena jednostkowa"
+        type="text"
+        inputMode="decimal"
+        value={line.unitPrice}
+        disabled={disabled}
+        onChange={(event: ChangeEvent<HTMLInputElement>) => {
+          const parsed = Number(event.target.value.replace(',', '.'))
+          if (!Number.isNaN(parsed)) update({ unitPrice: parsed })
+        }}
+      />
+      <select
+        id={id('vatRate')}
+        aria-label="Stawka VAT"
+        value={line.vatRate}
+        disabled={disabled}
+        onChange={(event: ChangeEvent<HTMLSelectElement>) => update({ vatRate: event.target.value })}
+      >
+        {['23%', '8%', '5%', '0%', 'zw', 'np'].map((rate) => (
+          <option key={rate} value={rate}>
+            {rate}
+          </option>
+        ))}
+      </select>
+    </>
   )
 }

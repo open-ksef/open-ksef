@@ -72,7 +72,9 @@ describe('InvoiceLineEditor', () => {
       root.render(<InvoiceLineEditor value={twoLines} onChange={onChange} mode="create" pricingMode="Net" />)
     })
 
-    const deleteButtons = [...container.querySelectorAll('button')].filter((b) => b.textContent?.includes('Usuń'))
+    const deleteButtons = [...container.querySelectorAll('button')].filter((b) =>
+      b.getAttribute('aria-label')?.startsWith('Usuń'),
+    )
     await act(async () => {
       deleteButtons[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })

@@ -18,6 +18,7 @@ vi.mock('@/api/invoicesAggregateApi', async (importOriginal) => {
   return {
     ...actual,
     createInvoiceDraft: vi.fn(),
+    listAggregateInvoices: vi.fn().mockResolvedValue({ items: [], page: 1, pageSize: 50, totalCount: 0, totalPages: 0 }),
   }
 })
 

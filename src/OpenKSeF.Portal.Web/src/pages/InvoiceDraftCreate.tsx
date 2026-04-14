@@ -17,6 +17,7 @@ import {
 } from '@/api/schemas/invoice'
 import { listTenants } from '@/api/endpoints/tenants'
 import { AsyncStateView } from '@/components/AsyncStateView'
+import { BuyerSelector } from '@/components/invoices/BuyerSelector'
 import { CurrencySelect } from '@/components/invoices/CurrencySelect'
 import { DocumentNumberPreview } from '@/components/invoices/DocumentNumberPreview'
 import { InvoiceLineEditor, type InvoiceLineFormValue } from '@/components/invoices/InvoiceLineEditor'
@@ -175,144 +176,129 @@ export function InvoiceDraftCreatePage(): ReactElement {
         emptyMessage="Dodaj firmę, aby wystawić pierwszą fakturę."
         onRetry={() => void tenantsQuery.refetch()}
       >
-        <form className="invoice-draft-create" onSubmit={(event) => void onSubmit(event)}>
-          <section className="invoice-draft-create__section">
-            <h2>Dane dokumentu</h2>
+        <form className="idc-page" onSubmit={(event) => void onSubmit(event)}>
 
-            <label htmlFor="invoice-kind">
-              <span>Rodzaj dokumentu</span>
-              <select
-                id="invoice-kind"
-                data-testid="kind-select"
-                value={kind}
-                onChange={(event) => form.setValue('kind', event.target.value as DocumentKind, { shouldDirty: true, shouldValidate: true })}
-              >
-                {documentKindSchema.options.map((option) => (
-                  <option key={option} value={option}>
-                    {documentKindLabel(option)}
-                  </option>
-                ))}
-              </select>
-            </label>
+          {/* HEADER CARD: doc type + number | date + currency */}
+          <div className="ide-card idc-header">
+            <div className="idc-header__left">
+              <div className="ide-field">
+                <label className="ide-label" htmlFor="invoice-kind">Rodzaj dokumentu</label>
+                <select
+                  id="invoice-kind"
+                  data-testid="kind-select"
+                  value={kind}
+                  onChange={(event) => form.setValue('kind', event.target.value as DocumentKind, { shouldDirty: true, shouldValidate: true })}
+                >
+                  {documentKindSchema.options.map((option) => (
+                    <option key={option} value={option}>
+                      {documentKindLabel(option)}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <DocumentNumberPreview
-              policyResolved={buildDocumentNumberPreview(kind, issueDate)}
-              externalReference={externalReference}
-            />
-
-            <label htmlFor="invoice-external-reference">
-              <span>Referencja zewnętrzna</span>
-              <input
-                id="invoice-external-reference"
-                type="text"
-                {...form.register('externalReference')}
-                value={externalReference}
-                onChange={(event) => form.setValue('externalReference', event.target.value, { shouldDirty: true, shouldValidate: false })}
-                onInput={(event) => form.setValue('externalReference', event.currentTarget.value, { shouldDirty: true, shouldValidate: false })}
+              <DocumentNumberPreview
+                policyResolved={buildDocumentNumberPreview(kind, issueDate)}
+                externalReference={externalReference}
               />
-            </label>
-          </section>
 
-          <section className="invoice-draft-create__section">
-            <h2>Sprzedawca</h2>
+              <div className="ide-field">
+                <label className="ide-label" htmlFor="invoice-external-reference">Referencja zewnętrzna</label>
+                <input
+                  id="invoice-external-reference"
+                  type="text"
+                  {...form.register('externalReference')}
+                  value={externalReference}
+                  onChange={(event) => form.setValue('externalReference', event.target.value, { shouldDirty: true, shouldValidate: false })}
+                  onInput={(event) => form.setValue('externalReference', event.currentTarget.value, { shouldDirty: true, shouldValidate: false })}
+                />
+              </div>
+            </div>
 
-            <label htmlFor="seller-name">
-              <span>Nazwa</span>
-              <input
-                id="seller-name"
-                data-testid="seller-name"
-                type="text"
-                {...form.register('sellerName')}
-                value={sellerName}
-                onChange={(event) => form.setValue('sellerName', event.target.value, { shouldDirty: true, shouldValidate: false })}
-                onInput={(event) => form.setValue('sellerName', event.currentTarget.value, { shouldDirty: true, shouldValidate: false })}
-              />
-            </label>
-            <FieldError message={getNameErrorMessage(form.formState.errors.sellerName)} />
+            <div className="idc-header__right">
+              <div className="ide-field">
+                <IssueDatesFieldset
+                  value={{ issueDate }}
+                  onChange={(next) => {
+                    form.setValue('issueDate', next.issueDate, { shouldDirty: true, shouldValidate: true })
+                  }}
+                  mode="compact"
+                />
+                <FieldError message={getIssueDateErrorMessage(form.formState.errors.issueDate)} />
+              </div>
 
-            <label htmlFor="seller-nip">
-              <span>NIP</span>
-              <input
-                id="seller-nip"
-                data-testid="seller-nip"
-                type="text"
-                inputMode="numeric"
-                {...form.register('sellerNip')}
-                value={sellerNip}
-                onChange={(event) => form.setValue('sellerNip', event.target.value, { shouldDirty: true, shouldValidate: false })}
-                onInput={(event) => form.setValue('sellerNip', event.currentTarget.value, { shouldDirty: true, shouldValidate: false })}
-              />
-            </label>
-            <FieldError message={getNipErrorMessage(form.formState.errors.sellerNip, sellerNip)} />
-          </section>
+              <div className="ide-field">
+                <CurrencySelect
+                  value={currency}
+                  onChange={(nextValue) => form.setValue('currency', nextValue, { shouldDirty: true, shouldValidate: true })}
+                />
+                <FieldError message={getCurrencyErrorMessage(form.formState.errors.currency)} />
+              </div>
+            </div>
+          </div>
 
-          <section className="invoice-draft-create__section">
-            <h2>Nabywca</h2>
+          {/* PARTIES CARD: seller | divider | buyer */}
+          <div className="ide-card ide-parties idc-parties">
+            <div className="ide-party">
+              <span className="ide-party__role">Sprzedawca</span>
+              <span className="ide-party__name">{sellerName || '—'}</span>
+              <span className="ide-party__nip">NIP: {sellerNip || '—'}</span>
+            </div>
+            <div className="ide-party-divider" aria-hidden="true" />
+            <div className="idc-buyer">
+              <span className="ide-party__role">Nabywca</span>
 
-            <label htmlFor="buyer-kind">
-              <span>Typ nabywcy</span>
-              <select
-                id="buyer-kind"
-                data-testid="buyer-kind-select"
-                value={buyerKind}
-                onChange={(event) => form.setValue('buyerKind', event.target.value as BuyerKind, { shouldDirty: true, shouldValidate: true })}
-              >
-                <option value="Business">Firma</option>
-                <option value="Consumer">Konsument</option>
-                <option value="Unknown">Nieustalony</option>
-              </select>
-            </label>
+              <div className="ide-field">
+                <label className="ide-label" htmlFor="buyer-kind">Typ nabywcy</label>
+                <select
+                  id="buyer-kind"
+                  data-testid="buyer-kind-select"
+                  value={buyerKind}
+                  onChange={(event) => form.setValue('buyerKind', event.target.value as BuyerKind, { shouldDirty: true, shouldValidate: true })}
+                >
+                  <option value="Business">Firma</option>
+                  <option value="Consumer">Konsument</option>
+                  <option value="Unknown">Nieustalony</option>
+                </select>
+              </div>
 
-            <label htmlFor="buyer-name">
-              <span>Nazwa</span>
-              <input
-                id="buyer-name"
-                data-testid="buyer-name"
-                type="text"
-                {...form.register('buyerName')}
-                value={buyerName}
-                onChange={(event) => form.setValue('buyerName', event.target.value, { shouldDirty: true, shouldValidate: false })}
-                onInput={(event) => form.setValue('buyerName', event.currentTarget.value, { shouldDirty: true, shouldValidate: false })}
-              />
-            </label>
-            <FieldError message={getNameErrorMessage(form.formState.errors.buyerName)} />
+              <div className="ide-field">
+                <label className="ide-label" htmlFor="buyer-name">Nazwa</label>
+                <BuyerSelector
+                  value={buyerName}
+                  onChange={(val) => form.setValue('buyerName', val, { shouldDirty: true })}
+                  onSelect={(suggestion) => {
+                    form.setValue('buyerName', suggestion.name, { shouldDirty: true })
+                    form.setValue('buyerNip', suggestion.nip ?? '', { shouldDirty: true })
+                    form.setValue('buyerKind', suggestion.buyerKind, { shouldDirty: true, shouldValidate: true })
+                  }}
+                  tenantId={effectiveTenantId}
+                />
+                <FieldError message={getNameErrorMessage(form.formState.errors.buyerName)} />
+              </div>
 
-            <label htmlFor="buyer-nip">
-              <span>NIP</span>
-              <input
-                id="buyer-nip"
-                data-testid="buyer-nip"
-                type="text"
-                inputMode="numeric"
-                {...form.register('buyerNip')}
-                value={buyerNip ?? ''}
-                onChange={(event) => form.setValue('buyerNip', event.target.value, { shouldDirty: true, shouldValidate: false })}
-                onInput={(event) => form.setValue('buyerNip', event.currentTarget.value, { shouldDirty: true, shouldValidate: false })}
-              />
-            </label>
-            <FieldError message={getBuyerNipErrorMessage(form.formState.errors.buyerNip, buyerKind, buyerNip ?? '')} />
-          </section>
+              <div className="ide-field">
+                <label className="ide-label" htmlFor="buyer-nip">NIP</label>
+                <input
+                  id="buyer-nip"
+                  data-testid="buyer-nip"
+                  type="text"
+                  inputMode="numeric"
+                  {...form.register('buyerNip')}
+                  value={buyerNip ?? ''}
+                  onChange={(event) => form.setValue('buyerNip', event.target.value, { shouldDirty: true, shouldValidate: false })}
+                  onInput={(event) => form.setValue('buyerNip', event.currentTarget.value, { shouldDirty: true, shouldValidate: false })}
+                />
+                <FieldError message={getBuyerNipErrorMessage(form.formState.errors.buyerNip, buyerKind, buyerNip ?? '')} />
+              </div>
+            </div>
+          </div>
 
           <KsefRequirementBanner requirement={derivedRequirement} />
 
-          <section className="invoice-draft-create__section">
-            <IssueDatesFieldset
-              value={{ issueDate }}
-              onChange={(next) => {
-                form.setValue('issueDate', next.issueDate, { shouldDirty: true, shouldValidate: true })
-              }}
-            />
-            <FieldError message={getIssueDateErrorMessage(form.formState.errors.issueDate)} />
-
-            <CurrencySelect
-              value={currency}
-              onChange={(nextValue) => form.setValue('currency', nextValue, { shouldDirty: true, shouldValidate: true })}
-            />
-            <FieldError message={getCurrencyErrorMessage(form.formState.errors.currency)} />
-          </section>
-
-          <section className="invoice-draft-create__section">
-            <h2>Pozycje</h2>
+          {/* LINE ITEMS */}
+          <section className="ide-card idc-lines">
+            <p className="ide-section-title">Pozycje</p>
             <InvoiceLineEditor
               value={lines}
               onChange={(nextLines) => {
@@ -327,30 +313,32 @@ export function InvoiceDraftCreatePage(): ReactElement {
             <FieldError message={lineError} />
           </section>
 
-          <TotalsSummaryCard
-            net={totals.net}
-            vat={totals.vat}
-            gross={totals.gross}
-            currency={currency}
-          />
-
-          {serverValidation ? (
-            <ValidationMessageList stage={serverValidation.stage} messages={serverValidation.messages} />
-          ) : null}
-
-          {submitError ? (
-            <p role="alert">{submitError}</p>
-          ) : null}
-
-          <div className="invoice-draft-create__actions">
-            <button
-              className="ui-button ui-button--primary"
-              data-testid="submit-button"
-              type="submit"
-              disabled={createDraftMutation.isPending || !effectiveTenantId}
-            >
-              {createDraftMutation.isPending ? 'Zapisywanie...' : 'Zapisz'}
-            </button>
+          {/* FOOTER: errors left, totals + submit right */}
+          <div className="idc-footer">
+            <div className="idc-footer__messages">
+              {serverValidation ? (
+                <ValidationMessageList stage={serverValidation.stage} messages={serverValidation.messages} />
+              ) : null}
+              {submitError ? (
+                <p role="alert">{submitError}</p>
+              ) : null}
+            </div>
+            <div className="idc-footer__actions">
+              <TotalsSummaryCard
+                net={totals.net}
+                vat={totals.vat}
+                gross={totals.gross}
+                currency={currency}
+              />
+              <button
+                className="ui-button ui-button--primary"
+                data-testid="submit-button"
+                type="submit"
+                disabled={createDraftMutation.isPending || !effectiveTenantId}
+              >
+                {createDraftMutation.isPending ? 'Zapisywanie...' : 'Zapisz'}
+              </button>
+            </div>
           </div>
         </form>
       </AsyncStateView>
@@ -440,14 +428,6 @@ function formatDateInput(value: Date): string {
 
 function getNameErrorMessage(error: { message?: string } | undefined): string | null {
   return error ? 'Pole jest wymagane.' : null
-}
-
-function getNipErrorMessage(error: { message?: string } | undefined, value: string | undefined): string | null {
-  if (!error) {
-    return null
-  }
-
-  return value?.trim() ? 'Nieprawidłowy numer NIP.' : 'NIP jest wymagany.'
 }
 
 function getBuyerNipErrorMessage(
