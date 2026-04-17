@@ -76,3 +76,4 @@ Thumbs.db
 *.cer
 *.crt
 *.csr
+.playwright-mcp/

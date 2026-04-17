@@ -251,6 +251,13 @@
   margin-bottom: 20px;
 }
 
+.page-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .page-header h1 {
   font-size: 24px;
   font-weight: 700;
@@ -1438,9 +1445,10 @@ label {
 
 .totals-summary-card {
   background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-lg);
   box-shadow: var(--ui-shadow-card);
-  padding: 18px 20px;
+  padding: 16px 20px 18px;
 }
 
 .totals-summary-card__rows {
@@ -1448,13 +1456,14 @@ label {
   flex-direction: column;
   gap: 0;
   margin: 0;
-  padding: 0;
+  padding: 0 4px;
 }
 
 .totals-summary-card__row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
+  gap: 16px;
   padding: 7px 0;
   border-bottom: 1px solid var(--ui-border);
 }
@@ -1703,12 +1712,9 @@ label {
 /* ── ─────────────────────────────────────────────────────── */
 
 .document-number-preview {
-  display: grid;
-  gap: 6px;
-  padding: 16px;
-  border-radius: var(--ui-radius-lg);
-  background: var(--ui-surface);
-  box-shadow: var(--ui-shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .document-number-preview__title,
@@ -1718,15 +1724,18 @@ label {
 }
 
 .document-number-preview__title {
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--ui-text);
+  color: var(--ui-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .document-number-preview__value {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--ui-primary);
+  font-family: ui-monospace, 'SF Mono', monospace;
 }
 
 .document-number-preview__reference {
@@ -2457,10 +2466,18 @@ dd {
 }
 
 .invoice-doc-header {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.invoice-doc-header__title-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .invoice-doc-header__number {
@@ -2470,13 +2487,67 @@ dd {
   color: var(--ui-text);
   letter-spacing: -0.01em;
   margin: 0;
+  margin-right: 4px;
 }
 
 .invoice-doc-header__meta {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 4px;
+}
+
+/* ── Invoice line table (detail) ──────────────────────────── */
+
+.invoice-line-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.invoice-line-table__caption {
+  caption-side: top;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ui-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding-bottom: 10px;
+}
+
+.invoice-line-table thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ui-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--ui-border);
+  background: #f9fafb;
+}
+
+.invoice-line-table tbody td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--ui-border);
+  color: var(--ui-text);
+  vertical-align: top;
+}
+
+.invoice-line-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.invoice-line-table tbody tr:empty + tr,
+.invoice-line-table tbody:empty::after {
+  content: '';
+}
+
+.invoice-line-table__empty {
+  text-align: center;
+  color: var(--ui-text-muted);
+  padding: 20px 8px;
+  font-style: italic;
 }
 
 .invoice-doc-parties {
@@ -3243,79 +3314,6 @@ dd {
   }
 }
 
-/* ── Invoice Draft Create (idc-*) ────────────────────────── */
-
-.idc-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 960px;
-  margin: 0 auto;
-}
-
-/* Header card: ide-card resets its padding, columns handle their own */
-.idc-header {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
-  padding: 0;
-  overflow: hidden;
-}
-
-.idc-header__left,
-.idc-header__right {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 20px 24px;
-}
-
-.idc-header__left {
-  border-right: 1px solid var(--ui-border);
-}
-
-/* Parties card: reuse ide-parties grid + ide-party, just reset ide-card padding */
-.idc-parties {
-  padding: 0;
-  overflow: hidden;
-}
-
-/* Buyer form column inside parties card */
-.idc-buyer {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 20px 24px;
-}
-
-/* Lines card */
-.idc-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-/* Footer */
-.idc-footer {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: end;
-  gap: 16px;
-}
-
-.idc-footer__messages {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.idc-footer__actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 12px;
-}
-
 /* ── Buyer Selector ──────────────────────────────────────── */
 
 .buyer-selector {
@@ -3365,33 +3363,3 @@ dd {
   white-space: nowrap;
 }
 
-/* ── idc responsive (≤768px) ─────────────────────────────── */
-
-@media (max-width: 768px) {
-  .idc-header {
-    grid-template-columns: 1fr;
-  }
-
-  .idc-header__left {
-    border-right: none;
-    border-bottom: 1px solid var(--ui-border);
-  }
-
-  .idc-parties.ide-parties {
-    grid-template-columns: 1fr;
-  }
-
-  .idc-parties .ide-party-divider {
-    width: auto;
-    height: 1px;
-    margin: 0 16px;
-  }
-
-  .idc-footer {
-    grid-template-columns: 1fr;
-  }
-
-  .idc-footer__actions {
-    align-items: stretch;
-  }
-}

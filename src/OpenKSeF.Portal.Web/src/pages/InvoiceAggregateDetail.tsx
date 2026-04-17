@@ -190,9 +190,11 @@ export function InvoiceAggregateDetailPage(): ReactElement {
 function HeaderSection({ invoice }: { invoice: InvoiceReadDto }): ReactElement {
   return (
     <>
-      <h2 className="invoice-doc-header__number">{invoice.documentNumber ?? '—'}</h2>
-      <DocumentKindChip kind={invoice.kind} />
-      <DocumentStatusBadge status={invoice.status} />
+      <div className="invoice-doc-header__title-row">
+        <h2 className="invoice-doc-header__number">{invoice.documentNumber ?? '—'}</h2>
+        <DocumentKindChip kind={invoice.kind} />
+        <DocumentStatusBadge status={invoice.status} />
+      </div>
       <div className="invoice-doc-header__meta">
         <KsefRequirementBanner requirement={invoice.ksefSubmissionRequirement} />
         <KsefSubmissionStatus
