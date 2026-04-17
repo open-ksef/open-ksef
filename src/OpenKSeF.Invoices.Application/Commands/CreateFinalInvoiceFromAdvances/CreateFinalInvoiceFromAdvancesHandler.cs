@@ -42,6 +42,12 @@ public sealed class CreateFinalInvoiceFromAdvancesHandler : ICreateFinalInvoiceF
         var first = advances[0];
         foreach (var adv in advances)
         {
+            if (adv.Kind != DocumentKind.AdvanceInvoice)
+                throw CreateDraftValidationException("INV-VAL-073", "AdvanceDocumentIds");
+
+            if (adv.Status != DocumentStatus.Approved)
+                throw CreateDraftValidationException("INV-VAL-073", "AdvanceDocumentIds");
+
             if (adv.TenantId != expectedTenantId)
                 throw CreateDraftValidationException("INV-VAL-073", "AdvanceDocumentIds");
 
@@ -61,6 +67,14 @@ public sealed class CreateFinalInvoiceFromAdvancesHandler : ICreateFinalInvoiceF
         IReadOnlyList<Invoice> advances,
         CreateFinalInvoiceFromAdvancesCommand command)
     {
+        var duplicateAdvanceId = command.Advances
+            .GroupBy(entry => entry.AdvanceInvoiceId)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicateAdvanceId is not null)
+        {
+            throw CreateDraftValidationException("INV-VAL-073", "AdvanceDocumentIds");
+        }
+
         var settlementByAdvanceId = command.Advances
             .ToDictionary(e => new InvoiceId(e.AdvanceInvoiceId));
 

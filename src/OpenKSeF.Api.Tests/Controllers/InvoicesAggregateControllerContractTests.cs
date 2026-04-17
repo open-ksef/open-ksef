@@ -148,6 +148,31 @@ public sealed class InvoicesAggregateControllerContractTests
     }
 
     [Fact]
+    public async Task Api005a_CreateProformaReturnsValidationEnvelopeOnMissingSellerNip()
+    {
+        using var harness = new ContractHarness();
+
+        var request = new CreateInvoiceRequest(
+            DocumentKind.Proforma,
+            "Seller",
+            "",
+            "Consumer",
+            BuyerKind.Consumer,
+            null,
+            "PLN",
+            new DateTime(2026, 4, 10),
+            KsefSubmissionRequirement.Forbidden);
+
+        var result = await harness.ExecuteAsync(controller =>
+            controller.Create(harness.TenantId, request));
+
+        var unprocessable = Assert.IsType<UnprocessableEntityObjectResult>(result);
+        var envelope = Assert.IsType<ValidationEnvelope>(unprocessable.Value);
+        Assert.Equal("Draft", envelope.Stage);
+        Assert.Contains(envelope.Messages, message => message.Code == "INV-VAL-011" && message.Severity == "Error");
+    }
+
+    [Fact]
     public async Task Api006_UpdateDraftIsIdempotentForNoOp()
     {
         using var harness = new ContractHarness();

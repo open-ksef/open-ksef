@@ -574,7 +574,7 @@ public sealed class InvoicesAggregateController : ControllerBase
             messages.Add(CreateMessage("INV-VAL-010", "Seller.Name"));
         }
 
-        if (request.Kind != DocumentKind.Proforma && string.IsNullOrWhiteSpace(request.SellerNip))
+        if (string.IsNullOrWhiteSpace(request.SellerNip))
         {
             messages.Add(CreateMessage("INV-VAL-011", "Seller.Nip"));
         }

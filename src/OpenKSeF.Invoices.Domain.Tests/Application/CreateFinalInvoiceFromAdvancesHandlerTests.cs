@@ -152,6 +152,48 @@ public class CreateFinalInvoiceFromAdvancesHandlerTests
             new CreateFinalInvoiceFromAdvancesHandler().Handle([adv], command));
     }
 
+    [Fact]
+    public void Handle_Throws_WhenAnyReferencedInvoiceIsNotAdvanceKind()
+    {
+        var notAdvance = MakeVatInvoice("FV/2026/050");
+        var command = new CreateFinalInvoiceFromAdvancesCommand(
+            Tenant.Value,
+            new DateTime(2026, 4, 20),
+            [new AdvanceSettlementEntry(notAdvance.Id.Value, "FV/2026/050", 100m)]);
+
+        Assert.Throws<InvoiceDomainException>(() =>
+            new CreateFinalInvoiceFromAdvancesHandler().Handle([notAdvance], command));
+    }
+
+    [Fact]
+    public void Handle_Throws_WhenAnyAdvanceIsNotApproved()
+    {
+        var draftAdvance = MakeDraftAdvanceInvoice("ADV/2026/060");
+        var command = new CreateFinalInvoiceFromAdvancesCommand(
+            Tenant.Value,
+            new DateTime(2026, 4, 20),
+            [new AdvanceSettlementEntry(draftAdvance.Id.Value, "ADV/2026/060", 100m)]);
+
+        Assert.Throws<InvoiceDomainException>(() =>
+            new CreateFinalInvoiceFromAdvancesHandler().Handle([draftAdvance], command));
+    }
+
+    [Fact]
+    public void Handle_Throws_WhenCommandContainsDuplicateAdvanceIds()
+    {
+        var adv = MakeApprovedAdvanceInvoice("ADV/2026/070");
+        var command = new CreateFinalInvoiceFromAdvancesCommand(
+            Tenant.Value,
+            new DateTime(2026, 4, 20),
+            [
+                new AdvanceSettlementEntry(adv.Id.Value, "ADV/2026/070", 100m),
+                new AdvanceSettlementEntry(adv.Id.Value, "ADV/2026/070", 50m)
+            ]);
+
+        Assert.Throws<InvoiceDomainException>(() =>
+            new CreateFinalInvoiceFromAdvancesHandler().Handle([adv, adv], command));
+    }
+
     private static Invoice MakeApprovedAdvanceInvoice(string number)
     {
         var invoice = Invoice.Draft(
@@ -206,6 +248,36 @@ public class CreateFinalInvoiceFromAdvancesHandlerTests
     private static Invoice MakeAdvanceInvoiceWithTenant(TenantId tenant, string number)
     {
         return MakeAdvanceInvoice(tenant, Seller, Buyer, Pln, number);
+    }
+
+    private static Invoice MakeDraftAdvanceInvoice(string number)
+    {
+        var invoice = MakeAdvanceInvoice(Tenant, Seller, Buyer, Pln, number);
+        invoice.Reopen(new DateTime(2026, 4, 10, 11, 0, 0, DateTimeKind.Utc), allowReopen: true);
+        return invoice;
+    }
+
+    private static Invoice MakeVatInvoice(string number)
+    {
+        var invoice = Invoice.Draft(
+            InvoiceId.New(),
+            Tenant,
+            DocumentKind.VatInvoice,
+            Seller,
+            Buyer,
+            Pln,
+            new DateTime(2026, 4, 10),
+            KsefSubmissionRequirement.Required,
+            documentNumber: new DocumentNumber(number));
+
+        invoice.AddLine(InvoiceLine.Create(
+            1, "Service", 1m,
+            new Money(100m, Pln),
+            PricingMode.Net,
+            VatRate.OfPercentage(new Percentage(23))));
+        invoice.RecalculateTotals();
+        invoice.Approve(new DateTime(2026, 4, 10, 10, 0, 0, DateTimeKind.Utc));
+        return invoice;
     }
 
     private static Invoice MakeAdvanceInvoice(
