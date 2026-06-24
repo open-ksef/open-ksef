@@ -84,7 +84,7 @@ public class NotificationService : INotificationService
         {
             var success = await SendToSingleDeviceAsync(device.Token, notification);
 
-            if (!success && !signalRUsers.Contains(device.UserId))
+            if (!success && !signalRUsers.Contains(device.UserId) && !IsSignalRFallbackToken(device.Token))
             {
                 _logger.LogWarning(
                     "All push providers failed for device {DeviceId}, marking for removal",
@@ -195,4 +195,7 @@ public class NotificationService : INotificationService
 
         return false;
     }
+
+    private static bool IsSignalRFallbackToken(string token) =>
+        token.StartsWith("device-", StringComparison.OrdinalIgnoreCase);
 }
