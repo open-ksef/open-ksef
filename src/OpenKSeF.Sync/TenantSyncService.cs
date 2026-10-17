@@ -125,6 +125,8 @@ public sealed class TenantSyncService : ITenantSyncService
             var windowStart = fullResyncWindowStart
                 ?? syncState.LastSuccessfulSync?.AddHours(-1)
                 ?? now.AddMonths(-_syncOptions.InitialSyncMonthsBack);
+            // Initial sync and forced resync import history: store it, don't push it.
+            var notify = fullResyncWindowStart is null && syncState.LastSuccessfulSync is not null;
             var totalFetched = 0;
             var totalNew = 0;
 
@@ -199,7 +201,7 @@ public sealed class TenantSyncService : ITenantSyncService
                             Lines: lines));
                     }
 
-                    var newIds = await _invoiceService.UpsertInvoicesAsync(tenant.Id, invoiceDtos);
+                    var newIds = await _invoiceService.UpsertInvoicesAsync(tenant.Id, invoiceDtos, notify);
                     totalNew += newIds.Count;
 
                     if (result.Invoices.Count < _syncOptions.BatchSize)

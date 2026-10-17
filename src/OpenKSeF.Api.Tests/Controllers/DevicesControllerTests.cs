@@ -195,7 +195,7 @@ public class DevicesControllerTests : IDisposable
 
         await controller.Register(request);
 
-        _ = _notificationService.Received(1).SendConfirmationAsync("confirm-token");
+        _ = _notificationService.Received(1).SendConfirmationAsync("confirm-token", Platform.Android);
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public class DevicesControllerTests : IDisposable
         });
         await _db.SaveChangesAsync();
 
-        _notificationService.SendTestNotificationAsync("test-push-token")
+        _notificationService.SendTestNotificationAsync("test-push-token", Platform.Android)
             .Returns(true);
 
         var controller = CreateController();

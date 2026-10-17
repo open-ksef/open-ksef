@@ -86,7 +86,9 @@ public sealed class KSeFGateway : IKSeFGateway
             SubjectType = InvoiceSubjectType.Subject2,
             DateRange = new DateRange
             {
-                DateType = DateType.Invoicing,
+                // KSeF docs: incremental sync must use PermanentStorage; Invoicing can skip
+                // invoices that are persisted after the window was already queried.
+                DateType = DateType.PermanentStorage,
                 From = criteria.DateFrom.HasValue
                     ? new DateTimeOffset(criteria.DateFrom.Value, TimeSpan.Zero)
                     : DateTimeOffset.UtcNow.AddMonths(-3),

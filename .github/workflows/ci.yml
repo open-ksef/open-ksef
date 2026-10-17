@@ -133,6 +133,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build & push Push Relay :dev
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src/OpenKSeF.PushRelay
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-push-relay:dev
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Build & push Gateway :dev
         if: steps.changes.outputs.nginx == 'true'
         uses: docker/build-push-action@v6

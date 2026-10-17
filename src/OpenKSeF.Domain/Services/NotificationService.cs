@@ -35,8 +35,9 @@ public class NotificationService : INotificationService
 
     public async Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt)
     {
+        // A device belongs to the user, not to the company selected when it registered:
+        // it must get pushes for every company the user owns.
         var deviceTokens = await _db.DeviceTokens
-            .Where(d => d.TenantId == evt.TenantId || d.TenantId == null)
             .Where(d => _db.Tenants.Any(t =>
                 t.Id == evt.TenantId && t.UserId == d.UserId))
             .ToListAsync();
@@ -58,8 +59,7 @@ public class NotificationService : INotificationService
             }
         };
 
-        // Layer 1: Try SignalR (local push) per-user first
-        var signalRUsers = new HashSet<string>();
+        // Layer 1: SignalR (in-app, API process only). Says nothing about remote delivery.
         if (_userPushProvider is not null)
         {
             var userIds = deviceTokens.Select(d => d.UserId).Distinct();
@@ -68,7 +68,6 @@ public class NotificationService : INotificationService
                 try
                 {
                     await _userPushProvider.SendToUserAsync(userId, notification);
-                    signalRUsers.Add(userId);
                 }
                 catch (Exception ex)
                 {
@@ -82,14 +81,20 @@ public class NotificationService : INotificationService
 
         foreach (var device in deviceTokens)
         {
-            var success = await SendToSingleDeviceAsync(device.Token, notification);
+            var result = await SendToSingleDeviceAsync(device.Token, device.Platform, notification);
 
-            if (!success && !signalRUsers.Contains(device.UserId) && !IsSignalRFallbackToken(device.Token))
+            if (result == PushResult.InvalidToken)
             {
                 _logger.LogWarning(
-                    "All push providers failed for device {DeviceId}, marking for removal",
+                    "Push token rejected by FCM/APNs for device {DeviceId}, marking for removal",
                     device.Id);
                 tokensToRemove.Add(device);
+            }
+            else if (result == PushResult.Failed)
+            {
+                _logger.LogWarning(
+                    "Push not delivered to device {DeviceId} for invoice {InvoiceId}; token kept",
+                    device.Id, evt.InvoiceId);
             }
         }
 
@@ -119,7 +124,7 @@ public class NotificationService : INotificationService
         }
     }
 
-    public async Task SendConfirmationAsync(string deviceToken)
+    public async Task SendConfirmationAsync(string deviceToken, Platform platform)
     {
         var notification = new PushNotification
         {
@@ -130,7 +135,7 @@ public class NotificationService : INotificationService
 
         try
         {
-            await SendToSingleDeviceAsync(deviceToken, notification);
+            await SendToSingleDeviceAsync(deviceToken, platform, notification);
         }
         catch (Exception ex)
         {
@@ -138,7 +143,7 @@ public class NotificationService : INotificationService
         }
     }
 
-    public async Task<bool> SendTestNotificationAsync(string deviceToken)
+    public async Task<bool> SendTestNotificationAsync(string deviceToken, Platform platform)
     {
         var notification = new PushNotification
         {
@@ -147,7 +152,7 @@ public class NotificationService : INotificationService
             Data = new Dictionary<string, string> { ["type"] = "test" }
         };
 
-        return await SendToSingleDeviceAsync(deviceToken, notification);
+        return await SendToSingleDeviceAsync(deviceToken, platform, notification) == PushResult.Sent;
     }
 
     private const int MaxRetries = 3;
@@ -157,43 +162,58 @@ public class NotificationService : INotificationService
     /// Per-token delivery: Relay > Direct FCM > APNs (in registration order).
     /// Each provider is retried up to 3 times on transient (network) failures
     /// before falling through to the next provider.
+    /// InvalidToken is returned only when a provider rejected the token and none failed transiently,
+    /// so an outage never deletes a working token.
     /// </summary>
-    private async Task<bool> SendToSingleDeviceAsync(string token, PushNotification notification)
+    private async Task<PushResult> SendToSingleDeviceAsync(string token, Platform platform, PushNotification notification)
     {
+        // SignalR-only fallback ids have no FCM/APNs registration to send to.
+        if (IsSignalRFallbackToken(token))
+            return PushResult.Skipped;
+
+        var shortToken = token[..Math.Min(8, token.Length)];
+        var failed = false;
+        var rejected = false;
+
         foreach (var provider in _pushProviders)
         {
+            var result = PushResult.Failed;
             for (var attempt = 0; attempt < MaxRetries; attempt++)
             {
                 try
                 {
-                    var success = await provider.SendAsync(token, notification);
-                    if (success) return true;
-                    break; // provider returned false (permanent failure like invalid token)
+                    result = await provider.SendAsync(token, platform, notification);
+                    break;
                 }
                 catch (HttpRequestException ex) when (attempt < MaxRetries - 1)
                 {
                     _logger.LogDebug(ex,
                         "Transient push failure for token {Token}, attempt {Attempt}/{Max}",
-                        token[..Math.Min(8, token.Length)], attempt + 1, MaxRetries);
+                        shortToken, attempt + 1, MaxRetries);
                     await Task.Delay(RetryDelaysMs[attempt]);
                 }
                 catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException && attempt < MaxRetries - 1)
                 {
                     _logger.LogDebug(ex,
                         "Push timeout for token {Token}, attempt {Attempt}/{Max}",
-                        token[..Math.Min(8, token.Length)], attempt + 1, MaxRetries);
+                        shortToken, attempt + 1, MaxRetries);
                     await Task.Delay(RetryDelaysMs[attempt]);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Push provider failed for token {Token}",
-                        token[..Math.Min(8, token.Length)]);
-                    break; // non-transient exception, move to next provider
+                    _logger.LogWarning(ex, "Push provider failed for token {Token}", shortToken);
+                    break;
                 }
             }
+
+            if (result == PushResult.Sent) return PushResult.Sent;
+            failed |= result == PushResult.Failed;
+            rejected |= result == PushResult.InvalidToken;
         }
 
-        return false;
+        return failed ? PushResult.Failed
+            : rejected ? PushResult.InvalidToken
+            : PushResult.Skipped;
     }
 
     private static bool IsSignalRFallbackToken(string token) =>
