@@ -78,19 +78,21 @@ public class NotificationServiceTests : IDisposable
         Assert.Single(await _db.DeviceTokens.ToListAsync());
     }
 
-    [Fact]
-    public async Task NotifyNewInvoiceAsync_PushesDeviceRegisteredUnderAnotherTenantOfSameUser()
+    [Theory]
+    [InlineData(true, 1)]   // TenantId == null: subscribed to all companies
+    [InlineData(false, 0)]  // TenantId of another company: explicit per-company subscription
+    public async Task NotifyNewInvoiceAsync_RespectsDeviceTenantScope(bool allCompanies, int expectedCalls)
     {
         var invoiceTenantId = await SeedDeviceAsync("fcm-token-valid");
         var otherTenantId = await SeedTenantAsync("user-1");
         var device = await _db.DeviceTokens.SingleAsync();
-        device.TenantId = otherTenantId;
+        device.TenantId = allCompanies ? null : otherTenantId;
         await _db.SaveChangesAsync();
         var provider = new StubPushProvider(PushResult.Sent);
 
         await CreateService(provider).NotifyNewInvoiceAsync(CreateEvent(invoiceTenantId));
 
-        Assert.Equal(1, provider.Calls);
+        Assert.Equal(expectedCalls, provider.Calls);
     }
 
     [Fact]

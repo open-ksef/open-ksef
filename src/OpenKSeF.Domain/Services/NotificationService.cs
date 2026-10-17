@@ -35,9 +35,9 @@ public class NotificationService : INotificationService
 
     public async Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt)
     {
-        // A device belongs to the user, not to the company selected when it registered:
-        // it must get pushes for every company the user owns.
+        // TenantId == null means "all companies"; a set TenantId is an explicit per-company subscription.
         var deviceTokens = await _db.DeviceTokens
+            .Where(d => d.TenantId == evt.TenantId || d.TenantId == null)
             .Where(d => _db.Tenants.Any(t =>
                 t.Id == evt.TenantId && t.UserId == d.UserId))
             .ToListAsync();
