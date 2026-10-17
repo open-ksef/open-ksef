@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Models;
 
 namespace OpenKSeF.Domain.Push;
@@ -20,8 +21,12 @@ public class ApnsPushProvider : IPushProvider
         _bundleId = configuration["APNs:BundleId"] ?? "com.openksef.mobile";
     }
 
-    public async Task<bool> SendAsync(string deviceToken, PushNotification notification)
+    public async Task<PushResult> SendAsync(string deviceToken, Platform platform, PushNotification notification)
     {
+        if (platform != Platform.iOS)
+            return PushResult.Skipped;
+
+        var shortToken = deviceToken[..Math.Min(8, deviceToken.Length)];
         var payload = new
         {
             aps = new
@@ -46,23 +51,23 @@ public class ApnsPushProvider : IPushProvider
 
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogDebug("APNs push sent to {Token}", deviceToken[..8]);
-                return true;
+                _logger.LogDebug("APNs push sent to {Token}", shortToken);
+                return PushResult.Sent;
             }
 
             if ((int)response.StatusCode == 410)
             {
-                _logger.LogWarning("APNs token expired: {Token}", deviceToken[..8]);
-                return false;
+                _logger.LogWarning("APNs token expired: {Token}", shortToken);
+                return PushResult.InvalidToken;
             }
 
             _logger.LogWarning("APNs push failed with status {Status}", response.StatusCode);
-            return false;
+            return PushResult.Failed;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "APNs push failed for {Token}", deviceToken[..8]);
-            return false;
+            _logger.LogError(ex, "APNs push failed for {Token}", shortToken);
+            return PushResult.Failed;
         }
     }
 }

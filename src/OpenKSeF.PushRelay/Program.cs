@@ -191,10 +191,14 @@ app.MapPost("/api/push", async (
     if (string.IsNullOrEmpty(request.PushToken))
         return Results.BadRequest(new { error = "pushToken is required" });
 
+    // Old instances send no platform: try both providers then.
+    var platform = request.Platform?.ToLowerInvariant();
+    var shortToken = request.PushToken[..Math.Min(8, request.PushToken.Length)];
     var sent = false;
+    var rejected = false;
+    var failed = false;
 
-    // Try FCM
-    if (FirebaseApp.DefaultInstance is not null)
+    if (FirebaseApp.DefaultInstance is not null && platform != "ios")
     {
         try
         {
@@ -211,40 +215,58 @@ app.MapPost("/api/push", async (
 
             await FirebaseMessaging.DefaultInstance.SendAsync(message);
             sent = true;
-            logger.LogDebug("FCM push sent for token {Token}", request.PushToken[..Math.Min(8, request.PushToken.Length)]);
+            logger.LogDebug("FCM push sent for token {Token}", shortToken);
         }
         catch (FirebaseMessagingException ex) when (
             ex.MessagingErrorCode == MessagingErrorCode.Unregistered ||
             ex.MessagingErrorCode == MessagingErrorCode.InvalidArgument)
         {
-            logger.LogDebug("FCM rejected token {Token}: {Error}",
-                request.PushToken[..Math.Min(8, request.PushToken.Length)], ex.MessagingErrorCode);
+            rejected = true;
+            logger.LogInformation("FCM rejected token {Token}: {Error}", shortToken, ex.MessagingErrorCode);
         }
         catch (Exception ex)
         {
+            failed = true;
             logger.LogWarning(ex, "FCM send failed");
         }
     }
 
-    // Try APNs
-    if (!sent)
+    if (!sent && platform != "android")
     {
         var apnsClient = app.Services.GetRequiredService<ApnsClient>();
         try
         {
-            sent = await apnsClient.SendAsync(request);
-            if (sent)
-                logger.LogDebug("APNs push sent for token {Token}", request.PushToken[..Math.Min(8, request.PushToken.Length)]);
+            switch (await apnsClient.SendAsync(request))
+            {
+                case null:
+                    break; // APNs not configured
+                case >= 200 and < 300:
+                    sent = true;
+                    logger.LogDebug("APNs push sent for token {Token}", shortToken);
+                    break;
+                case 410:
+                    rejected = true;
+                    break;
+                default:
+                    failed = true;
+                    break;
+            }
         }
         catch (Exception ex)
         {
+            failed = true;
             logger.LogWarning(ex, "APNs send failed");
         }
     }
 
-    return sent
-        ? Results.Ok(new { success = true })
-        : Results.Json(new { success = false, error = "All providers failed" }, statusCode: 502);
+    // 410 tells the instance the token is dead and may be deleted; 502 means "try again later".
+    if (sent)
+        return Results.Ok(new { success = true });
+    if (rejected && !failed)
+        return Results.Json(new { success = false, error = "Push token rejected" }, statusCode: 410);
+
+    logger.LogWarning("Push not delivered for token {Token}", shortToken);
+    return Results.Json(new { success = false, error = "All providers failed" }, statusCode: 502);
 }).RequireRateLimiting("push");
 
 // --- Admin endpoints (protected by Relay:AdminKey) ---
@@ -313,6 +335,7 @@ record RegisterRequest(
 
 record PushRequest(
     [property: JsonPropertyName("pushToken")] string? PushToken,
+    [property: JsonPropertyName("platform")] string? Platform,
     [property: JsonPropertyName("title")] string? Title,
     [property: JsonPropertyName("body")] string? Body,
     [property: JsonPropertyName("data")] Dictionary<string, string>? Data);
@@ -338,10 +361,11 @@ class ApnsClient
         _httpClient = new HttpClient { BaseAddress = new Uri(baseUrl) };
     }
 
-    public async Task<bool> SendAsync(PushRequest request)
+    /// <returns>HTTP status from APNs (400 BadDeviceToken mapped to 410), or null when APNs is not configured.</returns>
+    public async Task<int?> SendAsync(PushRequest request)
     {
         if (string.IsNullOrEmpty(_config["APNs:KeyId"]))
-            return false;
+            return null;
 
         var payload = new
         {
@@ -362,6 +386,10 @@ class ApnsClient
         httpRequest.Headers.Add("apns-push-type", "alert");
 
         var response = await _httpClient.SendAsync(httpRequest);
-        return response.IsSuccessStatusCode;
+        var status = (int)response.StatusCode;
+        // Other 400 reasons (BadTopic, MissingTopic...) are config errors, not a dead token.
+        if (status == 400 && (await response.Content.ReadAsStringAsync()).Contains("BadDeviceToken"))
+            return 410;
+        return status;
     }
 }

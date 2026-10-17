@@ -84,7 +84,7 @@ public class DevicesController : ControllerBase
 
         await _db.SaveChangesAsync();
 
-        _ = _notificationService.SendConfirmationAsync(request.Token);
+        _ = _notificationService.SendConfirmationAsync(request.Token, request.Platform);
 
         return Ok(new { message = "Device registered." });
     }
@@ -101,7 +101,7 @@ public class DevicesController : ControllerBase
         if (device is null)
             return NotFound();
 
-        var success = await _notificationService.SendTestNotificationAsync(device.Token);
+        var success = await _notificationService.SendTestNotificationAsync(device.Token, device.Platform);
 
         return success
             ? Ok(new { success = true })

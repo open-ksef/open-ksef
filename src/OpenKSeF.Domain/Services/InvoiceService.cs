@@ -28,7 +28,7 @@ public class InvoiceService : IInvoiceService
         _logger = logger;
     }
 
-    public async Task<List<Guid>> UpsertInvoicesAsync(Guid tenantId, IEnumerable<InvoiceDto> invoices)
+    public async Task<List<Guid>> UpsertInvoicesAsync(Guid tenantId, IEnumerable<InvoiceDto> invoices, bool notify)
     {
         var newInvoiceIds = new List<Guid>();
         var newInvoiceEvents = new List<NewInvoiceDetectedEvent>();
@@ -119,6 +119,9 @@ public class InvoiceService : IInvoiceService
             "Upserted {Total} invoices for tenant {TenantId}, {NewCount} new",
             newInvoiceIds.Count + (invoices.Count() - newInvoiceIds.Count),
             tenantId, newInvoiceIds.Count);
+
+        if (!notify)
+            return newInvoiceIds;
 
         // Fire-and-forget notifications for new invoices
         foreach (var evt in newInvoiceEvents)

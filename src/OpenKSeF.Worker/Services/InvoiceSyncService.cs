@@ -1,3 +1,4 @@
+using KSeF.Client.Core.Interfaces.Services;
 using KSeF.Client.DI;
 using Microsoft.Extensions.Options;
 using OpenKSeF.Domain.Services;
@@ -10,6 +11,7 @@ public sealed class InvoiceSyncService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ISystemConfigService _systemConfig;
     private readonly KSeFClientOptions _ksefOptions;
+    private readonly ICryptographyService _cryptography;
     private readonly SyncOptions _syncOptions;
     private readonly ILogger<InvoiceSyncService> _logger;
 
@@ -17,12 +19,14 @@ public sealed class InvoiceSyncService : BackgroundService
         IServiceScopeFactory scopeFactory,
         ISystemConfigService systemConfig,
         KSeFClientOptions ksefOptions,
+        ICryptographyService cryptography,
         IOptions<SyncOptions> syncOptions,
         ILogger<InvoiceSyncService> logger)
     {
         _scopeFactory = scopeFactory;
         _systemConfig = systemConfig;
         _ksefOptions = ksefOptions;
+        _cryptography = cryptography;
         _syncOptions = syncOptions.Value;
         _logger = logger;
     }
@@ -43,7 +47,7 @@ public sealed class InvoiceSyncService : BackgroundService
 
             try
             {
-                await RefreshRuntimeConfigAsync();
+                await RefreshRuntimeConfigAsync(stoppingToken);
                 await SyncAllTenantsAsync(stoppingToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -56,7 +60,7 @@ public sealed class InvoiceSyncService : BackgroundService
         }
     }
 
-    private async Task RefreshRuntimeConfigAsync()
+    private async Task RefreshRuntimeConfigAsync(CancellationToken cancellationToken)
     {
         await _systemConfig.RefreshCacheAsync();
 
@@ -70,8 +74,12 @@ public sealed class InvoiceSyncService : BackgroundService
             {
                 _logger.LogInformation("KSeF environment changed to {Env} ({Url})", ksefEnv, resolvedUrl);
                 _ksefOptions.BaseUrl = resolvedUrl;
+                await _cryptography.ForceRefreshAsync(cancellationToken);
             }
         }
+
+        // Startup warmup runs in the background and loses the race with the first cycle.
+        await _cryptography.WarmupAsync(cancellationToken);
     }
 
     private async Task SyncAllTenantsAsync(CancellationToken cancellationToken)

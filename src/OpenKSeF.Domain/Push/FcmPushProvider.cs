@@ -2,6 +2,7 @@ using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Models;
 
 namespace OpenKSeF.Domain.Push;
@@ -15,12 +16,15 @@ public class FcmPushProvider : IPushProvider
         _logger = logger;
     }
 
-    public async Task<bool> SendAsync(string deviceToken, PushNotification notification)
+    public async Task<PushResult> SendAsync(string deviceToken, Platform platform, PushNotification notification)
     {
+        if (platform != Platform.Android)
+            return PushResult.Skipped;
+
         if (FirebaseApp.DefaultInstance is null)
         {
-            _logger.LogWarning("Firebase is not initialized, skipping FCM push");
-            return false;
+            _logger.LogDebug("Firebase is not initialized, skipping direct FCM push");
+            return PushResult.Skipped;
         }
 
         var message = new Message
@@ -38,14 +42,19 @@ public class FcmPushProvider : IPushProvider
         {
             var messageId = await FirebaseMessaging.DefaultInstance.SendAsync(message);
             _logger.LogDebug("FCM message sent: {MessageId}", messageId);
-            return true;
+            return PushResult.Sent;
         }
         catch (FirebaseMessagingException ex) when (
             ex.MessagingErrorCode == MessagingErrorCode.Unregistered ||
             ex.MessagingErrorCode == MessagingErrorCode.InvalidArgument)
         {
-            _logger.LogWarning("FCM token invalid or unregistered: {Token}", deviceToken[..8]);
-            return false;
+            _logger.LogWarning("FCM token invalid or unregistered: {Token}", deviceToken[..Math.Min(8, deviceToken.Length)]);
+            return PushResult.InvalidToken;
+        }
+        catch (FirebaseMessagingException ex)
+        {
+            _logger.LogWarning(ex, "FCM push failed: {ErrorCode}", ex.MessagingErrorCode);
+            return PushResult.Failed;
         }
     }
 }

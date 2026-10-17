@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 
@@ -33,13 +34,13 @@ public class RelayPushProvider : IPushProvider
         _logger = logger;
     }
 
-    public async Task<bool> SendAsync(string deviceToken, PushNotification notification)
+    public async Task<PushResult> SendAsync(string deviceToken, Platform platform, PushNotification notification)
     {
         var relayUrl = _systemConfig.GetValue(SystemConfigKeys.PushRelayUrl);
         if (string.IsNullOrEmpty(relayUrl))
         {
             _logger.LogDebug("Push relay URL not configured, skipping relay delivery");
-            return false;
+            return PushResult.Skipped;
         }
 
         var apiKey = _systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey) ?? "";
@@ -48,12 +49,13 @@ public class RelayPushProvider : IPushProvider
         if (string.IsNullOrEmpty(apiKey))
         {
             _logger.LogWarning("Push relay API key not configured -- instance may not be registered. Skipping relay delivery");
-            return false;
+            return PushResult.Skipped;
         }
 
         var payload = new
         {
             pushToken = deviceToken,
+            platform = platform == Platform.iOS ? "ios" : "android",
             title = notification.Title,
             body = notification.Body,
             data = notification.Data
@@ -81,11 +83,15 @@ public class RelayPushProvider : IPushProvider
             if (response.IsSuccessStatusCode)
             {
                 _logger.LogDebug("Relay push sent for token {Token}", deviceToken[..Math.Min(8, deviceToken.Length)]);
-                return true;
+                return PushResult.Sent;
             }
 
             var body = await response.Content.ReadAsStringAsync();
             var statusCode = (int)response.StatusCode;
+
+            // Relay answers 410 only when FCM/APNs rejected the token itself.
+            if (statusCode == 410)
+                return PushResult.InvalidToken;
 
             if (statusCode == 429 || statusCode >= 500)
             {
@@ -96,7 +102,7 @@ public class RelayPushProvider : IPushProvider
 
             _logger.LogWarning("Relay push failed: {Status} {Body}",
                 response.StatusCode, body[..Math.Min(200, body.Length)]);
-            return false;
+            return PushResult.Failed;
         }
         catch (HttpRequestException)
         {
@@ -105,7 +111,7 @@ public class RelayPushProvider : IPushProvider
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Relay push request failed");
-            return false;
+            return PushResult.Failed;
         }
     }
 
