@@ -48,7 +48,7 @@ The CIRFMF library handles API communication but does **not** parse FA(2)/FA(3) 
 
 ### KSeF documentation reference
 
-The `ksef-docs/` folder (sibling to `open-ksef/` in the workspace) is a clone of [CIRFMF/ksef-docs](https://github.com/CIRFMF/ksef-docs) and contains:
+`ksef-docs/` (clone it as a sibling of `open-ksef/`; not cloned by default, otherwise read via `gh api repos/CIRFMF/ksef-docs/contents/<path>`) is [CIRFMF/ksef-docs](https://github.com/CIRFMF/ksef-docs) and contains:
 
 - Official KSeF API integrator guide (Polish)
 - `faktury/schemy/FA/` — XSD schemas for FA(2) and FA(3) invoice XML structures
@@ -151,7 +151,7 @@ Portal `/login` uses ROPC grant (no Keycloak redirect), Google IdP brokering, an
 
 ## MCP servers for agent testing
 
-Configured in `.cursor/mcp.json` (project-level). All connect to the local Docker stack.
+Configured in `.cursor/mcp.json` (Cursor only, gitignored, not in the repo). Claude Code reads `.mcp.json`; none is committed yet. All connect to the local Docker stack.
 
 | Server | Package | Purpose |
 |--------|---------|---------|
