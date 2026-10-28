@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG NUGET_CIRFMF_USER
 ARG NUGET_CIRFMF_PAT
 WORKDIR /src
@@ -14,7 +14,7 @@ RUN if [ -n "$NUGET_CIRFMF_PAT" ]; then \
 WORKDIR "/src/OpenKSeF.Worker"
 RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "OpenKSeF.Worker.dll"]
