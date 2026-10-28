@@ -335,6 +335,17 @@ public sealed class SystemSettingsService : ISystemSettingsService
             payload["smtpServer"] = new Dictionary<string, string>();
         }
 
+        using var getReq = new HttpRequestMessage(HttpMethod.Get, realmUrl);
+        getReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+        var getResp = await client.SendAsync(getReq, ct);
+        getResp.EnsureSuccessStatusCode();
+        var realm = await getResp.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+        if (!(realm.TryGetProperty("bruteForceProtected", out var bf) && bf.GetBoolean()))
+        {
+            foreach (var (key, value) in SystemSetupService.BruteForceSettings)
+                payload[key] = value;
+        }
+
         if (payload.Count > 0)
         {
             using var req = new HttpRequestMessage(HttpMethod.Put, realmUrl);
@@ -394,7 +405,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
         HttpClient client, string kcBase, string adminToken, string externalBaseUrl, CancellationToken ct)
     {
         var redirectUris = new[] { $"{externalBaseUrl}/*" };
-        var webOrigins = new[] { externalBaseUrl, "*" };
+        var webOrigins = new[] { externalBaseUrl };
 
         foreach (var clientId in new[] { "openksef-api", "openksef-mobile", "openksef-portal-web" })
         {

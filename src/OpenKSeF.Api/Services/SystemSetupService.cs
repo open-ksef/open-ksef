@@ -43,6 +43,18 @@ public sealed class SystemSetupService : ISystemSetupService
         _logger = logger;
     }
 
+    internal static readonly IReadOnlyDictionary<string, object> BruteForceSettings = new Dictionary<string, object>
+    {
+        ["bruteForceProtected"] = true,
+        ["permanentLockout"] = false,
+        ["failureFactor"] = 10,
+        ["waitIncrementSeconds"] = 60,
+        ["maxFailureWaitSeconds"] = 900,
+        ["maxDeltaTimeSeconds"] = 43200,
+        ["quickLoginCheckMilliSeconds"] = 1000,
+        ["minimumQuickLoginWaitSeconds"] = 60,
+    };
+
     private string KeycloakInternalBaseUrl
     {
         get
@@ -240,6 +252,8 @@ public sealed class SystemSetupService : ISystemSetupService
             ["resetPasswordAllowed"] = true,
             ["editUsernameAllowed"] = false,
         };
+        foreach (var (key, value) in BruteForceSettings)
+            realmPayload[key] = value;
 
         await SendKeycloakJsonAsync(client, HttpMethod.Post,
             $"{kcBase}/admin/realms", adminToken, realmPayload, ct);
@@ -265,7 +279,7 @@ public sealed class SystemSetupService : ISystemSetupService
                 ["directAccessGrantsEnabled"] = false,
                 ["serviceAccountsEnabled"] = true,
                 ["redirectUris"] = new[] { "/*" },
-                ["webOrigins"] = new[] { "*" },
+                ["webOrigins"] = new[] { "+" },
             },
             new Dictionary<string, object>
             {
@@ -277,7 +291,7 @@ public sealed class SystemSetupService : ISystemSetupService
                 ["standardFlowEnabled"] = true,
                 ["directAccessGrantsEnabled"] = true,
                 ["redirectUris"] = new[] { "/*", "openksef://auth/*" },
-                ["webOrigins"] = new[] { "*" },
+                ["webOrigins"] = new[] { "+" },
             },
             new Dictionary<string, object>
             {
@@ -291,7 +305,7 @@ public sealed class SystemSetupService : ISystemSetupService
                 ["directAccessGrantsEnabled"] = true,
                 ["serviceAccountsEnabled"] = false,
                 ["redirectUris"] = new[] { "/*" },
-                ["webOrigins"] = new[] { "*" },
+                ["webOrigins"] = new[] { "+" },
                 ["attributes"] = new Dictionary<string, string>
                 {
                     ["pkce.code.challenge.method"] = "S256",
@@ -403,7 +417,7 @@ public sealed class SystemSetupService : ISystemSetupService
     {
         var url = externalBaseUrl.TrimEnd('/');
         var redirectUris = new[] { $"{url}/*" };
-        var webOrigins = new[] { url, "*" };
+        var webOrigins = new[] { url };
 
         foreach (var clientId in new[] { "openksef-api", "openksef-mobile", "openksef-portal-web" })
         {
