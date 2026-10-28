@@ -2,7 +2,7 @@
 
 [![License: Elastic-2.0](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE)
 
-OpenKSeF is a .NET 8 system for syncing and browsing invoices from Poland's KSeF.
+OpenKSeF is a .NET 10 system for syncing and browsing invoices from Poland's KSeF.
 
 Components:
 - `OpenKSeF.Api` - REST API (JWT via Keycloak)

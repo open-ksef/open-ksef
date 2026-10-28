@@ -4,7 +4,7 @@ Repository guidance for coding agents.
 
 ## Project
 
-OpenKSeF is a .NET 8 solution for KSeF invoice sync and browsing.
+OpenKSeF is a .NET 10 solution for KSeF invoice sync and browsing.
 
 Main projects:
 - `src/OpenKSeF.Api` - API
@@ -92,7 +92,7 @@ The project uses direct `ApplicationDbContext` injection -- there is no generic 
 `docker-compose.dev.yml` provides local-build dev stack (6 services):
 - **Postgres** (:5432) - shared by Keycloak and app
 - **Keycloak** (:8082) - identity provider (vanilla image; `openksef` realm created by admin setup wizard)
-- **API** (:8081) - .NET 8 REST API with Swagger
+- **API** (:8081) - .NET 10 REST API with Swagger
 - **Worker** - background KSeF sync
 - **Portal Web** (:8083) - React SPA
 - **Gateway** (:8080) - nginx reverse proxy: `/` portal, `/api/` API, `/auth/` Keycloak

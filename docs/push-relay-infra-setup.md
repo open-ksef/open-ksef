@@ -204,7 +204,7 @@ Monitor request volume and blocked requests in Cloudflare dashboard > Analytics 
 - [ ] Cloudflare SSL is set to "Full (strict)"
 - [ ] Rate limiting is active on `/api/push` and `/api/register`
 - [ ] Firebase credentials JSON is not exposed in logs or public endpoints
-- [ ] Container runs as non-root (default in .NET 8 containers)
+- [ ] Container runs as non-root (not the default: the PushRelay image runs as root unless `USER app` is set)
 - [ ] Server firewall allows only ports 80/443 (Cloudflare handles the rest)
 - [ ] `push-relay-data` volume is persisted and backed up (contains instance registry)
 - [ ] Bot Fight Mode is enabled in Cloudflare

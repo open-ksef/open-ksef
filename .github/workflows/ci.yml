@@ -7,7 +7,7 @@ on:
 
 jobs:
   backend:
-    name: Build & Test (.NET 8)
+    name: Build & Test (.NET 10)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -17,7 +17,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Configure CIRFMF NuGet feed
         run: |
@@ -32,6 +32,7 @@ jobs:
         run: |
           dotnet restore OpenKSeF.Api/OpenKSeF.Api.csproj
           dotnet restore OpenKSeF.Worker/OpenKSeF.Worker.csproj
+          dotnet restore OpenKSeF.PushRelay/OpenKSeF.PushRelay.csproj
           dotnet restore OpenKSeF.Domain/OpenKSeF.Domain.csproj
           dotnet restore OpenKSeF.Domain.Tests/OpenKSeF.Domain.Tests.csproj
           dotnet restore OpenKSeF.Api.Tests/OpenKSeF.Api.Tests.csproj
@@ -40,6 +41,7 @@ jobs:
         run: |
           dotnet build OpenKSeF.Api/OpenKSeF.Api.csproj --no-restore -c Release
           dotnet build OpenKSeF.Worker/OpenKSeF.Worker.csproj --no-restore -c Release
+          dotnet build OpenKSeF.PushRelay/OpenKSeF.PushRelay.csproj --no-restore -c Release
           dotnet build OpenKSeF.Domain.Tests/OpenKSeF.Domain.Tests.csproj --no-restore -c Release
           dotnet build OpenKSeF.Api.Tests/OpenKSeF.Api.Tests.csproj --no-restore -c Release
 

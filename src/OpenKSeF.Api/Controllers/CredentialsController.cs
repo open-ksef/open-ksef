@@ -297,7 +297,7 @@ public class CredentialsController : ControllerBase
             throw new ArgumentException("CertificatePassword is required for PFX certificates.");
 
         var pfxBytes = Convert.FromBase64String(certificateBase64);
-        var cert = new X509Certificate2(pfxBytes, password);
+        var cert = X509CertificateLoader.LoadPkcs12(pfxBytes, password);
         return (cert, certificateBase64);
     }
 

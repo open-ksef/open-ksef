@@ -292,7 +292,7 @@ public sealed class TenantSyncService : ITenantSyncService
 
         var certBase64 = _encryption.Decrypt(credential.EncryptedCertificateData);
         var pfxBytes = Convert.FromBase64String(certBase64);
-        using var cert = new X509Certificate2(pfxBytes);
+        using var cert = X509CertificateLoader.LoadPkcs12(pfxBytes, null);
         var fingerprint = credential.CertificateFingerprint;
 
         return await _gateway.InitSignedSessionAsync(
