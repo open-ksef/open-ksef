@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
 using Microsoft.EntityFrameworkCore;
@@ -39,26 +38,21 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     else
         options.UseSqlite(connectionString);
 
-    if (builder.Environment.IsDevelopment())
+    if (builder.Configuration.GetValue("Database:EnableSensitiveDataLogging", false))
         options.EnableSensitiveDataLogging();
 });
 
 // Encryption: deferred factory that reads from SystemConfigService (DB first, env fallback).
 // The actual key resolution happens at first use, after the startup wait-gate confirms setup is complete.
-var isDev = builder.Environment.IsDevelopment();
 builder.Services.AddSingleton<IEncryptionService>(sp =>
 {
     var sysConfig = sp.GetRequiredService<ISystemConfigService>();
     var keyBase64 = sysConfig.GetValue(SystemConfigKeys.EncryptionKey);
 
     if (string.IsNullOrEmpty(keyBase64))
-    {
-        if (!isDev)
-            throw new InvalidOperationException(
-                "Encryption key not configured. Run the admin setup wizard or set ENCRYPTION_KEY env var. " +
-                "Generate one with: openssl rand -base64 32");
-        return new AesGcmEncryptionService(RandomNumberGenerator.GetBytes(32));
-    }
+        throw new InvalidOperationException(
+            "Encryption key not configured. Run the admin setup wizard or set ENCRYPTION_KEY env var. " +
+            "Generate one with: openssl rand -base64 32");
 
     return new AesGcmEncryptionService(Convert.FromBase64String(keyBase64));
 });

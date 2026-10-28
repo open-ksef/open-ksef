@@ -50,7 +50,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     else
         options.UseSqlite(connectionString);
 
-    if (builder.Environment.IsDevelopment())
+    if (builder.Configuration.GetValue("Database:EnableSensitiveDataLogging", false))
         options.EnableSensitiveDataLogging();
 });
 
@@ -60,7 +60,7 @@ builder.Services.AddScoped<ISystemSetupService, SystemSetupService>();
 builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
 
 // Encryption
-builder.Services.AddEncryptionService(builder.Configuration, builder.Environment);
+builder.Services.AddEncryptionService(builder.Configuration);
 
 // KSeF sync services (gateway + sync + KSeF client)
 builder.Services.AddSyncServices(builder.Configuration);
@@ -81,7 +81,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     {
         options.Authority = authority;
         options.Audience = "openksef-api";
-        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+        options.RequireHttpsMetadata = builder.Configuration.GetValue("Auth:RequireHttpsMetadata", true);
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,

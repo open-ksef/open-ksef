@@ -1,5 +1,9 @@
 using System.Net;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
+using OpenKSeF.Domain.Data;
 
 namespace OpenKSeF.Api.IntegrationTests;
 
@@ -24,11 +28,20 @@ public class HealthCheckTests : IDisposable
     }
 
     [Fact]
-    public async Task Swagger_ReturnsOk_InDevelopment()
+    public async Task Swagger_ReturnsNotFound_InProduction()
     {
         var response = await _client.GetAsync("/swagger/v1/swagger.json");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public void SensitiveDataLogging_IsOff_ByDefault()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<DbContextOptions<ApplicationDbContext>>();
+
+        Assert.False(options.FindExtension<CoreOptionsExtension>()!.IsSensitiveDataLoggingEnabled);
     }
 
     public void Dispose()
