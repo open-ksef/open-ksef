@@ -98,7 +98,8 @@ public class TenantsController : ControllerBase
             return NotFound();
 
         tenant.DisplayName = request.DisplayName;
-        tenant.NotificationEmail = request.NotificationEmail;
+        if (request.NotificationEmailSet)
+            tenant.NotificationEmail = request.NotificationEmail;
         tenant.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
