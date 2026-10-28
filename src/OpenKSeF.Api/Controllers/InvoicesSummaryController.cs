@@ -128,6 +128,7 @@ public class InvoicesSummaryController : ControllerBase
             i.FirstSeenAt,
             i.IsPaid,
             i.PaidAt,
+            i.VendorBankAccount,
             null);
 
     private static InvoiceResponse ToDetailResponse(InvoiceHeader i) => new(
@@ -149,6 +150,7 @@ public class InvoicesSummaryController : ControllerBase
         i.FirstSeenAt,
         i.IsPaid,
         i.PaidAt,
+        i.VendorBankAccount,
         Lines: i.Lines
             .OrderBy(l => l.LineNumber)
             .Select(l => new InvoiceLineResponse(

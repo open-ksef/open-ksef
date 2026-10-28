@@ -91,6 +91,7 @@ public class InvoicesController : ControllerBase
                 i.FirstSeenAt,
                 i.IsPaid,
                 i.PaidAt,
+                i.VendorBankAccount,
                 null))
             .ToListAsync();
 
@@ -219,6 +220,7 @@ public class InvoicesController : ControllerBase
         i.FirstSeenAt,
         i.IsPaid,
         i.PaidAt,
+        i.VendorBankAccount,
         Lines: i.Lines
             .OrderBy(l => l.LineNumber)
             .Select(l => new InvoiceLineResponse(
