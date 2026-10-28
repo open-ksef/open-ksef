@@ -95,13 +95,13 @@ public class AccountController : ControllerBase
     [HttpPost("setup-token")]
     [ProducesResponseType(typeof(SetupTokenResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public IActionResult GenerateSetupToken()
+    public async Task<IActionResult> GenerateSetupToken()
     {
         var userId = _currentUser.UserId;
         var email = User.FindFirst("email")?.Value;
         var name = User.FindFirst("name")?.Value;
 
-        var token = _setupTokenService.GenerateSetupToken(userId, email, name);
+        var token = await _setupTokenService.GenerateSetupTokenAsync(userId, email, name);
 
         return Ok(new SetupTokenResponse(token, ExpiresInSeconds: 300));
     }
@@ -112,7 +112,7 @@ public class AccountController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RedeemSetupToken([FromBody] RedeemSetupTokenRequest request)
     {
-        var principal = _setupTokenService.ValidateSetupToken(request.SetupToken);
+        var principal = await _setupTokenService.ValidateAndConsumeAsync(request.SetupToken);
         if (principal is null)
             return BadRequest(new { error = "Invalid or expired setup token." });
 

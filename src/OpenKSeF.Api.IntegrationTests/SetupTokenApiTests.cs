@@ -88,6 +88,52 @@ public class SetupTokenApiTests : IDisposable
     }
 
     [Fact]
+    public async Task RedeemSetupToken_Returns400_WhenSignedWithLegacyDevKey()
+    {
+        var credentials = new SigningCredentials(
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes("dev-setup-token-key-must-be-32b!")),
+            SecurityAlgorithms.HmacSha256);
+
+        var forgedToken = new JwtSecurityToken(
+            issuer: "openksef-setup",
+            audience: "openksef-mobile",
+            claims: [
+                new(JwtRegisteredClaimNames.Sub, "test-user-id"),
+                new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new("purpose", "mobile-setup"),
+            ],
+            expires: DateTime.UtcNow.AddMinutes(5),
+            signingCredentials: credentials);
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/account/redeem-setup-token",
+            new { setupToken = new JwtSecurityTokenHandler().WriteToken(forgedToken) });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RedeemSetupToken_Returns400_WhenReplayed()
+    {
+        await AuthenticateAsync();
+
+        var generateResponse = await _client.PostAsync("/api/account/setup-token", null);
+        Assert.Equal(HttpStatusCode.OK, generateResponse.StatusCode);
+        var setupResult = await generateResponse.Content.ReadFromJsonAsync<SetupTokenResponseDto>();
+        Assert.NotNull(setupResult);
+
+        using var anonClient = _factory.CreateClient();
+        await anonClient.PostAsJsonAsync(
+            "/api/account/redeem-setup-token",
+            new { setupToken = setupResult.SetupToken });
+        var replayResponse = await anonClient.PostAsJsonAsync(
+            "/api/account/redeem-setup-token",
+            new { setupToken = setupResult.SetupToken });
+
+        Assert.Equal(HttpStatusCode.BadRequest, replayResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task RedeemSetupToken_ReturnsTokens_WhenValidAndExchangeConfigured()
     {
         await AuthenticateAsync();
