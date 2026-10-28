@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Hosting;
 
 namespace OpenKSeF.Api.IntegrationTests.Infrastructure;
 
@@ -27,5 +28,16 @@ public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Progra
         builder.UseSetting("ASPNETCORE_ENVIRONMENT", "Production");
 
         builder.UseEnvironment("Production");
+    }
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        builder.UseDefaultServiceProvider(options =>
+        {
+            options.ValidateScopes = true;
+            options.ValidateOnBuild = true;
+        });
+
+        return base.CreateHost(builder);
     }
 }
