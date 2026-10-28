@@ -61,13 +61,13 @@ public class SetupTokenApiTests : IDisposable
     }
 
     [Fact]
-    public async Task RedeemSetupToken_Returns400_WhenTokenExpired()
+    public async Task RedeemSetupToken_Returns400_WhenSignedWithLegacyDevKey()
     {
-        var signingKey = Encoding.UTF8.GetBytes("dev-setup-token-key-must-be-32b!");
-        var securityKey = new SymmetricSecurityKey(signingKey);
-        var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+        var credentials = new SigningCredentials(
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes("dev-setup-token-key-must-be-32b!")),
+            SecurityAlgorithms.HmacSha256);
 
-        var expiredToken = new JwtSecurityToken(
+        var forgedToken = new JwtSecurityToken(
             issuer: "openksef-setup",
             audience: "openksef-mobile",
             claims: [
@@ -75,16 +75,39 @@ public class SetupTokenApiTests : IDisposable
                 new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
                 new("purpose", "mobile-setup"),
             ],
-            expires: DateTime.UtcNow.AddMinutes(-1),
+            expires: DateTime.UtcNow.AddMinutes(5),
             signingCredentials: credentials);
-
-        var tokenString = new JwtSecurityTokenHandler().WriteToken(expiredToken);
 
         var response = await _client.PostAsJsonAsync(
             "/api/account/redeem-setup-token",
-            new { setupToken = tokenString });
+            new { setupToken = new JwtSecurityTokenHandler().WriteToken(forgedToken) });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(InvalidTokenError, await ReadErrorAsync(response));
+    }
+
+    [Fact]
+    public async Task RedeemSetupToken_Returns400_WhenReplayed()
+    {
+        await AuthenticateAsync();
+
+        var generateResponse = await _client.PostAsync("/api/account/setup-token", null);
+        Assert.Equal(HttpStatusCode.OK, generateResponse.StatusCode);
+        var setupResult = await generateResponse.Content.ReadFromJsonAsync<SetupTokenResponseDto>();
+        Assert.NotNull(setupResult);
+
+        using var anonClient = _factory.CreateClient();
+        var firstResponse = await anonClient.PostAsJsonAsync(
+            "/api/account/redeem-setup-token",
+            new { setupToken = setupResult.SetupToken });
+        var replayResponse = await anonClient.PostAsJsonAsync(
+            "/api/account/redeem-setup-token",
+            new { setupToken = setupResult.SetupToken });
+
+        if (firstResponse.StatusCode != HttpStatusCode.OK)
+            Assert.NotEqual(InvalidTokenError, await ReadErrorAsync(firstResponse));
+        Assert.Equal(HttpStatusCode.BadRequest, replayResponse.StatusCode);
+        Assert.Equal(InvalidTokenError, await ReadErrorAsync(replayResponse));
     }
 
     [Fact]
@@ -120,6 +143,11 @@ public class SetupTokenApiTests : IDisposable
         }
     }
 
+    private const string InvalidTokenError = "Invalid or expired setup token.";
+
+    private static async Task<string?> ReadErrorAsync(HttpResponseMessage response) =>
+        (await response.Content.ReadFromJsonAsync<ErrorResponseDto>())?.Error;
+
     public void Dispose()
     {
         _client.Dispose();
@@ -129,6 +157,9 @@ public class SetupTokenApiTests : IDisposable
     private sealed record SetupTokenResponseDto(
         [property: JsonPropertyName("setupToken")] string SetupToken,
         [property: JsonPropertyName("expiresInSeconds")] int ExpiresInSeconds);
+
+    private sealed record ErrorResponseDto(
+        [property: JsonPropertyName("error")] string Error);
 
     private sealed record RedeemTokenResponseDto(
         [property: JsonPropertyName("accessToken")] string AccessToken,

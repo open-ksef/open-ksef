@@ -1,56 +1,49 @@
+using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
+using System.Security.Cryptography;
 using Microsoft.IdentityModel.Tokens;
+using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Services;
 
 public interface ISetupTokenService
 {
-    string GenerateSetupToken(string userId, string? email, string? name);
-    ClaimsPrincipal? ValidateSetupToken(string token);
+    Task<string> GenerateSetupTokenAsync(string userId, string? email, string? name);
+    Task<ClaimsPrincipal?> ValidateAndConsumeAsync(string token);
 }
 
 public class SetupTokenService : ISetupTokenService
 {
-    private readonly byte[] _signingKey;
-    private readonly string _issuer;
+    private const string Issuer = "openksef-setup";
+    private const string Audience = "openksef-mobile";
+    private const string Purpose = "mobile-setup";
     private static readonly TimeSpan TokenLifetime = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan ClockSkew = TimeSpan.FromSeconds(30);
 
-    private const string DevFallbackKey = "dev-setup-token-key-must-be-32b!";
+    private readonly ISystemConfigService _systemConfig;
+    private readonly ILogger<SetupTokenService> _logger;
+    private readonly SemaphoreSlim _keyLock = new(1, 1);
+    // shortcut: in-memory jti store, single api replica; move to a DB table when the API scales out.
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _usedJtis = new();
+    private byte[]? _signingKey;
 
-    public SetupTokenService(IConfiguration configuration, IHostEnvironment environment, ILogger<SetupTokenService> logger)
+    public SetupTokenService(ISystemConfigService systemConfig, ILogger<SetupTokenService> logger)
     {
-        var keyBase64 = configuration["ENCRYPTION_KEY"];
-        if (string.IsNullOrEmpty(keyBase64))
-        {
-            if (!environment.IsDevelopment())
-                throw new InvalidOperationException(
-                    "ENCRYPTION_KEY is not configured. Run the admin setup wizard or set the ENCRYPTION_KEY environment variable. " +
-                    "Generate one with: openssl rand -base64 32");
-
-            _signingKey = Encoding.UTF8.GetBytes(DevFallbackKey);
-            logger.LogWarning(
-                "ENCRYPTION_KEY not set — using dev fallback key for setup tokens. Set ENCRYPTION_KEY before exposing this instance.");
-        }
-        else
-        {
-            _signingKey = Convert.FromBase64String(keyBase64);
-        }
-
-        _issuer = "openksef-setup";
+        _systemConfig = systemConfig;
+        _logger = logger;
     }
 
-    public string GenerateSetupToken(string userId, string? email, string? name)
+    public async Task<string> GenerateSetupTokenAsync(string userId, string? email, string? name)
     {
-        var securityKey = new SymmetricSecurityKey(_signingKey);
+        var securityKey = new SymmetricSecurityKey(await GetSigningKeyAsync());
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, userId),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new("purpose", "mobile-setup"),
+            new("purpose", Purpose),
         };
 
         if (email is not null)
@@ -59,8 +52,8 @@ public class SetupTokenService : ISetupTokenService
             claims.Add(new Claim("name", name));
 
         var token = new JwtSecurityToken(
-            issuer: _issuer,
-            audience: "openksef-mobile",
+            issuer: Issuer,
+            audience: Audience,
             claims: claims,
             expires: DateTime.UtcNow.Add(TokenLifetime),
             signingCredentials: credentials);
@@ -68,28 +61,80 @@ public class SetupTokenService : ISetupTokenService
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    public ClaimsPrincipal? ValidateSetupToken(string token)
+    public async Task<ClaimsPrincipal?> ValidateAndConsumeAsync(string token)
     {
-        var securityKey = new SymmetricSecurityKey(_signingKey);
-        var validationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = _issuer,
-            ValidateAudience = true,
-            ValidAudience = "openksef-mobile",
-            ValidateLifetime = true,
-            IssuerSigningKey = securityKey,
-            ClockSkew = TimeSpan.FromSeconds(30)
-        };
-
         try
         {
+            var validationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = Issuer,
+                ValidateAudience = true,
+                ValidAudience = Audience,
+                ValidateLifetime = true,
+                RequireExpirationTime = true,
+                ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+                IssuerSigningKey = new SymmetricSecurityKey(await GetSigningKeyAsync()),
+                ClockSkew = ClockSkew
+            };
+
             var handler = new JwtSecurityTokenHandler { MapInboundClaims = false };
-            return handler.ValidateToken(token, validationParameters, out _);
+            var principal = handler.ValidateToken(token, validationParameters, out var validated);
+
+            if (principal.FindFirst("purpose")?.Value != Purpose)
+                return null;
+
+            var jti = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+            if (string.IsNullOrEmpty(jti))
+                return null;
+
+            var now = DateTimeOffset.UtcNow;
+            foreach (var (usedJti, expiresAt) in _usedJtis)
+            {
+                if (expiresAt < now)
+                    _usedJtis.TryRemove(usedJti, out _);
+            }
+
+            return _usedJtis.TryAdd(jti, new DateTimeOffset(validated.ValidTo, TimeSpan.Zero).Add(ClockSkew))
+                ? principal
+                : null;
         }
-        catch
+        catch (Exception ex) when (ex is SecurityTokenException or ArgumentException)
         {
             return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Setup token validation failed unexpectedly: {ExceptionType}: {Message}", ex.GetType().Name, ex.Message);
+            return null;
+        }
+    }
+
+    private async Task<byte[]> GetSigningKeyAsync()
+    {
+        if (_signingKey is not null)
+            return _signingKey;
+
+        await _keyLock.WaitAsync();
+        try
+        {
+            if (_signingKey is not null)
+                return _signingKey;
+
+            await _systemConfig.RefreshCacheAsync();
+            var keyBase64 = _systemConfig.GetValue(SystemConfigKeys.SetupTokenSigningKey);
+            if (string.IsNullOrEmpty(keyBase64))
+            {
+                keyBase64 = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+                await _systemConfig.SetValueAsync(SystemConfigKeys.SetupTokenSigningKey, keyBase64);
+            }
+
+            _signingKey = Convert.FromBase64String(keyBase64);
+            return _signingKey;
+        }
+        finally
+        {
+            _keyLock.Release();
         }
     }
 }
