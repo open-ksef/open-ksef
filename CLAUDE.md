@@ -230,5 +230,7 @@ Portal Web tests (`vitest`) also verify cross-project contracts (docker-compose 
 - `APP_EXTERNAL_BASE_URL` - public URL of the gateway (used by admin setup wizard, API token issuer); defaults to `http://localhost:8080`
 - `ConnectionStrings__Db`
 - `Auth__Authority`
+- `Auth__RequireHttpsMetadata` - default `true`; set `false` when `Auth__Authority` is plain http (compose `http://keycloak`)
+- `Database__EnableSensitiveDataLogging` - default `false`; logs SQL parameter values, never enable in prod
 - `ENCRYPTION_KEY`
 - `KSeF__BaseUrl`

@@ -5,6 +5,8 @@ namespace OpenKSeF.Api.IntegrationTests.Infrastructure;
 
 public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Program>
 {
+    private const string TestEncryptionKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+
     private readonly TestcontainersFixture _fixture;
 
     public OpenKSeFWebApplicationFactory(TestcontainersFixture fixture)
@@ -20,8 +22,10 @@ public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Progra
         builder.UseSetting("Auth:ServiceAccount:ClientId", "openksef-api");
         builder.UseSetting("Auth:ServiceAccount:ClientSecret", "test-api-client-secret");
         builder.UseSetting("KSeF:Environment", "test");
-        builder.UseSetting("ASPNETCORE_ENVIRONMENT", "Development");
+        builder.UseSetting("Auth:RequireHttpsMetadata", "false");
+        builder.UseSetting("ENCRYPTION_KEY", TestEncryptionKey);
+        builder.UseSetting("ASPNETCORE_ENVIRONMENT", "Production");
 
-        builder.UseEnvironment("Development");
+        builder.UseEnvironment("Production");
     }
 }

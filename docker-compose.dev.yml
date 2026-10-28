@@ -54,6 +54,7 @@ services:
         condition: service_started
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      Auth__RequireHttpsMetadata: "false"
       ASPNETCORE_URLS: http://0.0.0.0:8081
       ConnectionStrings__Db: Host=postgres;Port=5432;Database=openksef;Username=${POSTGRES_USER:-openksef};Password=${POSTGRES_PASSWORD:-openksef_dev_password}
       Auth__Authority: http://keycloak:8080/auth/realms/openksef
