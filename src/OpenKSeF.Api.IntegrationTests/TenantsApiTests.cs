@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 
 namespace OpenKSeF.Api.IntegrationTests;
@@ -114,6 +115,63 @@ public class TenantsApiTests : IDisposable
 
         var getResponse = await _client.GetAsync($"/api/tenants/{created.Id}");
         Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("6100000001", """{"displayName":"Renamed"}""", "keep@example.com")]
+    [InlineData("6100000002", """{"displayName":"Renamed","notificationEmail":null}""", null)]
+    [InlineData("6100000003", """{"displayName":"Renamed","notificationEmail":""}""", null)]
+    [InlineData("6100000004", """{"displayName":"Renamed","notificationEmail":"new@example.com"}""", "new@example.com")]
+    public async Task UpdateTenant_NotificationEmail_AbsentKeepsOtherwiseApplies(string nip, string body, string? expectedEmail)
+    {
+        await AuthenticateAsync();
+
+        var createResponse = await _client.PostAsJsonAsync("/api/tenants", new
+        {
+            nip,
+            displayName = "Update Test Co",
+            notificationEmail = "keep@example.com"
+        });
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<TenantDto>();
+        Assert.NotNull(created);
+
+        var updateResponse = await _client.PutAsync(
+            $"/api/tenants/{created.Id}",
+            new StringContent(body, Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+
+        var fetched = await _client.GetFromJsonAsync<TenantDto>($"/api/tenants/{created.Id}");
+        Assert.NotNull(fetched);
+        Assert.Equal("Renamed", fetched.DisplayName);
+        Assert.Equal(expectedEmail, fetched.NotificationEmail);
+    }
+
+    [Fact]
+    public async Task UpdateTenant_InvalidNotificationEmail_Returns400AndKeepsValue()
+    {
+        await AuthenticateAsync();
+
+        var createResponse = await _client.PostAsJsonAsync("/api/tenants", new
+        {
+            nip = "6100000005",
+            displayName = "Invalid Email Co",
+            notificationEmail = "keep@example.com"
+        });
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<TenantDto>();
+        Assert.NotNull(created);
+
+        var updateResponse = await _client.PutAsJsonAsync($"/api/tenants/{created.Id}", new
+        {
+            displayName = "Renamed",
+            notificationEmail = "not-an-email"
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, updateResponse.StatusCode);
+
+        var fetched = await _client.GetFromJsonAsync<TenantDto>($"/api/tenants/{created.Id}");
+        Assert.NotNull(fetched);
+        Assert.Equal("keep@example.com", fetched.NotificationEmail);
     }
 
     public void Dispose()
