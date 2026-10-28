@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -25,7 +26,7 @@ public class SetupTokenServiceTests
     [Fact]
     public async Task ValidateAndConsume_RejectsTokenSignedWithLegacyDevKey()
     {
-        var service = new SetupTokenService(_systemConfig);
+        var service = new SetupTokenService(_systemConfig, NullLogger<SetupTokenService>.Instance);
         await service.GenerateSetupTokenAsync("user-1", null, null);
 
         var forged = CreateToken(Encoding.UTF8.GetBytes("dev-setup-token-key-must-be-32b!"), DateTime.UtcNow.AddMinutes(5));
@@ -36,7 +37,7 @@ public class SetupTokenServiceTests
     [Fact]
     public async Task ValidateAndConsume_AcceptsOnce_ThenRejectsReplay()
     {
-        var service = new SetupTokenService(_systemConfig);
+        var service = new SetupTokenService(_systemConfig, NullLogger<SetupTokenService>.Instance);
         var token = await service.GenerateSetupTokenAsync("user-1", "a@b.pl", "Jan");
 
         var principal = await service.ValidateAndConsumeAsync(token);
@@ -49,7 +50,7 @@ public class SetupTokenServiceTests
     [Fact]
     public async Task ValidateAndConsume_RejectsWrongPurpose()
     {
-        var service = new SetupTokenService(_systemConfig);
+        var service = new SetupTokenService(_systemConfig, NullLogger<SetupTokenService>.Instance);
         await service.GenerateSetupTokenAsync("user-1", null, null);
 
         var token = CreateToken(Convert.FromBase64String(_storedKey!), DateTime.UtcNow.AddMinutes(5), purpose: "other");
@@ -60,7 +61,7 @@ public class SetupTokenServiceTests
     [Fact]
     public async Task ValidateAndConsume_RejectsExpiredToken()
     {
-        var service = new SetupTokenService(_systemConfig);
+        var service = new SetupTokenService(_systemConfig, NullLogger<SetupTokenService>.Instance);
         await service.GenerateSetupTokenAsync("user-1", null, null);
 
         var token = CreateToken(Convert.FromBase64String(_storedKey!), DateTime.UtcNow.AddMinutes(-2));
@@ -71,7 +72,7 @@ public class SetupTokenServiceTests
     [Fact]
     public async Task SigningKey_CreatedOnceAndReused()
     {
-        var service = new SetupTokenService(_systemConfig);
+        var service = new SetupTokenService(_systemConfig, NullLogger<SetupTokenService>.Instance);
 
         var first = await service.GenerateSetupTokenAsync("user-1", null, null);
         var second = await service.GenerateSetupTokenAsync("user-2", null, null);
@@ -86,12 +87,12 @@ public class SetupTokenServiceTests
     public async Task SigningKey_ExistingRow_IsUsedWithoutWrite()
     {
         _storedKey = Convert.ToBase64String(new byte[32]);
-        var service = new SetupTokenService(_systemConfig);
+        var service = new SetupTokenService(_systemConfig, NullLogger<SetupTokenService>.Instance);
 
         var token = await service.GenerateSetupTokenAsync("user-1", null, null);
 
         await _systemConfig.DidNotReceive().SetValueAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
-        Assert.NotNull(await new SetupTokenService(_systemConfig).ValidateAndConsumeAsync(token));
+        Assert.NotNull(await new SetupTokenService(_systemConfig, NullLogger<SetupTokenService>.Instance).ValidateAndConsumeAsync(token));
     }
 
     [Fact]
@@ -99,7 +100,7 @@ public class SetupTokenServiceTests
     {
         _systemConfig.SetValueAsync(SystemConfigKeys.SetupTokenSigningKey, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("db down"));
-        var service = new SetupTokenService(_systemConfig);
+        var service = new SetupTokenService(_systemConfig, NullLogger<SetupTokenService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.GenerateSetupTokenAsync("user-1", null, null));
         var forged = CreateToken(Encoding.UTF8.GetBytes("dev-setup-token-key-must-be-32b!"), DateTime.UtcNow.AddMinutes(5));

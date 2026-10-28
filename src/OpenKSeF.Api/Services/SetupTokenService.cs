@@ -22,14 +22,16 @@ public class SetupTokenService : ISetupTokenService
     private static readonly TimeSpan ClockSkew = TimeSpan.FromSeconds(30);
 
     private readonly ISystemConfigService _systemConfig;
+    private readonly ILogger<SetupTokenService> _logger;
     private readonly SemaphoreSlim _keyLock = new(1, 1);
     // shortcut: in-memory jti store, single api replica; move to a DB table when the API scales out.
     private readonly ConcurrentDictionary<string, DateTimeOffset> _usedJtis = new();
     private byte[]? _signingKey;
 
-    public SetupTokenService(ISystemConfigService systemConfig)
+    public SetupTokenService(ISystemConfigService systemConfig, ILogger<SetupTokenService> logger)
     {
         _systemConfig = systemConfig;
+        _logger = logger;
     }
 
     public async Task<string> GenerateSetupTokenAsync(string userId, string? email, string? name)
@@ -97,8 +99,13 @@ public class SetupTokenService : ISetupTokenService
                 ? principal
                 : null;
         }
-        catch
+        catch (Exception ex) when (ex is SecurityTokenException or ArgumentException)
         {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Setup token validation failed unexpectedly: {ExceptionType}: {Message}", ex.GetType().Name, ex.Message);
             return null;
         }
     }
