@@ -11,6 +11,14 @@
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
   "sslRequired": "none",
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 10,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "quickLoginCheckMilliSeconds": 1000,
+  "minimumQuickLoginWaitSeconds": 60,
   "clients": [
     {
       "clientId": "openksef-api",
@@ -23,7 +31,7 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": true,
       "redirectUris": ["*"],
-      "webOrigins": ["*"]
+      "webOrigins": ["+"]
     },
     {
       "clientId": "openksef-mobile",
@@ -34,7 +42,7 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "redirectUris": ["*"],
-      "webOrigins": ["*"],
+      "webOrigins": ["+"],
       "protocolMappers": [
         {
           "name": "audience-api",
@@ -58,7 +66,7 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "redirectUris": ["*"],
-      "webOrigins": ["*"]
+      "webOrigins": ["+"]
     }
   ],
   "users": [

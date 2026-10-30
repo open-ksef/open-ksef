@@ -82,6 +82,46 @@ public class KeycloakRealmPayloadTests
         Assert.False(realm.TryGetProperty("failureFactor", out _));
     }
 
+    [Fact]
+    public async Task UpdateSettings_BruteForceEnabledWithHighFailureFactor_LowersOnlyFailureFactor()
+    {
+        _keycloak.RealmJson = """{"bruteForceProtected":true,"failureFactor":30,"waitIncrementSeconds":120}""";
+
+        var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest(), "token");
+
+        Assert.True(result.Success, result.Error);
+        var realm = _keycloak.Body(HttpMethod.Put, RealmUrl);
+        Assert.Equal(10, realm.GetProperty("failureFactor").GetInt32());
+        Assert.Single(realm.EnumerateObject());
+    }
+
+    [Fact]
+    public async Task UpdateSettings_RealmAlreadyCompliant_SendsNoRealmUpdate()
+    {
+        _keycloak.RealmJson = """{"bruteForceProtected":true,"failureFactor":10}""";
+
+        var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest(), "token");
+
+        Assert.True(result.Success, result.Error);
+        Assert.Empty(_keycloak.Bodies(HttpMethod.Put, RealmUrl));
+    }
+
+    [Fact]
+    public async Task UpdateSettings_RealmReadFails_AppliesRequestedChangesWithoutBruteForce()
+    {
+        _keycloak.RealmJson = "{}";
+        _keycloak.RealmStatus = HttpStatusCode.Forbidden;
+
+        var result = await CreateSettingsService().UpdateSettingsAsync(
+            new SettingsUpdateRequest { RegistrationAllowed = false }, "token");
+
+        Assert.True(result.Success, result.Error);
+        var realm = _keycloak.Body(HttpMethod.Put, RealmUrl);
+        Assert.False(realm.GetProperty("registrationAllowed").GetBoolean());
+        Assert.False(realm.TryGetProperty("bruteForceProtected", out _));
+        Assert.False(realm.TryGetProperty("failureFactor", out _));
+    }
+
     private SystemSettingsService CreateSettingsService() => new(
         _httpClientFactory, new ConfigurationBuilder().Build(), Substitute.For<ISystemConfigService>(),
         new KSeFClientOptions(), Substitute.For<IServiceScopeFactory>(), NullLogger<SystemSettingsService>.Instance);
@@ -91,6 +131,8 @@ public class KeycloakRealmPayloadTests
         private readonly List<(HttpMethod Method, string Url, string? Body)> _requests = [];
 
         public string? RealmJson { get; set; }
+
+        public HttpStatusCode RealmStatus { get; set; } = HttpStatusCode.OK;
 
         public JsonElement Body(HttpMethod method, string url) => Assert.Single(Bodies(method, url));
 
@@ -109,7 +151,8 @@ public class KeycloakRealmPayloadTests
                 return new HttpResponseMessage(HttpStatusCode.NoContent);
 
             if (url == RealmUrl)
-                return RealmJson is null ? new HttpResponseMessage(HttpStatusCode.NotFound) : Json(RealmJson);
+                return RealmJson is null ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                    : RealmStatus != HttpStatusCode.OK ? new HttpResponseMessage(RealmStatus) : Json(RealmJson);
 
             if (url.Contains("/clients?clientId="))
             {

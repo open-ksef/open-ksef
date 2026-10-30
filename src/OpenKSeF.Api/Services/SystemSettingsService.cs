@@ -337,13 +337,25 @@ public sealed class SystemSettingsService : ISystemSettingsService
 
         using var getReq = new HttpRequestMessage(HttpMethod.Get, realmUrl);
         getReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
-        var getResp = await client.SendAsync(getReq, ct);
-        getResp.EnsureSuccessStatusCode();
-        var realm = await getResp.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
-        if (!(realm.TryGetProperty("bruteForceProtected", out var bf) && bf.GetBoolean()))
+        using var getResp = await client.SendAsync(getReq, ct);
+        if (!getResp.IsSuccessStatusCode)
         {
-            foreach (var (key, value) in SystemSetupService.BruteForceSettings)
-                payload[key] = value;
+            _logger.LogWarning("Could not read Keycloak realm ({Status}), brute-force settings not enforced",
+                (int)getResp.StatusCode);
+        }
+        else
+        {
+            var realm = await getResp.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+            var maxFailures = (int)SystemSetupService.BruteForceSettings["failureFactor"];
+            if (!(realm.TryGetProperty("bruteForceProtected", out var bf) && bf.GetBoolean()))
+            {
+                foreach (var (key, value) in SystemSetupService.BruteForceSettings)
+                    payload[key] = value;
+            }
+            else if (!(realm.TryGetProperty("failureFactor", out var ff) && ff.GetInt32() <= maxFailures))
+            {
+                payload["failureFactor"] = maxFailures;
+            }
         }
 
         if (payload.Count > 0)
