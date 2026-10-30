@@ -91,21 +91,15 @@ public class IssuedInvoiceTests
             (string?)"x", (string?)null, l.GetProperty("quantity").GetDecimal(), l.GetProperty("unitNetPrice").GetDecimal(),
             VatRates.Parse(l.GetProperty("vatRate").GetString()!))));
 
-        var expectedLines = vector.GetProperty("lines").EnumerateArray().ToList();
-        Assert.Equal(expectedLines.Count, invoice.Lines.Count);
-        for (var i = 0; i < expectedLines.Count; i++)
-        {
-            Assert.Equal(expectedLines[i].GetProperty("netAmount").GetDecimal(), invoice.Lines[i].NetAmount);
-            Assert.Equal(expectedLines[i].GetProperty("vatAmount").GetDecimal(), invoice.Lines[i].VatAmount);
-        }
-
-        var expectedSummary = vector.GetProperty("vatSummary").EnumerateArray()
+        var expected = vector.GetProperty("expected");
+        Assert.Equal(expected.GetProperty("lineNet").EnumerateArray().Select(n => n.GetDecimal()), invoice.Lines.Select(l => l.NetAmount));
+        var expectedSummary = expected.GetProperty("vatSummary").EnumerateArray()
             .Select(s => (s.GetProperty("vatRate").GetString(), s.GetProperty("net").GetDecimal(), s.GetProperty("vat").GetDecimal()))
             .ToList();
         Assert.Equal(expectedSummary, invoice.VatSummary().Select(s => ((string?)s.VatRate.Code(), s.Net, s.Vat)).ToList());
-        Assert.Equal(vector.GetProperty("totalNet").GetDecimal(), invoice.TotalNet);
-        Assert.Equal(vector.GetProperty("totalVat").GetDecimal(), invoice.TotalVat);
-        Assert.Equal(vector.GetProperty("totalGross").GetDecimal(), invoice.TotalGross);
+        Assert.Equal(expected.GetProperty("totalNet").GetDecimal(), invoice.TotalNet);
+        Assert.Equal(expected.GetProperty("totalVat").GetDecimal(), invoice.TotalVat);
+        Assert.Equal(expected.GetProperty("totalGross").GetDecimal(), invoice.TotalGross);
         Assert.NotEmpty(name);
     }
 
@@ -281,12 +275,56 @@ public class IssuedInvoiceTests
     {
         var invoice = ValidDraft();
         invoice.Issue(CompleteProfile(), "1234563218", "FV/7/11/2026", Now);
-        typeof(IssuedInvoice).GetProperty(nameof(IssuedInvoice.Status))!.SetValue(invoice, IssuedInvoiceStatus.Rejected);
+        invoice.MarkSendStarted("S-1", Now);
+        invoice.RecordElementRef("E-1", Now);
+        invoice.MarkRejected(450, "Błąd weryfikacji semantyki", "details", Now);
+        Assert.Equal(IssuedInvoiceStatus.Rejected, invoice.Status);
 
         invoice.AddLine("Poprawka", null, 1, 1m, VatRate.Rate23);
         invoice.Issue(CompleteProfile(), "1234563218", "FV/99/11/2026", Now);
 
         Assert.Equal("FV/7/11/2026", invoice.Number);
         Assert.Equal(IssuedInvoiceStatus.Queued, invoice.Status);
+        Assert.Null(invoice.KsefSessionRef);
+        Assert.Null(invoice.KsefElementRef);
+        Assert.Null(invoice.KsefStatusCode);
+        Assert.Equal(0, invoice.AttemptCount);
+    }
+
+    [Fact]
+    public void SendLifecycle_RecordsKsefStateInOrder()
+    {
+        var invoice = ValidDraft();
+        invoice.Issue(CompleteProfile(), "1234563218", "FV/1/11/2026", Now);
+        invoice.AttachSentXml([1, 2, 3], "hash", "test", "https://qr-test.ksef.mf.gov.pl/invoice/x");
+
+        invoice.MarkSendStarted("S-1", Now.AddSeconds(1));
+        Assert.Throws<InvoiceStateException>(() => invoice.AttachSentXml([9], "other", "test", null));
+        invoice.RecordElementRef("E-1", Now.AddSeconds(2));
+        invoice.ScheduleRetry("KSeF nie odpowiada, ponowimy wysyłkę", Now.AddSeconds(20), Now.AddSeconds(2));
+        invoice.MarkAccepted("1234563218-20261103-0100A0B0C0D0-E1", Now.AddSeconds(30), 200, "Sukces", Now.AddSeconds(31));
+
+        Assert.Equal(IssuedInvoiceStatus.Accepted, invoice.Status);
+        Assert.Equal(("S-1", "E-1", 1), (invoice.KsefSessionRef, invoice.KsefElementRef, invoice.AttemptCount));
+        Assert.Equal([1, 2, 3], invoice.SentXml);
+        Assert.Null(invoice.LastError);
+        Assert.NotNull(invoice.NextAttemptAt);
+
+        invoice.AttachUpo([7], Now.AddSeconds(40));
+        Assert.Null(invoice.NextAttemptAt);
+        Assert.Equal([7], invoice.UpoXml);
+        Assert.Throws<InvoiceStateException>(() => invoice.MarkRejected(440, "Duplikat", null, Now));
+        Assert.Throws<InvoiceStateException>(() => invoice.MarkSendStarted("S-2", Now));
+    }
+
+    [Fact]
+    public void SendMethods_OnDraft_Throw()
+    {
+        var invoice = ValidDraft();
+
+        Assert.Throws<InvoiceStateException>(() => invoice.MarkSendStarted("S", Now));
+        Assert.Throws<InvoiceStateException>(() => invoice.AttachSentXml([1], "h", "test", null));
+        Assert.Throws<InvoiceStateException>(() => invoice.MarkAccepted("K", Now, 200, null, Now));
+        Assert.Throws<InvoiceStateException>(() => invoice.AttachUpo([1], Now));
     }
 }

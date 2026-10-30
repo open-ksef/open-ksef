@@ -39,9 +39,26 @@ public sealed class IssuedInvoice
     public decimal TotalVat { get; private set; }
     public decimal TotalGross { get; private set; }
 
+    public string? KsefEnvironment { get; private set; }
+    public byte[]? SentXml { get; private set; }
+    public string? SentXmlSha256 { get; private set; }
+    public string? VerificationUrl { get; private set; }
+    public string? KsefSessionRef { get; private set; }
+    public string? KsefElementRef { get; private set; }
+    public DateTime? SendStartedAt { get; private set; }
+    public string? KsefNumber { get; private set; }
+    public int? KsefStatusCode { get; private set; }
+    public string? KsefStatusDescription { get; private set; }
+    public string? KsefStatusDetails { get; private set; }
+    public byte[]? UpoXml { get; private set; }
+    public int AttemptCount { get; private set; }
+    public DateTime? NextAttemptAt { get; private set; }
+    public string? LastError { get; private set; }
+
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
     public DateTime? IssuedAt { get; private set; }
+    public DateTime? AcceptedAt { get; private set; }
 
     public IReadOnlyList<IssuedInvoiceLine> Lines => _lines;
 
@@ -143,8 +160,93 @@ public sealed class IssuedInvoice
         SellerCashAccounting = profile.CashAccounting;
         Number = assigned;
         Status = IssuedInvoiceStatus.Queued;
+        SentXml = null;
+        SentXmlSha256 = null;
+        VerificationUrl = null;
+        KsefSessionRef = null;
+        KsefElementRef = null;
+        SendStartedAt = null;
+        KsefStatusCode = null;
+        KsefStatusDescription = null;
+        KsefStatusDetails = null;
+        AttemptCount = 0;
+        LastError = null;
+        NextAttemptAt = now;
         IssuedAt = now;
         UpdatedAt = now;
+    }
+
+    public void AttachSentXml(byte[] xml, string sha256, string ksefEnvironment, string? verificationUrl)
+    {
+        EnsureStatus(IssuedInvoiceStatus.Queued);
+        SentXml = xml;
+        SentXmlSha256 = sha256;
+        KsefEnvironment = ksefEnvironment;
+        VerificationUrl = verificationUrl;
+    }
+
+    public void MarkSendStarted(string sessionRef, DateTime now)
+    {
+        EnsureStatus(IssuedInvoiceStatus.Queued, IssuedInvoiceStatus.Sending);
+        KsefSessionRef = sessionRef;
+        SendStartedAt = now;
+        AttemptCount++;
+        Status = IssuedInvoiceStatus.Sending;
+        UpdatedAt = now;
+    }
+
+    public void RecordElementRef(string elementRef, DateTime now)
+    {
+        EnsureStatus(IssuedInvoiceStatus.Sending);
+        KsefElementRef = elementRef;
+        UpdatedAt = now;
+    }
+
+    public void MarkAccepted(string ksefNumber, DateTime acceptedAt, int statusCode, string? statusDescription, DateTime now)
+    {
+        EnsureStatus(IssuedInvoiceStatus.Queued, IssuedInvoiceStatus.Sending);
+        KsefNumber = ksefNumber;
+        AcceptedAt = acceptedAt;
+        KsefStatusCode = statusCode;
+        KsefStatusDescription = statusDescription;
+        LastError = null;
+        NextAttemptAt = now;
+        Status = IssuedInvoiceStatus.Accepted;
+        UpdatedAt = now;
+    }
+
+    public void AttachUpo(byte[] upoXml, DateTime now)
+    {
+        EnsureStatus(IssuedInvoiceStatus.Accepted);
+        UpoXml = upoXml;
+        NextAttemptAt = null;
+        LastError = null;
+        UpdatedAt = now;
+    }
+
+    public void MarkRejected(int? statusCode, string statusDescription, string? statusDetails, DateTime now)
+    {
+        EnsureStatus(IssuedInvoiceStatus.Queued, IssuedInvoiceStatus.Sending);
+        KsefStatusCode = statusCode;
+        KsefStatusDescription = statusDescription;
+        KsefStatusDetails = statusDetails;
+        NextAttemptAt = null;
+        Status = IssuedInvoiceStatus.Rejected;
+        UpdatedAt = now;
+    }
+
+    public void ScheduleRetry(string error, DateTime nextAttemptAt, DateTime now)
+    {
+        EnsureStatus(IssuedInvoiceStatus.Queued, IssuedInvoiceStatus.Sending, IssuedInvoiceStatus.Accepted);
+        LastError = error;
+        NextAttemptAt = nextAttemptAt;
+        UpdatedAt = now;
+    }
+
+    private void EnsureStatus(params IssuedInvoiceStatus[] allowed)
+    {
+        if (!allowed.Contains(Status))
+            throw new InvoiceStateException($"Invoice in status {Status} cannot do this; expected {string.Join(" or ", allowed)}.");
     }
 
     private void RecalculateTotals()

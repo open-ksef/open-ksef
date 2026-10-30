@@ -4,6 +4,7 @@ public sealed class IssuedInvoiceLine
 {
     public const string DefaultUnit = "szt.";
 
+    public Guid Id { get; private set; } = Guid.NewGuid();
     public Guid IssuedInvoiceId { get; private set; }
     public int LineNo { get; private set; }
     public string Name { get; private set; } = string.Empty;
