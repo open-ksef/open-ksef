@@ -61,7 +61,8 @@ services:
       Auth__AdditionalIssuers__0: http://10.0.2.2:8080/auth/realms/openksef
       Auth__AdditionalIssuers__1: http://localhost:8080/auth/realms/openksef
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
-      KSeF__BaseUrl: ${KSEF_BASE_URL:-https://ksef-test.mf.gov.pl/api}
+      KSeF__BaseUrl: ${KSEF_BASE_URL:-test}
+      Sync__InitialSyncMonthsBack: ${SYNC_INITIAL_MONTHS_BACK:-12}
       Auth__ServiceAccount__ClientId: openksef-api
       Auth__ServiceAccount__ClientSecret: ${API_CLIENT_SECRET:-}
     ports:
@@ -85,7 +86,8 @@ services:
       ConnectionStrings__Db: Host=postgres;Port=5432;Database=openksef;Username=${POSTGRES_USER:-openksef};Password=${POSTGRES_PASSWORD:-openksef_dev_password}
       Auth__Authority: http://keycloak:8080/auth/realms/openksef
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
-      KSeF__BaseUrl: ${KSEF_BASE_URL:-https://ksef-test.mf.gov.pl/api}
+      KSeF__BaseUrl: ${KSEF_BASE_URL:-test}
+      Sync__InitialSyncMonthsBack: ${SYNC_INITIAL_MONTHS_BACK:-12}
 
   portal-web:
     image: openksef-portal-web:dev-local

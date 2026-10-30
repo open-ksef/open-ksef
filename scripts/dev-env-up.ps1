@@ -98,7 +98,7 @@ Get-Content $envTestFile | ForEach-Object {
 
 # ── 2. Start Docker services ─────────────────────────────────────────
 $composeFile = Join-Path $root 'docker-compose.dev.yml'
-$buildFlag = if ($SkipBuild) { @() } else { @('--build') }
+$buildFlag = @(if (-not $SkipBuild) { '--build' })
 
 Write-Host "`n[docker] Starting services ..." -ForegroundColor Cyan
 & docker compose -f $composeFile up -d @buildFlag
@@ -271,6 +271,9 @@ $setupScript = Join-Path $PSScriptRoot 'setup-test-data.ps1'
 if (Test-Path $setupScript) {
     Write-Host ""
     & $setupScript
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Test data setup incomplete (exit $LASTEXITCODE). Re-run: powershell -File scripts/setup-test-data.ps1"
+    }
 }
 
 # ── 9. Summary ────────────────────────────────────────────────────────
