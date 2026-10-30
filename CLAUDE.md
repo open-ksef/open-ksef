@@ -133,15 +133,19 @@ The script copies `.env.test` to `.env` if missing. `.env.test` contains determi
 
 | Item | Value |
 |------|-------|
-| NIP | `1111111111` |
-| KSeF token | stored in `E2E_TEST_KSEF_TOKEN` in `.env.test` |
-| KSeF environment | `https://ksef-test.mf.gov.pl/api` (docker default) |
+| NIP | `E2E_TEST_NIP` in `.env.test` (team KSeF TEST company: `6852305288`) |
+| KSeF token | `E2E_TEST_KSEF_TOKEN` in `.env.test` (gitignored; KSeF TEST token for that NIP, ask the team, never commit) |
+| KSeF environment | `KSEF_BASE_URL=test` -> KSeF.Client `KsefEnvironmentsUris.TEST` (`https://api-test.ksef.mf.gov.pl/v2`) |
+| First-sync lookback | `Sync__InitialSyncMonthsBack` = `SYNC_INITIAL_MONTHS_BACK` (dev default 12 months) |
+
+Both `E2E_TEST_NIP` and `E2E_TEST_KSEF_TOKEN` must be set, otherwise provisioning is skipped.
+Sync imports only received (buyer, `Subject2`) invoices; for `6852305288` that is 2 invoices, 1 with `NrRB`.
 
 The script is **idempotent** -- re-running skips existing data. It:
 1. Authenticates as `testuser` via OIDC direct-access grant
 2. Creates tenant with the test NIP if missing
-3. Adds KSeF credentials (token) to the tenant
-4. Triggers invoice sync from KSeF test
+3. Adds KSeF credentials (token) to the tenant if missing (to rotate the token, delete the credential in the portal first)
+4. Triggers invoice sync from KSeF test (incremental after the first run)
 
 Run standalone: `./scripts/setup-test-data.ps1` (requires Docker stack + test user)
 

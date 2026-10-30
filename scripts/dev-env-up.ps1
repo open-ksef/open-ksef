@@ -98,7 +98,7 @@ Get-Content $envTestFile | ForEach-Object {
 
 # ── 2. Start Docker services ─────────────────────────────────────────
 $composeFile = Join-Path $root 'docker-compose.dev.yml'
-$buildFlag = if ($SkipBuild) { @() } else { @('--build') }
+$buildFlag = @(if (-not $SkipBuild) { '--build' })
 
 Write-Host "`n[docker] Starting services ..." -ForegroundColor Cyan
 & docker compose -f $composeFile up -d @buildFlag

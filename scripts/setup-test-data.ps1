@@ -97,7 +97,7 @@ Write-Host "  [credential] Checking KSeF credentials ..." -ForegroundColor DarkG
 try {
     $credStatus = Invoke-RestMethod -Uri "$ApiBaseUrl/api/tenants/$tenantId/credentials/status" `
         -Headers $authHeaders -Method Get
-    $hasCred = $credStatus.hasCredential
+    $hasCred = $credStatus.exists
 } catch {
     $hasCred = $false
 }
