@@ -162,6 +162,12 @@ builder.Services.AddScoped<ITransferDetailsService, TransferDetailsService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ISellerProfileService, SellerProfileService>();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient<WhiteListClient>(client =>
+{
+    client.BaseAddress = WhiteListClient.BaseAddress;
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 
 // Email
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
@@ -230,6 +236,18 @@ builder.Services.AddRateLimiter(options =>
         {
             Window = TimeSpan.FromMinutes(15),
             PermitLimit = 5,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+
+    options.AddPolicy(OpenKSeF.Api.Controllers.NipLookupController.RateLimitPolicy, context =>
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromHours(1),
+            PermitLimit = 30,
             QueueLimit = 0,
             AutoReplenishment = true
         });

@@ -95,3 +95,13 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | INV-VAL-061 | `exemptionBasis` | Podaj podstawę zwolnienia z VAT |
 | INV-W-NIP | `buyer.nip` | NIP nabywcy ma niepoprawną sumę kontrolną (warning) |
 | INV-W-MPP | `splitPayment` | Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15) (warning, gross > 15 000,00) |
+| SP-VAL-001 | `bankAccount` | Niepoprawny numer rachunku (seller profile PUT) |
+| SP-VAL-002 | `numberingPattern` | Wzorzec numeracji musi zawierać {nr} |
+| SP-VAL-003 | `nextNumber` | Następny numer musi być większy od zera |
+| SP-VAL-004 | `nextNumberPeriod` | Okres numeracji musi mieć format RRRR-MM (wzorzec z {MM}) lub RRRR |
+| SP-VAL-005 | `legalName`, `addressLine1`, `addressLine2`, `numberingPattern` | Field too long (512; pattern 100) |
+| NIP-INVALID | `nip` | Niepoprawny NIP (nip-lookup 400) |
+| NIP-NOT-FOUND | `nip` | Brak podmiotu w wykazie podatników VAT, wpisz dane ręcznie (nip-lookup 404) |
+| NIP-LOOKUP-UNAVAILABLE | `nip` | Wyszukiwarka MF niedostępna, wpisz dane ręcznie (nip-lookup 503) |
+
+NIP lookup: rate limited to 30 requests per hour per client IP (429 above it); results cached 24 h per NIP and day.
