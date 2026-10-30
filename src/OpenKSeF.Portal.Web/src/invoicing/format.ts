@@ -24,3 +24,9 @@ export function addDaysIso(isoDate: string, days: number): string {
   const date = new Date(Date.UTC(year, month - 1, day + days))
   return date.toISOString().slice(0, 10)
 }
+
+const dateTimeFormat = new Intl.DateTimeFormat('pl-PL', { dateStyle: 'short', timeStyle: 'short' })
+
+export function formatDateTime(iso: string | null | undefined): string {
+  return iso ? dateTimeFormat.format(new Date(iso)) : '—'
+}

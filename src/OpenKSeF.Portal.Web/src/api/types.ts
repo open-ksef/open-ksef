@@ -281,6 +281,8 @@ export interface IssuedInvoiceListItemResponse {
   buyerName: string | null
   buyerNip: string | null
   issueDate: string
+  dueDate: string
+  totalNet: number
   totalGross: number
   currency: string
   ksefNumber: string | null

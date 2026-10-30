@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { ReactElement } from 'react'
+import type { FormEvent, ReactElement } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
@@ -27,6 +27,8 @@ export function IssuedInvoiceListPage(): ReactElement {
   const tenantsQuery = useTenants()
   const tenantId = searchParams.get('tenantId') || tenantsQuery.data?.[0]?.id || ''
   const status = (searchParams.get('status') ?? '') as IssuedInvoiceStatus | ''
+  const month = searchParams.get('month') ?? ''
+  const q = searchParams.get('q') ?? ''
   const page = Math.max(1, Number(searchParams.get('page')) || 1)
 
   const profileQuery = useQuery({
@@ -35,18 +37,32 @@ export function IssuedInvoiceListPage(): ReactElement {
     enabled: Boolean(tenantId),
   })
   const listQuery = useQuery({
-    queryKey: ['issued-invoices', tenantId, status, page],
-    queryFn: () => listIssuedInvoices(tenantId, { page, pageSize: PAGE_SIZE, status: status || undefined }),
+    queryKey: ['issued-invoices', tenantId, status, month, q, page],
+    queryFn: () =>
+      listIssuedInvoices(tenantId, {
+        page,
+        pageSize: PAGE_SIZE,
+        status: status || undefined,
+        month: month || undefined,
+        q: q || undefined,
+      }),
     enabled: Boolean(tenantId),
   })
 
-  const update = (next: { tenantId?: string; status?: string; page?: number }): void => {
+  const update = (next: { tenantId?: string; status?: string; month?: string; q?: string; page?: number }): void => {
     const params = new URLSearchParams()
-    const values = { tenantId, status, page, ...next }
+    const values = { tenantId, status, month, q, page, ...next }
     if (values.tenantId) params.set('tenantId', values.tenantId)
     if (values.status) params.set('status', values.status)
+    if (values.month) params.set('month', values.month)
+    if (values.q) params.set('q', values.q)
     if (values.page > 1) params.set('page', String(values.page))
     setSearchParams(params)
+  }
+
+  const onSearch = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    update({ q: String(new FormData(event.currentTarget).get('q') ?? '').trim(), page: 1 })
   }
 
   const tenantQuery = `tenantId=${encodeURIComponent(tenantId)}`
@@ -70,6 +86,12 @@ export function IssuedInvoiceListPage(): ReactElement {
       ),
     },
     { key: 'issueDate', label: 'Wystawiona', render: (row) => formatDate(row.issueDate) },
+    { key: 'dueDate', label: 'Termin', render: (row) => formatDate(row.dueDate) },
+    {
+      key: 'totalNet',
+      label: 'Netto',
+      render: (row) => <span className="num">{row.totalNet === undefined ? '—' : formatMoney(row.totalNet, row.currency)}</span>,
+    },
     { key: 'totalGross', label: 'Brutto', render: (row) => <span className="num">{formatMoney(row.totalGross, row.currency)}</span> },
     { key: 'status', label: 'Status', render: (row) => <KsefStatusBadge status={row.status} /> },
     {
@@ -80,16 +102,15 @@ export function IssuedInvoiceListPage(): ReactElement {
     {
       key: 'id',
       label: '',
-      render: (row) =>
-        row.status === 'Draft' || row.status === 'Rejected' ? (
-          <Link
-            to={`/issued/${encodeURIComponent(row.id)}/edit?${tenantQuery}`}
-            className="btn-action btn-action--edit"
-            aria-label={`Otwórz ${row.number ?? 'szkic'}`}
-          >
-            Otwórz →
-          </Link>
-        ) : null,
+      render: (row) => (
+        <Link
+          to={`/issued/${encodeURIComponent(row.id)}${row.status === 'Draft' ? '/edit' : ''}?${tenantQuery}`}
+          className="btn-action btn-action--edit"
+          aria-label={`Otwórz ${row.number ?? 'szkic'}`}
+        >
+          Otwórz →
+        </Link>
+      ),
     },
   ]
 
@@ -132,11 +153,29 @@ export function IssuedInvoiceListPage(): ReactElement {
         ))}
       </div>
 
+      <div className="inv-header">
+        <form className="inv-input-group" role="search" onSubmit={onSearch}>
+          <label htmlFor="issued-q" className="visually-hidden">
+            Szukaj po numerze, nabywcy lub NIP
+          </label>
+          <input id="issued-q" name="q" type="search" key={q} defaultValue={q} placeholder="Numer, nabywca, NIP" />
+          <button type="submit" className="ui-button ui-button--secondary ui-button--md">
+            Szukaj
+          </button>
+        </form>
+        <div className="ui-form-group">
+          <label htmlFor="issued-month" className="visually-hidden">
+            Miesiąc wystawienia
+          </label>
+          <input id="issued-month" type="month" value={month} onChange={(event) => update({ month: event.target.value, page: 1 })} />
+        </div>
+      </div>
+
       <AsyncStateView
         isLoading={tenantsQuery.isLoading || listQuery.isLoading}
         error={tenantsQuery.error ?? listQuery.error}
         isEmpty={rows.length === 0}
-        emptyTitle={status ? 'Brak faktur o tym statusie' : 'Nie wystawiono jeszcze faktur'}
+        emptyTitle={status || month || q ? 'Brak faktur spełniających kryteria' : 'Nie wystawiono jeszcze faktur'}
         emptyMessage="Kliknij „Nowa faktura”, aby wystawić pierwszą."
         onRetry={() => void listQuery.refetch()}
       >

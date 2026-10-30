@@ -11,6 +11,8 @@ export interface ListIssuedInvoicesParams extends Record<string, string | number
   page?: number
   pageSize?: number
   status?: IssuedInvoiceStatus
+  month?: string
+  q?: string
 }
 
 const base = (tenantId: string): string => `/tenants/${encodeURIComponent(tenantId)}/issued-invoices`

@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactElement } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
-import { createIssuedInvoice, getIssuedInvoice, updateIssuedInvoice } from '@/api/endpoints/issuedInvoices'
+import { createIssuedInvoice, getIssuedInvoice, issueIssuedInvoice, updateIssuedInvoice } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { readValidationEnvelope } from '@/api/errors'
 import type { IssuedInvoiceResponse, IssuedInvoiceStatus, SellerProfileResponse, ValidationIssue } from '@/api/types'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Skeleton } from '@/components/Skeleton'
 import { BuyerSection } from '@/components/invoicing/BuyerSection'
@@ -28,6 +29,7 @@ import {
   toFieldErrors,
   type DraftFormValue,
 } from '@/invoicing/form'
+import { formatDate, formatMoney } from '@/invoicing/format'
 import { computeTotals } from '@/invoicing/totals'
 
 const EDITABLE: IssuedInvoiceStatus[] = ['Draft', 'Rejected']
@@ -67,12 +69,10 @@ export function InvoiceDraftPage(): ReactElement {
       ) : !id && !profileQuery.data.isComplete ? (
         <Navigate to={`/seller-profile?tenantId=${encodeURIComponent(tenantId)}&next=new`} replace />
       ) : invoiceQuery.data && !EDITABLE.includes(invoiceQuery.data.status) ? (
-        <div className="inv-alert inv-alert--info" role="status">
-          Ta faktura została wysłana do KSeF i nie można jej edytować.
-        </div>
+        <Navigate to={`/issued/${encodeURIComponent(invoiceQuery.data.id)}?tenantId=${encodeURIComponent(tenantId)}`} replace />
       ) : (
         <DraftForm
-          key={invoiceQuery.data?.id ?? 'new'}
+          key={tenantId}
           tenantId={tenantId}
           profile={profileQuery.data}
           invoice={invoiceQuery.data}
@@ -97,6 +97,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   const [errors, setErrors] = useState<ValidationIssue[]>([])
   const [warnings, setWarnings] = useState<ValidationIssue[]>(invoice?.warnings ?? [])
   const [failure, setFailure] = useState<string | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   const totals = computeTotals(
     form.lines.map((line) => ({
@@ -107,28 +108,45 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   )
   const fieldErrors = toFieldErrors(errors)
 
+  async function saveDraft(): Promise<IssuedInvoiceResponse> {
+    const request = toDraftRequest(form)
+    const saved = invoice ? await updateIssuedInvoice(tenantId, invoice.id, request) : await createIssuedInvoice(tenantId, request)
+    setErrors([])
+    setFailure(null)
+    setWarnings(saved.warnings)
+    queryClient.setQueryData(['issued-invoice', tenantId, saved.id], saved)
+    void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
+    if (!invoice) {
+      navigate(`/issued/${encodeURIComponent(saved.id)}/edit?tenantId=${encodeURIComponent(tenantId)}`, { replace: true })
+    }
+    return saved
+  }
+
+  async function showFailure(failed: unknown, fallback: string): Promise<void> {
+    const envelope = await readValidationEnvelope(failed)
+    setErrors(envelope?.errors ?? [])
+    setWarnings(envelope?.warnings ?? [])
+    setFailure(envelope ? null : failed instanceof Error ? failed.message : fallback)
+  }
+
   const save = useMutation({
-    mutationFn: () => {
-      const request = toDraftRequest(form)
-      return invoice ? updateIssuedInvoice(tenantId, invoice.id, request) : createIssuedInvoice(tenantId, request)
+    mutationFn: saveDraft,
+    onError: (saveError) => showFailure(saveError, 'Nie udało się zapisać szkicu'),
+  })
+
+  const issue = useMutation({
+    mutationFn: async () => issueIssuedInvoice(tenantId, (await saveDraft()).id),
+    onSuccess: (issued) => {
+      queryClient.setQueryData(['issued-invoice', tenantId, issued.id], issued)
+      navigate(`/issued/${encodeURIComponent(issued.id)}?tenantId=${encodeURIComponent(tenantId)}`)
     },
-    onSuccess: (saved) => {
-      setErrors([])
-      setFailure(null)
-      setWarnings(saved.warnings)
-      queryClient.setQueryData(['issued-invoice', tenantId, saved.id], saved)
-      void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
-      if (!invoice) {
-        navigate(`/issued/${encodeURIComponent(saved.id)}/edit?tenantId=${encodeURIComponent(tenantId)}`, { replace: true })
-      }
-    },
-    onError: async (saveError) => {
-      const envelope = await readValidationEnvelope(saveError)
-      setErrors(envelope?.errors ?? [])
-      setWarnings(envelope?.warnings ?? [])
-      setFailure(envelope ? null : saveError instanceof Error ? saveError.message : 'Nie udało się zapisać szkicu')
+    onError: (issueError) => {
+      setConfirmOpen(false)
+      return showFailure(issueError, 'Nie udało się wysłać faktury do KSeF')
     },
   })
+
+  const busy = save.isPending || issue.isPending
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -150,11 +168,46 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
           {invoice ? `Zapisano ${timeFormat.format(new Date(invoice.updatedAt))}` : ''}
         </span>
         <div className="inv-header__actions">
-          <button type="submit" className="ui-button ui-button--outline ui-button--md" disabled={save.isPending}>
+          <button type="submit" className="ui-button ui-button--outline ui-button--md" disabled={busy}>
             {save.isPending ? 'Zapisywanie…' : 'Zapisz szkic'}
+          </button>
+          <button
+            type="button"
+            className="ui-button ui-button--primary ui-button--md"
+            disabled={busy || !profile.isComplete}
+            onClick={() => (profile.ksefEnvironment === 'production' ? setConfirmOpen(true) : issue.mutate())}
+          >
+            {issue.isPending ? 'Wysyłanie…' : 'Wystaw i wyślij do KSeF'}
           </button>
         </div>
       </header>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Wystawić fakturę i wysłać do KSeF?"
+        message="Środowisko PRODUKCJA: po przyjęciu przez KSeF faktura staje się dokumentem prawnym. Nie można jej usunąć ani edytować."
+        confirmLabel="Wystaw i wyślij"
+        cancelLabel="Wróć do edycji"
+        pendingLabel="Wysyłanie…"
+        isPending={issue.isPending}
+        onConfirm={() => issue.mutate()}
+        onCancel={() => setConfirmOpen(false)}
+      >
+        <dl className="inv-readonly">
+          <dt>Numer</dt>
+          <dd className="mono">{invoice?.number ?? profile.nextNumberPreview}</dd>
+          <dt>Nabywca</dt>
+          <dd>
+            {form.buyer.name || '—'}
+            {form.buyer.kind === 'Company' && form.buyer.nip ? <span className="mono"> · NIP {form.buyer.nip}</span> : null}
+          </dd>
+          <dt>Data wystawienia</dt>
+          <dd>{formatDate(form.issueDate)}</dd>
+          <dt>Do zapłaty</dt>
+          <dd className="num">{formatMoney(totals.totalGross)}</dd>
+        </dl>
+        <p className="inv-help">Korekt nie wystawisz jeszcze w OpenKSeF — użyj Aplikacji Podatnika KSeF.</p>
+      </ConfirmDialog>
 
       {!profile.isComplete ? (
         <div className="inv-alert inv-alert--info" role="status">
