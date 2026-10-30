@@ -352,9 +352,12 @@ public sealed class SystemSettingsService : ISystemSettingsService
                 foreach (var (key, value) in SystemSetupService.BruteForceSettings)
                     payload[key] = value;
             }
-            else if (!(realm.TryGetProperty("failureFactor", out var ff) && ff.GetInt32() <= maxFailures))
+            else
             {
-                payload["failureFactor"] = maxFailures;
+                if (!(realm.TryGetProperty("failureFactor", out var ff) && ff.GetInt32() <= maxFailures))
+                    payload["failureFactor"] = maxFailures;
+                if (realm.TryGetProperty("permanentLockout", out var pl) && pl.GetBoolean())
+                    payload["permanentLockout"] = false;
             }
         }
 

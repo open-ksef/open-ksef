@@ -60,6 +60,7 @@ public class KeycloakRealmPayloadTests
         Assert.True(result.Success, result.Error);
         var realm = _keycloak.Body(HttpMethod.Put, RealmUrl);
         Assert.True(realm.GetProperty("bruteForceProtected").GetBoolean());
+        Assert.False(realm.GetProperty("permanentLockout").GetBoolean());
         Assert.Equal(10, realm.GetProperty("failureFactor").GetInt32());
 
         var clientUpdates = _keycloak.Bodies(HttpMethod.Put, $"{RealmUrl}/clients/uuid-", prefix: true);
@@ -85,13 +86,27 @@ public class KeycloakRealmPayloadTests
     [Fact]
     public async Task UpdateSettings_BruteForceEnabledWithHighFailureFactor_LowersOnlyFailureFactor()
     {
-        _keycloak.RealmJson = """{"bruteForceProtected":true,"failureFactor":30,"waitIncrementSeconds":120}""";
+        _keycloak.RealmJson = """{"bruteForceProtected":true,"failureFactor":30,"permanentLockout":false,"waitIncrementSeconds":120}""";
 
         var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest(), "token");
 
         Assert.True(result.Success, result.Error);
         var realm = _keycloak.Body(HttpMethod.Put, RealmUrl);
         Assert.Equal(10, realm.GetProperty("failureFactor").GetInt32());
+        Assert.False(realm.TryGetProperty("permanentLockout", out _));
+        Assert.Single(realm.EnumerateObject());
+    }
+
+    [Fact]
+    public async Task UpdateSettings_BruteForceEnabledWithPermanentLockout_SwitchesToTemporaryLockout()
+    {
+        _keycloak.RealmJson = """{"bruteForceProtected":true,"failureFactor":10,"permanentLockout":true}""";
+
+        var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest(), "token");
+
+        Assert.True(result.Success, result.Error);
+        var realm = _keycloak.Body(HttpMethod.Put, RealmUrl);
+        Assert.False(realm.GetProperty("permanentLockout").GetBoolean());
         Assert.Single(realm.EnumerateObject());
     }
 
