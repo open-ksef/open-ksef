@@ -3,6 +3,7 @@ using KSeF.Client.DI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Sync.Issuing;
 
 namespace OpenKSeF.Sync;
 
@@ -20,6 +21,7 @@ public static class DependencyInjection
 
         services.AddScoped<IKSeFGateway, KSeFGateway>();
         services.AddSingleton<KSeFInvoiceXmlParser>();
+        services.AddSingleton<IFa3InvoiceWriter, Fa3InvoiceWriter>();
 
         services.Configure<TenantSyncOptions>(
             configuration.GetSection(TenantSyncOptions.SectionName));
