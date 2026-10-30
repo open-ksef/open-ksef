@@ -6,6 +6,11 @@ public sealed class IssuedInvoice
     public const string Currency = "PLN";
     public const int DefaultPaymentDays = 14;
 
+    private static readonly TimeZoneInfo PolandTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Warsaw");
+
+    public static DateOnly PolandDate(DateTimeOffset utcNow) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(utcNow, PolandTimeZone).DateTime);
+
     private readonly List<IssuedInvoiceLine> _lines = [];
 
     public Guid Id { get; private set; }

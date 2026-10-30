@@ -160,6 +160,8 @@ builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ITransferDetailsService, TransferDetailsService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<ISellerProfileService, SellerProfileService>();
 
 // Email
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
