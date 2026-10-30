@@ -115,7 +115,7 @@ if ($hasCred) {
 
 # ── 4. Trigger sync ──────────────────────────────────────────────────
 # KSeF TEST allows 20 metadata queries/hour; skip if the worker (or a previous run) synced within the hour.
-$summary = Invoke-RestMethod -Uri "$ApiBaseUrl/api/dashboard" -Headers $authHeaders -Method Get |
+$summary = (Invoke-RestMethod -Uri "$ApiBaseUrl/api/dashboard" -Headers $authHeaders -Method Get) |
     Where-Object { $_.tenantId -eq $tenantId }
 $recentSync = $summary.lastSuccessfulSync -and ([datetime]$summary.lastSuccessfulSync).ToUniversalTime() -gt (Get-Date).ToUniversalTime().AddHours(-1)
 $syncFailed = $false
@@ -132,15 +132,19 @@ if ($SkipSync) {
         Write-Host "  [OK] Sync complete: fetched=$($syncResult.fetchedInvoices), new=$($syncResult.newInvoices)" -ForegroundColor Green
     } catch {
         $syncFailed = $true
-        $detail = if ($_.ErrorDetails) { $_.ErrorDetails.Message } else { "$_" }
-        Write-Warning "Sync failed: $detail"
-        if ($detail -match '429|limit') {
-            Write-Warning "KSeF TEST rate limit (20 metadata queries/hour). Wait up to 1 hour, then re-run: powershell -File scripts/setup-test-data.ps1"
+        $response = if ($_.Exception.PSObject.Properties['Response']) { $_.Exception.Response }
+        $status = if ($response) { [int]$response.StatusCode } else { 0 }
+        $detail = if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $_.ErrorDetails.Message }
+            elseif ($response -is [System.Net.WebResponse]) { (New-Object System.IO.StreamReader($response.GetResponseStream())).ReadToEnd() }
+            else { "$_" }
+        Write-Warning "Sync failed (HTTP $status): $detail"
+        if ($status -in 429, 502 -or $detail -match '429|limit') {
+            Write-Warning "Possible KSeF TEST rate limit (20 metadata queries/hour). Wait up to 1 hour, then re-run: powershell -File scripts/setup-test-data.ps1"
         }
     }
 }
 
-$invoiceCount = (Invoke-RestMethod -Uri "$ApiBaseUrl/api/dashboard" -Headers $authHeaders -Method Get |
+$invoiceCount = ((Invoke-RestMethod -Uri "$ApiBaseUrl/api/dashboard" -Headers $authHeaders -Method Get) |
     Where-Object { $_.tenantId -eq $tenantId }).totalInvoices
 
 if ($syncFailed -or $invoiceCount -eq 0) {
@@ -149,3 +153,4 @@ if ($syncFailed -or $invoiceCount -eq 0) {
 }
 
 Write-Host "`n[test-data] Done. Tenant '$testNip' is ready for testing ($invoiceCount invoices).`n" -ForegroundColor Green
+exit 0

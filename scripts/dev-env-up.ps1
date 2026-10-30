@@ -271,6 +271,9 @@ $setupScript = Join-Path $PSScriptRoot 'setup-test-data.ps1'
 if (Test-Path $setupScript) {
     Write-Host ""
     & $setupScript
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Test data setup incomplete (exit $LASTEXITCODE). Re-run: powershell -File scripts/setup-test-data.ps1"
+    }
 }
 
 # ── 9. Summary ────────────────────────────────────────────────────────
