@@ -20,14 +20,17 @@ public class Fa3InvoiceWriterTests
         string? bankAccount = Nrb,
         string sellerNip = SellerNip,
         string buyerNip = BuyerNip,
-        string number = "FV/1/11/2026")
+        string number = "FV/1/11/2026",
+        Guid? tenantId = null,
+        DateTime? now = null)
     {
-        var invoice = IssuedInvoice.Draft(Guid.NewGuid(), Guid.NewGuid(), Day, Now);
+        var at = now ?? Now;
+        var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId ?? Guid.NewGuid(), DateOnly.FromDateTime(at), at);
         invoice.SetBuyer(BuyerKind.Company, buyerNip, "Nabywca sp. z o.o.", "ul. Długa 2", "00-002 Warszawa");
         configure(invoice);
         var profile = new SellerProfile(invoice.TenantId);
         profile.Update("Sprzedawca sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", bankAccount, cashAccounting, InvoiceNumbering.DefaultPattern);
-        invoice.Issue(profile, sellerNip, number, Now);
+        invoice.Issue(profile, sellerNip, number, at);
         return invoice;
     }
 
