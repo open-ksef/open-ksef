@@ -24,6 +24,12 @@
   gap: 24px;
 }
 
+.inv-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
 .invoicing .visually-hidden {
   position: absolute;
   width: 1px;
@@ -346,7 +352,7 @@ fieldset.inv-card {
   cursor: pointer;
 }
 
-.inv-tabs button[aria-selected='true'] {
+.inv-tabs button[aria-pressed='true'] {
   color: var(--ui-primary);
   border-bottom-color: var(--ui-primary);
 }

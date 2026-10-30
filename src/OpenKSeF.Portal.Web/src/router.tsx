@@ -9,7 +9,9 @@ import { CredentialListPage } from '@/pages/CredentialList'
 import { DashboardPage } from '@/pages/Dashboard'
 import { DeviceListPage } from '@/pages/DeviceList'
 import { InvoiceDetailsPage } from '@/pages/InvoiceDetails'
+import { InvoiceDraftPage } from '@/pages/InvoiceDraft'
 import { InvoiceListPage } from '@/pages/InvoiceList'
+import { IssuedInvoiceListPage } from '@/pages/IssuedInvoiceList'
 import { LoginPage } from '@/pages/Login'
 import { MobileSetupPage } from '@/pages/MobileSetup'
 import { NotFoundPage } from '@/pages/NotFound'
@@ -30,6 +32,9 @@ export const appRoutes: RouteObject[] = [
       { index: true, element: <DashboardPage /> },
       { path: 'invoices', element: <InvoiceListPage /> },
       { path: 'invoices/:ksefInvoiceNumber', element: <InvoiceDetailsPage /> },
+      { path: 'issued', element: <IssuedInvoiceListPage /> },
+      { path: 'issued/new', element: <InvoiceDraftPage /> },
+      { path: 'issued/:id/edit', element: <InvoiceDraftPage /> },
       { path: 'tenants', element: <TenantListPage /> },
       { path: 'credentials', element: <CredentialListPage /> },
       { path: 'devices', element: <DeviceListPage /> },

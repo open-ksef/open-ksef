@@ -6,6 +6,7 @@ import { useAuth } from '@/auth/useAuth'
 const navItems = [
   { to: '/', label: 'Pulpit', icon: '⊞', end: true },
   { to: '/invoices', label: 'Faktury', icon: '≡' },
+  { to: '/issued', label: 'Wystawione', icon: '✎' },
   { to: '/tenants', label: 'Firmy', icon: '◉' },
   { to: '/credentials', label: 'Dane logowania', icon: '⚿' },
   { to: '/devices', label: 'Urządzenia', icon: '◈' },

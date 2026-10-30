@@ -51,7 +51,7 @@ export function NipLookupField({ id, value, onChange, onFound, serverError, requ
           type="text"
           inputMode="numeric"
           autoComplete="off"
-          required={required}
+          aria-required={required}
           value={value}
           aria-invalid={error ? 'true' : 'false'}
           aria-describedby={[error ? errorId : null, state.kind !== 'idle' ? statusId : null].filter(Boolean).join(' ') || undefined}

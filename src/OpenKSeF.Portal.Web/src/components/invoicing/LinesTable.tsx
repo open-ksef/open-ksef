@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 
 import { emptyLine, parseDecimal, type InvoiceLineFormValue } from '@/invoicing/form'
 import { formatMoney } from '@/invoicing/format'
@@ -9,9 +9,10 @@ interface LinesTableProps {
   lines: InvoiceLineFormValue[]
   onChange: (lines: InvoiceLineFormValue[]) => void
   fieldErrors?: Record<string, string>
+  children?: ReactNode
 }
 
-export function LinesTable({ lines, onChange, fieldErrors = {} }: LinesTableProps): ReactElement {
+export function LinesTable({ lines, onChange, fieldErrors = {}, children }: LinesTableProps): ReactElement {
   const { lineNet } = computeTotals(
     lines.map((line) => ({ quantity: parseDecimal(line.quantity), unitNetPrice: parseDecimal(line.unitNetPrice), vatRate: line.vatRate })),
   )
@@ -116,7 +117,9 @@ export function LinesTable({ lines, onChange, fieldErrors = {} }: LinesTableProp
           + Dodaj pozycję
         </button>
       </div>
+      {fieldErrors.lines ? <span className="inv-field-error">{fieldErrors.lines}</span> : null}
       <p className="inv-help">VAT w wierszu jest poglądowy. Podatek liczymy od sumy netto w każdej stawce.</p>
+      {children}
     </section>
   )
 }
