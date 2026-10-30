@@ -133,19 +133,22 @@ The script copies `.env.test` to `.env` if missing. `.env.test` contains determi
 
 | Item | Value |
 |------|-------|
-| NIP | `E2E_TEST_NIP` in `.env.test` (team KSeF TEST company: `6852305288`) |
+| NIP | `E2E_TEST_NIP` in `.env.test` (team KSeF TEST company; same value as `KSEF_TEST_NIP`, never commit it) |
 | KSeF token | `E2E_TEST_KSEF_TOKEN` in `.env.test` (gitignored; KSeF TEST token for that NIP, ask the team, never commit) |
 | KSeF environment | `KSEF_BASE_URL=test` -> KSeF.Client `KsefEnvironmentsUris.TEST` (`https://api-test.ksef.mf.gov.pl/v2`) |
 | First-sync lookback | `Sync__InitialSyncMonthsBack` = `SYNC_INITIAL_MONTHS_BACK` (dev default 12 months) |
 
 Both `E2E_TEST_NIP` and `E2E_TEST_KSEF_TOKEN` must be set, otherwise provisioning is skipped.
-Sync imports only received (buyer, `Subject2`) invoices; for `6852305288` that is 2 invoices, 1 with `NrRB`.
+Sync imports only received (buyer, `Subject2`) invoices.
+
+KSeF TEST rate limit: 20 `invoices/query/metadata` requests per hour per NIP. A first sync with a 12-month lookback uses 4+ of them (3-month windows plus paging), and every `dev-env-up` re-run restarts the worker, which syncs on startup. The script skips its own sync when the tenant synced successfully within the last hour. On 429 (`Przekroczono limit 20 żądań na godzinę`) the script prints `PARTIAL` and exits 1: wait for the window to reset, then run `powershell -File scripts/setup-test-data.ps1` once. Do not loop it.
 
 The script is **idempotent** -- re-running skips existing data. It:
 1. Authenticates as `testuser` via OIDC direct-access grant
 2. Creates tenant with the test NIP if missing
 3. Adds KSeF credentials (token) to the tenant if missing (to rotate the token, delete the credential in the portal first)
-4. Triggers invoice sync from KSeF test (incremental after the first run)
+4. Triggers invoice sync from KSeF test (incremental after the first run; skipped if synced within the last hour or with `-SkipSync`)
+5. Exits 1 with a `PARTIAL` summary if the sync failed or the tenant has 0 invoices
 
 Run standalone: `./scripts/setup-test-data.ps1` (requires Docker stack + test user)
 

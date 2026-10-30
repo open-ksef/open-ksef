@@ -114,8 +114,16 @@ if ($hasCred) {
 }
 
 # ── 4. Trigger sync ──────────────────────────────────────────────────
+# KSeF TEST allows 20 metadata queries/hour; skip if the worker (or a previous run) synced within the hour.
+$summary = Invoke-RestMethod -Uri "$ApiBaseUrl/api/dashboard" -Headers $authHeaders -Method Get |
+    Where-Object { $_.tenantId -eq $tenantId }
+$recentSync = $summary.lastSuccessfulSync -and ([datetime]$summary.lastSuccessfulSync).ToUniversalTime() -gt (Get-Date).ToUniversalTime().AddHours(-1)
+$syncFailed = $false
+
 if ($SkipSync) {
     Write-Host "  [skip] Sync skipped (-SkipSync)" -ForegroundColor Yellow
+} elseif ($recentSync) {
+    Write-Host "  [skip] Tenant synced at $($summary.lastSuccessfulSync) UTC (within the last hour)" -ForegroundColor Yellow
 } else {
     Write-Host "  [sync] Triggering manual sync ..." -ForegroundColor DarkGray
     try {
@@ -123,8 +131,21 @@ if ($SkipSync) {
             -Headers $authHeaders -Method Post
         Write-Host "  [OK] Sync complete: fetched=$($syncResult.fetchedInvoices), new=$($syncResult.newInvoices)" -ForegroundColor Green
     } catch {
-        Write-Warning "Sync failed (KSeF may be unavailable): $_"
+        $syncFailed = $true
+        $detail = if ($_.ErrorDetails) { $_.ErrorDetails.Message } else { "$_" }
+        Write-Warning "Sync failed: $detail"
+        if ($detail -match '429|limit') {
+            Write-Warning "KSeF TEST rate limit (20 metadata queries/hour). Wait up to 1 hour, then re-run: powershell -File scripts/setup-test-data.ps1"
+        }
     }
 }
 
-Write-Host "`n[test-data] Done. Tenant '$testNip' is ready for testing.`n" -ForegroundColor Green
+$invoiceCount = (Invoke-RestMethod -Uri "$ApiBaseUrl/api/dashboard" -Headers $authHeaders -Method Get |
+    Where-Object { $_.tenantId -eq $tenantId }).totalInvoices
+
+if ($syncFailed -or $invoiceCount -eq 0) {
+    Write-Host "`n[test-data] PARTIAL: tenant '$testNip' provisioned, $invoiceCount invoices. Sync did not complete.`n" -ForegroundColor Yellow
+    exit 1
+}
+
+Write-Host "`n[test-data] Done. Tenant '$testNip' is ready for testing ($invoiceCount invoices).`n" -ForegroundColor Green
