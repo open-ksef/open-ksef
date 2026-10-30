@@ -126,3 +126,62 @@ describe('dashboard endpoints', () => {
     expect(apiClientMock.get).toHaveBeenCalledWith('/dashboard')
   })
 })
+
+describe('issuing endpoints', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('calls issued-invoices, seller-profile and nip-lookup routes from the contract', async () => {
+    const issued = await import('./issuedInvoices')
+    const { getSellerProfile, updateSellerProfile } = await import('./sellerProfile')
+    const { lookupNip } = await import('./nipLookup')
+    const draft = {
+      buyer: null,
+      issueDate: '2026-11-03',
+      saleDate: null,
+      dueDate: null,
+      paymentMethod: null,
+      splitPayment: false,
+      exemptionBasis: null,
+      lines: [],
+    }
+
+    await issued.listIssuedInvoices('t-1', { page: 1, pageSize: 20, status: 'Draft' })
+    await issued.getIssuedInvoice('t-1', 'i-1')
+    await issued.createIssuedInvoice('t-1', draft)
+    await issued.updateIssuedInvoice('t-1', 'i-1', draft)
+    await issued.deleteIssuedInvoice('t-1', 'i-1')
+    await issued.issueIssuedInvoice('t-1', 'i-1')
+    await issued.copyIssuedInvoice('t-1', 'i-1')
+    await issued.getIssuedInvoiceXml('t-1', 'i-1')
+    await issued.getIssuedInvoiceUpo('t-1', 'i-1')
+    await getSellerProfile('t-1')
+    await updateSellerProfile('t-1', {
+      legalName: 'A',
+      addressLine1: null,
+      addressLine2: null,
+      bankAccount: null,
+      cashAccounting: false,
+      numberingPattern: 'FV/{nr}/{RRRR}',
+    })
+    await lookupNip('5260250274')
+
+    expect(apiClientMock.get.mock.calls).toEqual([
+      ['/tenants/t-1/issued-invoices', { query: { page: 1, pageSize: 20, status: 'Draft' } }],
+      ['/tenants/t-1/issued-invoices/i-1'],
+      ['/tenants/t-1/issued-invoices/i-1/xml'],
+      ['/tenants/t-1/issued-invoices/i-1/upo'],
+      ['/tenants/t-1/seller-profile'],
+      ['/nip-lookup/5260250274'],
+    ])
+    expect(apiClientMock.post.mock.calls).toEqual([
+      ['/tenants/t-1/issued-invoices', draft],
+      ['/tenants/t-1/issued-invoices/i-1/issue'],
+      ['/tenants/t-1/issued-invoices/i-1/copy'],
+    ])
+    expect(apiClientMock.put.mock.calls[0][0]).toBe('/tenants/t-1/issued-invoices/i-1')
+    expect(apiClientMock.put.mock.calls[1][0]).toBe('/tenants/t-1/seller-profile')
+    expect(apiClientMock.delete).toHaveBeenCalledWith('/tenants/t-1/issued-invoices/i-1')
+  })
+})
