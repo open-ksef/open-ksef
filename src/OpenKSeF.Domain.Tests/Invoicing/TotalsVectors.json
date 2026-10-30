@@ -1,0 +1,59 @@
+[
+  {
+    "name": "per-rate VAT on summed net, not per line",
+    "lines": [
+      { "quantity": 1, "unitNetPrice": 0.33, "vatRate": "23", "netAmount": 0.33, "vatAmount": 0.08 },
+      { "quantity": 1, "unitNetPrice": 0.33, "vatRate": "23", "netAmount": 0.33, "vatAmount": 0.08 },
+      { "quantity": 1, "unitNetPrice": 0.33, "vatRate": "23", "netAmount": 0.33, "vatAmount": 0.08 }
+    ],
+    "vatSummary": [ { "vatRate": "23", "net": 0.99, "vat": 0.23 } ],
+    "totalNet": 0.99, "totalVat": 0.23, "totalGross": 1.22
+  },
+  {
+    "name": "two rates",
+    "lines": [
+      { "quantity": 1, "unitNetPrice": 100.00, "vatRate": "23", "netAmount": 100.00, "vatAmount": 23.00 },
+      { "quantity": 1, "unitNetPrice": 100.00, "vatRate": "8", "netAmount": 100.00, "vatAmount": 8.00 }
+    ],
+    "vatSummary": [ { "vatRate": "23", "net": 100.00, "vat": 23.00 }, { "vatRate": "8", "net": 100.00, "vat": 8.00 } ],
+    "totalNet": 200.00, "totalVat": 31.00, "totalGross": 231.00
+  },
+  {
+    "name": "0 KR has no VAT",
+    "lines": [ { "quantity": 1, "unitNetPrice": 50.00, "vatRate": "0 KR", "netAmount": 50.00, "vatAmount": 0.00 } ],
+    "vatSummary": [ { "vatRate": "0 KR", "net": 50.00, "vat": 0.00 } ],
+    "totalNet": 50.00, "totalVat": 0.00, "totalGross": 50.00
+  },
+  {
+    "name": "zw has no VAT",
+    "lines": [ { "quantity": 2, "unitNetPrice": 150.00, "vatRate": "zw", "netAmount": 300.00, "vatAmount": 0.00 } ],
+    "vatSummary": [ { "vatRate": "zw", "net": 300.00, "vat": 0.00 } ],
+    "totalNet": 300.00, "totalVat": 0.00, "totalGross": 300.00
+  },
+  {
+    "name": "fractional quantity, half away from zero on line net",
+    "lines": [ { "quantity": 0.125, "unitNetPrice": 0.20, "vatRate": "5", "netAmount": 0.03, "vatAmount": 0.00 } ],
+    "vatSummary": [ { "vatRate": "5", "net": 0.03, "vat": 0.00 } ],
+    "totalNet": 0.03, "totalVat": 0.00, "totalGross": 0.03
+  },
+  {
+    "name": "half grosz on group VAT rounds up",
+    "lines": [ { "quantity": 1, "unitNetPrice": 0.50, "vatRate": "5", "netAmount": 0.50, "vatAmount": 0.03 } ],
+    "vatSummary": [ { "vatRate": "5", "net": 0.50, "vat": 0.03 } ],
+    "totalNet": 0.50, "totalVat": 0.03, "totalGross": 0.53
+  },
+  {
+    "name": "mixed rates, order follows rate list",
+    "lines": [
+      { "quantity": 3, "unitNetPrice": 19.99, "vatRate": "8", "netAmount": 59.97, "vatAmount": 4.80 },
+      { "quantity": 1.5, "unitNetPrice": 33.33, "vatRate": "23", "netAmount": 50.00, "vatAmount": 11.50 },
+      { "quantity": 1, "unitNetPrice": 10.00, "vatRate": "zw", "netAmount": 10.00, "vatAmount": 0.00 }
+    ],
+    "vatSummary": [
+      { "vatRate": "23", "net": 50.00, "vat": 11.50 },
+      { "vatRate": "8", "net": 59.97, "vat": 4.80 },
+      { "vatRate": "zw", "net": 10.00, "vat": 0.00 }
+    ],
+    "totalNet": 119.97, "totalVat": 16.30, "totalGross": 136.27
+  }
+]

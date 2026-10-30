@@ -122,10 +122,10 @@ public class IssuingContractSerializationTests
     public void ValidationEnvelope_MatchesContract()
     {
         var envelope = new ValidationEnvelope(
-            [new ValidationIssue("INV-VAL-020", "buyer.nip", "Dla nabywcy firmy wymagany jest poprawny NIP")], []);
+            [new ValidationIssue("INV-VAL-013", "buyer.nip", "Dla nabywcy firmy wymagany jest poprawny NIP")], []);
 
         AssertJson(envelope, """
-            { "errors": [ { "code": "INV-VAL-020", "field": "buyer.nip", "message": "Dla nabywcy firmy wymagany jest poprawny NIP" } ], "warnings": [] }
+            { "errors": [ { "code": "INV-VAL-013", "field": "buyer.nip", "message": "Dla nabywcy firmy wymagany jest poprawny NIP" } ], "warnings": [] }
             """);
     }
 }

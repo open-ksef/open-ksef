@@ -42,4 +42,18 @@ public class NipValidatorTests
     {
         Assert.Equal(expected, NipValidator.Normalize(input));
     }
+
+    [Theory]
+    [InlineData("5261040828", true)]
+    [InlineData("526-104-08-28", true)]
+    [InlineData("1234563218", true)]
+    [InlineData("1234567890", false)]
+    [InlineData("5261040829", false)]
+    [InlineData("123456789", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void HasValidChecksum_ChecksMod11(string? nip, bool expected)
+    {
+        Assert.Equal(expected, NipValidator.HasValidChecksum(nip));
+    }
 }

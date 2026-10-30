@@ -63,7 +63,7 @@ Cross-tenant on any route returns 404.
   "issueDate": "2026-11-03", "totalGross": 123.00, "currency": "PLN", "ksefNumber": "..." }
 
 // ValidationEnvelope (400/422)
-{ "errors": [ { "code": "INV-VAL-020", "field": "buyer.nip", "message": "Dla nabywcy firmy wymagany jest poprawny NIP" } ], "warnings": [] }
+{ "errors": [ { "code": "INV-VAL-013", "field": "buyer.nip", "message": "Dla nabywcy firmy wymagany jest poprawny NIP" } ], "warnings": [] }
 ```
 
 Totals rule for client previews (they must equal the server; shared vectors in `Domain.Tests/Invoicing/TotalsVectors.json`, copied to portal and mobile tests):
@@ -72,3 +72,26 @@ Totals rule for client previews (they must equal the server; shared vectors in `
 - Line `vatAmount` is for display only.
 - Vectors: 3 x 0,33 @23 -> 0,99 / 0,23 / 1,22; 100 @23 + 100 @8 -> 231,00; 50 @`0 KR` -> vat 0.
 
+
+## Validation codes
+
+Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (never block). Source: `src/OpenKSeF.Domain/Invoicing/IssueChecks.cs`.
+
+| Code | Field | Message |
+|---|---|---|
+| INV-VAL-002 | `lines` | Faktura musi zawierać co najmniej jedną pozycję |
+| INV-VAL-010 | `seller.name` | Uzupełnij nazwę firmy w danych do faktur |
+| INV-VAL-011 | `seller.addressLine1` | Uzupełnij adres firmy w danych do faktur |
+| INV-VAL-012 | `seller.bankAccount` | Uzupełnij numer rachunku w danych firmy (przelew only) |
+| INV-VAL-013 | `buyer.nip` | Dla nabywcy firmy wymagany jest poprawny NIP |
+| INV-VAL-014 | `buyer.nip` | Dla osoby prywatnej nie podawaj NIP |
+| INV-VAL-015 | `buyer.name` | Uzupełnij nazwę nabywcy |
+| INV-VAL-016 | `buyer.addressLine1` | Uzupełnij adres nabywcy |
+| INV-VAL-021 | `dueDate` | Termin płatności jest wcześniejszy niż data wystawienia |
+| INV-VAL-050 | `lines[i].name` | Każda pozycja musi mieć nazwę |
+| INV-VAL-051 | `lines[i].quantity` | Ilość na pozycji musi być większa od zera |
+| INV-VAL-052 | `lines[i].unitNetPrice` | Cena netto nie może być ujemna |
+| INV-VAL-060 | `lines[i].vatRate` | Dozwolone stawki VAT: 23, 8, 5, 0 KR, zw |
+| INV-VAL-061 | `exemptionBasis` | Podaj podstawę zwolnienia z VAT |
+| INV-W-NIP | `buyer.nip` | NIP nabywcy ma niepoprawną sumę kontrolną (warning) |
+| INV-W-MPP | `splitPayment` | Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15) (warning, gross > 15 000,00) |
