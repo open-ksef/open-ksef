@@ -84,7 +84,9 @@ builder.Services.AddWorkerDomainServices(builder.Configuration);
 // Worker-specific sync options
 builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection(SyncOptions.SectionName));
 
+builder.Services.AddSingleton<KSeFRuntimeConfig>();
 builder.Services.AddHostedService<InvoiceSyncService>();
+builder.Services.AddHostedService<IssuedInvoiceSendService>();
 
 var host = builder.Build();
 

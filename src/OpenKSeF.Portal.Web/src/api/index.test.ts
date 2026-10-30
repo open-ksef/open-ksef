@@ -16,5 +16,8 @@ describe('api index exports', () => {
     expect(api.credentials.listCredentials).toBeTypeOf('function')
     expect(api.devices.listDevices).toBeTypeOf('function')
     expect(api.dashboard.getDashboardOverview).toBeTypeOf('function')
+    expect(api.issuedInvoices.listIssuedInvoices).toBeTypeOf('function')
+    expect(api.sellerProfile.getSellerProfile).toBeTypeOf('function')
+    expect(api.nipLookup.lookupNip).toBeTypeOf('function')
   })
 })

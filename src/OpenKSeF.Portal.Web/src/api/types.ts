@@ -121,3 +121,169 @@ export interface TenantDashboardSummaryResponse {
   invoicesLast30Days: number
   syncStatus: 'Success' | 'Warning' | 'Error' | string
 }
+
+export type KsefEnvironment = 'test' | 'demo' | 'production'
+
+export type VatRateCode = '23' | '8' | '5' | '0 KR' | 'zw'
+
+export type BuyerKind = 'Company' | 'Person'
+
+export type PaymentMethod = 'Transfer' | 'Cash' | 'Card'
+
+export type ExemptionBasisKind = 'Act' | 'Directive' | 'Other'
+
+export type IssuedInvoiceStatus = 'Draft' | 'Sending' | 'Accepted' | 'Rejected'
+
+export interface ValidationIssue {
+  code: string
+  field: string | null
+  message: string
+}
+
+export interface ValidationEnvelope {
+  errors: ValidationIssue[]
+  warnings: ValidationIssue[]
+}
+
+export interface SellerProfileRequest {
+  legalName: string | null
+  addressLine1: string | null
+  addressLine2: string | null
+  bankAccount: string | null
+  cashAccounting: boolean
+  numberingPattern: string | null
+  nextNumber?: number | null
+  nextNumberPeriod?: string | null
+}
+
+export interface SellerProfileResponse {
+  legalName: string | null
+  addressLine1: string | null
+  addressLine2: string | null
+  bankAccount: string | null
+  cashAccounting: boolean
+  numberingPattern: string
+  nextNumber: number
+  nextNumberPeriod: string
+  nip: string
+  isComplete: boolean
+  nextNumberPreview: string
+  ksefEnvironment: KsefEnvironment
+}
+
+export interface NipLookupResponse {
+  nip: string
+  name: string
+  addressLine1: string | null
+  addressLine2: string | null
+  vatStatus: string
+  bankAccounts: string[]
+}
+
+export interface IssuedInvoiceBuyer {
+  kind: BuyerKind
+  nip: string | null
+  name: string | null
+  addressLine1: string | null
+  addressLine2: string | null
+}
+
+export interface ExemptionBasis {
+  kind: ExemptionBasisKind
+  text: string | null
+}
+
+export interface IssuedInvoiceLineRequest {
+  name: string | null
+  unit: string | null
+  quantity: number
+  unitNetPrice: number
+  vatRate: VatRateCode | null
+}
+
+export interface IssuedInvoiceDraftRequest {
+  buyer: IssuedInvoiceBuyer | null
+  issueDate: string | null
+  saleDate: string | null
+  dueDate: string | null
+  paymentMethod: PaymentMethod | null
+  splitPayment: boolean
+  exemptionBasis: ExemptionBasis | null
+  lines: IssuedInvoiceLineRequest[] | null
+}
+
+export interface IssuedInvoiceSeller {
+  nip: string
+  name: string | null
+  addressLine1: string | null
+  addressLine2: string | null
+  bankAccount: string | null
+  cashAccounting: boolean
+}
+
+export interface IssuedInvoiceLineResponse {
+  lineNo: number
+  name: string
+  unit: string
+  quantity: number
+  unitNetPrice: number
+  vatRate: VatRateCode
+  netAmount: number
+  vatAmount: number
+}
+
+export interface VatSummaryRow {
+  vatRate: VatRateCode
+  net: number
+  vat: number
+}
+
+export interface IssuedInvoiceKsef {
+  environment: KsefEnvironment
+  ksefNumber: string | null
+  acceptedAt: string | null
+  statusCode: number | null
+  statusMessage: string | null
+  lastError: string | null
+  verificationUrl: string | null
+  hasUpo: boolean
+}
+
+export interface IssuedInvoiceResponse {
+  id: string
+  status: IssuedInvoiceStatus
+  number: string | null
+  seller: IssuedInvoiceSeller
+  buyer: IssuedInvoiceBuyer
+  issueDate: string
+  saleDate: string
+  dueDate: string
+  paymentMethod: PaymentMethod
+  splitPayment: boolean
+  exemptionBasis: ExemptionBasis | null
+  lines: IssuedInvoiceLineResponse[]
+  vatSummary: VatSummaryRow[]
+  totalNet: number
+  totalVat: number
+  totalGross: number
+  currency: string
+  ksef: IssuedInvoiceKsef
+  warnings: ValidationIssue[]
+  createdAt: string
+  updatedAt: string
+  issuedAt: string | null
+}
+
+export interface IssuedInvoiceListItemResponse {
+  id: string
+  status: IssuedInvoiceStatus
+  number: string | null
+  buyerName: string | null
+  buyerNip: string | null
+  issueDate: string
+  dueDate: string
+  totalNet: number
+  totalGross: number
+  currency: string
+  ksefNumber: string | null
+}

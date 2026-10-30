@@ -1,3 +1,5 @@
+import type { ValidationEnvelope } from './types'
+
 const DEFAULT_MESSAGES: Record<number, string> = {
   400: 'Bad Request',
   401: 'Unauthorized',
@@ -47,6 +49,21 @@ export async function normalizeError(input: unknown): Promise<ApiError> {
   }
 
   return new ApiError(getDefaultMessage(500), 500, input)
+}
+
+export async function readValidationEnvelope(error: unknown): Promise<ValidationEnvelope | null> {
+  if (!(error instanceof ApiError) || !(error.originalError instanceof Response)) {
+    return null
+  }
+
+  try {
+    const parsed = (await error.originalError.clone().json()) as Partial<ValidationEnvelope>
+    return Array.isArray(parsed.errors)
+      ? { errors: parsed.errors, warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [] }
+      : null
+  } catch {
+    return null
+  }
 }
 
 function isAbortError(input: unknown): boolean {
