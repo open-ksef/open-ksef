@@ -12,6 +12,8 @@ interface NipLookupFieldProps {
   onFound: (result: NipLookupResponse) => void
   serverError?: string
   required?: boolean
+  label?: string
+  readOnly?: boolean
 }
 
 type LookupState =
@@ -23,7 +25,16 @@ type LookupState =
 
 const timeFormat = new Intl.DateTimeFormat('pl-PL', { dateStyle: 'short', timeStyle: 'short' })
 
-export function NipLookupField({ id, value, onChange, onFound, serverError, required }: NipLookupFieldProps): ReactElement {
+export function NipLookupField({
+  id,
+  value,
+  onChange,
+  onFound,
+  serverError,
+  required,
+  label = 'NIP nabywcy',
+  readOnly,
+}: NipLookupFieldProps): ReactElement {
   const [state, setState] = useState<LookupState>({ kind: 'idle' })
   const valid = isValidNip(value)
   const localError = value.length > 0 && !valid ? 'Niepoprawny NIP (suma kontrolna)' : null
@@ -44,7 +55,7 @@ export function NipLookupField({ id, value, onChange, onFound, serverError, requ
 
   return (
     <div className="ui-form-group">
-      <label htmlFor={id}>NIP nabywcy</label>
+      <label htmlFor={id}>{label}</label>
       <div className="inv-input-group">
         <input
           id={id}
@@ -52,6 +63,7 @@ export function NipLookupField({ id, value, onChange, onFound, serverError, requ
           inputMode="numeric"
           autoComplete="off"
           aria-required={required}
+          readOnly={readOnly}
           value={value}
           aria-invalid={error ? 'true' : 'false'}
           aria-describedby={[error ? errorId : null, state.kind !== 'idle' ? statusId : null].filter(Boolean).join(' ') || undefined}

@@ -356,3 +356,14 @@ fieldset.inv-card {
   color: var(--ui-primary);
   border-bottom-color: var(--ui-primary);
 }
+
+.inv-check .inv-help {
+  display: block;
+}
+
+.inv-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(520px, 100%), 1fr));
+  gap: 24px;
+  align-items: start;
+}

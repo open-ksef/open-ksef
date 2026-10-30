@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactElement } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { createIssuedInvoice, getIssuedInvoice, updateIssuedInvoice } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
@@ -64,6 +64,8 @@ export function InvoiceDraftPage(): ReactElement {
         />
       ) : loading || !profileQuery.data ? (
         <Skeleton lines={8} />
+      ) : !id && !profileQuery.data.isComplete ? (
+        <Navigate to={`/seller-profile?tenantId=${encodeURIComponent(tenantId)}&next=new`} replace />
       ) : invoiceQuery.data && !EDITABLE.includes(invoiceQuery.data.status) ? (
         <div className="inv-alert inv-alert--info" role="status">
           Ta faktura została wysłana do KSeF i nie można jej edytować.

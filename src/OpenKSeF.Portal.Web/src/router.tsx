@@ -15,6 +15,7 @@ import { IssuedInvoiceListPage } from '@/pages/IssuedInvoiceList'
 import { LoginPage } from '@/pages/Login'
 import { MobileSetupPage } from '@/pages/MobileSetup'
 import { NotFoundPage } from '@/pages/NotFound'
+import { SellerProfilePage } from '@/pages/SellerProfile'
 import { SettingsPage } from '@/pages/Settings'
 import { OnboardingPage } from '@/pages/Onboarding'
 import { SilentCallbackPage } from '@/pages/SilentCallback'
@@ -35,6 +36,7 @@ export const appRoutes: RouteObject[] = [
       { path: 'issued', element: <IssuedInvoiceListPage /> },
       { path: 'issued/new', element: <InvoiceDraftPage /> },
       { path: 'issued/:id/edit', element: <InvoiceDraftPage /> },
+      { path: 'seller-profile', element: <SellerProfilePage /> },
       { path: 'tenants', element: <TenantListPage /> },
       { path: 'credentials', element: <CredentialListPage /> },
       { path: 'devices', element: <DeviceListPage /> },
