@@ -72,7 +72,7 @@ function Update-KeycloakClientRedirects {
     $current = @($clients[0].redirectUris)
 
     $merged = @($current) + @($RedirectUris) | Select-Object -Unique
-    $payload = @{ redirectUris = $merged; webOrigins = @('*') } | ConvertTo-Json
+    $payload = @{ redirectUris = $merged; webOrigins = @('+') } | ConvertTo-Json
 
     Invoke-RestMethod -Uri "$KcBaseUrl/auth/admin/realms/$Realm/clients/$id" `
         -Headers $headers -Method Put -Body $payload | Out-Null
