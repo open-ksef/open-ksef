@@ -30,6 +30,7 @@ public sealed class IssuedInvoiceSendProcessor(
     public const string EnvironmentChangedMessage = "Środowisko KSeF zmienione";
     public const string InvalidTokenMessage = "KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.";
     public const string NumberTakenMessage = "Ten numer faktury jest już użyty w KSeF przez inny dokument. Poprawka nie pomoże: wystaw fakturę pod nowym numerem.";
+    public const string DuplicateUnresolvedMessage = "Nie można jeszcze potwierdzić wyniku wysyłki w KSeF. Wcześniejsza próba mogła zostać przyjęta, więc faktura czeka na wyjaśnienie i sprawdzimy ją ponownie.";
     public const string MissingTokenMessage = "Wysyłka faktur wymaga tokenu KSeF w ustawieniach firmy";
     public const string MissingXmlMessage = "Brak zapisanego XML faktury";
     public const string UpoPendingMessage = "UPO jeszcze niedostępne, ponowimy pobranie";
@@ -39,7 +40,6 @@ public sealed class IssuedInvoiceSendProcessor(
     private static readonly TimeSpan UpoRetry = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan MinPoll = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan MaxPoll = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan DuplicateSettle = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan LoginCap = TimeSpan.FromSeconds(70);
 
     public async Task ProcessAsync(string currentEnvironment, CancellationToken ct)
@@ -228,6 +228,12 @@ public sealed class IssuedInvoiceSendProcessor(
             return;
         }
 
+        if (status is { Code: 405 or >= 500 } && invoice.AttemptCount > 1)
+        {
+            await WaitForUnresolvedAsync(invoice, ct);
+            return;
+        }
+
         if (status is { Code: >= 400 })
         {
             invoice.MarkRejected(status.Code, status.Description ?? $"KSeF {status.Code}", Join(status.Details), Now());
@@ -239,10 +245,13 @@ public sealed class IssuedInvoiceSendProcessor(
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>A 440 means the number exists in KSeF, either as our own earlier attempt whose response was lost, or as another document.</summary>
+    /// <summary>
+    /// A 440 means the number exists in KSeF, either as our own earlier attempt whose response was lost, or as another document.
+    /// AttemptCount is saved before each POST, so with one attempt no earlier copy of ours can exist.
+    /// </summary>
     private async Task ResolveDuplicateAsync(IssuedInvoice invoice, KSeFSentInvoice duplicate, string accessToken, CancellationToken ct)
     {
-        var listed = duplicate.OriginalSessionRef is null ? [] : await ListOriginalSessionAsync(accessToken, duplicate.OriginalSessionRef, ct);
+        var listed = duplicate.OriginalSessionRef is null ? [] : await ListOriginalSessionAsync(invoice, accessToken, duplicate.OriginalSessionRef, ct);
         var hash = Convert.ToBase64String(SHA256.HashData(invoice.SentXml!));
         var original = listed.FirstOrDefault(s => s is { Code: KSeFSentInvoice.Accepted, KsefNumber: not null } && s.InvoiceHash == hash);
         if (original is not null)
@@ -256,24 +265,37 @@ public sealed class IssuedInvoiceSendProcessor(
         }
 
         var otherDocumentListed = duplicate.OriginalKsefNumber is not null && listed.Any(s => s.KsefNumber == duplicate.OriginalKsefNumber);
-        if (!otherDocumentListed && Now() - invoice.SendStartedAt!.Value < DuplicateSettle)
+        if (!otherDocumentListed && invoice.AttemptCount > 1)
         {
-            invoice.ScheduleRetry(null, Now().Add(PollDelay(invoice)), Now());
-            await db.SaveChangesAsync(ct);
+            await WaitForUnresolvedAsync(invoice, ct);
             return;
         }
 
-        invoice.MarkRejected(duplicate.Code, NumberTakenMessage, Join(duplicate.Details), Now());
+        invoice.MarkRejected(duplicate.Code, NumberTakenMessage, DuplicateDetails(duplicate), Now());
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task<IReadOnlyList<KSeFSentInvoice>> ListOriginalSessionAsync(string accessToken, string sessionRef, CancellationToken ct)
+    private async Task WaitForUnresolvedAsync(IssuedInvoice invoice, CancellationToken ct)
+    {
+        invoice.ScheduleRetry(DuplicateUnresolvedMessage, Now().Add(MaxBackoff), Now());
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static string? DuplicateDetails(KSeFSentInvoice duplicate)
+    {
+        var details = Join(duplicate.Details);
+        return duplicate.OriginalKsefNumber is not { } number || details?.Contains(number, StringComparison.Ordinal) == true
+            ? details
+            : Join([.. duplicate.Details, $"Numer KSeF: {number}"]);
+    }
+
+    private async Task<IReadOnlyList<KSeFSentInvoice>> ListOriginalSessionAsync(IssuedInvoice invoice, string accessToken, string sessionRef, CancellationToken ct)
     {
         try
         {
             return await submitter.ListInvoicesAsync(accessToken, sessionRef, ct);
         }
-        catch (KsefApiException e) when (e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound)
+        catch (KsefApiException e) when (e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound || (invoice.AttemptCount == 1 && !IsTransient(e, ct)))
         {
             logger.LogInformation("Original KSeF session {SessionRef} cannot be listed: {Error}", sessionRef, e.Message);
             return [];

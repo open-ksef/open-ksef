@@ -126,6 +126,38 @@ public class IssuedInvoicesApiTests : IDisposable
         invoice.MarkRejected(450, "Błąd weryfikacji semantyki", "P_2: niepoprawna wartość", now);
     }
 
+    private async Task SetPatternAsync(Guid tenantId, string pattern)
+    {
+        var profile = await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", new SellerProfileRequest(
+            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, pattern, null, null));
+        profile.EnsureSuccessStatusCode();
+    }
+
+    private async Task<Guid> SeedRejectedAsync(Guid tenantId, Action<IssuedInvoice>? reject = null)
+    {
+        var draft = await CreateDraftAsync(tenantId);
+        await IssueAsync(tenantId, draft.Id);
+        await MutateAsync(draft.Id, reject ?? MarkRejected);
+        return draft.Id;
+    }
+
+    private async Task AssertPeriodBlockedAsync(Guid tenantId, Guid id, string issueDate, string number)
+    {
+        var counters = await WithDbAsync(db => db.InvoiceNumberCounters.Where(c => c.TenantId == tenantId).OrderBy(c => c.Period).Select(c => c.Next).ToListAsync());
+        var response = await _client.PutAsJsonAsync($"{Base(tenantId)}/{id}", Draft(issueDate: issueDate, buyerName: "Nie zapisano"));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<ValidationEnvelope>())!.Errors.Single();
+        Assert.Equal(("INV-VAL-022", "issueDate"), (error.Code, error.Field));
+        Assert.Contains($"Numer {number} należy do okresu", error.Message);
+
+        var stored = await LoadAsync(id);
+        Assert.Equal(number, stored.Number);
+        Assert.Equal("Nabywca sp. z o.o.", stored.BuyerName);
+        Assert.Equal(new DateOnly(2026, 11, 3), stored.IssueDate);
+        Assert.Equal(counters, await WithDbAsync(db => db.InvoiceNumberCounters.Where(c => c.TenantId == tenantId).OrderBy(c => c.Period).Select(c => c.Next).ToListAsync()));
+    }
+
     private async Task<(Guid TenantId, Guid InvoiceId)> SeedForeignInvoiceAsync()
     {
         var tenantId = Guid.NewGuid();
@@ -437,6 +469,113 @@ public class IssuedInvoicesApiTests : IDisposable
         Assert.Null(stored.SendStartedAt);
         Assert.Contains("Poprawiony", System.Text.Encoding.UTF8.GetString(stored.SentXml!));
         Assert.Equal(2, await WithDbAsync(db => db.InvoiceNumberCounters.Where(c => c.TenantId == tenantId).Select(c => c.Next).SingleAsync()));
+    }
+
+    [Fact]
+    public async Task Rejected_IssueDateWithinNumberPeriod_SavedAndNumberStays()
+    {
+        var tenantId = await CreateTenantAsync();
+        var id = await SeedRejectedAsync(tenantId);
+
+        var update = await _client.PutAsJsonAsync($"{Base(tenantId)}/{id}", Draft(issueDate: "2026-11-02"));
+
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        var saved = (await update.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!;
+        Assert.Equal(new DateOnly(2026, 11, 2), saved.IssueDate);
+        Assert.Equal("FV/1/11/2026", saved.Number);
+    }
+
+    [Theory]
+    [InlineData("2026-12-05")]
+    [InlineData("2026-10-31")]
+    public async Task Rejected_IssueDateOutsideNumberPeriod_Returns422_ChangesNothing_ConsumesNoNumber(string issueDate)
+    {
+        var tenantId = await CreateTenantAsync();
+        var id = await SeedRejectedAsync(tenantId);
+
+        await AssertPeriodBlockedAsync(tenantId, id, issueDate, "FV/1/11/2026");
+    }
+
+    [Fact]
+    public async Task Rejected_YearlyPattern_IssueDateFreeWithinYear_NextYearReturns422()
+    {
+        var tenantId = await CreateTenantAsync();
+        await SetPatternAsync(tenantId, "{nr}/{RRRR}");
+        var id = await SeedRejectedAsync(tenantId);
+        Assert.Equal("1/2026", (await LoadAsync(id)).Number);
+
+        await AssertPeriodBlockedAsync(tenantId, id, "2027-01-02", "1/2026");
+
+        var update = await _client.PutAsJsonAsync($"{Base(tenantId)}/{id}", Draft(issueDate: "2026-02-10"));
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+    }
+
+    [Fact]
+    public async Task Rejected_PatternChangedAfterRejection_NumberAsIssuedDecides()
+    {
+        var tenantId = await CreateTenantAsync();
+        var id = await SeedRejectedAsync(tenantId);
+        await SetPatternAsync(tenantId, "{nr}/{RRRR}");
+
+        await AssertPeriodBlockedAsync(tenantId, id, "2026-12-05", "FV/1/11/2026");
+    }
+
+    [Fact]
+    public async Task Rejected_NumberPeriodSurvivesReissueAfterPatternChange()
+    {
+        var tenantId = await CreateTenantAsync();
+        var id = await SeedRejectedAsync(tenantId);
+        await SetPatternAsync(tenantId, "{nr}/{RRRR}");
+        await IssueAsync(tenantId, id);
+        await MutateAsync(id, MarkRejected);
+
+        await AssertPeriodBlockedAsync(tenantId, id, "2026-12-05", "FV/1/11/2026");
+    }
+
+    [Fact]
+    public async Task Draft_IssueDateChangesFreely_NumberComesFromPeriodAtIssue()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+
+        var update = await _client.PutAsJsonAsync($"{Base(tenantId)}/{draft.Id}", Draft(issueDate: "2025-03-15"));
+
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        Assert.Null((await update.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!.Number);
+        Assert.Equal("FV/1/03/2025", (await IssueAsync(tenantId, draft.Id)).Number);
+    }
+
+    [Fact]
+    public async Task Rejected440_Issue_Returns422_NothingSent_ViewNamesKsefNumber_CopyAllowed()
+    {
+        const string original = "5213456789-20261103-ABCDEF123456-AB";
+        var tenantId = await CreateTenantAsync();
+        var id = await SeedRejectedAsync(tenantId, invoice =>
+        {
+            MarkSending(invoice);
+            invoice.MarkRejected(440, IssuedInvoiceSendProcessor.NumberTakenMessage, $"Duplikat faktury; Numer KSeF: {original}", DateTime.UtcNow);
+        });
+        var before = await LoadAsync(id);
+
+        var response = await _client.PostAsync($"{Base(tenantId)}/{id}/issue", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<ValidationEnvelope>())!.Errors.Single();
+        Assert.Equal(("INV-VAL-023", "number"), (error.Code, error.Field));
+        Assert.Contains(original, error.Message);
+
+        var stored = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Rejected, stored.Status);
+        Assert.Null(stored.NextAttemptAt);
+        Assert.Equal(before.SentXml, stored.SentXml);
+        Assert.Equal(before.IssuedAt, stored.IssuedAt);
+        Assert.Equal(before.AttemptCount, stored.AttemptCount);
+
+        var view = (await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{id}"))!;
+        Assert.Equal(original, view.Ksef.DuplicateKsefNumber);
+        Assert.Null(view.Ksef.KsefNumber);
+
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsync($"{Base(tenantId)}/{id}/copy", null)).StatusCode);
     }
 
     [Fact]
@@ -823,6 +962,7 @@ public class IssuedInvoicesApiTests : IDisposable
         Assert.Equal("Błąd weryfikacji semantyki", rejected.Ksef.StatusMessage);
         Assert.Equal("P_2: niepoprawna wartość", rejected.Ksef.StatusDetails);
         Assert.Null(rejected.Ksef.KsefNumber);
+        Assert.Null(rejected.Ksef.DuplicateKsefNumber);
     }
 
     [Fact]

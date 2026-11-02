@@ -15,7 +15,7 @@ GET  /api/nip-lookup/{nip}                                  -> 200 NipLookupResp
 GET  /api/tenants/{tenantId}/issued-invoices?page=&pageSize=&status=&month=&q=   -> 200 PagedResult<IssuedInvoiceListItemResponse> | 400 ValidationEnvelope
 POST /api/tenants/{tenantId}/issued-invoices                IssuedInvoiceDraftRequest -> 201 IssuedInvoiceResponse | 400 ValidationEnvelope
 GET  /api/tenants/{tenantId}/issued-invoices/{id}           -> 200 IssuedInvoiceResponse
-PUT  /api/tenants/{tenantId}/issued-invoices/{id}           IssuedInvoiceDraftRequest -> 200 | 400 ValidationEnvelope | 409 (not Draft/Rejected)
+PUT  /api/tenants/{tenantId}/issued-invoices/{id}           IssuedInvoiceDraftRequest -> 200 | 400 ValidationEnvelope | 422 ValidationEnvelope (INV-VAL-022) | 409 (not Draft/Rejected)
 DELETE /api/tenants/{tenantId}/issued-invoices/{id}         -> 204 | 409 (not Draft)
 POST /api/tenants/{tenantId}/issued-invoices/{id}/issue     -> 202 IssuedInvoiceResponse (status Sending) | 200 if already Sending/Accepted | 422 ValidationEnvelope | 409 (number already used, concurrent change)
 POST /api/tenants/{tenantId}/issued-invoices/{id}/copy      -> 201 IssuedInvoiceResponse (new Draft, same buyer+lines, dates = today, no number) | 409 (source Sending)
@@ -38,12 +38,19 @@ The `ksef` block:
 - `lastError`: a retryable problem while the invoice stays Sending, or a missing UPO on an Accepted invoice.
 - `verificationUrl`: the KOD I link, only when Accepted. Built at issue time by KSeF.Client `IVerificationLinkService` from seller NIP, `issueDate` and the SHA-256 of the stored XML.
 - `hasUpo`: `upo` is downloadable.
+- `duplicateKsefNumber`: only on Rejected with code 440, when `statusDetails` holds a KSeF number: the document that already uses this invoice number. `ksefNumber` stays null.
 
 `xml` returns the exact bytes sent to KSeF. `xml` and `upo` return 409 with `{ "message": "..." }` when not available.
 
 Draft dates are optional in the request and never null in a response: `issueDate` defaults to today (Europe/Warsaw), `saleDate` to `issueDate`, `dueDate` to `issueDate` + 14 days.
 
 A draft or rejected invoice shows the current seller profile in `seller`; issuing stores a snapshot, and later responses show the snapshot. A rejected invoice keeps its number and cannot be deleted.
+
+A rejected invoice may change `issueDate` only within the period of its number, or PUT returns 422 `INV-VAL-022` and changes nothing. The period is stored when the number is assigned (month with `{MM}`, otherwise year), so a later pattern change has no effect. A number without a date token has no such limit. A draft has no number, so its date is free. The way to another period is copy.
+
+A rejected invoice with code 440 cannot be issued again: `issue` returns 422 `INV-VAL-023` and sends nothing, because KSeF holds that number for this seller and every resend returns 440. Copy stays available. A rejected invoice with any other code can be fixed and issued again under the same number.
+
+The send worker rejects on 440 only when a second document is certain: after one POST no earlier copy of ours exists, and after more POSTs the original must be listed with another hash. After more than one POST, an unresolved 440, status 405 or status 500 and above leaves the invoice in Sending with `lastError` and a re-check every 15 minutes; nothing is resent. Codes 410 to 450 stay final.
 
 Copy of an invoice in status Sending returns 409: the first document may still reach KSeF, so a copy could become a second tax document.
 
@@ -82,7 +89,7 @@ Numbering patterns must contain `{RRRR}` (`SP-VAL-007`), because the counter res
   "vatSummary": [ { "vatRate": "23", "net": 100.00, "vat": 23.00 } ],
   "totalNet": 100.00, "totalVat": 23.00, "totalGross": 123.00, "currency": "PLN",
   "ksef": { "environment": "test", "ksefNumber": null, "acceptedAt": null, "statusCode": null, "statusMessage": null, "statusDetails": null,
-            "lastError": null, "verificationUrl": null, "hasUpo": false },
+            "lastError": null, "verificationUrl": null, "hasUpo": false, "duplicateKsefNumber": null },
   "warnings": [ { "code": "INV-W-MPP", "field": "splitPayment", "message": "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)" } ],
   "createdAt": "2026-11-03T10:00:00Z", "updatedAt": "2026-11-03T10:00:00Z", "issuedAt": null }
 
@@ -118,6 +125,8 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | INV-VAL-016 | `buyer.addressLine1` | Uzupełnij adres nabywcy |
 | INV-VAL-020 | `issueDate` | Data wystawienia nie może być późniejsza niż dzisiejsza |
 | INV-VAL-021 | `dueDate` | Termin płatności jest wcześniejszy niż data wystawienia |
+| INV-VAL-022 | `issueDate` | Numer X należy do okresu 11/2026. Zostaw datę wystawienia w tym okresie albo użyj „Kopiuj jako nową”. Nowa faktura dostanie nowy numer, a ten pozostanie niewykorzystany. (rejected invoice PUT 422) |
+| INV-VAL-023 | `number` | Numer X jest już w KSeF, więc nie można go wysłać ponownie. Numer KSeF: Y. Sprawdź tę fakturę w KSeF. Jeśli to ta sama sprzedaż, nie wystawiaj jej ponownie. (issue 422; the KSeF number sentence only when known) |
 | INV-VAL-050 | `lines[i].name` | Każda pozycja musi mieć nazwę |
 | INV-VAL-051 | `lines[i].quantity` | Ilość na pozycji musi być większa od zera |
 | INV-VAL-052 | `lines[i].unitNetPrice` | Cena netto nie może być ujemna |

@@ -17,16 +17,9 @@ public sealed class KSeFInvoiceSubmitter(IKSeFClient client, ICryptographyServic
 {
     public async Task<string> LoginAsync(string nip, string ksefToken, CancellationToken ct = default)
     {
-        try
-        {
-            var login = await new AuthCoordinator(new RejectionAwareAuthClient(client)).AuthKsefTokenAsync(
-                AuthenticationTokenContextIdentifierType.Nip, nip, ksefToken, cryptography, EncryptionMethodEnum.Rsa, cancellationToken: ct);
-            return login.AccessToken.Token;
-        }
-        catch (KsefApiException e) when (e.StatusCode == HttpStatusCode.Unauthorized)
-        {
-            throw new KSeFAuthRejectedException((int)e.StatusCode, e.Message);
-        }
+        var login = await new AuthCoordinator(new RejectionAwareAuthClient(client)).AuthKsefTokenAsync(
+            AuthenticationTokenContextIdentifierType.Nip, nip, ksefToken, cryptography, EncryptionMethodEnum.Rsa, cancellationToken: ct);
+        return login.AccessToken.Token;
     }
 
     /// <summary>Auth status 4xx is final; KSeF reports 5xx as "try again".</summary>

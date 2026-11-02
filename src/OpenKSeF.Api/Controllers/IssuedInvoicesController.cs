@@ -76,6 +76,7 @@ public class IssuedInvoicesController(
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<IActionResult> Update(Guid tenantId, Guid id, IssuedInvoiceDraftRequest request, CancellationToken ct) =>
@@ -164,7 +165,7 @@ public class IssuedInvoicesController(
         catch (InvoiceValidationException e)
         {
             var envelope = new ValidationEnvelope(e.Errors.Select(c => new ValidationIssue(c.Code, c.Field, c.Message)).ToList(), []);
-            return StatusCode(validationStatus, envelope);
+            return StatusCode(e.Errors.Any(c => c.Code == IssueChecks.NumberPeriodCode) ? StatusCodes.Status422UnprocessableEntity : validationStatus, envelope);
         }
         catch (InvoiceStateException e)
         {
@@ -221,7 +222,8 @@ public class IssuedInvoicesController(
                 invoice.KsefStatusDetails,
                 invoice.LastError,
                 invoice.Status == IssuedInvoiceStatus.Accepted ? invoice.VerificationUrl : null,
-                invoice.UpoXml is not null),
+                invoice.UpoXml is not null,
+                invoice.DuplicateKsefNumber),
             view.Warnings.Select(w => new ValidationIssue(w.Code, w.Field, w.Message)).ToList(),
             invoice.CreatedAt,
             invoice.UpdatedAt,

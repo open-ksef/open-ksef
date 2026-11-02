@@ -137,6 +137,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(i => new { i.TenantId, i.CreatedAt });
             entity.Property(i => i.Status).HasConversion<string>().HasMaxLength(16);
             entity.Property(i => i.Number).HasMaxLength(256);
+            entity.Property(i => i.NumberPeriod).HasMaxLength(7);
             entity.Property(i => i.SellerNip).HasMaxLength(10);
             entity.Property(i => i.SellerName).HasMaxLength(512);
             entity.Property(i => i.SellerAddressLine1).HasMaxLength(512);

@@ -312,6 +312,67 @@ public class IssuedInvoiceTests
         Assert.Equal(0, invoice.AttemptCount);
     }
 
+    private static IssuedInvoice RejectedWith(string pattern, string number, int code = 450, string? details = null)
+    {
+        var invoice = ValidDraft();
+        var profile = new SellerProfile(Guid.NewGuid());
+        profile.Update("OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", ValidNrb, false, pattern);
+        invoice.Issue(profile, "1234563218", number, Now);
+        invoice.MarkSendStarted("S-1", Now);
+        invoice.MarkRejected(code, "Odrzucona", details, Now);
+        return invoice;
+    }
+
+    [Theory]
+    [InlineData("FV/{nr}/{MM}/{RRRR}", "FV/7/11/2026", "2026-11", "2026-11-30", "2026-12-01", "11/2026")]
+    [InlineData("{nr}/{RRRR}", "7/2026", "2026", "2026-01-01", "2027-01-01", "2026")]
+    public void Rejected_IssueDate_LimitedToNumberPeriod(string pattern, string number, string period, string inside, string outside, string shown)
+    {
+        var invoice = RejectedWith(pattern, number);
+        Assert.Equal(period, invoice.NumberPeriod);
+
+        invoice.SetDates(DateOnly.Parse(inside), DateOnly.Parse(inside), DateOnly.Parse(inside));
+        Assert.Equal(DateOnly.Parse(inside), invoice.IssueDate);
+
+        var error = Assert.Throws<InvoiceValidationException>(() => invoice.SetDates(DateOnly.Parse(outside), DateOnly.Parse(outside), DateOnly.Parse(outside))).Errors.Single();
+        Assert.Equal(("INV-VAL-022", "issueDate"), (error.Code, error.Field));
+        Assert.Contains($"Numer {number} należy do okresu {shown}.", error.Message);
+        Assert.Equal(DateOnly.Parse(inside), invoice.IssueDate);
+    }
+
+    [Fact]
+    public void Rejected_PatternWithoutDateToken_IssueDateFree()
+    {
+        var invoice = RejectedWith("FV/{nr}", "FV/7");
+
+        invoice.SetDates(new DateOnly(2025, 1, 2), new DateOnly(2025, 1, 2), new DateOnly(2025, 1, 2));
+
+        Assert.Null(invoice.NumberPeriod);
+        Assert.Equal(new DateOnly(2025, 1, 2), invoice.IssueDate);
+    }
+
+    [Fact]
+    public void Rejected440_IssueBlocked_NamesKsefNumber_OtherCodesNot()
+    {
+        const string original = "1234563218-20261103-0100A0B0C0D0-E1";
+        var duplicate = RejectedWith(InvoiceNumbering.DefaultPattern, "FV/7/11/2026", 440, $"Numer KSeF: {original}");
+        var withoutNumber = RejectedWith(InvoiceNumbering.DefaultPattern, "FV/7/11/2026", 440);
+        var other = RejectedWith(InvoiceNumbering.DefaultPattern, "FV/7/11/2026", 450, original);
+
+        var error = Assert.Throws<InvoiceValidationException>(() => duplicate.Issue(CompleteProfile(), "1234563218", null, Now)).Errors.Single();
+        Assert.Equal(("INV-VAL-023", "number"), (error.Code, error.Field));
+        Assert.Contains(original, error.Message);
+        Assert.Equal(IssuedInvoiceStatus.Rejected, duplicate.Status);
+        Assert.Equal(original, duplicate.DuplicateKsefNumber);
+
+        Assert.Null(withoutNumber.DuplicateKsefNumber);
+        Assert.Contains("INV-VAL-023", ErrorCodes(withoutNumber, CompleteProfile()));
+
+        Assert.Null(other.DuplicateKsefNumber);
+        other.Issue(CompleteProfile(), "1234563218", null, Now);
+        Assert.Equal(IssuedInvoiceStatus.Queued, other.Status);
+    }
+
     [Fact]
     public void SendLifecycle_RecordsKsefStateInOrder()
     {

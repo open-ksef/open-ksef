@@ -5,6 +5,8 @@ namespace OpenKSeF.Domain.Invoicing;
 public static class IssueChecks
 {
     public const decimal SplitPaymentWarningThreshold = 15000m;
+    public const string NumberPeriodCode = "INV-VAL-022";
+    public const string NumberTakenCode = "INV-VAL-023";
 
     public static IReadOnlyList<InvoiceCheck> Errors(IssuedInvoice invoice, SellerProfile? profile, DateOnly today)
     {
@@ -30,6 +32,13 @@ public static class IssueChecks
             errors.Add(new("INV-VAL-020", "issueDate", "Data wystawienia nie może być późniejsza niż dzisiejsza"));
         if (invoice.DueDate < invoice.IssueDate)
             errors.Add(new("INV-VAL-021", "dueDate", "Termin płatności jest wcześniejszy niż data wystawienia"));
+
+        if (invoice.IsNumberTakenInKsef)
+        {
+            var found = invoice.DuplicateKsefNumber is { } ksefNumber ? $" Numer KSeF: {ksefNumber}." : "";
+            errors.Add(new(NumberTakenCode, "number",
+                $"Numer {invoice.Number} jest już w KSeF, więc nie można go wysłać ponownie.{found} Sprawdź tę fakturę w KSeF. Jeśli to ta sama sprzedaż, nie wystawiaj jej ponownie."));
+        }
 
         if (invoice.Lines.Count == 0)
             errors.Add(new("INV-VAL-002", "lines", "Faktura musi zawierać co najmniej jedną pozycję"));

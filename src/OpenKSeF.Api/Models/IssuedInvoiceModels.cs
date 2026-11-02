@@ -55,7 +55,8 @@ public record IssuedInvoiceKsefResponse(
     string? StatusDetails,
     string? LastError,
     string? VerificationUrl,
-    bool HasUpo);
+    bool HasUpo,
+    string? DuplicateKsefNumber);
 
 public record IssuedInvoiceResponse(
     Guid Id,

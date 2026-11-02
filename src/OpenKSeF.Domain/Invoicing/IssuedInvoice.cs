@@ -1,3 +1,6 @@
+using System.Text.RegularExpressions;
+using OpenKSeF.Domain.Abstractions;
+
 namespace OpenKSeF.Domain.Invoicing;
 
 /// <summary>Sales invoice issued by a tenant: editable draft until issued, then frozen with a seller snapshot and number.</summary>
@@ -11,12 +14,15 @@ public sealed class IssuedInvoice
     public static DateOnly PolandDate(DateTimeOffset utcNow) =>
         DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(utcNow, PolandTimeZone).DateTime);
 
+    private static readonly Regex KsefNumberInText = new(@"\b\d{10}-\d{8}-[0-9A-F]{6}-?[0-9A-F]{6}-[0-9A-F]{2}\b", RegexOptions.CultureInvariant);
+
     private readonly List<IssuedInvoiceLine> _lines = [];
 
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
     public IssuedInvoiceStatus Status { get; private set; }
     public string? Number { get; private set; }
+    public string? NumberPeriod { get; private set; }
 
     public string? SellerNip { get; private set; }
     public string? SellerName { get; private set; }
@@ -69,6 +75,11 @@ public sealed class IssuedInvoice
 
     public bool IsEditable => Status is IssuedInvoiceStatus.Draft or IssuedInvoiceStatus.Rejected;
 
+    public bool IsNumberTakenInKsef => Status == IssuedInvoiceStatus.Rejected && KsefStatusCode == KSeFSentInvoice.Duplicate;
+
+    public string? DuplicateKsefNumber =>
+        IsNumberTakenInKsef && KsefStatusDetails is { } details && KsefNumberInText.Match(details) is { Success: true } match ? match.Value : null;
+
     private IssuedInvoice() { }
 
     public static IssuedInvoice Draft(Guid id, Guid tenantId, DateOnly today, DateTime now) => new()
@@ -98,6 +109,10 @@ public sealed class IssuedInvoice
     public void SetDates(DateOnly issueDate, DateOnly saleDate, DateOnly dueDate)
     {
         EnsureEditable();
+        if (NumberPeriod is not null && !InvoiceNumbering.IsInPeriod(NumberPeriod, issueDate))
+            throw new InvoiceValidationException([new(IssueChecks.NumberPeriodCode, "issueDate",
+                $"Numer {Number} należy do okresu {InvoiceNumbering.DisplayPeriod(NumberPeriod)}. Zostaw datę wystawienia w tym okresie albo użyj „Kopiuj jako nową”. Nowa faktura dostanie nowy numer, a ten pozostanie niewykorzystany.")]);
+
         IssueDate = issueDate;
         SaleDate = saleDate;
         DueDate = dueDate;
@@ -156,6 +171,9 @@ public sealed class IssuedInvoice
         var assigned = Number ?? number;
         if (string.IsNullOrWhiteSpace(assigned))
             throw new InvoiceStateException("Invoice number is required to issue a draft.");
+
+        if (Number is null)
+            NumberPeriod = InvoiceNumbering.NumberPeriod(profile.NumberingPattern, IssueDate);
 
         SellerNip = sellerNip;
         SellerName = profile.LegalName;
