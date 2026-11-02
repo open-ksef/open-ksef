@@ -1,9 +1,12 @@
 using System.Net;
 using System.Text;
 using KSeF.Client.Api.Builders.Online;
+using KSeF.Client.Api.Services;
 using KSeF.Client.Core.Exceptions;
 using KSeF.Client.Core.Interfaces.Clients;
 using KSeF.Client.Core.Interfaces.Services;
+using KSeF.Client.Core.Models;
+using KSeF.Client.Core.Models.Authorization;
 using KSeF.Client.Core.Models.Sessions;
 using OpenKSeF.Domain.Abstractions;
 
@@ -12,6 +15,27 @@ namespace OpenKSeF.Sync.Issuing;
 /// <summary>Online-session send of FA(3) invoices through CIRFMF KSeF.Client.</summary>
 public sealed class KSeFInvoiceSubmitter(IKSeFClient client, ICryptographyService cryptography) : IKSeFInvoiceSubmitter
 {
+    public async Task<string> LoginAsync(string nip, string ksefToken, CancellationToken ct = default)
+    {
+        try
+        {
+            var login = await new AuthCoordinator(new RejectionAwareAuthClient(client)).AuthKsefTokenAsync(
+                AuthenticationTokenContextIdentifierType.Nip, nip, ksefToken, cryptography, EncryptionMethodEnum.Rsa, cancellationToken: ct);
+            return login.AccessToken.Token;
+        }
+        catch (KsefApiException e) when (e.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            throw new KSeFAuthRejectedException((int)e.StatusCode, e.Message);
+        }
+    }
+
+    /// <summary>Auth status 4xx is final; KSeF reports 5xx as "try again".</summary>
+    public static void ThrowIfAuthRejected(OperationStatusInfo status)
+    {
+        if (status.Code is >= 400 and < 500)
+            throw new KSeFAuthRejectedException(status.Code, string.Join(": ", new[] { status.Description }.Concat(status.Details ?? [])));
+    }
+
     public async Task<KSeFOnlineSession> OpenSessionAsync(string accessToken, CancellationToken ct = default)
     {
         var encryption = cryptography.GetEncryptionData();
@@ -90,5 +114,36 @@ public sealed class KSeFInvoiceSubmitter(IKSeFClient client, ICryptographyServic
         invoice.Status?.Description,
         invoice.Status?.Details?.ToList() ?? [],
         invoice.KsefNumber,
-        invoice.PermanentStorageDate ?? invoice.AcquisitionDate);
+        invoice.PermanentStorageDate ?? invoice.AcquisitionDate,
+        Extension(invoice, "originalKsefNumber"),
+        Extension(invoice, "originalSessionReferenceNumber"));
+
+    private static string? Extension(SessionInvoice invoice, string key) =>
+        invoice.Status?.Extensions is { } extensions && extensions.TryGetValue(key, out var value) ? value : null;
+
+    /// <summary>AuthCoordinator polls 60 s for status 200 and hides a rejection in a TimeoutException; this stops the poll on the real status.</summary>
+    private sealed class RejectionAwareAuthClient(IAuthorizationClient inner) : IAuthorizationClient
+    {
+        public async Task<AuthStatus> GetAuthStatusAsync(string authOperationReferenceNumber, string authenticationToken, CancellationToken cancellationToken = default)
+        {
+            var status = await inner.GetAuthStatusAsync(authOperationReferenceNumber, authenticationToken, cancellationToken);
+            ThrowIfAuthRejected(status.Status);
+            return status;
+        }
+
+        public Task<AuthenticationChallengeResponse> GetAuthChallengeAsync(CancellationToken cancellationToken = default) =>
+            inner.GetAuthChallengeAsync(cancellationToken);
+
+        public Task<SignatureResponse> SubmitXadesAuthRequestAsync(string signedXML, bool verifyCertificateChain = false, bool enforceXadesCompliance = false, CancellationToken cancellationToken = default) =>
+            inner.SubmitXadesAuthRequestAsync(signedXML, verifyCertificateChain, enforceXadesCompliance, cancellationToken);
+
+        public Task<SignatureResponse> SubmitKsefTokenAuthRequestAsync(AuthenticationKsefTokenRequest requestPayload, CancellationToken cancellationToken = default) =>
+            inner.SubmitKsefTokenAuthRequestAsync(requestPayload, cancellationToken);
+
+        public Task<AuthenticationOperationStatusResponse> GetAccessTokenAsync(string authenticationToken, CancellationToken cancellationToken = default) =>
+            inner.GetAccessTokenAsync(authenticationToken, cancellationToken);
+
+        public Task<RefreshTokenResponse> RefreshAccessTokenAsync(string refreshToken, CancellationToken cancellationToken = default) =>
+            inner.RefreshAccessTokenAsync(refreshToken, cancellationToken);
+    }
 }

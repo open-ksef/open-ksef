@@ -18,7 +18,6 @@ namespace OpenKSeF.Sync.Issuing;
 /// </summary>
 public sealed class IssuedInvoiceSendProcessor(
     ApplicationDbContext db,
-    IKSeFGateway gateway,
     IKSeFInvoiceSubmitter submitter,
     IEncryptionService encryption,
     TimeProvider time,
@@ -29,6 +28,8 @@ public sealed class IssuedInvoiceSendProcessor(
     public const string RateLimitedMessage = "KSeF ogranicza liczbę żądań, ponowimy wysyłkę";
     public const string NoWritePermissionMessage = "Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy.";
     public const string EnvironmentChangedMessage = "Środowisko KSeF zmienione";
+    public const string InvalidTokenMessage = "KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.";
+    public const string NumberTakenMessage = "Ten numer faktury jest już użyty w KSeF przez inny dokument. Poprawka nie pomoże: wystaw fakturę pod nowym numerem.";
     public const string MissingTokenMessage = "Wysyłka faktur wymaga tokenu KSeF w ustawieniach firmy";
     public const string MissingXmlMessage = "Brak zapisanego XML faktury";
     public const string UpoPendingMessage = "UPO jeszcze niedostępne, ponowimy pobranie";
@@ -38,6 +39,8 @@ public sealed class IssuedInvoiceSendProcessor(
     private static readonly TimeSpan UpoRetry = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan MinPoll = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan MaxPoll = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan DuplicateSettle = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan LoginCap = TimeSpan.FromSeconds(70);
 
     public async Task ProcessAsync(string currentEnvironment, CancellationToken ct)
     {
@@ -70,7 +73,7 @@ public sealed class IssuedInvoiceSendProcessor(
         foreach (var invoice in invoices.Where(i => DependencyInjection.NormalizeKSeFEnvironmentKey(i.KsefEnvironment) != environment).ToList())
         {
             invoices.Remove(invoice);
-            if (invoice.Status == IssuedInvoiceStatus.Accepted)
+            if (MayExistInKSeF(invoice))
                 invoice.ScheduleRetry(EnvironmentChangedMessage, Now().AddDays(1), Now());
             else
                 invoice.MarkRejected(null, EnvironmentChangedMessage, null, Now());
@@ -91,7 +94,15 @@ public sealed class IssuedInvoiceSendProcessor(
         string accessToken;
         try
         {
-            accessToken = (await gateway.InitSessionAsync(tenant.Nip, encryption.Decrypt(credential.EncryptedToken!), ct)).Token;
+            using var loginCap = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            loginCap.CancelAfter(LoginCap);
+            accessToken = await submitter.LoginAsync(tenant.Nip, encryption.Decrypt(credential.EncryptedToken!), loginCap.Token);
+        }
+        catch (KSeFAuthRejectedException e)
+        {
+            logger.LogWarning("KSeF rejected the token of tenant {TenantId}: {Code} {Reason}", tenantId, e.Code, e.Message);
+            await RejectSendableAsync(invoices, e.Code, InvalidTokenMessage, e.Message, ct);
+            return;
         }
         catch (Exception e) when (IsTransient(e, ct))
         {
@@ -175,6 +186,7 @@ public sealed class IssuedInvoiceSendProcessor(
             }
         }
 
+        var alreadyStarted = invoice.SendStartedAt is not null;
         string elementRef;
         try
         {
@@ -186,7 +198,10 @@ public sealed class IssuedInvoiceSendProcessor(
         catch (KsefApiException e) when (!IsTransient(e, ct))
         {
             var (code, description, details) = Describe(e);
-            invoice.MarkRejected(code, description, details, Now());
+            if (alreadyStarted)
+                invoice.ScheduleRetry(description, Now().Add(MaxBackoff), Now());
+            else
+                invoice.MarkRejected(code, description, details, Now());
             await db.SaveChangesAsync(ct);
             return session;
         }
@@ -207,6 +222,12 @@ public sealed class IssuedInvoiceSendProcessor(
             return;
         }
 
+        if (status is { Code: KSeFSentInvoice.Duplicate })
+        {
+            await ResolveDuplicateAsync(invoice, status, accessToken, ct);
+            return;
+        }
+
         if (status is { Code: >= 400 })
         {
             invoice.MarkRejected(status.Code, status.Description ?? $"KSeF {status.Code}", Join(status.Details), Now());
@@ -216,6 +237,47 @@ public sealed class IssuedInvoiceSendProcessor(
 
         invoice.ScheduleRetry(null, Now().Add(PollDelay(invoice)), Now());
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>A 440 means the number exists in KSeF, either as our own earlier attempt whose response was lost, or as another document.</summary>
+    private async Task ResolveDuplicateAsync(IssuedInvoice invoice, KSeFSentInvoice duplicate, string accessToken, CancellationToken ct)
+    {
+        var listed = duplicate.OriginalSessionRef is null ? [] : await ListOriginalSessionAsync(accessToken, duplicate.OriginalSessionRef, ct);
+        var hash = Convert.ToBase64String(SHA256.HashData(invoice.SentXml!));
+        var original = listed.FirstOrDefault(s => s is { Code: KSeFSentInvoice.Accepted, KsefNumber: not null } && s.InvoiceHash == hash);
+        if (original is not null)
+        {
+            logger.LogInformation("Issued invoice {InvoiceId} is already in KSeF, recovered from session {SessionRef}", invoice.Id, duplicate.OriginalSessionRef);
+            invoice.MarkSendStarted(duplicate.OriginalSessionRef!, Now());
+            invoice.RecordElementRef(original.ElementRef, Now());
+            await db.SaveChangesAsync(ct);
+            await ApplyStatusAsync(invoice, original, accessToken, ct);
+            return;
+        }
+
+        var otherDocumentListed = duplicate.OriginalKsefNumber is not null && listed.Any(s => s.KsefNumber == duplicate.OriginalKsefNumber);
+        if (!otherDocumentListed && Now() - invoice.SendStartedAt!.Value < DuplicateSettle)
+        {
+            invoice.ScheduleRetry(null, Now().Add(PollDelay(invoice)), Now());
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
+        invoice.MarkRejected(duplicate.Code, NumberTakenMessage, Join(duplicate.Details), Now());
+        await db.SaveChangesAsync(ct);
+    }
+
+    private async Task<IReadOnlyList<KSeFSentInvoice>> ListOriginalSessionAsync(string accessToken, string sessionRef, CancellationToken ct)
+    {
+        try
+        {
+            return await submitter.ListInvoicesAsync(accessToken, sessionRef, ct);
+        }
+        catch (KsefApiException e) when (e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound)
+        {
+            logger.LogInformation("Original KSeF session {SessionRef} cannot be listed: {Error}", sessionRef, e.Message);
+            return [];
+        }
     }
 
     private TimeSpan PollDelay(IssuedInvoice invoice) =>
@@ -235,13 +297,16 @@ public sealed class IssuedInvoiceSendProcessor(
     {
         foreach (var invoice in invoices)
         {
-            if (invoice.Status == IssuedInvoiceStatus.Accepted)
+            if (MayExistInKSeF(invoice))
                 invoice.ScheduleRetry(description, Now().Add(MaxBackoff), Now());
             else
                 invoice.MarkRejected(code, description, details, Now());
             await db.SaveChangesAsync(ct);
         }
     }
+
+    private static bool MayExistInKSeF(IssuedInvoice invoice) =>
+        invoice.Status == IssuedInvoiceStatus.Accepted || invoice.SendStartedAt is not null;
 
     private async Task RetryAllAsync(IEnumerable<IssuedInvoice> invoices, Exception error, CancellationToken ct)
     {
@@ -270,13 +335,13 @@ public sealed class IssuedInvoiceSendProcessor(
         KsefRateLimitException => true,
         KsefApiException api => (int)api.StatusCode >= 500 || api.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.RequestTimeout or 0,
         HttpRequestException or SocketException or TimeoutException => true,
-        TaskCanceledException => !ct.IsCancellationRequested,
+        OperationCanceledException => !ct.IsCancellationRequested,
         _ => false
     };
 
     private static (int? Code, string Description, string? Details) Describe(KsefApiException e)
     {
-        if (e.StatusCode == HttpStatusCode.Forbidden)
+        if (e.StatusCode == HttpStatusCode.Forbidden && e.Message.StartsWith("missing-permissions", StringComparison.Ordinal))
             return ((int)e.StatusCode, NoWritePermissionMessage, e.Message);
 
         var detail = e.ErrorResponse?.Exception?.ExceptionDetailList?.FirstOrDefault();
