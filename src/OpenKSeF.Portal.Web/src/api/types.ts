@@ -248,6 +248,7 @@ export interface IssuedInvoiceKsef {
   lastError: string | null
   verificationUrl: string | null
   hasUpo: boolean
+  duplicateKsefNumber: string | null
 }
 
 export interface IssuedInvoiceResponse {

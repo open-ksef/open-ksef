@@ -1,18 +1,18 @@
-import { useState, type ReactElement } from 'react'
+import { useState, type ReactElement, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 import type { IssuedInvoiceResponse } from '@/api/types'
 import { formatDateTime } from '@/invoicing/format'
+import { isReissueBlocked } from '@/invoicing/status'
 import { KsefStatusBadge } from './KsefStatusBadge'
-
-const DUPLICATE_NUMBER_CODE = 440
 
 interface KsefStatusPanelProps {
   invoice: IssuedInvoiceResponse
   editHref: string
+  copyAction: ReactNode
 }
 
-export function KsefStatusPanel({ invoice, editHref }: KsefStatusPanelProps): ReactElement {
+export function KsefStatusPanel({ invoice, editHref, copyAction }: KsefStatusPanelProps): ReactElement {
   const { status, ksef, number } = invoice
   const [copied, setCopied] = useState(false)
 
@@ -76,12 +76,25 @@ export function KsefStatusPanel({ invoice, editHref }: KsefStatusPanelProps): Re
             {ksef.statusDetails ? <div>{ksef.statusDetails}</div> : null}
             {ksef.lastError && ksef.lastError !== ksef.statusMessage ? <div>{ksef.lastError}</div> : null}
           </div>
-          {ksef.statusCode === DUPLICATE_NUMBER_CODE ? (
-            <p className="inv-help">
-              Numer <span className="mono">{number}</span> jest już zajęty w KSeF, więc ponowna wysyłka z tym numerem się nie
-              uda. Użyj „Kopiuj jako nową”, aby wystawić fakturę z nowym numerem. Jeśli wcześniejsze numery nadano poza
-              OpenKSeF, najpierw ustaw wyższy następny numer w Danych do faktur.
-            </p>
+          {isReissueBlocked(invoice) ? (
+            <>
+              <p className="inv-help">
+                Numer <span className="mono">{number}</span> jest już zajęty w KSeF, więc ponowna wysyłka z tym numerem się nie
+                uda.
+              </p>
+              {ksef.duplicateKsefNumber ? (
+                <dl className="inv-readonly">
+                  <dt>Numer KSeF</dt>
+                  <dd className="mono">{ksef.duplicateKsefNumber}</dd>
+                </dl>
+              ) : null}
+              <p>Sprawdź tę fakturę w KSeF. Jeśli to ta sama sprzedaż, nie wystawiaj jej ponownie.</p>
+              {copyAction}
+              <p className="inv-help">
+                Inna sprzedaż? „Kopiuj jako nową” utworzy szkic, który dostanie nowy numer. Jeśli wcześniejsze numery nadano poza
+                OpenKSeF, najpierw ustaw wyższy następny numer w Danych do faktur.
+              </p>
+            </>
           ) : (
             <>
               {number ? (

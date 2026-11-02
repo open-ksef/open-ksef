@@ -17,7 +17,7 @@ import { VatSummary } from '@/components/invoicing/VatSummary'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
 import { formatDate, formatMoney, formatNrb } from '@/invoicing/format'
-import { downloadFile, fileStem, ksefPollInterval, renderInvoicePdf } from '@/invoicing/status'
+import { downloadFile, fileStem, isReissueBlocked, ksefPollInterval, renderInvoicePdf } from '@/invoicing/status'
 import { vatRateLabel } from '@/invoicing/totals'
 
 const paymentLabels = { Transfer: 'Przelew', Cash: 'Gotówka', Card: 'Karta' } as const
@@ -94,6 +94,17 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
     onError: (error) => showFailure(error, 'Nie udało się wygenerować PDF'),
   })
 
+  const copyButton = (
+    <button
+      type="button"
+      className="ui-button ui-button--ghost ui-button--md"
+      disabled={copy.isPending}
+      onClick={() => copy.mutate()}
+    >
+      {copy.isPending ? 'Kopiowanie…' : 'Kopiuj jako nową'}
+    </button>
+  )
+
   return (
     <>
       <header className="inv-header">
@@ -104,16 +115,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
         <KsefStatusBadge status={invoice.status} />
         <EnvBadge environment={invoice.ksef.environment} />
         <div className="inv-header__actions">
-          {invoice.status !== 'Sending' ? (
-            <button
-              type="button"
-              className="ui-button ui-button--ghost ui-button--md"
-              disabled={copy.isPending}
-              onClick={() => copy.mutate()}
-            >
-              {copy.isPending ? 'Kopiowanie…' : 'Kopiuj jako nową'}
-            </button>
-          ) : null}
+          {invoice.status !== 'Sending' && !isReissueBlocked(invoice) ? copyButton : null}
           {accepted ? (
             <>
               <button
@@ -213,7 +215,11 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
         </div>
 
         <aside className="inv-columns__side" aria-label="Status i podsumowanie">
-          <KsefStatusPanel invoice={invoice} editHref={`/issued/${encodeURIComponent(invoice.id)}/edit?${tenantQuery}`} />
+          <KsefStatusPanel
+            invoice={invoice}
+            editHref={`/issued/${encodeURIComponent(invoice.id)}/edit?${tenantQuery}`}
+            copyAction={copyButton}
+          />
           <VatSummary
             rows={invoice.vatSummary}
             totalNet={invoice.totalNet}

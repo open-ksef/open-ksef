@@ -36,6 +36,7 @@ import {
   type DraftFormValue,
 } from '@/invoicing/form'
 import { formatDate, formatMoney } from '@/invoicing/format'
+import { isReissueBlocked } from '@/invoicing/status'
 import { computeTotals } from '@/invoicing/totals'
 
 const EDITABLE: IssuedInvoiceStatus[] = ['Draft', 'Rejected']
@@ -74,7 +75,7 @@ export function InvoiceDraftPage(): ReactElement {
         <Skeleton lines={8} />
       ) : !id && !profileQuery.data.isComplete ? (
         <Navigate to={`/seller-profile?tenantId=${encodeURIComponent(tenantId)}&next=new`} replace />
-      ) : invoiceQuery.data && !EDITABLE.includes(invoiceQuery.data.status) ? (
+      ) : invoiceQuery.data && (!EDITABLE.includes(invoiceQuery.data.status) || isReissueBlocked(invoiceQuery.data)) ? (
         <Navigate to={`/issued/${encodeURIComponent(invoiceQuery.data.id)}?tenantId=${encodeURIComponent(tenantId)}`} replace />
       ) : (
         <DraftForm
@@ -168,8 +169,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   })
 
   const busy = save.isPending || issue.isPending || remove.isPending
-  const expectedNumber =
-    invoice?.number ?? (form.issueDate.startsWith(profile.nextNumberPeriod) ? profile.nextNumberPreview : null)
+  const expectedNumber = form.issueDate.startsWith(profile.nextNumberPeriod) ? profile.nextNumberPreview : null
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -307,10 +307,16 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
             totalVat={totals.totalVat}
             totalGross={totals.totalGross}
           />
-          <p className="inv-help">
-            Numer nadamy przy wystawieniu{expectedNumber ? ': ' : '.'}
-            {expectedNumber ? <span className="mono">{expectedNumber}</span> : null}
-          </p>
+          {invoice?.number ? (
+            <p className="inv-help">
+              Numer <span className="mono">{invoice.number}</span> zostaje — po poprawce wyślemy fakturę z tym samym numerem.
+            </p>
+          ) : (
+            <p className="inv-help">
+              Numer nadamy przy wystawieniu{expectedNumber ? ': ' : '.'}
+              {expectedNumber ? <span className="mono">{expectedNumber}</span> : null}
+            </p>
+          )}
         </aside>
       </div>
     </form>

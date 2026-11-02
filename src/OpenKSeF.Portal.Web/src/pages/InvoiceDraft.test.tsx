@@ -120,6 +120,19 @@ describe('issuing pages', () => {
     expect(container.textContent).toContain('Numer nadamy przy wystawieniu.')
   })
 
+  it('keeps the number preview within the year of a yearly pattern', async () => {
+    const year = todayIso().slice(0, 4)
+    vi.mocked(getSellerProfile).mockResolvedValue({ ...profile, nextNumberPeriod: year, nextNumberPreview: `1/${year}` })
+    await render('/issued/new?tenantId=t-1')
+    await waitFor(() => Boolean(container.querySelector('#issue-date')))
+
+    await act(async () => typeInto(container.querySelector<HTMLInputElement>('#issue-date')!, `${year}-01-15`))
+    expect(container.textContent).toContain(`Numer nadamy przy wystawieniu: 1/${year}`)
+
+    await act(async () => typeInto(container.querySelector<HTMLInputElement>('#issue-date')!, '2020-01-15'))
+    expect(container.textContent).not.toContain(`1/${year}`)
+  })
+
   it('Osoba prywatna hides NIP and keeps name and address required', async () => {
     await render('/issued/new?tenantId=t-1')
     await waitFor(() => Boolean(container.querySelector('#buyer-nip')))

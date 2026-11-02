@@ -63,6 +63,7 @@ const ksef = {
   lastError: null,
   verificationUrl: null,
   hasUpo: false,
+  duplicateKsefNumber: null,
 }
 
 const invoice = (patch: Partial<IssuedInvoiceResponse>): IssuedInvoiceResponse => ({
@@ -249,16 +250,90 @@ describe('issue and detail pages', () => {
     expect(container.textContent).not.toContain('Błąd weryfikacji')
   })
 
-  it('Rejected with a duplicate number says it is taken and offers only the copy', async () => {
-    vi.mocked(getIssuedInvoice).mockResolvedValue(
-      invoice({ status: 'Rejected', ksef: { ...ksef, statusCode: 440, statusMessage: 'Duplikat faktury' } }),
-    )
+  const rejected440 = (duplicateKsefNumber: string | null) =>
+    invoice({ status: 'Rejected', ksef: { ...ksef, statusCode: 440, statusMessage: 'Duplikat faktury', duplicateKsefNumber } })
+  const guidance = 'Sprawdź tę fakturę w KSeF. Jeśli to ta sama sprzedaż, nie wystawiaj jej ponownie.'
+
+  it('Rejected with 440 shows the KSeF number and guidance next to the only copy action', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(rejected440('5260250274-20261103-ABC'))
     await render('/issued/i-1?tenantId=t-1')
     await waitFor(() => container.textContent?.includes('jest już zajęty w KSeF') ?? false)
 
-    expect(buttonByText(container, 'Kopiuj jako nową')).toBeDefined()
+    const panel = container.querySelector<HTMLElement>('section[aria-labelledby="ksef-panel-title"]')!
+    expect(panel.querySelector('dd.mono')?.textContent).toBe('5260250274-20261103-ABC')
+    expect(panel.textContent).toContain(guidance)
+    expect(buttonByText(panel, 'Kopiuj jako nową')).toBeDefined()
+    expect([...container.querySelectorAll('button')].filter((b) => b.textContent?.includes('Kopiuj jako nową'))).toHaveLength(1)
     expect(container.textContent).not.toContain('Popraw i wyślij ponownie')
     expect(container.querySelector('a[href*="/edit"]')).toBeNull()
+  })
+
+  it('Rejected with 440 and no KSeF number still blocks re-issue and keeps the guidance', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(rejected440(null))
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => container.textContent?.includes(guidance) ?? false)
+
+    expect(container.textContent).not.toContain('Numer KSeF')
+    expect(buttonByText(container, 'Kopiuj jako nową')).toBeDefined()
+    expect(container.querySelector('a[href*="/edit"]')).toBeNull()
+  })
+
+  it('edit route of a Rejected 440 opens the detail page instead of the form', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(rejected440('K-1'))
+    await render('/issued/i-1/edit?tenantId=t-1')
+    await waitFor(() => container.textContent?.includes(guidance) ?? false)
+
+    expect(buttonByText(container, 'Zapisz szkic')).toBeUndefined()
+    expect(buttonByText(container, 'Wystaw i wyślij do KSeF')).toBeUndefined()
+  })
+
+  it('Rejected edit hint shows the kept number, not the next one', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Rejected', number: 'FV/7/10/2026', issueDate: '2026-10-20' }))
+    await render('/issued/i-1/edit?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Zapisz szkic')))
+
+    const hint = container.querySelector('aside')?.textContent
+    expect(hint).toContain('Numer FV/7/10/2026 zostaje')
+    expect(hint).not.toContain('Numer nadamy')
+    expect(hint).not.toContain('FV/1/11/2026')
+  })
+
+  it.each(['Zapisz szkic', 'Wystaw i wyślij do KSeF'])('INV-VAL-022 from PUT via %s shows inline on the issue date', async (action) => {
+    const message =
+      'Numer FV/7/11/2026 należy do okresu 11/2026. Zostaw datę wystawienia w tym okresie albo użyj „Kopiuj jako nową”. Nowa faktura dostanie nowy numer, a ten pozostanie niewykorzystany.'
+    vi.mocked(getSellerProfile).mockResolvedValue({ ...profile, ksefEnvironment: 'test' })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Rejected', number: 'FV/7/11/2026' }))
+    const body = { errors: [{ code: 'INV-VAL-022', field: 'issueDate', message }], warnings: [] }
+    vi.mocked(updateIssuedInvoice).mockRejectedValue(
+      await normalizeError(new Response(JSON.stringify(body), { status: 422, headers: { 'Content-Type': 'application/json' } })),
+    )
+    await render('/issued/i-1/edit?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, action)))
+
+    await act(async () => buttonByText(container, action)!.click())
+    await waitFor(() => container.querySelector('#issue-date-error') !== null)
+
+    expect(container.querySelector('#issue-date-error')?.textContent).toBe(message)
+    expect(container.querySelector('#issue-date')?.getAttribute('aria-invalid')).toBe('true')
+    expect(issueIssuedInvoice).not.toHaveBeenCalled()
+  })
+
+  it('INV-VAL-023 on issue is visible although the number is not a form field', async () => {
+    const message = 'Numer FV/7/11/2026 jest już w KSeF, więc nie można go wysłać ponownie.'
+    vi.mocked(getSellerProfile).mockResolvedValue({ ...profile, ksefEnvironment: 'test' })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Rejected', number: 'FV/7/11/2026' }))
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(invoice({ status: 'Rejected', number: 'FV/7/11/2026' }))
+    const body = { errors: [{ code: 'INV-VAL-023', field: 'number', message }], warnings: [] }
+    vi.mocked(issueIssuedInvoice).mockRejectedValue(
+      await normalizeError(new Response(JSON.stringify(body), { status: 422, headers: { 'Content-Type': 'application/json' } })),
+    )
+    await render('/issued/i-1/edit?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Wystaw i wyślij do KSeF')))
+
+    await act(async () => buttonByText(container, 'Wystaw i wyślij do KSeF')!.click())
+    await waitFor(() => container.querySelector('[role="alert"]') !== null)
+
+    expect(container.querySelector('[role="alert"] [data-code="INV-VAL-023"]')?.textContent).toBe(message)
   })
 
   it('Sending hides Kopiuj jako nową', async () => {
@@ -409,5 +484,6 @@ describe('issue and detail pages', () => {
     await waitFor(() => container.textContent?.includes(lastError) ?? false)
     expect(container.textContent).toContain('Nie wysyłaj faktury drugi raz')
     expect(container.textContent).not.toContain('KSeF nie odpowiada')
+    expect(buttonByText(container, 'Kopiuj jako nową')).toBeUndefined()
   })
 })
