@@ -288,4 +288,5 @@ export interface IssuedInvoiceListItemResponse {
   totalGross: number
   currency: string
   ksefNumber: string | null
+  needsAttention: boolean
 }

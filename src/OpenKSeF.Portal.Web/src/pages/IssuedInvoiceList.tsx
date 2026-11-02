@@ -93,7 +93,20 @@ export function IssuedInvoiceListPage(): ReactElement {
       render: (row) => <span className="num">{row.totalNet === undefined ? '—' : formatMoney(row.totalNet, row.currency)}</span>,
     },
     { key: 'totalGross', label: 'Brutto', render: (row) => <span className="num">{formatMoney(row.totalGross, row.currency)}</span> },
-    { key: 'status', label: 'Status', render: (row) => <KsefStatusBadge status={row.status} /> },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (row) => (
+        <>
+          <KsefStatusBadge status={row.status} />
+          {row.needsAttention ? (
+            <div>
+              <span className="inv-badge inv-badge--warning">Wymaga uwagi</span>
+            </div>
+          ) : null}
+        </>
+      ),
+    },
     {
       key: 'ksefNumber',
       label: 'Numer KSeF',

@@ -206,8 +206,8 @@ describe('issuing pages', () => {
   it('list shows issued invoices and drafts', async () => {
     vi.mocked(listIssuedInvoices).mockResolvedValue({
       items: [
-        { id: 'i-1', status: 'Draft', number: null, buyerName: 'Nabywca', buyerNip: '5260250274', issueDate: '2026-11-01', dueDate: '2026-11-15', totalNet: 100, totalGross: 123, currency: 'PLN', ksefNumber: null },
-        { id: 'i-2', status: 'Accepted', number: 'FV/1/11/2026', buyerName: 'Inny', buyerNip: null, issueDate: '2026-11-02', dueDate: '2026-11-16', totalNet: 12327.64, totalGross: 15162, currency: 'PLN', ksefNumber: '5260250274-20261102-ABC' },
+        { id: 'i-1', status: 'Draft', number: null, buyerName: 'Nabywca', buyerNip: '5260250274', issueDate: '2026-11-01', dueDate: '2026-11-15', totalNet: 100, totalGross: 123, currency: 'PLN', ksefNumber: null, needsAttention: false },
+        { id: 'i-2', status: 'Accepted', number: 'FV/1/11/2026', buyerName: 'Inny', buyerNip: null, issueDate: '2026-11-02', dueDate: '2026-11-16', totalNet: 12327.64, totalGross: 15162, currency: 'PLN', ksefNumber: '5260250274-20261102-ABC', needsAttention: true },
       ],
       page: 1,
       pageSize: 20,
@@ -226,6 +226,9 @@ describe('issuing pages', () => {
     expect(text).toContain('12 327,64 PLN')
     expect(container.querySelector('a[href^="/issued/i-2?"]')).not.toBeNull()
     expect(text).toContain('Przyjęta w KSeF')
+    const [draftRow, stuckRow] = container.querySelectorAll('tbody tr')
+    expect(draftRow.textContent).not.toContain('Wymaga uwagi')
+    expect(stuckRow.textContent).toContain('Wymaga uwagi')
 
     await act(async () => buttonByText(container, 'Szkice').click())
     await waitFor(() => vi.mocked(listIssuedInvoices).mock.calls.some((call) => call[1]?.status === 'Draft'))
