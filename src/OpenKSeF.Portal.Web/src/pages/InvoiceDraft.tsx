@@ -98,7 +98,7 @@ interface DraftFormProps {
 const timeFormat = new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit' })
 
 const failureText = (error: unknown, fallback: string): string =>
-  !(error instanceof Error) || (error instanceof ApiError && (error.status >= 500 || !(error.originalError instanceof Response)))
+  !(error instanceof Error) || (error instanceof ApiError && (error.status >= 500 || !(error.originalError instanceof Response) || !error.originalError.headers.get('Content-Type')?.includes('application/json')))
     ? fallback
     : error.message
 
@@ -158,7 +158,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
     }
 
     queryClient.setQueryData(['issued-invoice', tenantId, fresh.id], fresh)
-    if (fresh.status !== target.status) {
+    if (fresh.status !== target.status || fresh.issuedAt !== target.issuedAt) {
       navigate(`/issued/${encodeURIComponent(fresh.id)}?tenantId=${encodeURIComponent(tenantId)}`, { replace: true })
       return
     }

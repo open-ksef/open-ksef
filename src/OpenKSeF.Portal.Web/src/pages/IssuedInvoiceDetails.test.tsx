@@ -326,6 +326,56 @@ describe('issue and detail pages', () => {
     expectNoRawText()
   })
 
+  it('network failure with a resend already rejected again opens the new rejection', async () => {
+    const rejected = invoice({ status: 'Rejected', number: 'FV/7/10/2026', issuedAt: '2026-11-03T10:00:00Z' })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(rejected)
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(rejected)
+    vi.mocked(issueIssuedInvoice).mockImplementation(async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue({
+        ...rejected,
+        issuedAt: '2026-11-03T11:00:00Z',
+        ksef: { ...ksef, statusCode: 450, statusMessage: 'Nowy powód odrzucenia' },
+      })
+      throw await networkFailure()
+    })
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => container.textContent?.includes('Kod KSeF 450: Nowy powód odrzucenia') ?? false)
+
+    expect(issueIssuedInvoice).toHaveBeenCalledTimes(1)
+    expect(buttonByText(container, 'Zapisz szkic')).toBeUndefined()
+    expect(container.textContent).not.toContain('Faktura nadal ma status')
+  })
+
+  it('network failure with the same Rejected attempt stays on the form', async () => {
+    const rejected = invoice({ status: 'Rejected', number: 'FV/7/10/2026', issuedAt: '2026-11-03T10:00:00Z' })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(rejected)
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(rejected)
+    vi.mocked(issueIssuedInvoice).mockRejectedValue(await networkFailure())
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => container.textContent?.includes('Faktura nadal ma status: Odrzucona') ?? false)
+
+    expect(buttonByText(container, 'Zapisz szkic')).toBeDefined()
+  })
+
+  it('HTTP 4xx with a non-JSON body on issue hides the raw text', async () => {
+    const draft = invoice({ number: null })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(issueIssuedInvoice).mockRejectedValue(
+      await normalizeError(new Response('<html>413 Too Large</html>', { status: 413, headers: { 'Content-Type': 'text/html' } })),
+    )
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => container.textContent?.includes('Faktura nadal ma status: Szkic') ?? false)
+
+    expectNoRawText()
+  })
+
   it('network failure with the reload failing too says the status is unknown', async () => {
     const draft = invoice({ number: null })
     vi.mocked(getIssuedInvoice).mockResolvedValue(draft)
