@@ -28,17 +28,15 @@ To restore NuGet packages you need a **GitHub Personal Access Token (classic)** 
 1. Go to [github.com/settings/tokens](https://github.com/settings/tokens) and generate a classic token with `read:packages`
 2. Copy `.env.example` to `.env` and fill in:
    ```
-   NUGET_CIRFMF_USER=<your-github-username>
    NUGET_CIRFMF_PAT=<your-pat>
    ```
-3. Authenticate the NuGet source locally:
+3. Register the feed in your user-level NuGet config. Run this from the repository root, not from `src/`. Never put credentials in `src/nuget.config`: it is tracked.
    ```bash
-   dotnet nuget update source CIRFMF \
-     --source https://nuget.pkg.github.com/CIRFMF/index.json \
+   dotnet nuget add source "https://nuget.pkg.github.com/CIRFMF/index.json" \
+     --name CIRFMF \
      --username <your-github-username> \
      --password <your-pat> \
-     --store-password-in-clear-text \
-     --configfile src/nuget.config
+     --store-password-in-clear-text
    ```
 
 > **Note:** We are considering publishing `KSeF.Client` to [nuget.org](https://nuget.org) to simplify contributor onboarding. Track progress in the issue tracker.
