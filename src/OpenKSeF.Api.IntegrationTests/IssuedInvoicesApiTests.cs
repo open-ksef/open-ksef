@@ -481,6 +481,29 @@ public class IssuedInvoicesApiTests : IDisposable
         Assert.Equal("FV/1/10/2026", october.Number);
     }
 
+    [Theory]
+    [InlineData("FV/{nr}", "FV/1", "2027", "FV/2")]
+    [InlineData("FV/{nr}/{MM}", "FV/1/11", "2027-11", "FV/2/11")]
+    public async Task PatternWithoutYear_NextYear_CollidesWith409_UntilNextNumberRaised(string pattern, string firstNumber, string nextYearPeriod, string raisedNumber)
+    {
+        var tenantId = await CreateTenantAsync(withProfile: false);
+        (await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", new SellerProfileRequest(
+            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, pattern, null, null))).EnsureSuccessStatusCode();
+        var first = await IssueAsync(tenantId, (await CreateDraftAsync(tenantId)).Id);
+        Assert.Equal(firstNumber, first.Number);
+        var nextYear = await CreateDraftAsync(tenantId, Draft(issueDate: "2027-11-03"));
+
+        var collision = await _client.PostAsync($"{Base(tenantId)}/{nextYear.Id}/issue", null);
+
+        Assert.Equal(HttpStatusCode.Conflict, collision.StatusCode);
+        Assert.Contains($"Numer {firstNumber} jest już użyty", (await collision.Content.ReadFromJsonAsync<JsonObject>())!["message"]!.GetValue<string>());
+        Assert.Equal(IssuedInvoiceStatus.Draft, (await LoadAsync(nextYear.Id)).Status);
+
+        (await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", new SellerProfileRequest(
+            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, pattern, 2, nextYearPeriod))).EnsureSuccessStatusCode();
+        Assert.Equal(raisedNumber, (await IssueAsync(tenantId, nextYear.Id)).Number);
+    }
+
     [Fact]
     public async Task Issue_NumberAlreadyUsed_Returns409Friendly_AndStaysDraft()
     {
