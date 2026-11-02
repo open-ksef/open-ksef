@@ -18,7 +18,7 @@ function readJson<T>(path: string): T {
 }
 
 describe('Third-party notices', () => {
-  const notices = readFileSync(resolve(projectRoot, 'public/THIRD-PARTY-NOTICES.txt'), 'utf8')
+  const notices = readFileSync(resolve(projectRoot, 'public/THIRD-PARTY-NOTICES.txt'), 'utf8').replace(/\r\n/g, '\n')
 
   it('has the full licence texts for the PDF chunk', () => {
     expect(notices).toContain('SIL OPEN FONT LICENSE Version 1.1')
