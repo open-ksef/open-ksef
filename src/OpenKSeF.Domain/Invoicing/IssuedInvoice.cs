@@ -240,7 +240,7 @@ public sealed class IssuedInvoice
         UpdatedAt = now;
     }
 
-    public void ScheduleRetry(string error, DateTime nextAttemptAt, DateTime now)
+    public void ScheduleRetry(string? error, DateTime nextAttemptAt, DateTime now)
     {
         EnsureStatus(IssuedInvoiceStatus.Queued, IssuedInvoiceStatus.Sending, IssuedInvoiceStatus.Accepted);
         LastError = error;

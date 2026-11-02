@@ -214,7 +214,7 @@ public sealed class IssuedInvoiceSendProcessor(
             return;
         }
 
-        invoice.ScheduleRetry(null!, Now().Add(PollDelay(invoice)), Now());
+        invoice.ScheduleRetry(null, Now().Add(PollDelay(invoice)), Now());
         await db.SaveChangesAsync(ct);
     }
 
