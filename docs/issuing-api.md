@@ -50,7 +50,11 @@ A rejected invoice may change `issueDate` only within the period of its number, 
 
 A rejected invoice with code 440 cannot be issued again: `issue` returns 422 `INV-VAL-023` and sends nothing, because KSeF holds that number for this seller and every resend returns 440. Copy stays available. A rejected invoice with any other code can be fixed and issued again under the same number.
 
-The send worker rejects on 440 only when a second document is certain: after one POST no earlier copy of ours exists, and after more POSTs the original must be listed with another hash. After more than one POST, an unresolved 440 or any failure status except 430 and 450 leaves the invoice in Sending with `lastError` and a re-check every 15 minutes; nothing is resent. Codes 430 and 450 stay final, because they judge the invoice content and would have failed the first copy too.
+The send worker rejects on 440 only when a second document is certain: after one POST no earlier copy of ours exists, and after more POSTs the original must be listed with another hash. After more than one POST, an unresolved 440 leaves the invoice in Sending with `lastError` and a re-check every 15 minutes; nothing is resent. Codes 430 and 450 stay final, because they judge the invoice content and would have failed the first copy too.
+
+After more than one POST, any other failure status (405, 410, 415, 435, unknown 4xx, 500 and above) leaves the invoice in Sending with `lastError` and posts the stored XML bytes again in a new session, after 15 minutes, doubling up to 4 hours. KSeF keys duplicates on seller NIP, invoice type and number, so these bytes cannot create a second document: a first copy returns 440, and the hash match recovers its KSeF number. A new post returning 200 accepts the invoice. No code only waits. Codes 410 and 415 keep failing until the token or the KSeF account changes, and that part escalates to a person (below).
+
+`needsAttention` in the list is true while the worker has flagged the invoice as stuck: Queued, Sending or Accepted without UPO, `Issuing:StuckAfterHours` (default 24) after `issuedAt`. It clears on UPO or rejection. The worker logs at Error once per window and pushes to the tenant owner once. The flag changes no status and no rule: copy of a Sending invoice stays 409, and copy of an Accepted invoice stays allowed. Support steps: [issuing-stuck-runbook.md](issuing-stuck-runbook.md).
 
 Copy of an invoice in status Sending returns 409: the first document may still reach KSeF, so a copy could become a second tax document.
 
@@ -95,7 +99,7 @@ Numbering patterns must contain `{RRRR}` (`SP-VAL-007`), because the counter res
 
 // IssuedInvoiceListItemResponse
 { "id": "guid", "status": "Accepted", "number": "FV/1/11/2026", "buyerName": "...", "buyerNip": "...",
-  "issueDate": "2026-11-03", "dueDate": "2026-11-17", "totalNet": 100.00, "totalGross": 123.00, "currency": "PLN", "ksefNumber": "..." }
+  "issueDate": "2026-11-03", "dueDate": "2026-11-17", "totalNet": 100.00, "totalGross": 123.00, "currency": "PLN", "ksefNumber": "...", "needsAttention": false }
 
 // ValidationEnvelope (400/422)
 { "errors": [ { "code": "INV-VAL-013", "field": "buyer.nip", "message": "Dla nabywcy firmy wymagany jest poprawny NIP" } ], "warnings": [] }

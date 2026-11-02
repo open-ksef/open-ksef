@@ -35,19 +35,6 @@ public class NotificationService : INotificationService
 
     public async Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt)
     {
-        // TenantId == null means "all companies"; a set TenantId is an explicit per-company subscription.
-        var deviceTokens = await _db.DeviceTokens
-            .Where(d => d.TenantId == evt.TenantId || d.TenantId == null)
-            .Where(d => _db.Tenants.Any(t =>
-                t.Id == evt.TenantId && t.UserId == d.UserId))
-            .ToListAsync();
-
-        if (deviceTokens.Count == 0)
-        {
-            _logger.LogDebug("No device tokens for tenant {TenantId}", evt.TenantId);
-            return;
-        }
-
         var notification = new PushNotification
         {
             Title = "New invoice received",
@@ -58,6 +45,60 @@ public class NotificationService : INotificationService
                 ["invoiceId"] = evt.InvoiceId.ToString()
             }
         };
+
+        if (!await PushToOwnerDevicesAsync(evt.TenantId, evt.InvoiceId, notification))
+            return;
+
+        // Layer 4: Email fallback
+        var tenant = await _db.Tenants
+            .Where(t => t.Id == evt.TenantId)
+            .Select(t => new { t.NotificationEmail })
+            .FirstOrDefaultAsync();
+
+        if (!string.IsNullOrEmpty(tenant?.NotificationEmail))
+        {
+            try
+            {
+                await _emailService.SendNewInvoiceEmailAsync(tenant.NotificationEmail, evt);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Email fallback failed for tenant {TenantId}", evt.TenantId);
+            }
+        }
+    }
+
+    public async Task NotifyIssuedInvoiceStuckAsync(Guid tenantId, Guid issuedInvoiceId, string? number)
+    {
+        var notification = new PushNotification
+        {
+            Title = "Faktura czeka na wyjaśnienie w KSeF",
+            Body = $"Faktura {number} nie ma jeszcze potwierdzenia z KSeF. Nie wystawiaj jej ponownie, sprawdź szczegóły w portalu.",
+            Data = new Dictionary<string, string>
+            {
+                ["type"] = "issuedInvoiceStuck",
+                ["tenantId"] = tenantId.ToString(),
+                ["issuedInvoiceId"] = issuedInvoiceId.ToString()
+            }
+        };
+
+        await PushToOwnerDevicesAsync(tenantId, issuedInvoiceId, notification);
+    }
+
+    private async Task<bool> PushToOwnerDevicesAsync(Guid tenantId, Guid invoiceId, PushNotification notification)
+    {
+        // TenantId == null means "all companies"; a set TenantId is an explicit per-company subscription.
+        var deviceTokens = await _db.DeviceTokens
+            .Where(d => d.TenantId == tenantId || d.TenantId == null)
+            .Where(d => _db.Tenants.Any(t =>
+                t.Id == tenantId && t.UserId == d.UserId))
+            .ToListAsync();
+
+        if (deviceTokens.Count == 0)
+        {
+            _logger.LogDebug("No device tokens for tenant {TenantId}", tenantId);
+            return false;
+        }
 
         // Layer 1: SignalR (in-app, API process only). Says nothing about remote delivery.
         if (_userPushProvider is not null)
@@ -94,7 +135,7 @@ public class NotificationService : INotificationService
             {
                 _logger.LogWarning(
                     "Push not delivered to device {DeviceId} for invoice {InvoiceId}; token kept",
-                    device.Id, evt.InvoiceId);
+                    device.Id, invoiceId);
             }
         }
 
@@ -105,23 +146,7 @@ public class NotificationService : INotificationService
             _logger.LogInformation("Removed {Count} invalid device tokens", tokensToRemove.Count);
         }
 
-        // Layer 4: Email fallback
-        var tenant = await _db.Tenants
-            .Where(t => t.Id == evt.TenantId)
-            .Select(t => new { t.NotificationEmail })
-            .FirstOrDefaultAsync();
-
-        if (!string.IsNullOrEmpty(tenant?.NotificationEmail))
-        {
-            try
-            {
-                await _emailService.SendNewInvoiceEmailAsync(tenant.NotificationEmail, evt);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Email fallback failed for tenant {TenantId}", evt.TenantId);
-            }
-        }
+        return true;
     }
 
     public async Task SendConfirmationAsync(string deviceToken, Platform platform)

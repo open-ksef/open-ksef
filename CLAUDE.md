@@ -241,3 +241,4 @@ Portal Web tests (`vitest`) also verify cross-project contracts (docker-compose 
 - `Database__EnableSensitiveDataLogging` - default `false`; logs SQL parameter values, never enable in prod
 - `ENCRYPTION_KEY`
 - `KSeF__BaseUrl`
+- `Issuing__StuckAfterHours` - Worker; default `24`; hours after issue before an invoice is escalated as stuck

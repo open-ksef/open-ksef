@@ -1,3 +1,4 @@
+using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync.Issuing;
 
 namespace OpenKSeF.Worker.Services;
@@ -12,6 +13,7 @@ public sealed class IssuedInvoiceSendService(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var interval = TimeSpan.FromSeconds(configuration.GetValue("Issuing:PollSeconds", 5));
+        var stuckAfter = TimeSpan.FromHours(configuration.GetValue("Issuing:StuckAfterHours", 24));
         logger.LogInformation("IssuedInvoiceSendService started. Poll: {Seconds}s", interval.TotalSeconds);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -21,6 +23,9 @@ public sealed class IssuedInvoiceSendService(
                 var environment = await runtimeConfig.RefreshAsync(stoppingToken);
                 using var scope = scopeFactory.CreateScope();
                 await scope.ServiceProvider.GetRequiredService<IssuedInvoiceSendProcessor>().ProcessAsync(environment, stoppingToken);
+
+                using var escalationScope = scopeFactory.CreateScope();
+                await escalationScope.ServiceProvider.GetRequiredService<IssuedInvoiceEscalationService>().EscalateAsync(stuckAfter, stoppingToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

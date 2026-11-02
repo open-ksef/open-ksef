@@ -175,7 +175,7 @@ public sealed class IssuedInvoiceSendProcessor(
         if (invoice.SendStartedAt is not null && invoice.KsefSessionRef is not null)
         {
             var hash = Convert.ToBase64String(SHA256.HashData(invoice.SentXml));
-            var match = (await submitter.ListInvoicesAsync(accessToken, invoice.KsefSessionRef, ct)).FirstOrDefault(s => s.InvoiceHash == hash);
+            var match = (await submitter.ListInvoicesAsync(accessToken, invoice.KsefSessionRef, ct)).FirstOrDefault(s => s.InvoiceHash == hash && s.Code < 400);
             if (match is not null)
             {
                 logger.LogInformation("Issued invoice {InvoiceId} recovered from session {SessionRef}", invoice.Id, invoice.KsefSessionRef);
@@ -230,7 +230,8 @@ public sealed class IssuedInvoiceSendProcessor(
 
         if (status is { Code: >= 400 and not (430 or 450) } && invoice.AttemptCount > 1)
         {
-            await WaitForUnresolvedAsync(invoice, ct);
+            invoice.ScheduleResend(DuplicateUnresolvedMessage, Now().Add(ResendDelay(invoice)), Now());
+            await db.SaveChangesAsync(ct);
             return;
         }
 
@@ -342,6 +343,9 @@ public sealed class IssuedInvoiceSendProcessor(
             await db.SaveChangesAsync(ct);
         }
     }
+
+    private static TimeSpan ResendDelay(IssuedInvoice invoice) =>
+        MaxBackoff * Math.Pow(2, Math.Clamp(invoice.AttemptCount - 2, 0, 4));
 
     internal static TimeSpan Backoff(IssuedInvoice invoice)
     {

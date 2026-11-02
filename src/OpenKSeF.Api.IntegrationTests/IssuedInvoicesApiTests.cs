@@ -792,6 +792,27 @@ public class IssuedInvoicesApiTests : IDisposable
     }
 
     [Fact]
+    public async Task List_EscalatedSending_NeedsAttention_CopyStill409_StatusUnchanged()
+    {
+        var tenantId = await CreateTenantAsync();
+        var plain = await CreateDraftAsync(tenantId);
+        var stuck = await CreateDraftAsync(tenantId);
+        await IssueAsync(tenantId, stuck.Id);
+        await MutateAsync(stuck.Id, invoice =>
+        {
+            MarkSending(invoice);
+            invoice.MarkEscalated(DateTime.UtcNow);
+        });
+
+        var items = (await _client.GetFromJsonAsync<PagedResult<IssuedInvoiceListItemResponse>>(Base(tenantId)))!.Items;
+
+        Assert.True(items.Single(i => i.Id == stuck.Id).NeedsAttention);
+        Assert.Equal("Sending", items.Single(i => i.Id == stuck.Id).Status);
+        Assert.False(items.Single(i => i.Id == plain.Id).NeedsAttention);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"{Base(tenantId)}/{stuck.Id}/copy", null)).StatusCode);
+    }
+
+    [Fact]
     public async Task Copy_WhileQueuedOrSending_Returns409_AndCreatesNothing_RejectedCopies()
     {
         var tenantId = await CreateTenantAsync();

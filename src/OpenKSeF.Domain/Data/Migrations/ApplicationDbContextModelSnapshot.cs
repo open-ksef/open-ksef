@@ -384,6 +384,9 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<DateOnly>("DueDate")
                         .HasColumnType("date");
 
+                    b.Property<DateTime?>("EscalatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ExemptionBasisKind")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");

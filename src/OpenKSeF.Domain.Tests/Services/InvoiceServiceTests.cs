@@ -59,6 +59,8 @@ public class InvoiceServiceTests : IDisposable
             return Task.CompletedTask;
         }
 
+        public Task NotifyIssuedInvoiceStuckAsync(Guid tenantId, Guid issuedInvoiceId, string? number) => Task.CompletedTask;
+
         public Task SendConfirmationAsync(string deviceToken, Platform platform) => Task.CompletedTask;
 
         public Task<bool> SendTestNotificationAsync(string deviceToken, Platform platform) => Task.FromResult(true);
