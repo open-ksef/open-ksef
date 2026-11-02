@@ -17,6 +17,26 @@ function readJson<T>(path: string): T {
   return parsed.config as T
 }
 
+describe('Third-party notices', () => {
+  const notices = readFileSync(resolve(projectRoot, 'public/THIRD-PARTY-NOTICES.txt'), 'utf8')
+
+  it('has the full licence texts for the PDF chunk', () => {
+    expect(notices).toContain('SIL OPEN FONT LICENSE Version 1.1')
+    expect(notices).toContain('Copyright 2011 The Roboto Project Authors')
+    expect(notices).toContain('END OF TERMS AND CONDITIONS')
+    for (const name of ['pdfmake 0.3.11', 'i18next 25.8.4', 'xml-js 1.6.11', 'pdfkit 0.19.1', 'fontkit 2.0.4', 'sax 1.6.0']) {
+      expect(notices).toContain(`\n${name}\n`)
+    }
+  })
+
+  it('names every runtime dependency of the portal', () => {
+    const { dependencies } = readJson<{ dependencies: Record<string, string> }>('package.json')
+    for (const name of Object.keys(dependencies).filter((dep) => dep !== '@tanstack/react-query-devtools')) {
+      expect(notices).toMatch(new RegExp(`\\n${name} \\d`))
+    }
+  })
+})
+
 describe('Portal web scaffold requirements', () => {
   it('has required scripts and dependencies', () => {
     const packageJson = readJson<{
