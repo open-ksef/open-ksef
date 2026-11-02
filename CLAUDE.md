@@ -37,7 +37,7 @@ New code must respect this layering. Never add a reference from Domain to any up
 
 ### CIRFMF KSeF.Client library — library-first principle
 
-The `OpenKSeF.Sync` project uses the [CIRFMF KSeF.Client](https://github.com/CIRFMF/ksef-client-csharp) NuGet package (`KSeF.Client Version="2.*"`) as the primary interface to the KSeF API. Before writing custom code for KSeF communication or data extraction, always check what the library already provides:
+The `OpenKSeF.Sync` project uses the [CIRFMF KSeF.Client](https://github.com/CIRFMF/ksef-client-csharp) NuGet package (`KSeF.Client Version="[2.9.0]"`, pinned exactly) as the primary interface to the KSeF API. Upgrade it only in its own PR, and run the opt-in KSeF TEST send on that branch and put the result in the PR: `KSEF_TEST_SEND=1 dotnet test src/OpenKSeF.Domain.Tests --filter Category=KSeFTest`. Before writing custom code for KSeF communication or data extraction, always check what the library already provides:
 
 - `IKSeFClient.GetInvoiceAsync(ksefNumber, accessToken)` — downloads full invoice XML as `string`
 - `IKSeFClient.QueryInvoiceMetadataAsync()` — returns `InvoiceSummary` (amounts, dates, NIP, invoice number) but no invoice body details like bank accounts

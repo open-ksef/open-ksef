@@ -5,7 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="KSeF.Client" Version="2.*" />
+    <PackageReference Include="KSeF.Client" Version="[2.9.0]" />
     <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.14" />
   </ItemGroup>
 
