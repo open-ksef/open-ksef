@@ -5,9 +5,9 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
-# Allow only one release at a time for the same tag
+# One release at a time across all tags, so :latest writes never interleave
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release
   cancel-in-progress: false
 
 jobs:
