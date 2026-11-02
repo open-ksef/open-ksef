@@ -3,8 +3,12 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
+using OpenKSeF.Api.Models;
+using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.IntegrationTests;
 
@@ -111,13 +115,13 @@ public class SetupTokenApiTests : IDisposable
     }
 
     [Fact]
-    public async Task RedeemSetupToken_ReturnsTokens_WhenValidAndExchangeConfigured()
+    public async Task RedeemSetupToken_AfterSetupWizard_ReturnsTokensAcceptedByApi()
     {
+        await ApplySetupWizardAsync();
         await AuthenticateAsync();
 
         var generateResponse = await _client.PostAsync("/api/account/setup-token", null);
         Assert.Equal(HttpStatusCode.OK, generateResponse.StatusCode);
-
         var setupResult = await generateResponse.Content.ReadFromJsonAsync<SetupTokenResponseDto>();
         Assert.NotNull(setupResult);
 
@@ -126,21 +130,45 @@ public class SetupTokenApiTests : IDisposable
             "/api/account/redeem-setup-token",
             new { setupToken = setupResult.SetupToken });
 
-        // Token exchange requires Keycloak service account + token-exchange grant.
-        // Without proper configuration, this returns 400.
-        // When configured, it should return 200 with tokens.
-        if (redeemResponse.StatusCode == HttpStatusCode.OK)
+        Assert.Equal(HttpStatusCode.OK, redeemResponse.StatusCode);
+        var tokens = await redeemResponse.Content.ReadFromJsonAsync<RedeemTokenResponseDto>();
+        Assert.NotNull(tokens);
+        Assert.False(string.IsNullOrWhiteSpace(tokens.RefreshToken));
+        Assert.True(tokens.ExpiresIn > 0);
+
+        anonClient.SetBearerToken(tokens.AccessToken);
+        var apiResponse = await anonClient.GetAsync("/api/tenants");
+        Assert.Equal(HttpStatusCode.OK, apiResponse.StatusCode);
+    }
+
+    private async Task ApplySetupWizardAsync()
+    {
+        using (var scope = _factory.Services.CreateScope())
         {
-            var tokens = await redeemResponse.Content.ReadFromJsonAsync<RedeemTokenResponseDto>();
-            Assert.NotNull(tokens);
-            Assert.False(string.IsNullOrWhiteSpace(tokens.AccessToken));
-            Assert.False(string.IsNullOrWhiteSpace(tokens.RefreshToken));
-            Assert.True(tokens.ExpiresIn > 0);
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.SystemConfigs.RemoveRange(db.SystemConfigs);
+            await db.SaveChangesAsync();
+            await scope.ServiceProvider.GetRequiredService<ISystemConfigService>().RefreshCacheAsync();
         }
-        else
+
+        var authResponse = await _client.PostAsJsonAsync(
+            "/api/system/setup/authenticate", new SetupAuthenticateRequest("admin", "admin"));
+        authResponse.EnsureSuccessStatusCode();
+        var auth = await authResponse.Content.ReadFromJsonAsync<SetupAuthenticateResponse>();
+
+        using var apply = new HttpRequestMessage(HttpMethod.Post, "/api/system/setup/apply");
+        apply.Headers.Add("X-Setup-Token", auth!.SetupToken);
+        apply.Content = JsonContent.Create(new SetupApplyRequest
         {
-            Assert.Equal(HttpStatusCode.BadRequest, redeemResponse.StatusCode);
-        }
+            ExternalBaseUrl = "http://localhost:8080",
+            KSeFBaseUrl = "test",
+            AdminEmail = "qr-setup-test@open-ksef.pl",
+            AdminPassword = "Test1234!",
+        });
+        var applyResponse = await _client.SendAsync(apply);
+        applyResponse.EnsureSuccessStatusCode();
+        var applied = await applyResponse.Content.ReadFromJsonAsync<SetupApplyResponse>();
+        Assert.True(applied!.Success, applied.Error);
     }
 
     private const string InvalidTokenError = "Invalid or expired setup token.";

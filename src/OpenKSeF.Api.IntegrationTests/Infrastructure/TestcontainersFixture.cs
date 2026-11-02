@@ -16,7 +16,7 @@ public sealed class TestcontainersFixture : IAsyncLifetime
         .WithResourceMapping(
             Path.Combine(AppContext.BaseDirectory, "realm-test.json"),
             "/opt/keycloak/data/import/")
-        .WithCommand("--import-realm")
+        .WithCommand("--import-realm", "--features=token-exchange,admin-fine-grained-authz")
         .Build();
 
     public string PostgresConnectionString => Postgres.GetConnectionString();

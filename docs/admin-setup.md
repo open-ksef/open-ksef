@@ -86,7 +86,7 @@ SignalR local push is always active regardless of which mode you choose. The mod
 Review all settings and click "Apply". The wizard:
 1. Generates the encryption key
 2. Fetches the Keycloak API client secret
-3. Enables token-exchange for the service account
+3. Allows the `openksef-api` client to impersonate users through token exchange (QR setup login)
 4. Updates client redirect URIs with the external URL
 5. Configures the Keycloak realm (login policy, password policy, SMTP)
 6. Creates the admin user in Keycloak

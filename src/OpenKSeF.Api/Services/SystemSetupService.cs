@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using KSeF.Client.DI;
@@ -123,7 +124,7 @@ public sealed class SystemSetupService : ISystemSetupService
             var apiClientSecret = await FetchApiClientSecretAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Fetched API client secret");
 
-            // 4. Enable token-exchange role
+            // 4. Allow openksef-api to impersonate users (QR setup login)
             await EnableTokenExchangeAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Token exchange configured");
 
@@ -373,43 +374,41 @@ public sealed class SystemSetupService : ISystemSetupService
     private async Task EnableTokenExchangeAsync(
         HttpClient client, string kcBase, string adminToken, CancellationToken ct)
     {
+        const string policyName = "openksef-api-impersonation";
         var apiClientUuid = await GetClientUuidAsync(client, kcBase, adminToken, "openksef-api", ct);
-
-        // Enable permissions on the client
-        var permUrl = $"{kcBase}/admin/realms/openksef/clients/{apiClientUuid}/management/permissions";
-        await SendKeycloakJsonAsync(client, HttpMethod.Put, permUrl, adminToken,
-            new { enabled = true }, ct, throwOnError: false);
-
-        // Get service account user
-        var saUrl = $"{kcBase}/admin/realms/openksef/clients/{apiClientUuid}/service-account-user";
-        using var saReq = new HttpRequestMessage(HttpMethod.Get, saUrl);
-        saReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
-        var saResp = await client.SendAsync(saReq, ct);
-        saResp.EnsureSuccessStatusCode();
-        var saJson = await saResp.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
-        var saUserId = saJson.GetProperty("id").GetString()!;
-
-        // Get realm-management client UUID
         var rmUuid = await GetClientUuidAsync(client, kcBase, adminToken, "realm-management", ct);
-        if (rmUuid == null) return;
+        var authzUrl = $"{kcBase}/admin/realms/openksef/clients/{rmUuid}/authz/resource-server";
 
-        // Get available roles and assign token-exchange
-        var availUrl = $"{kcBase}/admin/realms/openksef/users/{saUserId}/role-mappings/clients/{rmUuid}/available";
-        using var availReq = new HttpRequestMessage(HttpMethod.Get, availUrl);
-        availReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
-        var availResp = await client.SendAsync(availReq, ct);
-        availResp.EnsureSuccessStatusCode();
+        var permResp = await SendKeycloakJsonAsync(client, HttpMethod.Put,
+            $"{kcBase}/admin/realms/openksef/users-management-permissions", adminToken, new { enabled = true }, ct);
+        var perms = await permResp.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+        // Keycloak checks "impersonate", not "user-impersonated", for token exchange with requested_subject.
+        var permissionId = perms.GetProperty("scopePermissions").GetProperty("impersonate").GetString();
 
-        var roles = await availResp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
-        var tokenExchangeRole = roles.FirstOrDefault(r =>
-            r.GetProperty("name").GetString() == "token-exchange");
-
-        if (tokenExchangeRole.ValueKind != JsonValueKind.Undefined)
+        var policyResp = await SendKeycloakJsonAsync(client, HttpMethod.Post, $"{authzUrl}/policy/client", adminToken,
+            new { name = policyName, clients = new[] { apiClientUuid } }, ct, throwOnError: false);
+        if (policyResp.StatusCode == HttpStatusCode.Conflict)
         {
-            var rolePayload = new[] { new { id = tokenExchangeRole.GetProperty("id").GetString(), name = "token-exchange" } };
-            var assignUrl = $"{kcBase}/admin/realms/openksef/users/{saUserId}/role-mappings/clients/{rmUuid}";
-            await SendKeycloakJsonAsync(client, HttpMethod.Post, assignUrl, adminToken, rolePayload, ct);
+            using var searchReq = new HttpRequestMessage(HttpMethod.Get, $"{authzUrl}/policy/search?name={policyName}");
+            searchReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+            policyResp = await client.SendAsync(searchReq, ct);
         }
+        policyResp.EnsureSuccessStatusCode();
+        var policy = await policyResp.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+
+        var linkResp = await SendKeycloakJsonAsync(client, HttpMethod.Put, $"{authzUrl}/permission/scope/{permissionId}", adminToken,
+            new
+            {
+                id = permissionId,
+                name = "impersonate.permission.users",
+                type = "scope",
+                logic = "POSITIVE",
+                decisionStrategy = "UNANIMOUS",
+                policies = new[] { policy.GetProperty("id").GetString() },
+            }, ct, throwOnError: false);
+        // Keycloak answers 409 when the policy is already linked, which a repeated wizard run hits.
+        if (linkResp.StatusCode != HttpStatusCode.Conflict)
+            linkResp.EnsureSuccessStatusCode();
     }
 
     private async Task UpdateClientRedirectUrisAsync(
