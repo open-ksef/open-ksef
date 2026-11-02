@@ -8,7 +8,7 @@
   "vatSummary": [ { "vatRate": "23", "net": 20000.00, "vat": 4600.00 } ],
   "totalNet": 20000.00, "totalVat": 4600.00, "totalGross": 24600.00, "currency": "PLN",
   "ksef": { "environment": "test", "ksefNumber": null, "acceptedAt": null, "statusCode": null, "statusMessage": null,
-            "lastError": null, "verificationUrl": null, "hasUpo": false },
+            "statusDetails": null, "lastError": null, "verificationUrl": null, "hasUpo": false },
   "warnings": [ { "code": "INV-W-MPP", "field": "splitPayment", "message": "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)" } ],
   "createdAt": "<createdAt>", "updatedAt": "<updatedAt>", "issuedAt": null
 }

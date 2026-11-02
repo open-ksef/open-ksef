@@ -52,6 +52,7 @@ public record IssuedInvoiceKsefResponse(
     DateTime? AcceptedAt,
     int? StatusCode,
     string? StatusMessage,
+    string? StatusDetails,
     string? LastError,
     string? VerificationUrl,
     bool HasUpo);

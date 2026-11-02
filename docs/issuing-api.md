@@ -31,6 +31,15 @@ List filters:
 - `q`: case-insensitive substring of buyer name, buyer NIP or invoice number.
 - Order: `issueDate` descending, then `createdAt` descending. `pageSize` is capped at 100.
 
+The `ksef` block:
+- `environment`: `test`, `demo` or `production`. The environment the invoice was sent to; while it is Draft or Rejected, the current one.
+- `statusCode`, `statusMessage`, `statusDetails`: the KSeF result, filled by the send worker only. A rejection carries the KSeF code and text. A token without write permission gives code 403 and the message "Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy."
+- `lastError`: a retryable problem while the invoice stays Sending, or a missing UPO on an Accepted invoice.
+- `verificationUrl`: the KOD I link, only when Accepted. Built at issue time by KSeF.Client `IVerificationLinkService` from seller NIP, `issueDate` and the SHA-256 of the stored XML.
+- `hasUpo`: `upo` is downloadable.
+
+`xml` returns the exact bytes sent to KSeF. `xml` and `upo` return 409 with `{ "message": "..." }` when not available.
+
 Draft dates are optional in the request and never null in a response: `issueDate` defaults to today (Europe/Warsaw), `saleDate` to `issueDate`, `dueDate` to `issueDate` + 14 days.
 
 A draft or rejected invoice shows the current seller profile in `seller`; issuing stores a snapshot, and later responses show the snapshot. A rejected invoice keeps its number and cannot be deleted.
@@ -63,7 +72,7 @@ A draft or rejected invoice shows the current seller profile in `seller`; issuin
   "lines": [ { "lineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100.00, "vatRate": "23", "netAmount": 100.00, "vatAmount": 23.00 } ],
   "vatSummary": [ { "vatRate": "23", "net": 100.00, "vat": 23.00 } ],
   "totalNet": 100.00, "totalVat": 23.00, "totalGross": 123.00, "currency": "PLN",
-  "ksef": { "environment": "test", "ksefNumber": null, "acceptedAt": null, "statusCode": null, "statusMessage": null,
+  "ksef": { "environment": "test", "ksefNumber": null, "acceptedAt": null, "statusCode": null, "statusMessage": null, "statusDetails": null,
             "lastError": null, "verificationUrl": null, "hasUpo": false },
   "warnings": [ { "code": "INV-W-MPP", "field": "splitPayment", "message": "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)" } ],
   "createdAt": "2026-11-03T10:00:00Z", "updatedAt": "2026-11-03T10:00:00Z", "issuedAt": null }

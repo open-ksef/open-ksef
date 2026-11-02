@@ -113,6 +113,44 @@ public class IssuedInvoicesController(
         GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
             await issuedInvoices.CopyAsync(tenantId, id, ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());
 
+    [HttpGet("{id:guid}/xml")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> GetXml(Guid tenantId, Guid id, CancellationToken ct) =>
+        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        {
+            var document = await db.IssuedInvoices
+                .Where(i => i.TenantId == tenantId && i.Id == id)
+                .Select(i => new { i.Status, i.SentXml })
+                .SingleOrDefaultAsync(ct);
+            if (document is null)
+                return NotFound();
+
+            return document.Status == IssuedInvoiceStatus.Accepted && document.SentXml is not null
+                ? File(document.SentXml, "application/xml")
+                : Conflict(new { message = "XML jest dostępny po przyjęciu faktury w KSeF" });
+        });
+
+    [HttpGet("{id:guid}/upo")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> GetUpo(Guid tenantId, Guid id, CancellationToken ct) =>
+        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        {
+            var document = await db.IssuedInvoices
+                .Where(i => i.TenantId == tenantId && i.Id == id)
+                .Select(i => new { i.Status, i.UpoXml })
+                .SingleOrDefaultAsync(ct);
+            if (document is null)
+                return NotFound();
+
+            return document.Status == IssuedInvoiceStatus.Accepted && document.UpoXml is not null
+                ? File(document.UpoXml, "application/xml")
+                : Conflict(new { message = "UPO jest dostępne po przyjęciu faktury w KSeF, gdy KSeF je udostępni" });
+        });
+
     private async Task<IActionResult> GuardedAsync(Guid tenantId, int validationStatus, Func<Task<IActionResult>> action)
     {
         if (!await db.Tenants.AnyAsync(t => t.Id == tenantId && t.UserId == currentUser.UserId, HttpContext.RequestAborted))
@@ -179,6 +217,7 @@ public class IssuedInvoicesController(
                 invoice.AcceptedAt,
                 invoice.KsefStatusCode,
                 invoice.KsefStatusDescription,
+                invoice.KsefStatusDetails,
                 invoice.LastError,
                 invoice.Status == IssuedInvoiceStatus.Accepted ? invoice.VerificationUrl : null,
                 invoice.UpoXml is not null),

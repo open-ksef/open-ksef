@@ -85,7 +85,7 @@ public class IssuingContractSerializationTests
             [new IssuedInvoiceLineResponse(1, "Usługa", "szt.", 1m, 100.00m, "23", 100.00m, 23.00m)],
             [new VatSummaryResponse("23", 100.00m, 23.00m)],
             100.00m, 23.00m, 123.00m, "PLN",
-            new IssuedInvoiceKsefResponse("test", null, null, null, null, null, null, false),
+            new IssuedInvoiceKsefResponse("test", null, null, null, null, null, null, null, false),
             [new ValidationIssue("INV-W-MPP", "splitPayment", "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)")],
             created, created, null);
 
@@ -98,7 +98,7 @@ public class IssuingContractSerializationTests
               "lines": [ { "lineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100.00, "vatRate": "23", "netAmount": 100.00, "vatAmount": 23.00 } ],
               "vatSummary": [ { "vatRate": "23", "net": 100.00, "vat": 23.00 } ],
               "totalNet": 100.00, "totalVat": 23.00, "totalGross": 123.00, "currency": "PLN",
-              "ksef": { "environment": "test", "ksefNumber": null, "acceptedAt": null, "statusCode": null, "statusMessage": null,
+              "ksef": { "environment": "test", "ksefNumber": null, "acceptedAt": null, "statusCode": null, "statusMessage": null, "statusDetails": null,
                         "lastError": null, "verificationUrl": null, "hasUpo": false },
               "warnings": [ { "code": "INV-W-MPP", "field": "splitPayment", "message": "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)" } ],
               "createdAt": "2026-11-03T10:00:00Z", "updatedAt": "2026-11-03T10:00:00Z", "issuedAt": null }

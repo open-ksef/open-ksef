@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
+using KSeF.Client.Core.Interfaces.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
@@ -10,6 +11,7 @@ using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Models;
+using OpenKSeF.Sync.Issuing;
 
 namespace OpenKSeF.Api.IntegrationTests;
 
@@ -621,6 +623,164 @@ public class IssuedInvoicesApiTests : IDisposable
         await MutateAsync(id, MarkAccepted);
         await MutateAsync(id, invoice => invoice.AttachUpo([1, 2, 3], DateTime.UtcNow));
         AssertMatchesFixture("issued-invoice-accepted.json", JsonNode.Parse(await _client.GetStringAsync($"{Base(tenantId)}/{id}"))!);
+    }
+
+    [Theory]
+    [InlineData("draft")]
+    [InlineData("queued")]
+    [InlineData("sending")]
+    [InlineData("rejected")]
+    public async Task XmlAndUpo_NotAccepted_Return409(string state)
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        if (state != "draft")
+            await IssueAsync(tenantId, draft.Id);
+        if (state == "sending")
+            await MutateAsync(draft.Id, MarkSending);
+        if (state == "rejected")
+            await MutateAsync(draft.Id, MarkRejected);
+
+        var xml = await _client.GetAsync($"{Base(tenantId)}/{draft.Id}/xml");
+        var upo = await _client.GetAsync($"{Base(tenantId)}/{draft.Id}/upo");
+
+        Assert.Equal(HttpStatusCode.Conflict, xml.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, upo.StatusCode);
+        Assert.NotNull((await xml.Content.ReadFromJsonAsync<JsonObject>())!["message"]);
+    }
+
+    [Fact]
+    public async Task Accepted_XmlReturnsStoredBytes_UpoOnlyOnceStored()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        await IssueAsync(tenantId, draft.Id);
+        await MutateAsync(draft.Id, MarkAccepted);
+        var stored = await LoadAsync(draft.Id);
+
+        var xml = await _client.GetAsync($"{Base(tenantId)}/{draft.Id}/xml");
+        Assert.Equal(HttpStatusCode.OK, xml.StatusCode);
+        Assert.Equal("application/xml", xml.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(stored.SentXml, await xml.Content.ReadAsByteArrayAsync());
+
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.GetAsync($"{Base(tenantId)}/{draft.Id}/upo")).StatusCode);
+        Assert.False((await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{draft.Id}"))!.Ksef.HasUpo);
+
+        byte[] upoBytes = [60, 85, 80, 79, 47, 62];
+        await MutateAsync(draft.Id, invoice => invoice.AttachUpo(upoBytes, DateTime.UtcNow));
+
+        var upo = await _client.GetAsync($"{Base(tenantId)}/{draft.Id}/upo");
+        Assert.Equal(HttpStatusCode.OK, upo.StatusCode);
+        Assert.Equal("application/xml", upo.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(upoBytes, await upo.Content.ReadAsByteArrayAsync());
+        Assert.True((await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{draft.Id}"))!.Ksef.HasUpo);
+    }
+
+    [Fact]
+    public async Task VerificationUrl_OnlyWhenAccepted_EqualsVerificationLinkServiceOutput()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        Assert.Null(draft.Ksef.VerificationUrl);
+
+        var issued = await IssueAsync(tenantId, draft.Id);
+        Assert.Null(issued.Ksef.VerificationUrl);
+
+        await MutateAsync(draft.Id, MarkSending);
+        Assert.Null((await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{draft.Id}"))!.Ksef.VerificationUrl);
+
+        await MutateAsync(draft.Id, invoice => invoice.MarkAccepted("5213456789-20261103-ABCDEF123456-AB", DateTime.UtcNow, 200, "Sukces", DateTime.UtcNow));
+        var accepted = await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{draft.Id}");
+
+        var stored = await LoadAsync(draft.Id);
+        using var scope = _factory.Services.CreateScope();
+        var expected = scope.ServiceProvider.GetRequiredService<IVerificationLinkService>().BuildInvoiceVerificationUrl(
+            stored.SellerNip!, new DateTime(2026, 11, 3), Convert.ToBase64String(SHA256.HashData(stored.SentXml!)));
+        Assert.Equal(expected, accepted!.Ksef.VerificationUrl);
+        Assert.StartsWith($"https://qr-test.ksef.mf.gov.pl/invoice/{stored.SellerNip}/03-11-2026/", accepted.Ksef.VerificationUrl);
+    }
+
+    [Fact]
+    public async Task VerificationUrl_RejectedInvoice_IsNotReturned()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        await IssueAsync(tenantId, draft.Id);
+        await MutateAsync(draft.Id, MarkRejected);
+
+        var rejected = await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{draft.Id}");
+
+        Assert.Null(rejected!.Ksef.VerificationUrl);
+    }
+
+    [Theory]
+    [InlineData("test")]
+    [InlineData("demo")]
+    [InlineData("production")]
+    public async Task Response_CarriesEnvironmentTheInvoiceWasSentTo(string environment)
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        Assert.Equal("test", draft.Ksef.Environment);
+        await IssueAsync(tenantId, draft.Id);
+        await MutateAsync(draft.Id, invoice => invoice.AttachSentXml(invoice.SentXml!, invoice.SentXmlSha256!, environment, invoice.VerificationUrl));
+        await MutateAsync(draft.Id, MarkAccepted);
+
+        var accepted = await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{draft.Id}");
+
+        Assert.Equal(environment, accepted!.Ksef.Environment);
+    }
+
+    [Fact]
+    public async Task Rejection_ReturnsKsefCodeMessageAndDetails()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        await IssueAsync(tenantId, draft.Id);
+        await MutateAsync(draft.Id, MarkRejected);
+
+        var rejected = await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{draft.Id}");
+
+        Assert.Equal("Rejected", rejected!.Status);
+        Assert.Equal(450, rejected.Ksef.StatusCode);
+        Assert.Equal("Błąd weryfikacji semantyki", rejected.Ksef.StatusMessage);
+        Assert.Equal("P_2: niepoprawna wartość", rejected.Ksef.StatusDetails);
+        Assert.Null(rejected.Ksef.KsefNumber);
+    }
+
+    [Fact]
+    public async Task ReadOnlyToken_ReturnsRequirementMessage()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        await IssueAsync(tenantId, draft.Id);
+        await MutateAsync(draft.Id, invoice => invoice.MarkRejected(403, IssuedInvoiceSendProcessor.NoWritePermissionMessage, "Forbidden", DateTime.UtcNow));
+
+        var rejected = await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{draft.Id}");
+
+        Assert.Equal("Rejected", rejected!.Status);
+        Assert.Equal(403, rejected.Ksef.StatusCode);
+        Assert.Equal(
+            "Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy.",
+            rejected.Ksef.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Sending_ShowsRetryableProblemInLastError()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        await IssueAsync(tenantId, draft.Id);
+        await MutateAsync(draft.Id, invoice =>
+        {
+            MarkSending(invoice);
+            invoice.ScheduleRetry(IssuedInvoiceSendProcessor.UnavailableMessage, DateTime.UtcNow.AddSeconds(10), DateTime.UtcNow);
+        });
+
+        var sending = await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{draft.Id}");
+
+        Assert.Equal("Sending", sending!.Status);
+        Assert.Equal("KSeF nie odpowiada, ponowimy wysyłkę", sending.Ksef.LastError);
     }
 
     private static void AssertMatchesFixture(string fixture, JsonNode actual)
