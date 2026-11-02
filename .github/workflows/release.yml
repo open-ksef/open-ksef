@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v[0-9]*.[0-9]*.[0-9]*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 # Allow only one release at a time for the same tag
 concurrency:
@@ -97,12 +97,9 @@ jobs:
           context: ./src
           file: ./src/OpenKSeF.Api/Dockerfile
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/openksef-api:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/openksef-api:latest
-          build-args: |
-            NUGET_CIRFMF_USER=${{ github.actor }}
-            NUGET_CIRFMF_PAT=${{ secrets.NUGET_CIRFMF_PAT }}
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-api:${{ github.ref_name }}
+          secrets: |
+            nuget_cirfmf_pat=${{ secrets.NUGET_CIRFMF_PAT }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -112,12 +109,9 @@ jobs:
           context: ./src
           file: ./src/OpenKSeF.Worker/Dockerfile
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/openksef-worker:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/openksef-worker:latest
-          build-args: |
-            NUGET_CIRFMF_USER=${{ github.actor }}
-            NUGET_CIRFMF_PAT=${{ secrets.NUGET_CIRFMF_PAT }}
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-worker:${{ github.ref_name }}
+          secrets: |
+            nuget_cirfmf_pat=${{ secrets.NUGET_CIRFMF_PAT }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -127,12 +121,7 @@ jobs:
           context: ./src
           file: ./src/OpenKSeF.Portal.Web/Dockerfile
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/openksef-portal-web:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/openksef-portal-web:latest
-          build-args: |
-            NUGET_CIRFMF_USER=${{ github.actor }}
-            NUGET_CIRFMF_PAT=${{ secrets.NUGET_CIRFMF_PAT }}
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-portal-web:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -141,9 +130,7 @@ jobs:
         with:
           context: ./infra/nginx
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/openksef-gateway:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/openksef-gateway:latest
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-gateway:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -152,6 +139,16 @@ jobs:
         with:
           draft: true
           files: docker-compose.yml
+
+      - name: Move :latest to this release
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          for image in api worker portal-web gateway; do
+            docker buildx imagetools create \
+              -t "ghcr.io/$OWNER/openksef-$image:latest" \
+              "ghcr.io/$OWNER/openksef-$image:$GITHUB_REF_NAME"
+          done
 
   # ─────────────────────────────────────────────
   # 3. Publish release (remove draft) once all jobs done

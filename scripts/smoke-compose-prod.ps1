@@ -83,12 +83,11 @@ Get-Content (Join-Path $root '.env.test') | ForEach-Object {
 
 if (-not $SkipBuild) {
     Write-Host "`n[build] openksef-{api,worker,portal-web}:dev-local ..." -ForegroundColor Cyan
-    $env:NUGET_CIRFMF_USER = $testEnv['NUGET_CIRFMF_USER']
     $env:NUGET_CIRFMF_PAT = $testEnv['NUGET_CIRFMF_PAT']
     try {
         Invoke-Compose @('-f', $devCompose, 'build', 'api', 'worker', 'portal-web')
     } finally {
-        Remove-Item Env:NUGET_CIRFMF_USER, Env:NUGET_CIRFMF_PAT -ErrorAction SilentlyContinue
+        Remove-Item Env:NUGET_CIRFMF_PAT -ErrorAction SilentlyContinue
     }
 }
 

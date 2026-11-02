@@ -28,7 +28,6 @@ To restore NuGet packages you need a **GitHub Personal Access Token (classic)** 
 1. Go to [github.com/settings/tokens](https://github.com/settings/tokens) and generate a classic token with `read:packages`
 2. Copy `.env.example` to `.env` and fill in:
    ```
-   NUGET_CIRFMF_USER=<your-github-username>
    NUGET_CIRFMF_PAT=<your-pat>
    ```
 3. Authenticate the NuGet source locally:

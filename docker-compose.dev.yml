@@ -44,9 +44,8 @@ services:
     build:
       context: ./src
       dockerfile: OpenKSeF.Api/Dockerfile
-      args:
-        NUGET_CIRFMF_USER: ${NUGET_CIRFMF_USER:-}
-        NUGET_CIRFMF_PAT: ${NUGET_CIRFMF_PAT:-}
+      secrets:
+        - nuget_cirfmf_pat
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,9 +73,8 @@ services:
     build:
       context: ./src
       dockerfile: OpenKSeF.Worker/Dockerfile
-      args:
-        NUGET_CIRFMF_USER: ${NUGET_CIRFMF_USER:-}
-        NUGET_CIRFMF_PAT: ${NUGET_CIRFMF_PAT:-}
+      secrets:
+        - nuget_cirfmf_pat
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,3 +120,7 @@ services:
 
 volumes:
   postgres_data:
+
+secrets:
+  nuget_cirfmf_pat:
+    environment: NUGET_CIRFMF_PAT

@@ -10,6 +10,8 @@ jobs:
   backend:
     name: Build & Test (.NET 10)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: src
@@ -63,6 +65,8 @@ jobs:
   portal-web:
     name: Build & Lint (Portal Web)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: src/OpenKSeF.Portal.Web
@@ -86,7 +90,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   docker-dev:
     name: Docker :dev images
-    needs: backend
+    needs: [backend, portal-web]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
@@ -117,9 +121,8 @@ jobs:
           file: ./src/OpenKSeF.Api/Dockerfile
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/openksef-api:dev
-          build-args: |
-            NUGET_CIRFMF_USER=${{ github.actor }}
-            NUGET_CIRFMF_PAT=${{ secrets.NUGET_CIRFMF_PAT }}
+          secrets: |
+            nuget_cirfmf_pat=${{ secrets.NUGET_CIRFMF_PAT }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -130,9 +133,8 @@ jobs:
           file: ./src/OpenKSeF.Worker/Dockerfile
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/openksef-worker:dev
-          build-args: |
-            NUGET_CIRFMF_USER=${{ github.actor }}
-            NUGET_CIRFMF_PAT=${{ secrets.NUGET_CIRFMF_PAT }}
+          secrets: |
+            nuget_cirfmf_pat=${{ secrets.NUGET_CIRFMF_PAT }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
