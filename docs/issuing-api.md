@@ -21,7 +21,7 @@ POST /api/tenants/{tenantId}/issued-invoices/{id}/issue     -> 202 IssuedInvoice
 POST /api/tenants/{tenantId}/issued-invoices/{id}/copy      -> 201 IssuedInvoiceResponse (new Draft, same buyer+lines, dates = today, no number) | 409 (source Sending)
 GET  /api/tenants/{tenantId}/issued-invoices/{id}/xml       -> 200 application/xml (stored bytes) | 409 unless Accepted
 GET  /api/tenants/{tenantId}/issued-invoices/{id}/upo       -> 200 application/xml | 409 unless Accepted with UPO
-DELETE /api/tenants/{id}                                    -> 204 | 409 (tenant has issued invoices in any status, drafts included)
+DELETE /api/tenants/{id}                                    -> 204 | 409 (invoice Queued or Sending, or Accepted on production) | 404
 ```
 
 Cross-tenant on any route returns 404. A 409 without a `ValidationEnvelope` has the body `{ "message": "..." }`.
@@ -60,7 +60,7 @@ Copy of an invoice in status Sending returns 409: the first document may still r
 
 An issue date after today in Europe/Warsaw blocks issuing with `INV-VAL-020` before a number is assigned, because KSeF rejects it with code 450. Drafts may hold a future date.
 
-A tenant with any row in issued invoices, a draft included, cannot be deleted. Delete its drafts first. A tenant with a number-holding invoice stays.
+Tenant delete returns 409 while any invoice of the tenant is Queued or Sending, on any environment, or Accepted on production. `KsefEnvironment` stored on the invoice decides, not the current instance setting, and an Accepted invoice without one counts as production. Otherwise the delete removes the tenant and all its issued invoices in one transaction, and they cannot be restored. The KSeF copy of an accepted invoice stays in KSeF. To show the count before confirming, read `totalCount` from `GET /api/tenants/{tenantId}/issued-invoices?pageSize=1`; it includes drafts. The delete locks the tenant and invoice rows, so it waits for a concurrent issue or status change and decides on the committed status. An issue that waits for a delete that commits returns 404. Deleting the last invoices on the instance releases the KSeF environment lock. Deleting one Rejected invoice stays forbidden.
 
 Numbering patterns must contain `{RRRR}` (`SP-VAL-007`), because the counter resets every year and a number without the year would repeat. A profile stored before this rule keeps working: GET returns its pattern and issuing uses it, and a repeated number returns 409. Its next PUT must supply a pattern with `{RRRR}`.
 

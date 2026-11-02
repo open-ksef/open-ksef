@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Api.Models;
+using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Invoicing;
@@ -1050,6 +1051,244 @@ public class IssuedInvoicesApiTests : IDisposable
                 }
                 break;
         }
+    }
+
+    [Fact]
+    public async Task DeleteTenant_OnlyDrafts_Returns204_AndRemovesTheirData()
+    {
+        var tenantId = await CreateTenantAsync();
+        await CreateDraftAsync(tenantId);
+
+        await AssertTenantDeletedAsync(tenantId);
+    }
+
+    [Theory]
+    [InlineData("test")]
+    [InlineData("demo")]
+    public async Task DeleteTenant_AcceptedAndRejectedOnTestOrDemo_Returns204(string environment)
+    {
+        var tenantId = await CreateTenantAsync();
+        await SeedSentAsync(tenantId, environment, MarkAccepted);
+        await SeedSentAsync(tenantId, environment, MarkRejected);
+        await CreateDraftAsync(tenantId);
+
+        await AssertTenantDeletedAsync(tenantId);
+    }
+
+    [Fact]
+    public async Task DeleteTenant_RejectedOnProduction_Returns204()
+    {
+        var tenantId = await CreateTenantAsync();
+        await SeedSentAsync(tenantId, "production", MarkRejected);
+
+        await AssertTenantDeletedAsync(tenantId);
+    }
+
+    [Fact]
+    public async Task DeleteTenant_AcceptedOnProduction_Returns409_AndChangesNothing()
+    {
+        var tenantId = await CreateTenantAsync();
+        await SeedSentAsync(tenantId, "production", MarkAccepted);
+        await SeedSentAsync(tenantId, "test", MarkRejected);
+        await CreateDraftAsync(tenantId);
+
+        var message = await AssertTenantDeleteConflictAsync(tenantId, 3);
+
+        Assert.Contains("pozostają w KSeF", message);
+        Assert.Contains("operatorem", message);
+    }
+
+    [Fact]
+    public async Task DeleteTenant_AcceptedWithoutEnvironment_Returns409()
+    {
+        var tenantId = await CreateTenantAsync();
+        var id = await SeedSentAsync(tenantId, "test", MarkAccepted);
+        await WithDbAsync(db => db.Database.ExecuteSqlAsync($"""UPDATE "IssuedInvoices" SET "KsefEnvironment" = NULL WHERE "Id" = {id}"""));
+
+        await AssertTenantDeleteConflictAsync(tenantId, 1);
+    }
+
+    [Theory]
+    [InlineData("test", false)]
+    [InlineData("test", true)]
+    [InlineData("demo", false)]
+    [InlineData("production", true)]
+    public async Task DeleteTenant_QueuedOrSending_Returns409_AndChangesNothing(string environment, bool sending)
+    {
+        var tenantId = await CreateTenantAsync();
+        var id = await SeedSentAsync(tenantId, environment, sending ? MarkSending : _ => { });
+
+        Assert.Contains("wysyłki", await AssertTenantDeleteConflictAsync(tenantId, 1));
+        Assert.Equal(sending ? IssuedInvoiceStatus.Sending : IssuedInvoiceStatus.Queued, (await LoadAsync(id)).Status);
+    }
+
+    [Fact]
+    public async Task DeleteTenant_OtherUsersTenant_Returns404_AndChangesNothing()
+    {
+        await CreateTenantAsync(withProfile: false);
+        var tenantId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        await WithDbAsync(db =>
+        {
+            db.Tenants.Add(new Tenant { Id = tenantId, UserId = "other-user", Nip = $"522{Random.Shared.Next(1_000_000, 9_999_999)}", CreatedAt = now, UpdatedAt = now });
+            db.IssuedInvoices.Add(IssuedInvoice.Draft(Guid.NewGuid(), tenantId, Today, now));
+            return db.SaveChangesAsync();
+        });
+
+        var response = await _client.DeleteAsync($"/api/tenants/{tenantId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.True(await WithDbAsync(db => db.Tenants.AnyAsync(t => t.Id == tenantId)));
+        Assert.Equal(1, await WithDbAsync(db => db.IssuedInvoices.CountAsync(i => i.TenantId == tenantId)));
+    }
+
+    [Fact]
+    public async Task DeleteTenant_LastTenantWithInvoices_ReleasesEnvironmentLock()
+    {
+        await WithDbAsync(async db =>
+        {
+            await db.IssuedInvoices.ExecuteDeleteAsync();
+            return await db.InvoiceHeaders.ExecuteDeleteAsync();
+        });
+        var first = await CreateTenantAsync();
+        var last = await CreateTenantAsync();
+        await SeedSentAsync(first, "test", MarkAccepted);
+        await SeedSentAsync(last, "test", MarkRejected);
+        Assert.True(await EnvironmentLockedByInvoicesAsync());
+
+        await AssertTenantDeletedAsync(first);
+        Assert.True(await EnvironmentLockedByInvoicesAsync());
+
+        await AssertTenantDeletedAsync(last);
+        Assert.False(await EnvironmentLockedByInvoicesAsync());
+    }
+
+    [Theory]
+    [InlineData(false, "test", "Queued", HttpStatusCode.Conflict)]
+    [InlineData(true, "production", "Accepted", HttpStatusCode.Conflict)]
+    [InlineData(true, "production", "Rejected", HttpStatusCode.NoContent)]
+    public async Task DeleteTenant_InvoiceFlippingStatus_WaitsAndUsesCommittedStatus(bool sent, string environment, string newStatus, HttpStatusCode expected)
+    {
+        var tenantId = await CreateTenantAsync();
+        var id = sent ? await SeedSentAsync(tenantId, environment, MarkSending) : (await CreateDraftAsync(tenantId)).Id;
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        await db.Database.ExecuteSqlAsync($"""UPDATE "IssuedInvoices" SET "Status" = {newStatus} WHERE "Id" = {id}""");
+
+        var delete = _client.DeleteAsync($"/api/tenants/{tenantId}");
+        await WaitForLockWaitAsync("FOR UPDATE");
+        Assert.False(delete.IsCompleted);
+        await transaction.CommitAsync();
+
+        Assert.Equal(expected, (await delete).StatusCode);
+        Assert.Equal(expected == HttpStatusCode.Conflict ? 1 : 0, await WithDbAsync(d => d.IssuedInvoices.CountAsync(i => i.Id == id)));
+    }
+
+    [Fact]
+    public async Task Issue_WhileTenantIsBeingDeleted_WaitsAndReturns404()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        await db.Database.ExecuteSqlAsync($"""SELECT 1 FROM "Tenants" WHERE "Id" = {tenantId} FOR UPDATE""");
+
+        var issue = _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null);
+        await WaitForLockWaitAsync("FOR KEY SHARE");
+        await db.Database.ExecuteSqlAsync($"""DELETE FROM "IssuedInvoices" WHERE "TenantId" = {tenantId}""");
+        await db.Database.ExecuteSqlAsync($"""DELETE FROM "Tenants" WHERE "Id" = {tenantId}""");
+        await transaction.CommitAsync();
+
+        Assert.Equal(HttpStatusCode.NotFound, (await issue).StatusCode);
+        Assert.Equal(0, await WithDbAsync(d => d.InvoiceNumberCounters.CountAsync(c => c.TenantId == tenantId)));
+    }
+
+    [Fact]
+    public async Task DeleteTenant_RacingIssue_NeverLosesQueuedInvoice()
+    {
+        for (var round = 0; round < 12; round++)
+        {
+            var tenantId = await CreateTenantAsync();
+            var draft = await CreateDraftAsync(tenantId);
+
+            var issue = _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null);
+            await Task.Delay(round % 4 * 5);
+            var delete = _client.DeleteAsync($"/api/tenants/{tenantId}");
+            await Task.WhenAll(issue, delete);
+
+            if ((await delete).StatusCode == HttpStatusCode.NoContent)
+            {
+                Assert.Equal(HttpStatusCode.NotFound, (await issue).StatusCode);
+                Assert.False(await WithDbAsync(db => db.IssuedInvoices.AnyAsync(i => i.Id == draft.Id)));
+            }
+            else
+            {
+                Assert.Equal(HttpStatusCode.Conflict, (await delete).StatusCode);
+                Assert.Equal(HttpStatusCode.Accepted, (await issue).StatusCode);
+                Assert.Equal(IssuedInvoiceStatus.Queued, (await LoadAsync(draft.Id)).Status);
+            }
+        }
+    }
+
+    private async Task<Guid> SeedSentAsync(Guid tenantId, string environment, Action<IssuedInvoice> change)
+    {
+        var draft = await CreateDraftAsync(tenantId);
+        await IssueAsync(tenantId, draft.Id);
+        await MutateAsync(draft.Id, invoice =>
+        {
+            invoice.AttachSentXml(invoice.SentXml!, invoice.SentXmlSha256!, environment, null);
+            change(invoice);
+        });
+        return draft.Id;
+    }
+
+    private async Task AssertTenantDeletedAsync(Guid tenantId)
+    {
+        var ids = await WithDbAsync(db => db.IssuedInvoices.Where(i => i.TenantId == tenantId).Select(i => i.Id).ToListAsync());
+
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/tenants/{tenantId}")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/tenants/{tenantId}")).StatusCode);
+        Assert.Equal(0, await WithDbAsync(db => db.IssuedInvoices.CountAsync(i => ids.Contains(i.Id))));
+        Assert.Equal(0, await WithDbAsync(db => db.IssuedInvoiceLines.CountAsync(l => ids.Contains(l.IssuedInvoiceId))));
+        Assert.Equal(0, await WithDbAsync(db => db.SellerProfiles.CountAsync(p => p.TenantId == tenantId)));
+        Assert.Equal(0, await WithDbAsync(db => db.InvoiceNumberCounters.CountAsync(c => c.TenantId == tenantId)));
+    }
+
+    private async Task<string> AssertTenantDeleteConflictAsync(Guid tenantId, int invoiceCount)
+    {
+        var response = await _client.DeleteAsync($"/api/tenants/{tenantId}");
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync($"/api/tenants/{tenantId}")).StatusCode);
+        Assert.Equal(invoiceCount, await WithDbAsync(db => db.IssuedInvoices.CountAsync(i => i.TenantId == tenantId)));
+        return (await response.Content.ReadFromJsonAsync<JsonObject>())!["message"]!.GetValue<string>();
+    }
+
+    private async Task<bool> EnvironmentLockedByInvoicesAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        return (await scope.ServiceProvider.GetRequiredService<ISystemSettingsService>().GetKSeFEnvironmentLockStatusAsync()).HasInvoices;
+    }
+
+    private async Task WaitForLockWaitAsync(string queryFragment)
+    {
+        var pattern = $"%{queryFragment}%";
+        for (var attempt = 0; attempt < 200; attempt++)
+        {
+            var waiting = await WithDbAsync(db => db.Database
+                .SqlQuery<int>($"""SELECT count(*)::int AS "Value" FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE {pattern}""")
+                .SingleAsync());
+            if (waiting > 0)
+                return;
+            await Task.Delay(50);
+        }
+
+        Assert.Fail($"No query waiting on a lock matched {queryFragment}");
     }
 
     private sealed record TenantIdDto(Guid Id);
