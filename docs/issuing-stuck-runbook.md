@@ -28,6 +28,12 @@ WHERE "EscalatedAt" IS NOT NULL
 ORDER BY "IssuedAt";
 ```
 
+NIP and owner of the tenant. `UserId` is the Keycloak user:
+
+```sql
+SELECT "Nip", "UserId" FROM "Tenants" WHERE "Id" = '<tenant id>';
+```
+
 Confirm the worker runs and is polling: the Worker log has `IssuedInvoiceSendService started` and no repeating `Unhandled error in issued invoice send cycle` or `Issued invoice send for tenant {TenantId} failed`. After the second one the invoice row does not change, so `LastError` can be old.
 
 ## Reading from KSeF
@@ -36,7 +42,7 @@ Support has no KSeF access of its own. Every `/sessions` and `/invoices` call be
 
 **Owner, no API.** The owner logs in to [Aplikacja Podatnika KSeF](https://ksef.podatki.gov.pl/aplikacja-podatnika-ksef-20/) in the environment of the invoice and searches issued invoices by `KsefNumber`, otherwise by `Number`. This shows whether the document exists and what it contains. It does not give the refs or status codes used below.
 
-**Developer, API, token from the owner.** The owner generates a separate KSeF token in that application with `InvoiceWrite`, plus `InvoiceRead` for `/invoices/ksef/...`, and hands it to the developer outside tickets and logs. The developer gets an access token, the same flow as `KSeFInvoiceSubmitter.LoginAsync`:
+**Developer, API, token from the owner.** The owner generates a separate KSeF token in that application with `Introspection` for `/sessions/...`, plus `InvoiceRead` for `/invoices/ksef/...`, never `InvoiceWrite`, and hands it to the developer outside tickets and logs. The developer gets an access token, the same flow as `KSeFInvoiceSubmitter.LoginAsync`:
 
 1. `POST {base}/auth/challenge` returns `challenge` and `timestampMs`.
 2. `GET {base}/security/public-key-certificates`: take the certificate with usage `KsefTokenEncryption`. Encrypt `{token}|{timestampMs}` with RSA-OAEP SHA-256 (MGF1), then base64.
@@ -69,7 +75,7 @@ SELECT encode(sha256("SentXml"), 'base64') FROM "IssuedInvoices" WHERE "Id" = '<
 | `KSeF odrzucił token...` | Token invalid or revoked | Owner generates a new token and replaces it in company settings. The next cycle recovers the invoice without a new POST if the element is known |
 | `Token KSeF nie ma uprawnienia...` | Token has no write permission | As above, with write permission |
 | `Wysyłka faktur wymaga tokenu KSeF...` | Token credential removed | Owner adds a token |
-| `Środowisko KSeF zmienione` | The invoice was sent to another environment than the current one; re-checked daily | Set `ksef_environment` back in admin setup, or check it in KSeF using `{base}` of the invoice. It cannot resolve while the environment differs |
+| `Środowisko KSeF zmienione` | The invoice was sent to another environment than the current one; re-checked daily | Admin setup refuses a `ksef_environment` change while any invoice exists. Check the invoice in KSeF using `{base}` of the invoice, then escalate to the principal engineer. It cannot resolve while the environment differs |
 | `Nie można jeszcze potwierdzić wyniku wysyłki w KSeF...` | More than one POST, and either an unresolved 440 or a failure status | `KsefElementRef` empty: "Failure status after a resend". `KsefElementRef` set: "Unresolved 440", unless the next cycle has not polled the new post yet |
 | `UPO jeszcze niedostępne, ponowimy pobranie` | Accepted, no UPO yet | Usually KSeF lag. See "Missing UPO" |
 | Empty | No error to report. Queued with `AttemptCount` 0: never picked up. Sending: KSeF status 100 or 150, or a 404 on the element. Accepted: first UPO call not made yet | Queued or Accepted: check the worker, as above. Sending: read `GET {base}/sessions/{KsefSessionRef}/invoices/{KsefElementRef}`. If it stays in processing for more than a day, open a ticket with the Ministry with both refs |
