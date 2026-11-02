@@ -171,6 +171,24 @@ describe('SellerProfilePage', () => {
     expect(input(container, 'bank-account').getAttribute('aria-invalid')).toBe('true')
   })
 
+  it('shows SP-VAL-007 inline on the numbering pattern', async () => {
+    const message = 'Wzorzec numeracji musi zawierać {RRRR}, inaczej numery powtórzą się w kolejnym roku'
+    vi.mocked(updateSellerProfile).mockRejectedValue(
+      await apiError(400, { errors: [{ code: 'SP-VAL-007', field: 'numberingPattern', message }], warnings: [] }),
+    )
+    await render('/seller-profile?tenantId=t-1')
+    await act(async () => {
+      typeInto(input(container, 'legal-name'), 'Firma')
+      typeInto(input(container, 'address-line-1'), 'ul. Prosta 1')
+      typeInto(input(container, 'bank-account'), '61 1090 1014 0000 0712 1981 2874')
+      typeInto(input(container, 'numbering-pattern'), 'FV/{nr}')
+    })
+
+    await act(async () => buttonByText(container, 'Zapisz dane').click())
+    await waitFor(() => container.querySelector('#numbering-pattern-error')?.textContent === message)
+    expect(input(container, 'numbering-pattern').getAttribute('aria-invalid')).toBe('true')
+  })
+
   it('updates the number preview when the pattern changes', async () => {
     await render('/seller-profile?tenantId=t-1')
     await act(async () => {

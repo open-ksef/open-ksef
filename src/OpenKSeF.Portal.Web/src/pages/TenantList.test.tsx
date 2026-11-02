@@ -4,7 +4,10 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import toast from 'react-hot-toast'
+
 import { createTenant, deleteTenant, listTenants, updateTenant } from '@/api/endpoints/tenants'
+import { normalizeError } from '@/api/errors'
 import { TenantListPage } from './TenantList'
 
 vi.mock('@/api/endpoints/tenants', () => ({
@@ -31,6 +34,13 @@ async function waitFor(assertion: () => boolean, timeoutMs = 1000): Promise<void
   }
 
   throw new Error('Condition not met within timeout')
+}
+
+async function settle(assertion: () => boolean): Promise<void> {
+  for (let i = 0; i < 100 && !assertion(); i++) {
+    await act(flushPromises)
+  }
+  expect(assertion()).toBe(true)
 }
 
 describe('TenantListPage', () => {
@@ -96,6 +106,35 @@ describe('TenantListPage', () => {
     expect(container.querySelector('[data-testid="tenant-refresh-button"]')).toBeTruthy()
     expect(container.querySelector('[data-testid="tenant-edit-button"]')).toBeTruthy()
     expect(container.querySelector('[data-testid="tenant-delete-button"]')).toBeTruthy()
+  })
+
+  it('shows the API message when tenant delete returns 409', async () => {
+    const message = 'Firma ma wystawione faktury lub szkice, nie można jej usunąć.'
+    const toastError = vi.spyOn(toast, 'error')
+    vi.mocked(deleteTenant).mockRejectedValue(
+      await normalizeError(new Response(JSON.stringify({ message }), { status: 409, headers: { 'Content-Type': 'application/json' } })),
+    )
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <TenantListPage />
+        </QueryClientProvider>,
+      )
+      await flushPromises()
+    })
+    await settle(() => (container.textContent ?? '').includes('Tenant A'))
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="tenant-delete-button"]')!.click()
+    })
+    const confirm = [...container.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find((b) => b.textContent === 'Usuń firmę')!
+    await act(async () => confirm.click())
+    await settle(() => toastError.mock.calls.length > 0)
+
+    expect(String(toastError.mock.calls[0][0])).toContain(message)
+    toastError.mockRestore()
   })
 
   it('validates and submits create form', async () => {

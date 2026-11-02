@@ -2,7 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactElement } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
-import { createIssuedInvoice, getIssuedInvoice, issueIssuedInvoice, updateIssuedInvoice } from '@/api/endpoints/issuedInvoices'
+import {
+  createIssuedInvoice,
+  deleteIssuedInvoice,
+  getIssuedInvoice,
+  issueIssuedInvoice,
+  updateIssuedInvoice,
+} from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { readValidationEnvelope } from '@/api/errors'
 import type { IssuedInvoiceResponse, IssuedInvoiceStatus, SellerProfileResponse, ValidationIssue } from '@/api/types'
@@ -98,6 +104,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   const [warnings, setWarnings] = useState<ValidationIssue[]>(invoice?.warnings ?? [])
   const [failure, setFailure] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   const totals = computeTotals(
     form.lines.map((line) => ({
@@ -138,6 +145,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
     mutationFn: async () => issueIssuedInvoice(tenantId, (await saveDraft()).id),
     onSuccess: (issued) => {
       queryClient.setQueryData(['issued-invoice', tenantId, issued.id], issued)
+      void queryClient.invalidateQueries({ queryKey: ['seller-profile', tenantId] })
       navigate(`/issued/${encodeURIComponent(issued.id)}?tenantId=${encodeURIComponent(tenantId)}`)
     },
     onError: (issueError) => {
@@ -146,7 +154,22 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
     },
   })
 
-  const busy = save.isPending || issue.isPending
+  const remove = useMutation({
+    mutationFn: () => deleteIssuedInvoice(tenantId, invoice?.id ?? ''),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
+      navigate(`/issued?tenantId=${encodeURIComponent(tenantId)}`, { replace: true })
+      queryClient.removeQueries({ queryKey: ['issued-invoice', tenantId, invoice?.id] })
+    },
+    onError: (removeError) => {
+      setDeleteOpen(false)
+      return showFailure(removeError, 'Nie udało się usunąć szkicu')
+    },
+  })
+
+  const busy = save.isPending || issue.isPending || remove.isPending
+  const expectedNumber =
+    invoice?.number ?? (form.issueDate.startsWith(profile.nextNumberPeriod) ? profile.nextNumberPreview : null)
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -168,6 +191,16 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
           {invoice ? `Zapisano ${timeFormat.format(new Date(invoice.updatedAt))}` : ''}
         </span>
         <div className="inv-header__actions">
+          {invoice?.status === 'Draft' ? (
+            <button
+              type="button"
+              className="ui-button ui-button--ghost ui-button--md"
+              disabled={busy}
+              onClick={() => setDeleteOpen(true)}
+            >
+              Usuń szkic
+            </button>
+          ) : null}
           <button type="submit" className="ui-button ui-button--outline ui-button--md" disabled={busy}>
             {save.isPending ? 'Zapisywanie…' : 'Zapisz szkic'}
           </button>
@@ -183,6 +216,18 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
       </header>
 
       <ConfirmDialog
+        open={deleteOpen}
+        title="Usunąć szkic?"
+        message="Szkic zostanie trwale usunięty. Tej operacji nie można cofnąć."
+        confirmLabel="Usuń szkic"
+        cancelLabel="Wróć do edycji"
+        variant="danger"
+        isPending={remove.isPending}
+        onConfirm={() => remove.mutate()}
+        onCancel={() => setDeleteOpen(false)}
+      />
+
+      <ConfirmDialog
         open={confirmOpen}
         title="Wystawić fakturę i wysłać do KSeF?"
         message="Środowisko PRODUKCJA: po przyjęciu przez KSeF faktura staje się dokumentem prawnym. Nie można jej usunąć ani edytować."
@@ -195,7 +240,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
       >
         <dl className="inv-readonly">
           <dt>Numer</dt>
-          <dd className="mono">{invoice?.number ?? profile.nextNumberPreview}</dd>
+          <dd className="mono">{invoice?.number ?? 'Nadamy przy wystawieniu'}</dd>
           <dt>Nabywca</dt>
           <dd>
             {form.buyer.name || '—'}
@@ -263,7 +308,8 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
             totalGross={totals.totalGross}
           />
           <p className="inv-help">
-            Numer nadamy przy wystawieniu: <span className="mono">{invoice?.number ?? profile.nextNumberPreview}</span>
+            Numer nadamy przy wystawieniu{expectedNumber ? ': ' : '.'}
+            {expectedNumber ? <span className="mono">{expectedNumber}</span> : null}
           </p>
         </aside>
       </div>

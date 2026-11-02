@@ -5,6 +5,8 @@ import type { IssuedInvoiceResponse } from '@/api/types'
 import { formatDateTime } from '@/invoicing/format'
 import { KsefStatusBadge } from './KsefStatusBadge'
 
+const DUPLICATE_NUMBER_CODE = 440
+
 interface KsefStatusPanelProps {
   invoice: IssuedInvoiceResponse
   editHref: string
@@ -72,16 +74,27 @@ export function KsefStatusPanel({ invoice, editHref }: KsefStatusPanelProps): Re
             {ksef.statusCode !== null
               ? `Kod KSeF ${ksef.statusCode}: ${ksef.statusMessage ?? 'brak opisu'}`
               : (ksef.statusMessage ?? 'KSeF odrzucił fakturę.')}
+            {ksef.statusDetails ? <div>{ksef.statusDetails}</div> : null}
             {ksef.lastError && ksef.lastError !== ksef.statusMessage ? <div>{ksef.lastError}</div> : null}
           </div>
-          {number ? (
+          {ksef.statusCode === DUPLICATE_NUMBER_CODE ? (
             <p className="inv-help">
-              Numer <span className="mono">{number}</span> zostaje — po poprawce wyślemy fakturę z tym samym numerem.
+              Numer <span className="mono">{number}</span> jest już zajęty w KSeF, więc ponowna wysyłka z tym numerem się nie
+              uda. Użyj „Kopiuj jako nową”, aby wystawić fakturę z nowym numerem. Jeśli wcześniejsze numery nadano poza
+              OpenKSeF, najpierw ustaw wyższy następny numer w Danych do faktur.
             </p>
-          ) : null}
-          <Link to={editHref} className="ui-button ui-button--primary ui-button--md">
-            Popraw i wyślij ponownie
-          </Link>
+          ) : (
+            <>
+              {number ? (
+                <p className="inv-help">
+                  Numer <span className="mono">{number}</span> zostaje — po poprawce wyślemy fakturę z tym samym numerem.
+                </p>
+              ) : null}
+              <Link to={editHref} className="ui-button ui-button--primary ui-button--md">
+                Popraw i wyślij ponownie
+              </Link>
+            </>
+          )}
         </>
       ) : null}
     </section>

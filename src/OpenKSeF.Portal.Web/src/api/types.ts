@@ -244,6 +244,7 @@ export interface IssuedInvoiceKsef {
   acceptedAt: string | null
   statusCode: number | null
   statusMessage: string | null
+  statusDetails: string | null
   lastError: string | null
   verificationUrl: string | null
   hasUpo: boolean

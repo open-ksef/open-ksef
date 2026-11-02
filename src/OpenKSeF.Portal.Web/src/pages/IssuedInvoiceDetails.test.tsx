@@ -59,6 +59,7 @@ const ksef = {
   acceptedAt: null,
   statusCode: null,
   statusMessage: null,
+  statusDetails: null,
   lastError: null,
   verificationUrl: null,
   hasUpo: false,
@@ -160,7 +161,10 @@ describe('issue and detail pages', () => {
     await waitFor(() => Boolean(buttonByText(container, 'Wystaw i wyślij do KSeF')))
 
     await act(async () => buttonByText(container, 'Wystaw i wyślij do KSeF')!.click())
-    expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain('dokumentem prawnym')
+    const dialog = container.querySelector('[role="alertdialog"]')?.textContent
+    expect(dialog).toContain('dokumentem prawnym')
+    expect(dialog).toContain('Nadamy przy wystawieniu')
+    expect(dialog).not.toContain('FV/1/11/2026')
     expect(issueIssuedInvoice).not.toHaveBeenCalled()
 
     await act(async () => buttonByText(container.querySelector<HTMLElement>('[role="alertdialog"]')!, 'Wystaw i wyślij')!.click())
@@ -184,6 +188,24 @@ describe('issue and detail pages', () => {
     expect(container.querySelector('[role="alertdialog"]')).toBeNull()
   })
 
+  it('INV-VAL-020 on issue shows inline on the issue date field', async () => {
+    vi.mocked(getSellerProfile).mockResolvedValue({ ...profile, ksefEnvironment: 'test' })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+    const body = { errors: [{ code: 'INV-VAL-020', field: 'issueDate', message: 'Data wystawienia nie może być późniejsza niż dzisiejsza' }], warnings: [] }
+    vi.mocked(issueIssuedInvoice).mockRejectedValue(
+      await normalizeError(new Response(JSON.stringify(body), { status: 422, headers: { 'Content-Type': 'application/json' } })),
+    )
+    await render('/issued/i-1/edit?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Wystaw i wyślij do KSeF')))
+
+    await act(async () => buttonByText(container, 'Wystaw i wyślij do KSeF')!.click())
+    await waitFor(() => container.querySelector('#issue-date-error') !== null)
+
+    expect(container.querySelector('#issue-date-error')?.textContent).toContain('późniejsza niż dzisiejsza')
+    expect(container.querySelector('#issue-date')?.getAttribute('aria-invalid')).toBe('true')
+  })
+
   it('Accepted shows the KSeF number and downloads, no edit', async () => {
     vi.mocked(getIssuedInvoice).mockResolvedValue(
       invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: '5260250274-20261103-ABC', acceptedAt: '2026-11-03T10:05:00Z', hasUpo: true } }),
@@ -203,15 +225,82 @@ describe('issue and detail pages', () => {
     expect(getIssuedInvoiceXml).toHaveBeenCalledWith('t-1', 'i-1')
   })
 
-  it('Rejected shows the KSeF message and the edit link', async () => {
+  it('Rejected shows the KSeF message, details and the edit link', async () => {
+    const statusDetails = 'Data wystawienia faktury nie może być późniejsza niż data przyjęcia do systemu.'
     vi.mocked(getIssuedInvoice).mockResolvedValue(
-      invoice({ status: 'Rejected', ksef: { ...ksef, statusCode: 450, statusMessage: 'Błąd weryfikacji semantyki' } }),
+      invoice({ status: 'Rejected', ksef: { ...ksef, statusCode: 450, statusMessage: 'Błąd weryfikacji semantyki', statusDetails } }),
     )
     await render('/issued/i-1?tenantId=t-1')
     await waitFor(() => container.textContent?.includes('Kod KSeF 450: Błąd weryfikacji semantyki') ?? false)
 
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(statusDetails)
     expect(container.querySelector('a[href*="/issued/i-1/edit"]')?.textContent).toContain('Popraw i wyślij ponownie')
     expect(buttonByText(container, 'Pobierz XML')).toBeUndefined()
+    expect(buttonByText(container, 'Usuń')).toBeUndefined()
+  })
+
+  it('Rejected with a duplicate number says it is taken and offers only the copy', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(
+      invoice({ status: 'Rejected', ksef: { ...ksef, statusCode: 440, statusMessage: 'Duplikat faktury' } }),
+    )
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => container.textContent?.includes('jest już zajęty w KSeF') ?? false)
+
+    expect(buttonByText(container, 'Kopiuj jako nową')).toBeDefined()
+    expect(container.textContent).not.toContain('Popraw i wyślij ponownie')
+    expect(container.querySelector('a[href*="/edit"]')).toBeNull()
+  })
+
+  it('Sending hides Kopiuj jako nową', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending' }))
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => container.textContent?.includes('czekamy na przyjęcie') ?? false)
+
+    expect(buttonByText(container, 'Kopiuj jako nową')).toBeUndefined()
+  })
+
+  it('Usuń szkic deletes a draft only after confirmation', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+    vi.mocked(deleteIssuedInvoice).mockResolvedValue(undefined)
+    await render('/issued/i-1/edit?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Usuń szkic')))
+
+    await act(async () => buttonByText(container, 'Usuń szkic')!.click())
+    const dialog = () => container.querySelector<HTMLElement>('[role="alertdialog"]')!
+    expect(dialog().textContent).toContain('trwale usunięty')
+    expect(deleteIssuedInvoice).not.toHaveBeenCalled()
+
+    await act(async () => buttonByText(dialog(), 'Wróć do edycji')!.click())
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull()
+    expect(deleteIssuedInvoice).not.toHaveBeenCalled()
+
+    await act(async () => buttonByText(container, 'Usuń szkic')!.click())
+    await act(async () => buttonByText(dialog(), 'Usuń szkic')!.click())
+    await waitFor(() => vi.mocked(deleteIssuedInvoice).mock.calls.length === 1)
+    expect(deleteIssuedInvoice).toHaveBeenCalledWith('t-1', 'i-1')
+    await waitFor(() => !buttonByText(container, 'Zapisz szkic'))
+  })
+
+  it('Usuń szkic failure keeps the form and shows the error', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+    vi.mocked(deleteIssuedInvoice).mockRejectedValue(new Error('Faktura nie jest już szkicem'))
+    await render('/issued/i-1/edit?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Usuń szkic')))
+
+    await act(async () => buttonByText(container, 'Usuń szkic')!.click())
+    await act(async () => buttonByText(container.querySelector<HTMLElement>('[role="alertdialog"]')!, 'Usuń szkic')!.click())
+    await waitFor(() => container.textContent?.includes('Faktura nie jest już szkicem') ?? false)
+
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull()
+    expect(buttonByText(container, 'Zapisz szkic')).toBeDefined()
+  })
+
+  it('Rejected edit offers no delete', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Rejected' }))
+    await render('/issued/i-1/edit?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Zapisz szkic')))
+
+    expect(buttonByText(container, 'Usuń szkic')).toBeUndefined()
   })
 
   it('Kopiuj jako nową opens the new draft and leaves the source alone', async () => {
@@ -299,7 +388,7 @@ describe('issue and detail pages', () => {
   ] as const)('Pobierz PDF is not offered for %s without a KSeF number and KOD I', async (status, ksefData) => {
     vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status, ksef: ksefData }))
     await render('/issued/i-1?tenantId=t-1')
-    await waitFor(() => Boolean(buttonByText(container, 'Kopiuj jako nową')))
+    await waitFor(() => Boolean(container.querySelector('#ksef-panel-title')))
     expect(buttonByText(container, 'Pobierz PDF')).toBeUndefined()
   })
 

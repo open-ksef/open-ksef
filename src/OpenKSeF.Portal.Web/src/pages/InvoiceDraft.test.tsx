@@ -10,6 +10,7 @@ import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { listTenants } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
 import type { IssuedInvoiceResponse, SellerProfileResponse } from '@/api/types'
+import { todayIso } from '@/invoicing/format'
 import { InvoiceDraftPage } from './InvoiceDraft'
 import { IssuedInvoiceListPage } from './IssuedInvoiceList'
 
@@ -95,6 +96,7 @@ describe('issuing pages', () => {
   }
 
   it('new draft shows the read-only seller, live totals and the number preview', async () => {
+    vi.mocked(getSellerProfile).mockResolvedValue({ ...profile, nextNumberPeriod: todayIso().slice(0, 7) })
     await render('/issued/new?tenantId=t-1')
     await waitFor(() => Boolean(container.querySelector('#line-0-unitNetPrice')))
 
@@ -105,6 +107,17 @@ describe('issuing pages', () => {
 
     await act(async () => typeInto(container.querySelector<HTMLInputElement>('#line-0-unitNetPrice')!, '100'))
     expect(container.querySelector('[data-testid="total-gross"]')?.textContent?.replace(/\s/g, ' ')).toBe('123,00 PLN')
+  })
+
+  it('hides the number preview when the issue date is in another period', async () => {
+    vi.mocked(getSellerProfile).mockResolvedValue({ ...profile, nextNumberPeriod: todayIso().slice(0, 7) })
+    await render('/issued/new?tenantId=t-1')
+    await waitFor(() => Boolean(container.querySelector('#issue-date')))
+
+    await act(async () => typeInto(container.querySelector<HTMLInputElement>('#issue-date')!, '2020-01-15'))
+
+    expect(container.textContent).not.toContain('FV/1/11/2026')
+    expect(container.textContent).toContain('Numer nadamy przy wystawieniu.')
   })
 
   it('Osoba prywatna hides NIP and keeps name and address required', async () => {
@@ -134,7 +147,7 @@ describe('issuing pages', () => {
   })
 
   it('saves dates unchanged and shows server errors inline', async () => {
-    const body = { errors: [{ code: 'INV-VAL-020', field: 'buyer.nip', message: 'Dla nabywcy firmy wymagany jest poprawny NIP' }], warnings: [] }
+    const body = { errors: [{ code: 'INV-VAL-013', field: 'buyer.nip', message: 'Dla nabywcy firmy wymagany jest poprawny NIP' }], warnings: [] }
     vi.mocked(createIssuedInvoice).mockRejectedValue(
       await normalizeError(new Response(JSON.stringify(body), { status: 400, headers: { 'Content-Type': 'application/json' } })),
     )

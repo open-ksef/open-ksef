@@ -104,14 +104,16 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
         <KsefStatusBadge status={invoice.status} />
         <EnvBadge environment={invoice.ksef.environment} />
         <div className="inv-header__actions">
-          <button
-            type="button"
-            className="ui-button ui-button--ghost ui-button--md"
-            disabled={copy.isPending}
-            onClick={() => copy.mutate()}
-          >
-            {copy.isPending ? 'Kopiowanie…' : 'Kopiuj jako nową'}
-          </button>
+          {invoice.status !== 'Sending' ? (
+            <button
+              type="button"
+              className="ui-button ui-button--ghost ui-button--md"
+              disabled={copy.isPending}
+              onClick={() => copy.mutate()}
+            >
+              {copy.isPending ? 'Kopiowanie…' : 'Kopiuj jako nową'}
+            </button>
+          ) : null}
           {accepted ? (
             <>
               <button
