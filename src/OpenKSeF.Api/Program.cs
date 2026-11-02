@@ -162,6 +162,8 @@ builder.Services.AddScoped<ITransferDetailsService, TransferDetailsService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ISellerProfileService, SellerProfileService>();
+builder.Services.AddScoped<IKSeFIssuingEnvironment, OpenKSeF.Api.Services.KSeFIssuingEnvironment>();
+builder.Services.AddScoped<IIssuedInvoiceService, IssuedInvoiceService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<WhiteListClient>(client =>
 {

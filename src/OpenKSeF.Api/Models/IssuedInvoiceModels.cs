@@ -87,6 +87,8 @@ public record IssuedInvoiceListItemResponse(
     string? BuyerName,
     string? BuyerNip,
     DateOnly IssueDate,
+    DateOnly DueDate,
+    decimal TotalNet,
     decimal TotalGross,
     string Currency,
     string? KsefNumber);

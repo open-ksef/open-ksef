@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Domain.Data;
@@ -46,11 +47,20 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
             profile = new SellerProfile(tenantId);
             db.SellerProfiles.Add(profile);
         }
+        else
+        {
+            db.Entry(profile).State = EntityState.Modified;
+        }
 
         profile.Update(input.LegalName, input.AddressLine1, input.AddressLine2, bankAccount, input.CashAccounting, pattern);
 
         if (input.NextNumber is { } next)
         {
+            var highestUsed = await HighestUsedNumberAsync(tenantId, pattern, period, ct);
+            if (next <= highestUsed)
+                throw new InvoiceValidationException([new("SP-VAL-006", "nextNumber",
+                    $"Numer {next} jest już użyty. Ostatni numer w tym okresie to {highestUsed}, podaj co najmniej {highestUsed + 1}.")]);
+
             var counter = await db.InvoiceNumberCounters.SingleOrDefaultAsync(c => c.TenantId == tenantId && c.Period == period, ct);
             if (counter is null)
                 db.InvoiceNumberCounters.Add(new InvoiceNumberCounter { TenantId = tenantId, Period = period, Next = next });
@@ -58,7 +68,15 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
                 counter.Next = next;
         }
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException e) when (e is DbUpdateConcurrencyException || IssuedInvoiceService.IsUniqueViolation(e))
+        {
+            throw new InvoiceStateException("Dane do faktur zostały równocześnie zmienione, odśwież stronę i spróbuj ponownie");
+        }
+
         return (await ViewAsync(profile, nip, ct), []);
     }
 
@@ -70,6 +88,21 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
             RETURNING "Next" - 1 AS "Value"
             """).ToListAsync(ct);
         return numbers.Single();
+    }
+
+    private async Task<int> HighestUsedNumberAsync(Guid tenantId, string pattern, string period, CancellationToken ct)
+    {
+        var (prefix, suffix) = InvoiceNumbering.NumberAffixes(pattern, InvoiceNumbering.PeriodStart(period));
+        var numbers = await db.IssuedInvoices
+            .Where(i => i.TenantId == tenantId && i.Number != null && i.Number.StartsWith(prefix) && i.Number.EndsWith(suffix))
+            .Select(i => i.Number!)
+            .ToListAsync(ct);
+
+        return numbers
+            .Where(n => n.Length > prefix.Length + suffix.Length)
+            .Select(n => int.TryParse(n.AsSpan(prefix.Length, n.Length - prefix.Length - suffix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out var used) ? used : 0)
+            .DefaultIfEmpty()
+            .Max();
     }
 
     private static List<InvoiceCheck> Validate(SellerProfileInput input, string pattern, string? bankAccount, string period)

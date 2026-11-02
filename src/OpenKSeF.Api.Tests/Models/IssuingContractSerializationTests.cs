@@ -110,11 +110,11 @@ public class IssuingContractSerializationTests
     {
         var response = new IssuedInvoiceListItemResponse(
             Guid.Parse("8f1c2a8e-6a5d-4c55-9c7a-1b2c3d4e5f60"), "Accepted", "FV/1/11/2026", "B", "1234567890",
-            new DateOnly(2026, 11, 3), 123.00m, "PLN", "1234567890-20261103-0100A0B0C0D0-E1");
+            new DateOnly(2026, 11, 3), new DateOnly(2026, 11, 17), 100.00m, 123.00m, "PLN", "1234567890-20261103-0100A0B0C0D0-E1");
 
         AssertJson(response, """
             { "id": "8f1c2a8e-6a5d-4c55-9c7a-1b2c3d4e5f60", "status": "Accepted", "number": "FV/1/11/2026", "buyerName": "B", "buyerNip": "1234567890",
-              "issueDate": "2026-11-03", "totalGross": 123.00, "currency": "PLN", "ksefNumber": "1234567890-20261103-0100A0B0C0D0-E1" }
+              "issueDate": "2026-11-03", "dueDate": "2026-11-17", "totalNet": 100.00, "totalGross": 123.00, "currency": "PLN", "ksefNumber": "1234567890-20261103-0100A0B0C0D0-E1" }
             """);
     }
 

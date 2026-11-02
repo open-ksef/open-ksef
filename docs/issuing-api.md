@@ -10,20 +10,30 @@ JSON camelCase, dates `yyyy-MM-dd` (`DateOnly`), money as JSON numbers with 2 dp
 
 ```
 GET  /api/tenants/{tenantId}/seller-profile                 -> 200 SellerProfileResponse (defaults + isComplete=false if none) | 404 tenant
-PUT  /api/tenants/{tenantId}/seller-profile                 SellerProfileRequest -> 200 SellerProfileResponse | 400 ValidationEnvelope
+PUT  /api/tenants/{tenantId}/seller-profile                 SellerProfileRequest -> 200 SellerProfileResponse | 400 ValidationEnvelope | 409 (next number too low: ValidationEnvelope; concurrent write: { message })
 GET  /api/nip-lookup/{nip}                                  -> 200 NipLookupResponse | 400 | 404 | 503
-GET  /api/tenants/{tenantId}/issued-invoices?page=&pageSize=&status=   -> 200 PagedResult<IssuedInvoiceListItemResponse>
-POST /api/tenants/{tenantId}/issued-invoices                IssuedInvoiceDraftRequest -> 201 IssuedInvoiceResponse
+GET  /api/tenants/{tenantId}/issued-invoices?page=&pageSize=&status=&month=&q=   -> 200 PagedResult<IssuedInvoiceListItemResponse> | 400 ValidationEnvelope
+POST /api/tenants/{tenantId}/issued-invoices                IssuedInvoiceDraftRequest -> 201 IssuedInvoiceResponse | 400 ValidationEnvelope
 GET  /api/tenants/{tenantId}/issued-invoices/{id}           -> 200 IssuedInvoiceResponse
-PUT  /api/tenants/{tenantId}/issued-invoices/{id}           IssuedInvoiceDraftRequest -> 200 | 409 (not Draft/Rejected)
+PUT  /api/tenants/{tenantId}/issued-invoices/{id}           IssuedInvoiceDraftRequest -> 200 | 400 ValidationEnvelope | 409 (not Draft/Rejected)
 DELETE /api/tenants/{tenantId}/issued-invoices/{id}         -> 204 | 409 (not Draft)
-POST /api/tenants/{tenantId}/issued-invoices/{id}/issue     -> 202 IssuedInvoiceResponse (status Sending) | 200 if already Sending/Accepted | 422 ValidationEnvelope
+POST /api/tenants/{tenantId}/issued-invoices/{id}/issue     -> 202 IssuedInvoiceResponse (status Sending) | 200 if already Sending/Accepted | 422 ValidationEnvelope | 409 (number already used, concurrent change)
 POST /api/tenants/{tenantId}/issued-invoices/{id}/copy      -> 201 IssuedInvoiceResponse (new Draft, same buyer+lines, dates = today, no number)
 GET  /api/tenants/{tenantId}/issued-invoices/{id}/xml       -> 200 application/xml (stored bytes) | 409 unless Accepted
 GET  /api/tenants/{tenantId}/issued-invoices/{id}/upo       -> 200 application/xml | 409 unless Accepted with UPO
 ```
 
-Cross-tenant on any route returns 404.
+Cross-tenant on any route returns 404. A 409 without a `ValidationEnvelope` has the body `{ "message": "..." }`.
+
+List filters:
+- `status`: `Draft`, `Sending` (internal Queued + Sending), `Accepted`, `Rejected`.
+- `month`: `yyyy-MM`, by `issueDate`.
+- `q`: case-insensitive substring of buyer name, buyer NIP or invoice number.
+- Order: `issueDate` descending, then `createdAt` descending. `pageSize` is capped at 100.
+
+Draft dates are optional in the request and never null in a response: `issueDate` defaults to today (Europe/Warsaw), `saleDate` to `issueDate`, `dueDate` to `issueDate` + 14 days.
+
+A draft or rejected invoice shows the current seller profile in `seller`; issuing stores a snapshot, and later responses show the snapshot. A rejected invoice keeps its number and cannot be deleted.
 
 ```jsonc
 // SellerProfileRequest
@@ -60,7 +70,7 @@ Cross-tenant on any route returns 404.
 
 // IssuedInvoiceListItemResponse
 { "id": "guid", "status": "Accepted", "number": "FV/1/11/2026", "buyerName": "...", "buyerNip": "...",
-  "issueDate": "2026-11-03", "totalGross": 123.00, "currency": "PLN", "ksefNumber": "..." }
+  "issueDate": "2026-11-03", "dueDate": "2026-11-17", "totalNet": 100.00, "totalGross": 123.00, "currency": "PLN", "ksefNumber": "..." }
 
 // ValidationEnvelope (400/422)
 { "errors": [ { "code": "INV-VAL-013", "field": "buyer.nip", "message": "Dla nabywcy firmy wymagany jest poprawny NIP" } ], "warnings": [] }
@@ -75,11 +85,12 @@ Totals rule for client previews (they must equal the server; shared vectors in `
 
 ## Validation codes
 
-Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (never block). Source: `src/OpenKSeF.Domain/Invoicing/IssueChecks.cs`.
+Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (never block). Source: `src/OpenKSeF.Domain/Invoicing/IssueChecks.cs`, `Domain/Services/IssuedInvoiceService.cs` (draft shape, returned as 400).
 
 | Code | Field | Message |
 |---|---|---|
 | INV-VAL-002 | `lines` | Faktura musi zawierać co najmniej jedną pozycję |
+| INV-VAL-003 | `lines` | Faktura może mieć najwyżej 1000 pozycji (draft 400) |
 | INV-VAL-010 | `seller.name` | Uzupełnij nazwę firmy w danych do faktur |
 | INV-VAL-011 | `seller.addressLine1` | Uzupełnij adres firmy w danych do faktur |
 | INV-VAL-012 | `seller.bankAccount` | Uzupełnij numer rachunku w danych firmy (przelew only) |
@@ -91,8 +102,17 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | INV-VAL-050 | `lines[i].name` | Każda pozycja musi mieć nazwę |
 | INV-VAL-051 | `lines[i].quantity` | Ilość na pozycji musi być większa od zera |
 | INV-VAL-052 | `lines[i].unitNetPrice` | Cena netto nie może być ujemna |
+| INV-VAL-053 | `lines[i].quantity` | Ilość poza zakresem lub ponad 6 miejsc po przecinku (draft 400) |
+| INV-VAL-054 | `lines[i].unitNetPrice` | Cena lub wartość pozycji poza zakresem, lub ponad 2 miejsca po przecinku (draft 400) |
 | INV-VAL-060 | `lines[i].vatRate` | Dozwolone stawki VAT: 23, 8, 5, 0 KR, zw |
 | INV-VAL-061 | `exemptionBasis` | Podaj podstawę zwolnienia z VAT |
+| INV-VAL-070 | `buyer.kind` | Rodzaj nabywcy: Company lub Person (draft 400) |
+| INV-VAL-071 | `paymentMethod` | Forma płatności: Transfer, Cash lub Card (draft 400) |
+| INV-VAL-072 | `exemptionBasis.kind` | Podstawa zwolnienia: Act, Directive lub Other (draft 400) |
+| INV-VAL-073 | text fields | Pole może mieć najwyżej N znaków (draft 400; names and addresses 512, unit and exemption text 256) |
+| INV-VAL-080 | `status` | Dozwolone statusy: Draft, Sending, Accepted, Rejected (list 400) |
+| INV-VAL-081 | `month` | Miesiąc musi mieć format RRRR-MM (list 400) |
+| INV-XSD | null | Faktura nie spełnia schematu FA(3): ... (issue 422, one per schema error) |
 | INV-W-NIP | `buyer.nip` | NIP nabywcy ma niepoprawną sumę kontrolną (warning) |
 | INV-W-MPP | `splitPayment` | Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15) (warning, gross > 15 000,00) |
 | SP-VAL-001 | `bankAccount` | Niepoprawny numer rachunku (seller profile PUT) |
@@ -100,6 +120,7 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | SP-VAL-003 | `nextNumber` | Następny numer musi być większy od zera |
 | SP-VAL-004 | `nextNumberPeriod` | Okres numeracji musi mieć format RRRR-MM (wzorzec z {MM}) lub RRRR |
 | SP-VAL-005 | `legalName`, `addressLine1`, `addressLine2`, `numberingPattern` | Field too long (512; pattern 100) |
+| SP-VAL-006 | `nextNumber` | Numer N jest już użyty. Ostatni numer w tym okresie to M, podaj co najmniej M+1. (seller profile PUT 409) |
 | NIP-INVALID | `nip` | Niepoprawny NIP (nip-lookup 400) |
 | NIP-NOT-FOUND | `nip` | Brak podmiotu w wykazie podatników VAT, wpisz dane ręcznie (nip-lookup 404) |
 | NIP-LOOKUP-UNAVAILABLE | `nip` | Wyszukiwarka MF niedostępna, wpisz dane ręcznie (nip-lookup 503) |

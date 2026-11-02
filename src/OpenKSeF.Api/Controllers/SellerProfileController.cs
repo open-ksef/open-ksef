@@ -2,9 +2,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
+using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Services;
-using OpenKSeF.Sync;
 
 namespace OpenKSeF.Api.Controllers;
 
@@ -15,7 +16,7 @@ public class SellerProfileController(
     ApplicationDbContext db,
     ICurrentUserService currentUser,
     ISellerProfileService sellerProfiles,
-    ISystemConfigService systemConfig) : ControllerBase
+    IKSeFIssuingEnvironment ksefEnvironment) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(SellerProfileResponse), StatusCodes.Status200OK)]
@@ -33,23 +34,38 @@ public class SellerProfileController(
     [ProducesResponseType(typeof(SellerProfileResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Put(Guid tenantId, SellerProfileRequest request, CancellationToken ct)
     {
         if (!await OwnsTenantAsync(tenantId, ct))
             return NotFound();
 
-        var (view, errors) = await sellerProfiles.SaveAsync(tenantId, new SellerProfileInput(
-            request.LegalName, request.AddressLine1, request.AddressLine2, request.BankAccount, request.CashAccounting,
-            request.NumberingPattern, request.NextNumber, request.NextNumberPeriod), ct);
+        try
+        {
+            var (view, errors) = await sellerProfiles.SaveAsync(tenantId, new SellerProfileInput(
+                request.LegalName, request.AddressLine1, request.AddressLine2, request.BankAccount, request.CashAccounting,
+                request.NumberingPattern, request.NextNumber, request.NextNumberPeriod), ct);
 
-        if (errors.Count > 0)
-            return BadRequest(new ValidationEnvelope(errors.Select(e => new ValidationIssue(e.Code, e.Field, e.Message)).ToList(), []));
+            if (errors.Count > 0)
+                return BadRequest(ToEnvelope(errors));
 
-        return view is null ? NotFound() : Ok(ToResponse(view));
+            return view is null ? NotFound() : Ok(ToResponse(view));
+        }
+        catch (InvoiceValidationException e)
+        {
+            return Conflict(ToEnvelope(e.Errors));
+        }
+        catch (InvoiceStateException e)
+        {
+            return Conflict(new { message = e.Message });
+        }
     }
 
     private Task<bool> OwnsTenantAsync(Guid tenantId, CancellationToken ct) =>
         db.Tenants.AnyAsync(t => t.Id == tenantId && t.UserId == currentUser.UserId, ct);
+
+    private static ValidationEnvelope ToEnvelope(IReadOnlyList<InvoiceCheck> errors) =>
+        new(errors.Select(e => new ValidationIssue(e.Code, e.Field, e.Message)).ToList(), []);
 
     private SellerProfileResponse ToResponse(SellerProfileView view) => new(
         view.Profile.LegalName,
@@ -63,6 +79,5 @@ public class SellerProfileController(
         view.Nip,
         view.Profile.IsComplete,
         view.NextNumberPreview,
-        DependencyInjection.NormalizeKSeFEnvironmentKey(
-            systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment) ?? systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl)));
+        ksefEnvironment.Current);
 }

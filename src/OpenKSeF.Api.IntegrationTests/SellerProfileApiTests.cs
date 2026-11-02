@@ -6,6 +6,7 @@ using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.IntegrationTests;
@@ -172,6 +173,80 @@ public class SellerProfileApiTests : IDisposable
 
         using var verify = _factory.Services.CreateScope();
         Assert.False(await verify.ServiceProvider.GetRequiredService<ApplicationDbContext>().SellerProfiles.AnyAsync(p => p.TenantId == otherTenantId));
+    }
+
+    [Fact]
+    public async Task Put_NextNumberNotAboveUsedNumber_Returns409Friendly_AndKeepsCounter()
+    {
+        var tenantId = await CreateTenantAsync();
+        Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", Request())).StatusCode);
+        await SeedIssuedInvoiceAsync(tenantId, "FV/7/11/2026");
+
+        var response = await _client.PutAsJsonAsync(
+            $"/api/tenants/{tenantId}/seller-profile", Request(nextNumber: 7, nextNumberPeriod: "2026-11"));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var error = Assert.Single((await response.Content.ReadFromJsonAsync<ValidationEnvelope>())!.Errors);
+        Assert.Equal(("SP-VAL-006", "nextNumber"), (error.Code, error.Field));
+        Assert.Contains("co najmniej 8", error.Message);
+
+        var ok = await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", Request(nextNumber: 8, nextNumberPeriod: "2026-11"));
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+
+        var otherPeriod = await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", Request(nextNumber: 1, nextNumberPeriod: "2026-12"));
+        Assert.Equal(HttpStatusCode.OK, otherPeriod.StatusCode);
+    }
+
+    [Fact]
+    public async Task Put_ConcurrentWithAnotherWrite_Returns409()
+    {
+        var tenantId = await CreateTenantAsync();
+        Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", Request())).StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE "SellerProfiles" SET "LegalName" = 'Pierwszy zapis' WHERE "TenantId" = {tenantId}""");
+
+        var put = _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", Request());
+        await WaitForBlockedStatementAsync();
+        await transaction.CommitAsync();
+
+        var response = await put;
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<System.Text.Json.Nodes.JsonObject>();
+        Assert.Contains("równocześnie", body!["message"]!.GetValue<string>());
+
+        var profile = await _client.GetFromJsonAsync<SellerProfileResponse>($"/api/tenants/{tenantId}/seller-profile");
+        Assert.Equal("Pierwszy zapis", profile!.LegalName);
+    }
+
+    private async Task WaitForBlockedStatementAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        for (var i = 0; i < 100; i++)
+        {
+            var blocked = await db.Database.SqlQueryRaw<int>("""SELECT count(*)::int AS "Value" FROM pg_stat_activity WHERE wait_event_type = 'Lock'""").SingleAsync();
+            if (blocked > 0)
+                return;
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException("The PUT never blocked on the row lock.");
+    }
+
+    private async Task SeedIssuedInvoiceAsync(Guid tenantId, string number)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var profile = await db.SellerProfiles.SingleAsync(p => p.TenantId == tenantId);
+        var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, new DateOnly(2026, 11, 3), DateTime.UtcNow);
+        invoice.SetBuyer(BuyerKind.Company, "5261040828", "Nabywca", "ul. Krótka 2", null);
+        invoice.AddLine("Usługa", "szt.", 1, 100m, VatRate.Rate23);
+        invoice.Issue(profile, "5261040828", number, DateTime.UtcNow);
+        db.IssuedInvoices.Add(invoice);
+        await db.SaveChangesAsync();
     }
 
     private sealed record TenantIdDto(Guid Id);
