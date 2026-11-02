@@ -17,7 +17,7 @@ import { VatSummary } from '@/components/invoicing/VatSummary'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
 import { formatDate, formatMoney, formatNrb } from '@/invoicing/format'
-import { downloadFile, fileStem, isReissueBlocked, ksefPollInterval, renderInvoicePdf } from '@/invoicing/status'
+import { downloadFile, fileStem, isReissueBlocked, isUpoPending, ksefPollInterval, renderInvoicePdf } from '@/invoicing/status'
 import { vatRateLabel } from '@/invoicing/totals'
 
 const paymentLabels = { Transfer: 'Przelew', Cash: 'Gotówka', Card: 'Karta' } as const
@@ -115,7 +115,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
         <KsefStatusBadge status={invoice.status} />
         <EnvBadge environment={invoice.ksef.environment} />
         <div className="inv-header__actions">
-          {invoice.status !== 'Sending' && !isReissueBlocked(invoice) ? copyButton : null}
+          {invoice.status !== 'Sending' && !isReissueBlocked(invoice) && !isUpoPending(invoice) ? copyButton : null}
           {accepted ? (
             <>
               <button

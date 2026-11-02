@@ -10,6 +10,8 @@ export function ksefPollInterval(status: IssuedInvoiceStatus | undefined, elapse
 export const isReissueBlocked = ({ status, ksef }: IssuedInvoiceResponse): boolean =>
   status === 'Rejected' && ksef.statusCode === 440
 
+export const isUpoPending = ({ status, ksef }: IssuedInvoiceResponse): boolean => status === 'Accepted' && !ksef.hasUpo
+
 export function downloadFile(content: BlobPart, fileName: string, type: string): void {
   const url = URL.createObjectURL(new Blob([content], { type }))
   const link = document.createElement('a')
