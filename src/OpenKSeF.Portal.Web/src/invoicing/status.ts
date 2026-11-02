@@ -17,3 +17,8 @@ export function downloadFile(content: BlobPart, fileName: string, type: string):
 }
 
 export const fileStem = (number: string | null, id: string): string => (number ?? id).replace(/[^\w.-]+/g, '_')
+
+export async function renderInvoicePdf(xml: string, nrKSeF: string, qrCode: string): Promise<Blob> {
+  const { generateInvoice } = await import('@/vendor/ksef-pdf-generator/ksef-fe-invoice-converter.js')
+  return generateInvoice(new File([xml], 'faktura.xml', { type: 'application/xml' }), { nrKSeF, qrCode }, 'blob')
+}

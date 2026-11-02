@@ -50,6 +50,24 @@
   font-size: 13px;
 }
 
+.invoicing .ui-button--primary {
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
+}
+
+.invoicing .ui-button--primary:hover {
+  background: var(--ui-primary-hover);
+}
+
+.invoicing .ui-button--ghost {
+  background: transparent;
+  color: var(--ui-primary);
+}
+
+.invoicing .ui-button--ghost:hover {
+  background: var(--ui-primary-subtle);
+}
+
 .inv-header {
   display: flex;
   flex-wrap: wrap;

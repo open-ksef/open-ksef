@@ -1,8 +1,13 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactElement } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
-import { getIssuedInvoice, getIssuedInvoiceUpo, getIssuedInvoiceXml } from '@/api/endpoints/issuedInvoices'
+import {
+  copyIssuedInvoice,
+  getIssuedInvoice,
+  getIssuedInvoiceUpo,
+  getIssuedInvoiceXml,
+} from '@/api/endpoints/issuedInvoices'
 import type { IssuedInvoiceResponse } from '@/api/types'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Skeleton } from '@/components/Skeleton'
@@ -12,7 +17,7 @@ import { VatSummary } from '@/components/invoicing/VatSummary'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
 import { formatDate, formatMoney, formatNrb } from '@/invoicing/format'
-import { downloadFile, fileStem, ksefPollInterval } from '@/invoicing/status'
+import { downloadFile, fileStem, ksefPollInterval, renderInvoicePdf } from '@/invoicing/status'
 import { vatRateLabel } from '@/invoicing/totals'
 
 const paymentLabels = { Transfer: 'Przelew', Cash: 'Gotówka', Card: 'Karta' } as const
@@ -50,18 +55,44 @@ export function IssuedInvoiceDetailsPage(): ReactElement {
 
 function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: IssuedInvoiceResponse }): ReactElement {
   const [failure, setFailure] = useState<string | null>(null)
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const tenantQuery = `tenantId=${encodeURIComponent(tenantId)}`
   const stem = fileStem(invoice.number, invoice.id)
+  const { ksefNumber, verificationUrl } = invoice.ksef
   const accepted = invoice.status === 'Accepted'
+
+  function showFailure(error: unknown, fallback: string): void {
+    setFailure(error instanceof Error ? error.message : fallback)
+  }
 
   async function download(load: () => Promise<string>, fileName: string): Promise<void> {
     setFailure(null)
     try {
       downloadFile(await load(), fileName, 'application/xml')
     } catch (downloadError) {
-      setFailure(downloadError instanceof Error ? downloadError.message : 'Nie udało się pobrać pliku')
+      showFailure(downloadError, 'Nie udało się pobrać pliku')
     }
   }
+
+  const copy = useMutation({
+    mutationFn: () => copyIssuedInvoice(tenantId, invoice.id),
+    onMutate: () => setFailure(null),
+    onSuccess: (draft) => {
+      void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
+      navigate(`/issued/${encodeURIComponent(draft.id)}/edit?${tenantQuery}`)
+    },
+    onError: (error) => showFailure(error, 'Nie udało się skopiować faktury'),
+  })
+
+  const pdf = useMutation({
+    mutationFn: async ([nrKSeF, qrCode]: [string, string]) => {
+      const xml = await getIssuedInvoiceXml(tenantId, invoice.id)
+      downloadFile(await renderInvoicePdf(xml, nrKSeF, qrCode), `${stem}.pdf`, 'application/pdf')
+    },
+    onMutate: () => setFailure(null),
+    onError: (error) => showFailure(error, 'Nie udało się wygenerować PDF'),
+  })
 
   return (
     <>
@@ -73,6 +104,14 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
         <KsefStatusBadge status={invoice.status} />
         <EnvBadge environment={invoice.ksef.environment} />
         <div className="inv-header__actions">
+          <button
+            type="button"
+            className="ui-button ui-button--ghost ui-button--md"
+            disabled={copy.isPending}
+            onClick={() => copy.mutate()}
+          >
+            {copy.isPending ? 'Kopiowanie…' : 'Kopiuj jako nową'}
+          </button>
           {accepted ? (
             <>
               <button
@@ -89,6 +128,16 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
                   onClick={() => void download(() => getIssuedInvoiceUpo(tenantId, invoice.id), `${stem}_UPO.xml`)}
                 >
                   Pobierz UPO
+                </button>
+              ) : null}
+              {ksefNumber && verificationUrl ? (
+                <button
+                  type="button"
+                  className="ui-button ui-button--primary ui-button--md"
+                  disabled={pdf.isPending}
+                  onClick={() => pdf.mutate([ksefNumber, verificationUrl])}
+                >
+                  {pdf.isPending ? 'Generowanie…' : 'Pobierz PDF'}
                 </button>
               ) : null}
             </>

@@ -6,16 +6,20 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  copyIssuedInvoice,
   createIssuedInvoice,
+  deleteIssuedInvoice,
   getIssuedInvoice,
   getIssuedInvoiceXml,
   issueIssuedInvoice,
+  updateIssuedInvoice,
 } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { listTenants } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
 import type { IssuedInvoiceResponse, SellerProfileResponse } from '@/api/types'
 import { ksefPollInterval } from '@/invoicing/status'
+import { generateInvoice } from '@/vendor/ksef-pdf-generator/ksef-fe-invoice-converter.js'
 import { InvoiceDraftPage } from './InvoiceDraft'
 import { IssuedInvoiceDetailsPage } from './IssuedInvoiceDetails'
 
@@ -29,7 +33,10 @@ vi.mock('@/api/endpoints/issuedInvoices', () => ({
   issueIssuedInvoice: vi.fn(),
   getIssuedInvoiceXml: vi.fn(),
   getIssuedInvoiceUpo: vi.fn(),
+  copyIssuedInvoice: vi.fn(),
+  deleteIssuedInvoice: vi.fn(),
 }))
+vi.mock('@/vendor/ksef-pdf-generator/ksef-fe-invoice-converter.js', () => ({ generateInvoice: vi.fn() }))
 
 const profile: SellerProfileResponse = {
   legalName: 'OpenKSeF Test A sp. z o.o.',
@@ -205,6 +212,95 @@ describe('issue and detail pages', () => {
 
     expect(container.querySelector('a[href*="/issued/i-1/edit"]')?.textContent).toContain('Popraw i wyślij ponownie')
     expect(buttonByText(container, 'Pobierz XML')).toBeUndefined()
+  })
+
+  it('Kopiuj jako nową opens the new draft and leaves the source alone', async () => {
+    const source = invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: 'K-1' } })
+    const copy = invoice({ id: 'i-2', number: null, issueDate: '2026-12-01', saleDate: '2026-12-01', dueDate: '2026-12-15' })
+    vi.mocked(getIssuedInvoice).mockImplementation(async (_tenantId, id) => (id === 'i-2' ? copy : source))
+    vi.mocked(copyIssuedInvoice).mockResolvedValue(copy)
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Kopiuj jako nową')))
+
+    await act(async () => buttonByText(container, 'Kopiuj jako nową')!.click())
+    await waitFor(() => container.querySelector<HTMLInputElement>('#buyer-name')?.value === 'Nabywca')
+
+    expect(copyIssuedInvoice).toHaveBeenCalledWith('t-1', 'i-1')
+    expect(getIssuedInvoice).toHaveBeenLastCalledWith('t-1', 'i-2')
+    expect(buttonByText(container, 'Zapisz szkic')).toBeDefined()
+    expect(container.querySelector<HTMLInputElement>('input[value="2026-12-01"]')).not.toBeNull()
+    expect(updateIssuedInvoice).not.toHaveBeenCalled()
+    expect(deleteIssuedInvoice).not.toHaveBeenCalled()
+    expect(issueIssuedInvoice).not.toHaveBeenCalled()
+  })
+
+  it('Kopiuj jako nową failure stays on the source and shows the error', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Rejected' }))
+    vi.mocked(copyIssuedInvoice).mockRejectedValue(new Error('Nie można skopiować'))
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Kopiuj jako nową')))
+
+    await act(async () => buttonByText(container, 'Kopiuj jako nową')!.click())
+    await waitFor(() => container.textContent?.includes('Nie można skopiować') ?? false)
+    expect(buttonByText(container, 'Kopiuj jako nową')).toBeDefined()
+  })
+
+  it('Pobierz PDF renders the stored XML with the KSeF number and KOD I', async () => {
+    const verificationUrl = 'https://qr-test.ksef.mf.gov.pl/invoice/5260250274/03-11-2026/abc'
+    vi.mocked(getIssuedInvoice).mockResolvedValue(
+      invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: 'K-1', verificationUrl } }),
+    )
+    vi.mocked(getIssuedInvoiceXml).mockResolvedValue('<Faktura/>')
+    vi.mocked(generateInvoice).mockResolvedValue(new Blob(['%PDF']))
+    const createObjectURL = vi.fn<(blob: Blob) => string>(() => 'blob:x')
+    Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() })
+    const fileNames: string[] = []
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      fileNames.push(this.download)
+    })
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Pobierz PDF')))
+
+    await act(async () => buttonByText(container, 'Pobierz PDF')!.click())
+    await waitFor(() => createObjectURL.mock.calls.length === 1)
+    click.mockRestore()
+
+    const [file, additionalData, format] = vi.mocked(generateInvoice).mock.calls[0]
+    const xml = await new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.readAsText(file)
+    })
+    expect(xml).toBe('<Faktura/>')
+    expect(additionalData).toEqual({ nrKSeF: 'K-1', qrCode: verificationUrl })
+    expect(format).toBe('blob')
+    expect(createObjectURL.mock.calls[0][0].type).toBe('application/pdf')
+    expect(fileNames).toEqual(['FV_1_11_2026.pdf'])
+  })
+
+  it('Pobierz PDF failure shows the error', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(
+      invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: 'K-1', verificationUrl: 'https://qr-test.ksef.mf.gov.pl/x' } }),
+    )
+    vi.mocked(getIssuedInvoiceXml).mockResolvedValue('<Faktura/>')
+    vi.mocked(generateInvoice).mockRejectedValue(new Error('Unknown XML Version'))
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Pobierz PDF')))
+
+    await act(async () => buttonByText(container, 'Pobierz PDF')!.click())
+    await waitFor(() => container.textContent?.includes('Unknown XML Version') ?? false)
+  })
+
+  it.each([
+    ['Draft', ksef],
+    ['Sending', { ...ksef, verificationUrl: 'https://qr-test.ksef.mf.gov.pl/x' }],
+    ['Rejected', { ...ksef, ksefNumber: 'K-1', verificationUrl: 'https://qr-test.ksef.mf.gov.pl/x' }],
+    ['Accepted', { ...ksef, ksefNumber: 'K-1' }],
+  ] as const)('Pobierz PDF is not offered for %s without a KSeF number and KOD I', async (status, ksefData) => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status, ksef: ksefData }))
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Kopiuj jako nową')))
+    expect(buttonByText(container, 'Pobierz PDF')).toBeUndefined()
   })
 
   it('Sending with lastError warns not to resend', async () => {
