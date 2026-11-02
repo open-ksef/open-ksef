@@ -263,7 +263,7 @@ export function TenantListPage(): ReactElement {
       <ConfirmDialog
         open={pendingDeleteId !== null}
         title="Usunąć firmę?"
-        message="Ta operacja jest nieodwracalna. Usuniemy dane logowania do KSeF, pobrane faktury zakupowe i dane synchronizacji."
+        message="Ta operacja jest nieodwracalna. Usuniemy dane logowania do KSeF, pobrane faktury zakupowe z oznaczeniami opłacenia, profil sprzedawcy z rachunkiem bankowym i dane synchronizacji. Po ponownym dodaniu firmy numeracja zacznie się od 1."
         confirmLabel="Usuń firmę"
         variant="danger"
         isPending={deleteMutation.isPending}

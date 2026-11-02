@@ -146,6 +146,16 @@ describe('TenantListPage', () => {
     expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain('pobrane faktury zakupowe')
   })
 
+  it('names the seller profile, paid marks and numbering restart as lost', async () => {
+    vi.mocked(listIssuedInvoices).mockReturnValue(new Promise(() => {}))
+    await openDeleteDialog()
+
+    const dialog = container.querySelector('[role="alertdialog"]')?.textContent
+    expect(dialog).toContain('pobrane faktury zakupowe z oznaczeniami opłacenia')
+    expect(dialog).toContain('profil sprzedawcy z rachunkiem bankowym')
+    expect(dialog).toContain('Po ponownym dodaniu firmy numeracja zacznie się od 1.')
+  })
+
   it('warns while the count loads without blocking confirm', async () => {
     vi.mocked(listIssuedInvoices).mockReturnValue(new Promise(() => {}))
     await openDeleteDialog()
