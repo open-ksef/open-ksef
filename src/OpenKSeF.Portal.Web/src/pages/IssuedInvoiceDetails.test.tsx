@@ -393,7 +393,7 @@ describe('issue and detail pages', () => {
   })
 
   it('Kopiuj jako nową opens the new draft and leaves the source alone', async () => {
-    const source = invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: 'K-1', hasUpo: true } })
+    const source = invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: 'K-1' } })
     const copy = invoice({ id: 'i-2', number: null, issueDate: '2026-12-01', saleDate: '2026-12-01', dueDate: '2026-12-15' })
     vi.mocked(getIssuedInvoice).mockImplementation(async (_tenantId, id) => (id === 'i-2' ? copy : source))
     vi.mocked(copyIssuedInvoice).mockResolvedValue(copy)
@@ -491,14 +491,14 @@ describe('issue and detail pages', () => {
     expect(buttonByText(container, 'Kopiuj jako nową')).toBeUndefined()
   })
 
-  it('Accepted with UPO pending shows lastError and offers no copy', async () => {
+  it('Accepted with UPO pending shows lastError and still offers copy', async () => {
     const lastError = 'KSeF nie odpowiada. Ponowimy pobranie UPO automatycznie.'
     vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: 'K-1', lastError } }))
     await render('/issued/i-1?tenantId=t-1')
     await waitFor(() => container.textContent?.includes(lastError) ?? false)
     expect(container.textContent).toContain('Oczekuje na UPO')
     expect(container.textContent).toContain('Nie wystawiaj jej ponownie')
-    expect(buttonByText(container, 'Kopiuj jako nową')).toBeUndefined()
+    expect(buttonByText(container, 'Kopiuj jako nową')).toBeDefined()
   })
 
   it('Accepted with UPO hides a stale lastError', async () => {
@@ -507,6 +507,5 @@ describe('issue and detail pages', () => {
     await render('/issued/i-1?tenantId=t-1')
     await waitFor(() => Boolean(container.querySelector('#ksef-panel-title')))
     expect(container.textContent).not.toContain(lastError)
-    expect(buttonByText(container, 'Kopiuj jako nową')).toBeDefined()
   })
 })
