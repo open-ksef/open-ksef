@@ -129,6 +129,7 @@ describe('TenantListPage', () => {
     await act(async () => {
       container.querySelector<HTMLButtonElement>('[data-testid="tenant-delete-button"]')!.click()
     })
+    expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain('Firmy z wystawionymi fakturami lub szkicami nie można usunąć')
     const confirm = [...container.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find((b) => b.textContent === 'Usuń firmę')!
     await act(async () => confirm.click())
     await settle(() => toastError.mock.calls.length > 0)
