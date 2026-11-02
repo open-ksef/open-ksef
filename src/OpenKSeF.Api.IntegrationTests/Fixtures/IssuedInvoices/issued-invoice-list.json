@@ -1,0 +1,7 @@
+{
+  "items": [
+    { "id": "<id>", "status": "Draft", "number": null, "buyerName": "Nabywca sp. z o.o.", "buyerNip": "5261040828",
+      "issueDate": "2026-11-03", "dueDate": "2026-11-17", "totalNet": 20000.00, "totalGross": 24600.00, "currency": "PLN", "ksefNumber": null }
+  ],
+  "page": 1, "pageSize": 10, "totalCount": 1, "totalPages": 1
+}

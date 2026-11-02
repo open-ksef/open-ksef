@@ -1,4 +1,4 @@
-import { useEffect, type ReactElement } from 'react'
+import { useEffect, type ReactElement, type ReactNode } from 'react'
 
 import { Button } from '@/components/Button'
 
@@ -6,7 +6,9 @@ interface ConfirmDialogProps {
   open: boolean
   title: string
   message: string
+  children?: ReactNode
   confirmLabel?: string
+  pendingLabel?: string
   cancelLabel?: string
   variant?: 'danger' | 'default'
   isPending?: boolean
@@ -18,7 +20,9 @@ export function ConfirmDialog({
   open,
   title,
   message,
+  children,
   confirmLabel = 'Potwierdź',
+  pendingLabel = 'Usuwanie…',
   cancelLabel = 'Anuluj',
   variant = 'default',
   isPending = false,
@@ -67,10 +71,9 @@ export function ConfirmDialog({
           </button>
         </div>
 
-        <div className="ui-modal-body">
-          <p id="confirm-dialog-message" style={{ margin: 0, fontSize: 14, color: 'var(--ui-text-muted)' }}>
-            {message}
-          </p>
+        <div className="ui-modal-body" id="confirm-dialog-message">
+          <p style={{ margin: 0, fontSize: 14, color: 'var(--ui-text-muted)' }}>{message}</p>
+          {children}
         </div>
 
         <div className="ui-modal-footer">
@@ -83,7 +86,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             disabled={isPending}
           >
-            {isPending ? 'Usuwanie…' : confirmLabel}
+            {isPending ? pendingLabel : confirmLabel}
           </button>
         </div>
       </div>

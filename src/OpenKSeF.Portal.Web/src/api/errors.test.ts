@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { ApiError, normalizeError } from './errors'
+import { ApiError, normalizeError, readValidationEnvelope } from './errors'
 
 describe('normalizeError', () => {
   it('maps HTTP response with JSON message', async () => {
@@ -48,5 +48,18 @@ describe('normalizeError', () => {
 
     expect(error).toBe(existing)
     expect(error.status).toBe(422)
+  })
+})
+
+describe('readValidationEnvelope', () => {
+  it('reads the envelope from a 422 response and ignores other errors', async () => {
+    const body = { errors: [{ code: 'INV-VAL-020', field: 'buyer.nip', message: 'NIP' }], warnings: [] }
+    const error = await normalizeError(
+      new Response(JSON.stringify(body), { status: 422, headers: { 'Content-Type': 'application/json' } }),
+    )
+
+    expect(await readValidationEnvelope(error)).toEqual(body)
+    expect(await readValidationEnvelope(new ApiError('x', 500))).toBeNull()
+    expect(await readValidationEnvelope(await normalizeError(new Response('', { status: 400 })))).toBeNull()
   })
 })

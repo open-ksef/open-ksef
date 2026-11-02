@@ -118,6 +118,44 @@ public class TenantsApiTests : IDisposable
     }
 
     [Theory]
+    [InlineData("6100000011", false)]
+    [InlineData("6100000012", true)]
+    public async Task DeleteTenant_WithDraftOrIssuedInvoice_Returns409_AndKeepsTenant(string nip, bool issue)
+    {
+        await AuthenticateAsync();
+        var created = await (await _client.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Delete Blocked Co" }))
+            .Content.ReadFromJsonAsync<TenantDto>();
+        (await _client.PutAsJsonAsync($"/api/tenants/{created!.Id}/seller-profile", new
+        {
+            legalName = "Delete Blocked Co",
+            addressLine1 = "ul. Prosta 1",
+            bankAccount = "61109010140000071219812874",
+            numberingPattern = "FV/{nr}/{MM}/{RRRR}"
+        })).EnsureSuccessStatusCode();
+        var draftResponse = await _client.PostAsJsonAsync($"/api/tenants/{created.Id}/issued-invoices", new
+        {
+            buyer = new { kind = "Company", nip = "5261040828", name = "Nabywca", addressLine1 = "ul. Krótka 2" },
+            lines = new[] { new { name = "Usługa", unit = "szt.", quantity = 1, unitNetPrice = 100.00m, vatRate = "23" } }
+        });
+        draftResponse.EnsureSuccessStatusCode();
+        var draft = await draftResponse.Content.ReadFromJsonAsync<IdDto>();
+        if (issue)
+            Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"/api/tenants/{created.Id}/issued-invoices/{draft!.Id}/issue", null)).StatusCode);
+
+        var blocked = await _client.DeleteAsync($"/api/tenants/{created.Id}");
+
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+        Assert.Contains("Nie można usunąć firmy", (await blocked.Content.ReadFromJsonAsync<ConflictDto>())!.Message);
+        Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync($"/api/tenants/{created.Id}")).StatusCode);
+
+        if (!issue)
+        {
+            (await _client.DeleteAsync($"/api/tenants/{created.Id}/issued-invoices/{draft!.Id}")).EnsureSuccessStatusCode();
+            Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/tenants/{created.Id}")).StatusCode);
+        }
+    }
+
+    [Theory]
     [InlineData("6100000001", """{"displayName":"Renamed"}""", "keep@example.com")]
     [InlineData("6100000002", """{"displayName":"Renamed","notificationEmail":null}""", null)]
     [InlineData("6100000003", """{"displayName":"Renamed","notificationEmail":""}""", null)]
@@ -179,6 +217,10 @@ public class TenantsApiTests : IDisposable
         _client.Dispose();
         _factory.Dispose();
     }
+
+    private sealed record ConflictDto(string Message);
+
+    private sealed record IdDto(Guid Id);
 
     private sealed record TenantDto(
         Guid Id,

@@ -27,4 +27,8 @@
     <ProjectReference Include="..\OpenKSeF.Worker\OpenKSeF.Worker.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Invoicing/TotalsVectors.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

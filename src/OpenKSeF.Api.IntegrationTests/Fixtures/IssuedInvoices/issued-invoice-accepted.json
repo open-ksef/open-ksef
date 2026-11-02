@@ -1,0 +1,14 @@
+{
+  "id": "<id>", "status": "Accepted", "number": "FV/1/11/2026",
+  "seller": { "nip": "<nip>", "name": "OpenKSeF Test A sp. z o.o.", "addressLine1": "ul. Prosta 1", "addressLine2": "00-001 Warszawa", "bankAccount": "61109010140000071219812874", "cashAccounting": false },
+  "buyer": { "kind": "Company", "nip": "5261040828", "name": "Nabywca sp. z o.o.", "addressLine1": "ul. Krótka 2", "addressLine2": "00-002 Warszawa" },
+  "issueDate": "2026-11-03", "saleDate": "2026-11-03", "dueDate": "2026-11-17",
+  "paymentMethod": "Transfer", "splitPayment": false, "exemptionBasis": null,
+  "lines": [ { "lineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 20000.00, "vatRate": "23", "netAmount": 20000.00, "vatAmount": 4600.00 } ],
+  "vatSummary": [ { "vatRate": "23", "net": 20000.00, "vat": 4600.00 } ],
+  "totalNet": 20000.00, "totalVat": 4600.00, "totalGross": 24600.00, "currency": "PLN",
+  "ksef": { "environment": "test", "ksefNumber": "5213456789-20261103-ABCDEF123456-AB", "acceptedAt": "<acceptedAt>", "statusCode": 200, "statusMessage": "Sukces",
+            "statusDetails": null, "lastError": null, "verificationUrl": "<verificationUrl>", "hasUpo": true, "duplicateKsefNumber": null },
+  "warnings": [ { "code": "INV-W-MPP", "field": "splitPayment", "message": "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)" } ],
+  "createdAt": "<createdAt>", "updatedAt": "<updatedAt>", "issuedAt": "<issuedAt>"
+}
