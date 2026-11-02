@@ -36,6 +36,8 @@ public sealed class IssuedInvoiceSendProcessor(
     private static readonly TimeSpan MinBackoff = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan UpoRetry = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan MinPoll = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan MaxPoll = TimeSpan.FromMinutes(5);
 
     public async Task ProcessAsync(string currentEnvironment, CancellationToken ct)
     {
@@ -49,7 +51,18 @@ public sealed class IssuedInvoiceSendProcessor(
             .ToListAsync(ct);
 
         foreach (var batch in due.GroupBy(i => i.TenantId))
-            await ProcessTenantAsync(batch.Key, batch.ToList(), DependencyInjection.NormalizeKSeFEnvironmentKey(currentEnvironment), ct);
+        {
+            try
+            {
+                await ProcessTenantAsync(batch.Key, batch.ToList(), DependencyInjection.NormalizeKSeFEnvironmentKey(currentEnvironment), ct);
+            }
+            catch (Exception e) when (!ct.IsCancellationRequested)
+            {
+                logger.LogError(e, "Issued invoice send for tenant {TenantId} failed", batch.Key);
+                foreach (var invoice in batch)
+                    db.Entry(invoice).State = EntityState.Detached;
+            }
+        }
     }
 
     private async Task ProcessTenantAsync(Guid tenantId, List<IssuedInvoice> invoices, string environment, CancellationToken ct)
@@ -186,10 +199,7 @@ public sealed class IssuedInvoiceSendProcessor(
 
     private async Task ApplyStatusAsync(IssuedInvoice invoice, KSeFSentInvoice? status, string accessToken, CancellationToken ct)
     {
-        if (status is null || status.Code < 200 || status.Code is > 200 and < 400)
-            return;
-
-        if (status.Code == KSeFSentInvoice.Accepted && status.KsefNumber is not null)
+        if (status is { Code: KSeFSentInvoice.Accepted, KsefNumber: not null })
         {
             invoice.MarkAccepted(status.KsefNumber, (status.AcceptedAt ?? time.GetUtcNow()).UtcDateTime, status.Code, status.Description, Now());
             await db.SaveChangesAsync(ct);
@@ -197,12 +207,19 @@ public sealed class IssuedInvoiceSendProcessor(
             return;
         }
 
-        if (status.Code >= 400)
+        if (status is { Code: >= 400 })
         {
             invoice.MarkRejected(status.Code, status.Description ?? $"KSeF {status.Code}", Join(status.Details), Now());
             await db.SaveChangesAsync(ct);
+            return;
         }
+
+        invoice.ScheduleRetry(null!, Now().Add(PollDelay(invoice)), Now());
+        await db.SaveChangesAsync(ct);
     }
+
+    private TimeSpan PollDelay(IssuedInvoice invoice) =>
+        TimeSpan.FromTicks(Math.Clamp((Now() - invoice.SendStartedAt!.Value).Ticks / 4, MinPoll.Ticks, MaxPoll.Ticks));
 
     private async Task FetchUpoAsync(IssuedInvoice invoice, string accessToken, CancellationToken ct)
     {
@@ -252,7 +269,7 @@ public sealed class IssuedInvoiceSendProcessor(
     {
         KsefRateLimitException => true,
         KsefApiException api => (int)api.StatusCode >= 500 || api.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.RequestTimeout or 0,
-        HttpRequestException or SocketException => true,
+        HttpRequestException or SocketException or TimeoutException => true,
         TaskCanceledException => !ct.IsCancellationRequested,
         _ => false
     };

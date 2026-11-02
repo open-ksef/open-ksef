@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Text;
 using KSeF.Client.Api.Services;
 using KSeF.Client.Core.Interfaces;
 using KSeF.Client.Core.Interfaces.Clients;
@@ -85,7 +86,14 @@ public class KSeFTestSendTests(ITestOutputHelper output)
                          $"session={current.KsefSessionRef} element={current.KsefElementRef} upoBytes={current.UpoXml?.Length}");
         Assert.Equal(IssuedInvoiceStatus.Accepted, current.Status);
         Assert.NotNull(current.KsefNumber);
+        Assert.Equal(35, current.KsefNumber!.Length);
         Assert.NotNull(current.UpoXml);
+        Assert.Contains(current.KsefNumber, Encoding.UTF8.GetString(current.UpoXml!));
+
+        var login = await gateway.InitSessionAsync(sellerNip, env["KSEF_TEST_TOKEN_2"]);
+        var listed = await new KSeFInvoiceSubmitter(client, crypto).ListInvoicesAsync(login.Token, current.KsefSessionRef!);
+        var hash = Convert.ToBase64String(SHA256.HashData(current.SentXml!));
+        Assert.Contains(listed, s => s.ElementRef == current.KsefElementRef && s.InvoiceHash == hash);
     }
 
     private static string EnvFile([CallerFilePath] string path = "") =>

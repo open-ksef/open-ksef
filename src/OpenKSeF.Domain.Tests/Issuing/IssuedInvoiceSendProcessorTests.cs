@@ -3,12 +3,15 @@ using System.Security.Cryptography;
 using System.Text;
 using KSeF.Client.Core.Exceptions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Services;
+using OpenKSeF.Sync;
 using OpenKSeF.Sync.Issuing;
 
 namespace OpenKSeF.Domain.Tests.Issuing;
@@ -23,6 +26,7 @@ public class IssuedInvoiceSendProcessorTests
     private readonly string _dbName = Guid.NewGuid().ToString();
     private readonly FixedTime _time = new(new DateTimeOffset(2026, 11, 3, 10, 0, 0, TimeSpan.Zero));
     private readonly FakeSubmitter _submitter = new();
+    private readonly FakeGateway _gateway = new();
     private readonly ListLogger _logs = new();
     private readonly AesGcmEncryptionService _encryption = new(RandomNumberGenerator.GetBytes(32));
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -30,22 +34,23 @@ public class IssuedInvoiceSendProcessorTests
     private ApplicationDbContext NewDb() =>
         new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(_dbName).Options);
 
-    private async Task<Guid> SeedAsync(Action<IssuedInvoice>? arrange = null, string environment = "test", bool tokenCredential = true)
+    private async Task<Guid> SeedAsync(Action<IssuedInvoice>? arrange = null, string environment = "test", bool tokenCredential = true, Guid? tenant = null)
     {
+        var tenantId = tenant ?? _tenantId;
         await using var db = NewDb();
         db.Tenants.Add(new Tenant
         {
-            Id = _tenantId,
+            Id = tenantId,
             UserId = "u1",
             Nip = "5260250274",
             KSeFCredentials =
             [
                 tokenCredential
-                    ? new KSeFCredential { Id = Guid.NewGuid(), TenantId = _tenantId, Type = CredentialType.Token, EncryptedToken = _encryption.Encrypt(Token) }
-                    : new KSeFCredential { Id = Guid.NewGuid(), TenantId = _tenantId, Type = CredentialType.Certificate, EncryptedCertificateData = "x", CertificateFingerprint = "f" }
+                    ? new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, Type = CredentialType.Token, EncryptedToken = _encryption.Encrypt(Token) }
+                    : new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, Type = CredentialType.Certificate, EncryptedCertificateData = "x", CertificateFingerprint = "f" }
             ]
         });
-        var invoice = Fa3InvoiceWriterTests.Issued(i => i.AddLine("Usługa", null, 1, 100m, VatRate.Rate23), tenantId: _tenantId);
+        var invoice = Fa3InvoiceWriterTests.Issued(i => i.AddLine("Usługa", null, 1, 100m, VatRate.Rate23), tenantId: tenantId);
         invoice.AttachSentXml(Xml, Convert.ToHexString(SHA256.HashData(Xml)), environment, null);
         arrange?.Invoke(invoice);
         db.IssuedInvoices.Add(invoice);
@@ -56,7 +61,7 @@ public class IssuedInvoiceSendProcessorTests
     private async Task RunAsync(string environment = "test")
     {
         await using var db = NewDb();
-        var processor = new IssuedInvoiceSendProcessor(db, new FakeGateway(), _submitter, _encryption, _time,
+        var processor = new IssuedInvoiceSendProcessor(db, _gateway, _submitter, _encryption, _time,
             new LoggerAdapter<IssuedInvoiceSendProcessor>(_logs));
         await processor.ProcessAsync(environment, CancellationToken.None);
     }
@@ -199,10 +204,13 @@ public class IssuedInvoiceSendProcessorTests
         Assert.Null(invoice.NextAttemptAt);
     }
 
-    [Fact]
-    public async Task Processing150_LeftForNextCycle()
+    [Theory]
+    [InlineData(0, 3)]
+    [InlineData(240, 60)]
+    [InlineData(7200, 300)]
+    public async Task Processing150_NextPollSlowsWithSendAge(int ageSeconds, int expectedDelaySeconds)
     {
-        var id = await SeedAsync(i => { i.MarkSendStarted("sess-1", DateTime.UtcNow); i.RecordElementRef("el-1", DateTime.UtcNow); });
+        var id = await SeedAsync(i => { i.MarkSendStarted("sess-1", _time.UtcNow.AddSeconds(-ageSeconds)); i.RecordElementRef("el-1", _time.UtcNow); });
         _submitter.OnGet = _ => Status(150);
 
         await RunAsync();
@@ -210,6 +218,81 @@ public class IssuedInvoiceSendProcessorTests
         var invoice = await LoadAsync(id);
         Assert.Equal(IssuedInvoiceStatus.Sending, invoice.Status);
         Assert.Null(invoice.LastError);
+        Assert.Equal(_time.UtcNow.AddSeconds(expectedDelaySeconds), invoice.NextAttemptAt);
+    }
+
+    [Fact]
+    public async Task Processing150_NotDueYet_NoLogin()
+    {
+        await SeedAsync(i => { i.MarkSendStarted("sess-1", _time.UtcNow); i.RecordElementRef("el-1", _time.UtcNow); });
+        _submitter.OnGet = _ => Status(150);
+        await RunAsync();
+
+        await RunAsync();
+
+        Assert.Equal(1, _gateway.Logins);
+        Assert.Equal(1, _submitter.Gets);
+    }
+
+    [Fact]
+    public async Task NothingDue_NoLoginNoKSeFCall()
+    {
+        var id = await SeedAsync();
+        _submitter.OnSend = () => throw new KsefRateLimitException("429", 120, null, null!);
+        await RunAsync();
+        _gateway.Logins = _submitter.Opens = _submitter.Sends = 0;
+
+        await RunAsync();
+
+        Assert.Equal(0, _gateway.Logins);
+        Assert.Equal(0, _submitter.Opens);
+        Assert.Equal(0, _submitter.Sends);
+        Assert.NotNull((await LoadAsync(id)).KsefSessionRef);
+    }
+
+    [Fact]
+    public async Task AuthTimeout_RetriedNotRejected()
+    {
+        var id = await SeedAsync();
+        _gateway.OnInit = () => throw new TimeoutException("Ostatni status: 450");
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Queued, invoice.Status);
+        Assert.Equal(IssuedInvoiceSendProcessor.UnavailableMessage, invoice.LastError);
+        Assert.Equal(_time.UtcNow.AddSeconds(10), invoice.NextAttemptAt);
+    }
+
+    [Fact]
+    public async Task OneTenantFails_OtherTenantStillSent()
+    {
+        await SeedAsync();
+        await SeedAsync(tenant: Guid.NewGuid());
+        _gateway.OnInit = () =>
+        {
+            _gateway.OnInit = () => { };
+            throw new InvalidOperationException("poison");
+        };
+
+        await RunAsync();
+
+        Assert.Equal(2, _gateway.Logins);
+        Assert.Equal(1, _submitter.Sends);
+    }
+
+    [Fact]
+    public void AddSyncServices_ResolvesProcessor()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddDbContext<ApplicationDbContext>(o => o.UseInMemoryDatabase(_dbName));
+        services.AddSingleton<IEncryptionService>(_encryption);
+        services.AddSyncServices(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        using var scope = provider.CreateScope();
+
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IssuedInvoiceSendProcessor>());
     }
 
     [Fact]
@@ -270,11 +353,32 @@ public class IssuedInvoiceSendProcessorTests
         _submitter.OnOpen = () => throw new KsefApiException("forbidden", HttpStatusCode.Forbidden, null!, null!);
 
         await RunAsync();
+        _time.Advance(TimeSpan.FromHours(1));
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Rejected, invoice.Status);
+        Assert.Equal(403, invoice.KsefStatusCode);
+        Assert.Equal(IssuedInvoiceSendProcessor.NoWritePermissionMessage, invoice.KsefStatusDescription);
+        Assert.Null(invoice.NextAttemptAt);
+        Assert.Equal(1, _submitter.Opens);
+        Assert.Equal(0, _submitter.Sends);
+    }
+
+    [Fact]
+    public async Task ForbiddenOnSend_RejectedWithPermissionMessage_NoRetry()
+    {
+        var id = await SeedAsync();
+        _submitter.OnSend = () => throw new KsefApiException("forbidden", HttpStatusCode.Forbidden, null!, null!);
+
+        await RunAsync();
+        _time.Advance(TimeSpan.FromHours(1));
+        await RunAsync();
 
         var invoice = await LoadAsync(id);
         Assert.Equal(IssuedInvoiceStatus.Rejected, invoice.Status);
         Assert.Equal(IssuedInvoiceSendProcessor.NoWritePermissionMessage, invoice.KsefStatusDescription);
-        Assert.Null(invoice.NextAttemptAt);
+        Assert.Equal(1, _submitter.Sends);
     }
 
     [Fact]
@@ -314,9 +418,14 @@ public class IssuedInvoiceSendProcessorTests
 
     private sealed class FakeGateway : IKSeFGateway
     {
+        public Action OnInit = () => { };
+        public int Logins;
+
         public Task<KSeFSession> InitSessionAsync(string nip, string authToken, CancellationToken ct = default)
         {
+            Logins++;
             Assert.Equal(Token, authToken);
+            OnInit();
             return Task.FromResult(new KSeFSession(AccessToken, string.Empty, DateTime.UtcNow.AddHours(1)));
         }
 
