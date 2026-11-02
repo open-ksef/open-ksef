@@ -1095,7 +1095,7 @@ public class IssuedInvoicesApiTests : IDisposable
         var message = await AssertTenantDeleteConflictAsync(tenantId, 3);
 
         Assert.Contains("pozostają w KSeF", message);
-        Assert.Contains("operatorem", message);
+        Assert.Contains("skontaktuj się z właścicielem instancji", message);
     }
 
     [Fact]

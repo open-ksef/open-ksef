@@ -215,7 +215,7 @@ public class IssuedInvoiceService(
         var invoices = db.IssuedInvoices.Where(i => i.TenantId == tenantId);
 
         if (await invoices.AnyAsync(i => i.Status == IssuedInvoiceStatus.Accepted && (i.KsefEnvironment == null || (i.KsefEnvironment != "test" && i.KsefEnvironment != "demo")), ct))
-            throw new InvoiceStateException("Nie można usunąć firmy, która ma faktury przyjęte przez produkcyjny KSeF. Faktury pozostają w KSeF. Aby usunąć dane firmy, skontaktuj się z operatorem.");
+            throw new InvoiceStateException("Nie można usunąć firmy, która ma faktury przyjęte przez produkcyjny KSeF. Faktury pozostają w KSeF. Aby usunąć dane firmy, skontaktuj się z właścicielem instancji.");
         if (await invoices.AnyAsync(i => i.Status == IssuedInvoiceStatus.Queued || i.Status == IssuedInvoiceStatus.Sending, ct))
             throw new InvoiceStateException("Nie można usunąć firmy w trakcie wysyłki faktur do KSeF. Poczekaj na wynik wysyłki i spróbuj ponownie.");
 
