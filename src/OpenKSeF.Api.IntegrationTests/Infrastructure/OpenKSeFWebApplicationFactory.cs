@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace OpenKSeF.Api.IntegrationTests.Infrastructure;
@@ -9,10 +11,12 @@ public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Progra
     private const string TestEncryptionKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
     private readonly TestcontainersFixture _fixture;
+    private readonly TimeProvider? _timeProvider;
 
-    public OpenKSeFWebApplicationFactory(TestcontainersFixture fixture)
+    public OpenKSeFWebApplicationFactory(TestcontainersFixture fixture, TimeProvider? timeProvider = null)
     {
         _fixture = fixture;
+        _timeProvider = timeProvider;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -28,6 +32,9 @@ public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Progra
         builder.UseSetting("ASPNETCORE_ENVIRONMENT", "Production");
 
         builder.UseEnvironment("Production");
+
+        if (_timeProvider is not null)
+            builder.ConfigureTestServices(services => services.AddSingleton(_timeProvider));
     }
 
     protected override IHost CreateHost(IHostBuilder builder)

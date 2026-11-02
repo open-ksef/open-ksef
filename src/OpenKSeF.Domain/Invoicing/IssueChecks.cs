@@ -6,7 +6,7 @@ public static class IssueChecks
 {
     public const decimal SplitPaymentWarningThreshold = 15000m;
 
-    public static IReadOnlyList<InvoiceCheck> Errors(IssuedInvoice invoice, SellerProfile? profile)
+    public static IReadOnlyList<InvoiceCheck> Errors(IssuedInvoice invoice, SellerProfile? profile, DateOnly today)
     {
         var errors = new List<InvoiceCheck>();
 
@@ -26,6 +26,8 @@ public static class IssueChecks
         if (invoice.BuyerAddressLine1 is null)
             errors.Add(new("INV-VAL-016", "buyer.addressLine1", "Uzupełnij adres nabywcy"));
 
+        if (invoice.IssueDate > today)
+            errors.Add(new("INV-VAL-020", "issueDate", "Data wystawienia nie może być późniejsza niż dzisiejsza"));
         if (invoice.DueDate < invoice.IssueDate)
             errors.Add(new("INV-VAL-021", "dueDate", "Termin płatności jest wcześniejszy niż data wystawienia"));
 

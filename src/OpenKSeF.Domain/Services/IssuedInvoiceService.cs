@@ -129,7 +129,7 @@ public class IssuedInvoiceService(
 
         var profile = await db.SellerProfiles.SingleOrDefaultAsync(p => p.TenantId == tenantId, ct) ?? new SellerProfile(tenantId);
         var sellerNip = await db.Tenants.Where(t => t.Id == tenantId).Select(t => t.Nip).SingleAsync(ct);
-        var errors = IssueChecks.Errors(invoice, profile);
+        var errors = IssueChecks.Errors(invoice, profile, Today());
         if (errors.Count > 0)
             throw new InvoiceValidationException(errors);
 
@@ -178,6 +178,8 @@ public class IssuedInvoiceService(
         var source = await LoadAsync(tenantId, id, ct);
         if (source is null)
             return null;
+        if (source.Status is IssuedInvoiceStatus.Queued or IssuedInvoiceStatus.Sending)
+            throw new InvoiceStateException("Tej faktury nie można skopiować w trakcie wysyłki do KSeF. Poczekaj na wynik wysyłki.");
 
         var copy = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, Today(), Now());
         copy.SetBuyer(source.BuyerKind, source.BuyerNip, source.BuyerName, source.BuyerAddressLine1, source.BuyerAddressLine2);

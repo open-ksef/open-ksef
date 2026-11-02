@@ -32,7 +32,7 @@ public class IssuedInvoiceTests
     }
 
     private static IReadOnlyList<string> ErrorCodes(IssuedInvoice invoice, SellerProfile? profile) =>
-        IssueChecks.Errors(invoice, profile).Select(e => e.Code).ToList();
+        IssueChecks.Errors(invoice, profile, Today).Select(e => e.Code).ToList();
 
     [Fact]
     public void Draft_HasDefaults()
@@ -184,13 +184,34 @@ public class IssuedInvoiceTests
         Assert.Empty(ErrorCodes(invoice, CompleteProfile(bankAccount: null)));
     }
 
+    [Theory]
+    [InlineData("2026-11-02T22:59:59Z", false)]
+    [InlineData("2026-11-02T23:00:00Z", true)]
+    public void Issue_FutureDate_ComparedWithTodayInWarsaw(string utcNow, bool allowed)
+    {
+        var invoice = ValidDraft();
+        var now = DateTimeOffset.Parse(utcNow).UtcDateTime;
+
+        if (allowed)
+        {
+            invoice.Issue(CompleteProfile(), "1234563218", "FV/1/11/2026", now);
+            Assert.Equal(IssuedInvoiceStatus.Queued, invoice.Status);
+        }
+        else
+        {
+            var ex = Assert.Throws<InvoiceValidationException>(() => invoice.Issue(CompleteProfile(), "1234563218", "FV/1/11/2026", now));
+            Assert.Equal(("INV-VAL-020", "issueDate"), (ex.Errors.Single().Code, ex.Errors.Single().Field));
+            Assert.Null(invoice.Number);
+        }
+    }
+
     [Fact]
     public void ChecksForIssue_CompanyBuyerNeedsValidNip()
     {
         var invoice = ValidDraft();
         invoice.SetBuyer(BuyerKind.Company, "1234567890", "B", "L1", null);
 
-        var error = Assert.Single(IssueChecks.Errors(invoice, CompleteProfile()));
+        var error = Assert.Single(IssueChecks.Errors(invoice, CompleteProfile(), Today));
         Assert.Equal(("INV-VAL-013", "buyer.nip", "Dla nabywcy firmy wymagany jest poprawny NIP"), (error.Code, error.Field, error.Message));
         Assert.Contains(IssueChecks.Warnings(invoice), w => w.Code == "INV-W-NIP");
 
@@ -232,7 +253,7 @@ public class IssuedInvoiceTests
         invoice.ReplaceLines([("", null, 0, -1m, VatRate.Rate22)]);
 
         Assert.Equal(["INV-VAL-050", "INV-VAL-051", "INV-VAL-052", "INV-VAL-060"], ErrorCodes(invoice, CompleteProfile()));
-        Assert.Equal("lines[0].vatRate", IssueChecks.Errors(invoice, CompleteProfile()).Last().Field);
+        Assert.Equal("lines[0].vatRate", IssueChecks.Errors(invoice, CompleteProfile(), Today).Last().Field);
     }
 
     [Theory]

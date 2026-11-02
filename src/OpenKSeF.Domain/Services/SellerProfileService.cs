@@ -113,6 +113,8 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
             errors.Add(new("SP-VAL-001", "bankAccount", "Niepoprawny numer rachunku"));
         if (!InvoiceNumbering.HasNumberToken(pattern))
             errors.Add(new("SP-VAL-002", "numberingPattern", "Wzorzec numeracji musi zawierać {nr}"));
+        if (!InvoiceNumbering.HasYearToken(pattern))
+            errors.Add(new("SP-VAL-007", "numberingPattern", "Wzorzec numeracji musi zawierać {RRRR}, inaczej numery powtórzą się w kolejnym roku"));
         if (pattern.Length > MaxPatternLength)
             errors.Add(new("SP-VAL-005", "numberingPattern", $"Wzorzec numeracji może mieć najwyżej {MaxPatternLength} znaków"));
         if (input.NextNumber is < 1)

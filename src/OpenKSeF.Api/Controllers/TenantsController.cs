@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.DTOs;
 using OpenKSeF.Domain.Entities;
@@ -111,6 +112,7 @@ public class TenantsController : ControllerBase
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var tenant = await _db.Tenants
@@ -120,7 +122,14 @@ public class TenantsController : ControllerBase
             return NotFound();
 
         _db.Tenants.Remove(tenant);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException e) when (e.InnerException is PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation or PostgresErrorCodes.RestrictViolation })
+        {
+            return Conflict(new { message = "Nie można usunąć firmy, która ma wystawione faktury lub szkice. Szkice usuń ręcznie, a firmy z wystawionymi fakturami usunąć nie można." });
+        }
 
         return NoContent();
     }

@@ -19,6 +19,7 @@ namespace OpenKSeF.Api.IntegrationTests;
 public class IssuedInvoicesApiTests : IDisposable
 {
     private const string BuyerNip = "5261040828";
+    private static readonly DateOnly Today = new(2026, 12, 20);
 
     private readonly TestcontainersFixture _fixture;
     private readonly OpenKSeFWebApplicationFactory _factory;
@@ -27,7 +28,7 @@ public class IssuedInvoicesApiTests : IDisposable
     public IssuedInvoicesApiTests(TestcontainersFixture fixture)
     {
         _fixture = fixture;
-        _factory = new OpenKSeFWebApplicationFactory(fixture);
+        _factory = new OpenKSeFWebApplicationFactory(fixture, new FixedTime());
         _client = _factory.CreateClient();
     }
 
@@ -233,10 +234,8 @@ public class IssuedInvoicesApiTests : IDisposable
     public async Task Create_WithoutDates_GetsServerDefaults_AndSaleAndDueFollowIssueDate()
     {
         var tenantId = await CreateTenantAsync();
-        var today = IssuedInvoice.PolandDate(TimeProvider.System.GetUtcNow());
-
         var empty = await CreateDraftAsync(tenantId, new IssuedInvoiceDraftRequest(null, null, null, null, null, false, null, null));
-        Assert.Equal((today, today, today.AddDays(14)), (empty.IssueDate, empty.SaleDate, empty.DueDate));
+        Assert.Equal((Today, Today, Today.AddDays(14)), (empty.IssueDate, empty.SaleDate, empty.DueDate));
         Assert.Equal("Transfer", empty.PaymentMethod);
         Assert.Equal("Company", empty.Buyer.Kind);
         Assert.Empty(empty.Lines);
@@ -482,26 +481,61 @@ public class IssuedInvoicesApiTests : IDisposable
     }
 
     [Theory]
-    [InlineData("FV/{nr}", "FV/1", "2027", "FV/2")]
-    [InlineData("FV/{nr}/{MM}", "FV/1/11", "2027-11", "FV/2/11")]
-    public async Task PatternWithoutYear_NextYear_CollidesWith409_UntilNextNumberRaised(string pattern, string firstNumber, string nextYearPeriod, string raisedNumber)
+    [InlineData("FV/{nr}", "FV/1")]
+    [InlineData("FV/{nr}/{MM}", "FV/1/11")]
+    public async Task StoredPatternWithoutYear_StaysReadable_CollidesNextYear_UntilPatternFixed(string pattern, string firstNumber)
     {
-        var tenantId = await CreateTenantAsync(withProfile: false);
-        (await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", new SellerProfileRequest(
-            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, pattern, null, null))).EnsureSuccessStatusCode();
-        var first = await IssueAsync(tenantId, (await CreateDraftAsync(tenantId)).Id);
+        const string legalName = "OpenKSeF Test A sp. z o.o.";
+        const string nrb = "61109010140000071219812874";
+        var tenantId = await CreateTenantAsync();
+        await WithDbAsync(async db =>
+        {
+            var stored = await db.SellerProfiles.SingleAsync(p => p.TenantId == tenantId);
+            stored.Update(legalName, "ul. Prosta 1", "00-001 Warszawa", nrb, false, pattern);
+            return await db.SaveChangesAsync();
+        });
+
+        var read = await _client.GetFromJsonAsync<SellerProfileResponse>($"/api/tenants/{tenantId}/seller-profile");
+        Assert.Equal(pattern, read!.NumberingPattern);
+
+        var first = await IssueAsync(tenantId, (await CreateDraftAsync(tenantId, Draft(issueDate: "2025-11-03"))).Id);
         Assert.Equal(firstNumber, first.Number);
-        var nextYear = await CreateDraftAsync(tenantId, Draft(issueDate: "2027-11-03"));
 
+        var nextYear = await CreateDraftAsync(tenantId, Draft(issueDate: "2026-11-03"));
         var collision = await _client.PostAsync($"{Base(tenantId)}/{nextYear.Id}/issue", null);
-
         Assert.Equal(HttpStatusCode.Conflict, collision.StatusCode);
         Assert.Contains($"Numer {firstNumber} jest już użyty", (await collision.Content.ReadFromJsonAsync<JsonObject>())!["message"]!.GetValue<string>());
         Assert.Equal(IssuedInvoiceStatus.Draft, (await LoadAsync(nextYear.Id)).Status);
 
+        var refused = await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", new SellerProfileRequest(
+            legalName, "ul. Prosta 1", "00-001 Warszawa", nrb, false, pattern));
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+
         (await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", new SellerProfileRequest(
-            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, pattern, 2, nextYearPeriod))).EnsureSuccessStatusCode();
-        Assert.Equal(raisedNumber, (await IssueAsync(tenantId, nextYear.Id)).Number);
+            legalName, "ul. Prosta 1", "00-001 Warszawa", nrb, false, "FV/{nr}/{MM}/{RRRR}"))).EnsureSuccessStatusCode();
+        Assert.Equal("FV/1/11/2026", (await IssueAsync(tenantId, nextYear.Id)).Number);
+    }
+
+    [Fact]
+    public async Task Issue_FutureIssueDate_Returns422_ConsumesNoNumber_TodayIsAllowed()
+    {
+        var tenantId = await CreateTenantAsync();
+        var future = Today.AddDays(1).ToString("yyyy-MM-dd");
+        var draft = await CreateDraftAsync(tenantId, Draft(issueDate: future));
+
+        var response = await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = Assert.Single((await response.Content.ReadFromJsonAsync<ValidationEnvelope>())!.Errors);
+        Assert.Equal(("INV-VAL-020", "issueDate", "Data wystawienia nie może być późniejsza niż dzisiejsza"), (error.Code, error.Field, error.Message));
+        var stored = await LoadAsync(draft.Id);
+        Assert.Equal(IssuedInvoiceStatus.Draft, stored.Status);
+        Assert.Null(stored.Number);
+        Assert.False(await WithDbAsync(db => db.InvoiceNumberCounters.AnyAsync(c => c.TenantId == tenantId)));
+
+        var update = await _client.PutAsJsonAsync($"{Base(tenantId)}/{draft.Id}", Draft(issueDate: Today.ToString("yyyy-MM-dd")));
+        update.EnsureSuccessStatusCode();
+        Assert.Equal("FV/1/12/2026", (await IssueAsync(tenantId, draft.Id)).Number);
     }
 
     [Fact]
@@ -595,7 +629,6 @@ public class IssuedInvoicesApiTests : IDisposable
         await IssueAsync(tenantId, source.Id);
         await MutateAsync(source.Id, MarkAccepted);
         var before = await LoadAsync(source.Id);
-        var today = IssuedInvoice.PolandDate(TimeProvider.System.GetUtcNow());
 
         var response = await _client.PostAsync($"{Base(tenantId)}/{source.Id}/copy", null);
 
@@ -605,7 +638,7 @@ public class IssuedInvoicesApiTests : IDisposable
         Assert.Equal("Draft", copy.Status);
         Assert.Null(copy.Number);
         Assert.Null(copy.Ksef.KsefNumber);
-        Assert.Equal((today, today, today.AddDays(14)), (copy.IssueDate, copy.SaleDate, copy.DueDate));
+        Assert.Equal((Today, Today, Today.AddDays(14)), (copy.IssueDate, copy.SaleDate, copy.DueDate));
         Assert.Equal(source.Buyer, copy.Buyer);
         Assert.Equal(("Cash", true), (copy.PaymentMethod, copy.SplitPayment));
         Assert.Equal(source.ExemptionBasis, copy.ExemptionBasis);
@@ -617,6 +650,27 @@ public class IssuedInvoicesApiTests : IDisposable
         Assert.Equal(before.UpdatedAt, after.UpdatedAt);
         Assert.Equal(before.Status, after.Status);
         Assert.Equal(before.Lines.Count, after.Lines.Count);
+    }
+
+    [Fact]
+    public async Task Copy_WhileQueuedOrSending_Returns409_AndCreatesNothing_RejectedCopies()
+    {
+        var tenantId = await CreateTenantAsync();
+        var source = await CreateDraftAsync(tenantId);
+        await IssueAsync(tenantId, source.Id);
+
+        var queued = await _client.PostAsync($"{Base(tenantId)}/{source.Id}/copy", null);
+        Assert.Equal(HttpStatusCode.Conflict, queued.StatusCode);
+        Assert.Contains("w trakcie wysyłki", (await queued.Content.ReadFromJsonAsync<JsonObject>())!["message"]!.GetValue<string>());
+
+        await MutateAsync(source.Id, MarkSending);
+        var sending = await _client.PostAsync($"{Base(tenantId)}/{source.Id}/copy", null);
+        Assert.Equal(HttpStatusCode.Conflict, sending.StatusCode);
+        Assert.Equal(1, await WithDbAsync(db => db.IssuedInvoices.CountAsync(i => i.TenantId == tenantId)));
+
+        await MutateAsync(source.Id, invoice => invoice.MarkRejected(450, "Błąd", null, DateTime.UtcNow));
+        var rejected = await _client.PostAsync($"{Base(tenantId)}/{source.Id}/copy", null);
+        Assert.Equal(HttpStatusCode.Created, rejected.StatusCode);
     }
 
     [Fact]
@@ -838,4 +892,9 @@ public class IssuedInvoicesApiTests : IDisposable
     }
 
     private sealed record TenantIdDto(Guid Id);
+
+    private sealed class FixedTime : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(2026, 12, 20, 12, 0, 0, TimeSpan.Zero);
+    }
 }

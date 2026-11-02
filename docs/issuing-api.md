@@ -18,9 +18,10 @@ GET  /api/tenants/{tenantId}/issued-invoices/{id}           -> 200 IssuedInvoice
 PUT  /api/tenants/{tenantId}/issued-invoices/{id}           IssuedInvoiceDraftRequest -> 200 | 400 ValidationEnvelope | 409 (not Draft/Rejected)
 DELETE /api/tenants/{tenantId}/issued-invoices/{id}         -> 204 | 409 (not Draft)
 POST /api/tenants/{tenantId}/issued-invoices/{id}/issue     -> 202 IssuedInvoiceResponse (status Sending) | 200 if already Sending/Accepted | 422 ValidationEnvelope | 409 (number already used, concurrent change)
-POST /api/tenants/{tenantId}/issued-invoices/{id}/copy      -> 201 IssuedInvoiceResponse (new Draft, same buyer+lines, dates = today, no number)
+POST /api/tenants/{tenantId}/issued-invoices/{id}/copy      -> 201 IssuedInvoiceResponse (new Draft, same buyer+lines, dates = today, no number) | 409 (source Sending)
 GET  /api/tenants/{tenantId}/issued-invoices/{id}/xml       -> 200 application/xml (stored bytes) | 409 unless Accepted
 GET  /api/tenants/{tenantId}/issued-invoices/{id}/upo       -> 200 application/xml | 409 unless Accepted with UPO
+DELETE /api/tenants/{id}                                    -> 204 | 409 (tenant has issued invoices in any status, drafts included)
 ```
 
 Cross-tenant on any route returns 404. A 409 without a `ValidationEnvelope` has the body `{ "message": "..." }`.
@@ -43,6 +44,14 @@ The `ksef` block:
 Draft dates are optional in the request and never null in a response: `issueDate` defaults to today (Europe/Warsaw), `saleDate` to `issueDate`, `dueDate` to `issueDate` + 14 days.
 
 A draft or rejected invoice shows the current seller profile in `seller`; issuing stores a snapshot, and later responses show the snapshot. A rejected invoice keeps its number and cannot be deleted.
+
+Copy of an invoice in status Sending returns 409: the first document may still reach KSeF, so a copy could become a second tax document.
+
+An issue date after today in Europe/Warsaw blocks issuing with `INV-VAL-020` before a number is assigned, because KSeF rejects it with code 450. Drafts may hold a future date.
+
+A tenant with any row in issued invoices, a draft included, cannot be deleted. Delete its drafts first. A tenant with a number-holding invoice stays.
+
+Numbering patterns must contain `{RRRR}` (`SP-VAL-007`), because the counter resets every year and a number without the year would repeat. A profile stored before this rule keeps working: GET returns its pattern and issuing uses it, and a repeated number returns 409. Its next PUT must supply a pattern with `{RRRR}`.
 
 ```jsonc
 // SellerProfileRequest
@@ -107,6 +116,7 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | INV-VAL-014 | `buyer.nip` | Dla osoby prywatnej nie podawaj NIP |
 | INV-VAL-015 | `buyer.name` | Uzupełnij nazwę nabywcy |
 | INV-VAL-016 | `buyer.addressLine1` | Uzupełnij adres nabywcy |
+| INV-VAL-020 | `issueDate` | Data wystawienia nie może być późniejsza niż dzisiejsza |
 | INV-VAL-021 | `dueDate` | Termin płatności jest wcześniejszy niż data wystawienia |
 | INV-VAL-050 | `lines[i].name` | Każda pozycja musi mieć nazwę |
 | INV-VAL-051 | `lines[i].quantity` | Ilość na pozycji musi być większa od zera |
@@ -130,6 +140,7 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | SP-VAL-004 | `nextNumberPeriod` | Okres numeracji musi mieć format RRRR-MM (wzorzec z {MM}) lub RRRR |
 | SP-VAL-005 | `legalName`, `addressLine1`, `addressLine2`, `numberingPattern` | Field too long (512; pattern 100) |
 | SP-VAL-006 | `nextNumber` | Numer N jest już użyty. Ostatni numer w tym okresie to M, podaj co najmniej M+1. (seller profile PUT 409) |
+| SP-VAL-007 | `numberingPattern` | Wzorzec numeracji musi zawierać {RRRR}, inaczej numery powtórzą się w kolejnym roku (seller profile PUT 400) |
 | NIP-INVALID | `nip` | Niepoprawny NIP (nip-lookup 400) |
 | NIP-NOT-FOUND | `nip` | Brak podmiotu w wykazie podatników VAT, wpisz dane ręcznie (nip-lookup 404) |
 | NIP-LOOKUP-UNAVAILABLE | `nip` | Wyszukiwarka MF niedostępna, wpisz dane ręcznie (nip-lookup 503) |

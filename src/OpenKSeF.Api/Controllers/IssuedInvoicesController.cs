@@ -109,6 +109,7 @@ public class IssuedInvoicesController(
     [HttpPost("{id:guid}/copy")]
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<IActionResult> Copy(Guid tenantId, Guid id, CancellationToken ct) =>
         GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
             await issuedInvoices.CopyAsync(tenantId, id, ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());

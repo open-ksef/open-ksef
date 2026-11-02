@@ -149,7 +149,7 @@ public sealed class IssuedInvoice
     {
         EnsureEditable();
 
-        var errors = IssueChecks.Errors(this, profile);
+        var errors = IssueChecks.Errors(this, profile, PolandDate(now));
         if (errors.Count > 0)
             throw new InvoiceValidationException(errors);
 

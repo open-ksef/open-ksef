@@ -6,8 +6,11 @@ public static class InvoiceNumbering
 {
     public const string DefaultPattern = "FV/{nr}/{MM}/{RRRR}";
     public const string NumberToken = "{nr}";
+    public const string YearToken = "{RRRR}";
 
     public static bool HasNumberToken(string? pattern) => pattern?.Contains(NumberToken, StringComparison.Ordinal) == true;
+
+    public static bool HasYearToken(string? pattern) => pattern?.Contains(YearToken, StringComparison.Ordinal) == true;
 
     public static string PeriodKey(string pattern, DateOnly issueDate) =>
         issueDate.ToString(pattern.Contains("{MM}", StringComparison.Ordinal) ? "yyyy-MM" : "yyyy", CultureInfo.InvariantCulture);
@@ -26,5 +29,5 @@ public static class InvoiceNumbering
 
     private static string FormatDate(string text, DateOnly issueDate) => text
         .Replace("{MM}", issueDate.ToString("MM", CultureInfo.InvariantCulture), StringComparison.Ordinal)
-        .Replace("{RRRR}", issueDate.ToString("yyyy", CultureInfo.InvariantCulture), StringComparison.Ordinal);
+        .Replace(YearToken, issueDate.ToString("yyyy", CultureInfo.InvariantCulture), StringComparison.Ordinal);
 }

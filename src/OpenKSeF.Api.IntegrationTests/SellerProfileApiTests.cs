@@ -114,6 +114,24 @@ public class SellerProfileApiTests : IDisposable
     }
 
     [Theory]
+    [InlineData("FV/{nr}")]
+    [InlineData("FV/{nr}/{MM}")]
+    public async Task Put_PatternWithoutYear_Returns400WithStableCode_AndKeepsProfile(string pattern)
+    {
+        var tenantId = await CreateTenantAsync();
+        (await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", Request())).EnsureSuccessStatusCode();
+
+        var envelope = await AssertBadRequestAsync(await _client.PutAsJsonAsync(
+            $"/api/tenants/{tenantId}/seller-profile", Request(pattern: pattern)));
+
+        var error = Assert.Single(envelope.Errors);
+        Assert.Equal(("SP-VAL-007", "numberingPattern"), (error.Code, error.Field));
+        Assert.Contains("{RRRR}", error.Message);
+        var stored = await _client.GetFromJsonAsync<SellerProfileResponse>($"/api/tenants/{tenantId}/seller-profile");
+        Assert.Equal("FV/{nr}/{MM}/{RRRR}", stored!.NumberingPattern);
+    }
+
+    [Theory]
     [InlineData("FV/{nr}/{MM}/{RRRR}", "2026", "nextNumberPeriod")]
     [InlineData("{nr}/{RRRR}", "2026-11", "nextNumberPeriod")]
     public async Task Put_PeriodNotMatchingPattern_Returns400(string pattern, string period, string field)
@@ -241,7 +259,7 @@ public class SellerProfileApiTests : IDisposable
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var profile = await db.SellerProfiles.SingleAsync(p => p.TenantId == tenantId);
-        var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, new DateOnly(2026, 11, 3), DateTime.UtcNow);
+        var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, new DateOnly(2026, 11, 1), DateTime.UtcNow);
         invoice.SetBuyer(BuyerKind.Company, "5261040828", "Nabywca", "ul. Krótka 2", null);
         invoice.AddLine("Usługa", "szt.", 1, 100m, VatRate.Rate23);
         invoice.Issue(profile, "5261040828", number, DateTime.UtcNow);
