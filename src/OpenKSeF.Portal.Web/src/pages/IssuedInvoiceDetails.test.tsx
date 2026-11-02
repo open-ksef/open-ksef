@@ -155,14 +155,20 @@ describe('issue and detail pages', () => {
   }
 
   it('PRODUKCJA asks for confirmation, then saves, issues and opens the detail page', async () => {
-    vi.mocked(createIssuedInvoice).mockResolvedValue(invoice({ number: null }))
-    vi.mocked(issueIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending' }))
-    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending' }))
+    const draft = invoice({ number: null, ksef: { ...ksef, environment: 'production' } })
+    vi.mocked(createIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(getIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(issueIssuedInvoice).mockImplementation(async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending' }))
+      return invoice({ status: 'Sending' })
+    })
     await render('/issued/new?tenantId=t-1')
     await waitFor(() => Boolean(buttonByText(container, 'Wystaw i wyślij do KSeF')))
 
     await act(async () => buttonByText(container, 'Wystaw i wyślij do KSeF')!.click())
+    await waitFor(() => Boolean(container.querySelector('[role="alertdialog"]')))
     const dialog = container.querySelector('[role="alertdialog"]')?.textContent
+    expect(dialog).toContain('Środowisko PRODUKCJA')
     expect(dialog).toContain('dokumentem prawnym')
     expect(dialog).toContain('Nadamy przy wystawieniu')
     expect(dialog).not.toContain('FV/1/11/2026')
@@ -171,6 +177,210 @@ describe('issue and detail pages', () => {
     await act(async () => buttonByText(container.querySelector<HTMLElement>('[role="alertdialog"]')!, 'Wystaw i wyślij')!.click())
     await waitFor(() => container.textContent?.includes('czekamy na przyjęcie') ?? false)
     expect(vi.mocked(issueIssuedInvoice).mock.calls[0]).toEqual(['t-1', 'i-1'])
+  })
+
+  const envKsef = (environment: unknown) => ({ ...ksef, environment }) as IssuedInvoiceResponse['ksef']
+  const clickIssue = async () => {
+    await waitFor(() => Boolean(buttonByText(container, 'Wystaw i wyślij do KSeF')))
+    await act(async () => buttonByText(container, 'Wystaw i wyślij do KSeF')!.click())
+  }
+  const dialogEl = () => container.querySelector<HTMLElement>('[role="alertdialog"]')
+
+  it.each(['production', null, undefined, 'staging', 'TEST'])('saved environment %s asks for confirmation although the profile says test', async (environment) => {
+    vi.mocked(getSellerProfile).mockResolvedValue({ ...profile, ksefEnvironment: 'test' })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ number: null, ksef: envKsef('test') }))
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(invoice({ number: null, ksef: envKsef(environment) }))
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => Boolean(dialogEl()))
+    expect(dialogEl()?.textContent).toContain(environment === 'production' ? 'Środowisko PRODUKCJA' : 'Nie znamy środowiska KSeF')
+    expect(issueIssuedInvoice).not.toHaveBeenCalled()
+
+    await act(async () => buttonByText(dialogEl()!, 'Wróć do edycji')!.click())
+    expect(dialogEl()).toBeNull()
+    expect(issueIssuedInvoice).not.toHaveBeenCalled()
+  })
+
+  it.each(['test', 'demo'])('saved environment %s issues without a dialog although the profile says production', async (environment) => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(invoice({ number: null, ksef: envKsef(environment) }))
+    vi.mocked(issueIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending' }))
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => vi.mocked(issueIssuedInvoice).mock.calls.length === 1)
+    expect(dialogEl()).toBeNull()
+  })
+
+  it('Rejected resend asks for confirmation and names its own number', async () => {
+    vi.mocked(getSellerProfile).mockResolvedValue({ ...profile, ksefEnvironment: 'test' })
+    const rejected = invoice({ status: 'Rejected', number: 'FV/7/10/2026', ksef: envKsef(null) })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(rejected)
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(rejected)
+    vi.mocked(issueIssuedInvoice).mockResolvedValue({ ...rejected, status: 'Sending' })
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => Boolean(dialogEl()))
+    expect(dialogEl()?.textContent).toContain('FV/7/10/2026')
+    expect(dialogEl()?.textContent).not.toContain('FV/1/11/2026')
+    expect(issueIssuedInvoice).not.toHaveBeenCalled()
+
+    await act(async () => buttonByText(dialogEl()!, 'Wystaw i wyślij')!.click())
+    await waitFor(() => vi.mocked(issueIssuedInvoice).mock.calls.length === 1)
+  })
+
+  it('Rejected resend on test issues without a dialog', async () => {
+    const rejected = invoice({ status: 'Rejected', number: 'FV/7/10/2026' })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(rejected)
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(rejected)
+    vi.mocked(issueIssuedInvoice).mockResolvedValue({ ...rejected, status: 'Sending' })
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => vi.mocked(issueIssuedInvoice).mock.calls.length === 1)
+    expect(dialogEl()).toBeNull()
+  })
+
+  it('detail page renders an unknown environment', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending', ksef: envKsef(null) }))
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => container.textContent?.includes('NIEZNANE') ?? false)
+  })
+
+  const networkFailure = () => normalizeError(new TypeError('Failed to fetch'))
+  const badGateway = () => normalizeError(new Response('<html>502 Bad Gateway</html>', { status: 502, headers: { 'Content-Type': 'text/html' } }))
+  const rawTexts = ['Service Unavailable', 'Failed to fetch', 'Bad Gateway', '<html>']
+  const expectNoRawText = () => rawTexts.forEach((raw) => expect(container.textContent).not.toContain(raw))
+
+  it.each([
+    ['network failure', networkFailure],
+    ['502', badGateway],
+  ])('%s on issue shows Sending when the invoice went through, with no second POST', async (_name, failure) => {
+    const draft = invoice({ number: null })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(issueIssuedInvoice).mockImplementation(async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending' }))
+      throw await failure()
+    })
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => container.textContent?.includes('czekamy na przyjęcie') ?? false)
+
+    expect(buttonByText(container, 'Zapisz szkic')).toBeUndefined()
+    expect(issueIssuedInvoice).toHaveBeenCalledTimes(1)
+    expectNoRawText()
+  })
+
+  it('network failure with the invoice still Draft offers a manual retry, without auto-retry', async () => {
+    const draft = invoice({ number: null })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(issueIssuedInvoice).mockRejectedValueOnce(await networkFailure())
+    vi.mocked(issueIssuedInvoice).mockResolvedValueOnce(invoice({ status: 'Sending' }))
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => container.textContent?.includes('Faktura nadal ma status: Szkic') ?? false)
+    await act(flush)
+
+    expect(issueIssuedInvoice).toHaveBeenCalledTimes(1)
+    expectNoRawText()
+    expect(buttonByText(container, 'Wystaw i wyślij do KSeF')?.disabled).toBe(false)
+
+    await clickIssue()
+    await waitFor(() => vi.mocked(issueIssuedInvoice).mock.calls.length === 2)
+  })
+
+  it('network failure after the production dialog closes it and shows the status', async () => {
+    const draft = invoice({ number: null, ksef: envKsef('production') })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(issueIssuedInvoice).mockRejectedValue(await networkFailure())
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => Boolean(dialogEl()))
+    await act(async () => buttonByText(dialogEl()!, 'Wystaw i wyślij')!.click())
+    await waitFor(() => container.textContent?.includes('Faktura nadal ma status: Szkic') ?? false)
+
+    expect(dialogEl()).toBeNull()
+    expectNoRawText()
+  })
+
+  it('network failure with Rejected flipped to Accepted opens the real status', async () => {
+    const rejected = invoice({ status: 'Rejected', number: 'FV/7/10/2026' })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(rejected)
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(rejected)
+    vi.mocked(issueIssuedInvoice).mockImplementation(async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: 'K-77' } }))
+      throw await networkFailure()
+    })
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => container.textContent?.includes('K-77') ?? false)
+    expectNoRawText()
+  })
+
+  it('network failure with the reload failing too says the status is unknown', async () => {
+    const draft = invoice({ number: null })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(draft)
+    const failure = await networkFailure()
+    vi.mocked(issueIssuedInvoice).mockImplementation(async () => {
+      vi.mocked(getIssuedInvoice).mockRejectedValue(failure)
+      throw failure
+    })
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => container.textContent?.includes('Nie wiemy, czy faktura została wysłana') ?? false)
+
+    expect(issueIssuedInvoice).toHaveBeenCalledTimes(1)
+    expectNoRawText()
+  })
+
+  it('PUT 409 on issue because the invoice left Draft opens the real status', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+    const conflict = await normalizeError(new Response(JSON.stringify({ message: 'Faktura nie jest już szkicem' }), { status: 409, headers: { 'Content-Type': 'application/json' } }))
+    vi.mocked(updateIssuedInvoice).mockImplementation(async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending' }))
+      throw conflict
+    })
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => container.textContent?.includes('czekamy na przyjęcie') ?? false)
+    expect(issueIssuedInvoice).not.toHaveBeenCalled()
+  })
+
+  it('HTTP 403 on issue with the status unchanged keeps the server message', async () => {
+    const draft = invoice({ number: null })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(updateIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(issueIssuedInvoice).mockRejectedValue(
+      await normalizeError(new Response(JSON.stringify({ message: 'Brak uprawnień do wystawiania' }), { status: 403, headers: { 'Content-Type': 'application/json' } })),
+    )
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => container.textContent?.includes('Brak uprawnień do wystawiania') ?? false)
+    expect(container.textContent).not.toContain('Faktura nadal ma status')
+  })
+
+  it('network failure creating a new draft shows Polish text, not raw', async () => {
+    vi.mocked(getSellerProfile).mockResolvedValue({ ...profile, ksefEnvironment: 'test' })
+    vi.mocked(createIssuedInvoice).mockRejectedValue(await networkFailure())
+    await render('/issued/new?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => container.textContent?.includes('Nie udało się zapisać szkicu') ?? false)
+    expect(issueIssuedInvoice).not.toHaveBeenCalled()
+    expectNoRawText()
   })
 
   it('issue 422 keeps the form and shows the errors', async () => {
