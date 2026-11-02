@@ -239,6 +239,16 @@ describe('issue and detail pages', () => {
     expect(buttonByText(container, 'Usuń')).toBeUndefined()
   })
 
+  it('Rejected for a token with code 450 shows the stored description', async () => {
+    const statusMessage = 'KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.'
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Rejected', ksef: { ...ksef, statusCode: 450, statusMessage } }))
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => Boolean(container.querySelector('[role="alert"]')))
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(statusMessage)
+    expect(container.textContent).not.toContain('Błąd weryfikacji')
+  })
+
   it('Rejected with a duplicate number says it is taken and offers only the copy', async () => {
     vi.mocked(getIssuedInvoice).mockResolvedValue(
       invoice({ status: 'Rejected', ksef: { ...ksef, statusCode: 440, statusMessage: 'Duplikat faktury' } }),
@@ -393,10 +403,11 @@ describe('issue and detail pages', () => {
   })
 
   it('Sending with lastError warns not to resend', async () => {
-    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending', ksef: { ...ksef, lastError: 'Timeout' } }))
+    const lastError = 'KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.'
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending', ksef: { ...ksef, lastError } }))
     await render('/issued/i-1?tenantId=t-1')
-    await waitFor(() => container.textContent?.includes('KSeF nie odpowiada') ?? false)
+    await waitFor(() => container.textContent?.includes(lastError) ?? false)
     expect(container.textContent).toContain('Nie wysyłaj faktury drugi raz')
-    expect(container.textContent).toContain('Timeout')
+    expect(container.textContent).not.toContain('KSeF nie odpowiada')
   })
 })

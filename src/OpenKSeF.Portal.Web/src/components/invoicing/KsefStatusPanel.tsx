@@ -32,8 +32,7 @@ export function KsefStatusPanel({ invoice, editHref }: KsefStatusPanelProps): Re
         <>
           {ksef.lastError ? (
             <div className="inv-alert inv-alert--warning" role="status">
-              <strong>KSeF nie odpowiada.</strong> Ponowimy wysyłkę automatycznie. Nie wysyłaj faktury drugi raz.
-              <div className="inv-help">{ksef.lastError}</div>
+              <strong>{ksef.lastError}</strong> Nie wysyłaj faktury drugi raz.
             </div>
           ) : null}
           <ol className="inv-steps">
