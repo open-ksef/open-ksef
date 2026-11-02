@@ -250,8 +250,9 @@ describe('issue and detail pages', () => {
     expect(container.textContent).not.toContain('Błąd weryfikacji')
   })
 
+  const numberTakenMessage = 'Ten numer faktury jest już użyty w KSeF. Sprawdź tę fakturę w KSeF, zanim wystawisz ją pod nowym numerem.'
   const rejected440 = (duplicateKsefNumber: string | null) =>
-    invoice({ status: 'Rejected', ksef: { ...ksef, statusCode: 440, statusMessage: 'Duplikat faktury', duplicateKsefNumber } })
+    invoice({ status: 'Rejected', ksef: { ...ksef, statusCode: 440, statusMessage: numberTakenMessage, duplicateKsefNumber } })
   const guidance = 'Sprawdź tę fakturę w KSeF. Jeśli to ta sama sprzedaż, nie wystawiaj jej ponownie.'
 
   it('Rejected with 440 shows the KSeF number and guidance next to the only copy action', async () => {
@@ -260,6 +261,9 @@ describe('issue and detail pages', () => {
     await waitFor(() => container.textContent?.includes('jest już zajęty w KSeF') ?? false)
 
     const panel = container.querySelector<HTMLElement>('section[aria-labelledby="ksef-panel-title"]')!
+    const alert = panel.querySelector('[role="alert"]')?.textContent
+    expect(alert).toContain(numberTakenMessage)
+    expect(alert).not.toContain('inny dokument')
     expect(panel.querySelector('dd.mono')?.textContent).toBe('5260250274-20261103-ABC')
     expect(panel.textContent).toContain(guidance)
     expect(buttonByText(panel, 'Kopiuj jako nową')).toBeDefined()

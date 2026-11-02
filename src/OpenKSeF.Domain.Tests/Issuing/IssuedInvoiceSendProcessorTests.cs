@@ -233,7 +233,7 @@ public class IssuedInvoiceSendProcessorTests
         var invoice = await LoadAsync(id);
         Assert.Equal(IssuedInvoiceStatus.Rejected, invoice.Status);
         Assert.Equal(440, invoice.KsefStatusCode);
-        Assert.Equal(IssuedInvoiceSendProcessor.NumberTakenMessage, invoice.KsefStatusDescription);
+        Assert.Equal("Ten numer faktury jest już użyty w KSeF. Sprawdź tę fakturę w KSeF, zanim wystawisz ją pod nowym numerem.", invoice.KsefStatusDescription);
         Assert.Equal("Duplikat faktury; Numer KSeF: KSEF-ORIG", invoice.KsefStatusDetails);
         Assert.Null(invoice.KsefNumber);
         Assert.Equal(0, _submitter.Sends);
@@ -369,6 +369,9 @@ public class IssuedInvoiceSendProcessorTests
 
     [Theory]
     [InlineData(405)]
+    [InlineData(410)]
+    [InlineData(415)]
+    [InlineData(435)]
     [InlineData(500)]
     [InlineData(550)]
     public async Task SystemStatus_AfterResend_StaysSending_AcceptedIfKSeFLaterConfirms(int code)
@@ -393,10 +396,7 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Theory]
-    [InlineData(410)]
-    [InlineData(415)]
     [InlineData(430)]
-    [InlineData(435)]
     [InlineData(450)]
     public async Task ContentStatus_AfterResend_Rejected(int code)
     {
@@ -412,9 +412,14 @@ public class IssuedInvoiceSendProcessorTests
 
     [Theory]
     [InlineData(405)]
+    [InlineData(410)]
+    [InlineData(415)]
+    [InlineData(430)]
+    [InlineData(435)]
+    [InlineData(450)]
     [InlineData(500)]
     [InlineData(550)]
-    public async Task SystemStatus_FirstAttempt_Rejected(int code)
+    public async Task FailureStatus_FirstAttempt_Rejected(int code)
     {
         var id = await SeedAsync(Sent);
         _submitter.OnGet = _ => Status(code);

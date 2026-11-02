@@ -50,7 +50,7 @@ A rejected invoice may change `issueDate` only within the period of its number, 
 
 A rejected invoice with code 440 cannot be issued again: `issue` returns 422 `INV-VAL-023` and sends nothing, because KSeF holds that number for this seller and every resend returns 440. Copy stays available. A rejected invoice with any other code can be fixed and issued again under the same number.
 
-The send worker rejects on 440 only when a second document is certain: after one POST no earlier copy of ours exists, and after more POSTs the original must be listed with another hash. After more than one POST, an unresolved 440, status 405 or status 500 and above leaves the invoice in Sending with `lastError` and a re-check every 15 minutes; nothing is resent. Codes 410 to 450 stay final.
+The send worker rejects on 440 only when a second document is certain: after one POST no earlier copy of ours exists, and after more POSTs the original must be listed with another hash. After more than one POST, an unresolved 440 or any failure status except 430 and 450 leaves the invoice in Sending with `lastError` and a re-check every 15 minutes; nothing is resent. Codes 430 and 450 stay final, because they judge the invoice content and would have failed the first copy too.
 
 Copy of an invoice in status Sending returns 409: the first document may still reach KSeF, so a copy could become a second tax document.
 

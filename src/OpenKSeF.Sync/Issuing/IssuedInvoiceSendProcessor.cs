@@ -29,7 +29,7 @@ public sealed class IssuedInvoiceSendProcessor(
     public const string NoWritePermissionMessage = "Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy.";
     public const string EnvironmentChangedMessage = "Środowisko KSeF zmienione";
     public const string InvalidTokenMessage = "KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.";
-    public const string NumberTakenMessage = "Ten numer faktury jest już użyty w KSeF przez inny dokument. Poprawka nie pomoże: wystaw fakturę pod nowym numerem.";
+    public const string NumberTakenMessage = "Ten numer faktury jest już użyty w KSeF. Sprawdź tę fakturę w KSeF, zanim wystawisz ją pod nowym numerem.";
     public const string DuplicateUnresolvedMessage = "Nie można jeszcze potwierdzić wyniku wysyłki w KSeF. Wcześniejsza próba mogła zostać przyjęta, więc faktura czeka na wyjaśnienie i sprawdzimy ją ponownie.";
     public const string MissingTokenMessage = "Wysyłka faktur wymaga tokenu KSeF w ustawieniach firmy";
     public const string MissingXmlMessage = "Brak zapisanego XML faktury";
@@ -228,7 +228,7 @@ public sealed class IssuedInvoiceSendProcessor(
             return;
         }
 
-        if (status is { Code: 405 or >= 500 } && invoice.AttemptCount > 1)
+        if (status is { Code: >= 400 and not (430 or 450) } && invoice.AttemptCount > 1)
         {
             await WaitForUnresolvedAsync(invoice, ct);
             return;
