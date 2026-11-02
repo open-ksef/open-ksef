@@ -549,6 +549,104 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.NotFound)]
+    public async Task HeldStatus_SessionCannotBeListed_PostsEveryOtherCycle_ThenAccepts(HttpStatusCode code)
+    {
+        var id = await SeedResentAsync();
+        _submitter.OnGet = _ => Status(550);
+        await RunAsync();
+        _submitter.OnList = _ => throw new KsefApiException("Brak sesji", code, null!, null!);
+
+        for (var i = 0; i < 50; i++)
+        {
+            _time.Advance(TimeSpan.FromHours(4));
+            await RunAsync();
+        }
+
+        var held = await LoadAsync(id);
+        Assert.Equal(27, _submitter.Sends);
+        Assert.Equal(27, held.AttemptCount);
+        Assert.Equal(IssuedInvoiceStatus.Sending, held.Status);
+        Assert.Null(held.KsefElementRef);
+        Assert.Equal(IssuedInvoiceSendProcessor.DuplicateUnresolvedMessage, held.LastError);
+        Assert.Equal(25, _logs.Messages.Count(m => m.Contains("cannot be listed: Brak sesji")));
+
+        _submitter.OnGet = _ => Status(200, "KSEF-1");
+        _time.Advance(TimeSpan.FromHours(4));
+        await RunAsync();
+        await RunAsync();
+
+        var accepted = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Accepted, accepted.Status);
+        Assert.Equal("KSEF-1", accepted.KsefNumber);
+        Assert.Equal(28, _submitter.Sends);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.NotFound)]
+    public async Task CrashBeforeElementRef_SessionCannotBeListed_PostsAgain(HttpStatusCode code)
+    {
+        var id = await SeedAsync(i => i.MarkSendStarted("sess-old", _time.UtcNow));
+        _submitter.OnList = _ => throw new KsefApiException("Brak sesji", code, null!, null!);
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(1, _submitter.Sends);
+        Assert.Equal(2, invoice.AttemptCount);
+        Assert.Equal(("sess-1", "el-1"), (invoice.KsefSessionRef, invoice.KsefElementRef));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SessionListForbidden_NoPost_WaitsWithKsefText(bool held)
+    {
+        Guid id;
+        if (held)
+        {
+            id = await SeedResentAsync();
+            _submitter.OnGet = _ => Status(550);
+            await RunAsync();
+        }
+        else
+        {
+            id = await SeedAsync(i => i.MarkSendStarted("sess-old", _time.UtcNow));
+        }
+
+        var sends = _submitter.Sends;
+        _submitter.OnList = _ => throw new KsefApiException("not your session", HttpStatusCode.Forbidden, null!, null!);
+        _time.Advance(TimeSpan.FromHours(4));
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(sends, _submitter.Sends);
+        Assert.Equal(IssuedInvoiceStatus.Sending, invoice.Status);
+        Assert.Equal("not your session", invoice.LastError);
+    }
+
+    [Fact]
+    public async Task HeldStatus_LogsCodeAndDescription_NoToken()
+    {
+        var id = await SeedResentAsync();
+        _submitter.OnGet = _ => Status(410);
+
+        await RunAsync();
+
+        var line = Assert.Single(_logs.Messages, m => m.Contains("failed with status"));
+        Assert.Contains(id.ToString(), line);
+        Assert.Contains("status 410", line);
+        Assert.Contains("desc 410", line);
+        Assert.Contains("session sess-2", line);
+        Assert.Contains("element el-2", line);
+        Assert.DoesNotContain(Token, line);
+        Assert.DoesNotContain(AccessToken, line);
+    }
+
+    [Theory]
     [InlineData(430)]
     [InlineData(450)]
     public async Task ContentStatus_AfterResend_Rejected(int code)

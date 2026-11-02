@@ -47,7 +47,7 @@ export function KsefStatusPanel({ invoice, editHref, copyAction }: KsefStatusPan
 
       {status === 'Accepted' && !ksef.hasUpo && ksef.lastError ? (
         <div className="inv-alert inv-alert--warning" role="status">
-          <strong>{ksef.lastError}</strong> Faktura jest przyjęta w KSeF. Nie wystawiaj jej ponownie.
+          <strong>{ksef.lastError}</strong> Faktura jest przyjęta w KSeF i ma numer. Brak UPO nie wymaga ponownego wystawienia.
         </div>
       ) : null}
 

@@ -491,13 +491,16 @@ describe('issue and detail pages', () => {
     expect(buttonByText(container, 'Kopiuj jako nową')).toBeUndefined()
   })
 
-  it('Accepted with UPO pending shows lastError and still offers copy', async () => {
-    const lastError = 'KSeF nie odpowiada. Ponowimy pobranie UPO automatycznie.'
+  it.each([
+    'UPO jeszcze niedostępne, ponowimy pobranie',
+    'KSeF nie odpowiada, ponowimy wysyłkę',
+  ])('Accepted with UPO pending shows "%s" and still offers copy', async (lastError) => {
     vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: 'K-1', lastError } }))
     await render('/issued/i-1?tenantId=t-1')
     await waitFor(() => container.textContent?.includes(lastError) ?? false)
     expect(container.textContent).toContain('Oczekuje na UPO')
-    expect(container.textContent).toContain('Nie wystawiaj jej ponownie')
+    expect(container.textContent).toContain('Faktura jest przyjęta w KSeF i ma numer. Brak UPO nie wymaga ponownego wystawienia.')
+    expect(container.textContent).not.toContain('Nie wystawiaj')
     expect(buttonByText(container, 'Kopiuj jako nową')).toBeDefined()
   })
 

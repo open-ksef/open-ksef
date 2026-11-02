@@ -73,7 +73,7 @@ public class NotificationService : INotificationService
         var notification = new PushNotification
         {
             Title = "Faktura czeka na wyjaśnienie w KSeF",
-            Body = $"Faktura {number} nie ma jeszcze potwierdzenia z KSeF. Nie wystawiaj jej ponownie, sprawdź szczegóły w portalu.",
+            Body = $"Faktura {number} wymaga sprawdzenia, szczegóły w portalu. Nie wystawiaj jej ponownie bez sprawdzenia.",
             Data = new Dictionary<string, string>
             {
                 ["type"] = "issuedInvoiceStuck",

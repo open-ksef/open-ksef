@@ -119,7 +119,7 @@ public class NotificationServiceTests : IDisposable
         await CreateService(provider).NotifyIssuedInvoiceStuckAsync(otherTenantId, invoiceId, "FV/1/11/2026");
 
         Assert.Equal(1, provider.Calls);
-        Assert.Contains("FV/1/11/2026", provider.Last!.Body);
+        Assert.Equal("Faktura FV/1/11/2026 wymaga sprawdzenia, szczegóły w portalu. Nie wystawiaj jej ponownie bez sprawdzenia.", provider.Last!.Body);
         Assert.Equal("issuedInvoiceStuck", provider.Last.Data!["type"]);
         Assert.Equal(invoiceId.ToString(), provider.Last.Data["issuedInvoiceId"]);
         Assert.False(provider.Last.Data.ContainsKey("invoiceId"));
