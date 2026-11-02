@@ -14,7 +14,7 @@ namespace OpenKSeF.Sync.Issuing;
 
 /// <summary>
 /// One send cycle over the IssuedInvoices outbox. Write-ahead: session ref and SendStartedAt are saved before the send,
-/// the element ref right after it, so a crash in between is recovered by hash lookup in the session, never by a blind resend.
+/// the element ref right after it, so a crash in between is recovered by hash lookup in the session, or by posting the stored bytes again.
 /// </summary>
 public sealed class IssuedInvoiceSendProcessor(
     ApplicationDbContext db,
@@ -175,7 +175,7 @@ public sealed class IssuedInvoiceSendProcessor(
         if (invoice.SendStartedAt is not null && invoice.KsefSessionRef is not null)
         {
             var hash = Convert.ToBase64String(SHA256.HashData(invoice.SentXml));
-            var match = (await submitter.ListInvoicesAsync(accessToken, invoice.KsefSessionRef, ct)).FirstOrDefault(s => s.InvoiceHash == hash);
+            var match = (await ListOwnSessionAsync(invoice, accessToken, ct)).FirstOrDefault(s => s.InvoiceHash == hash && s.Code < 400);
             if (match is not null)
             {
                 logger.LogInformation("Issued invoice {InvoiceId} recovered from session {SessionRef}", invoice.Id, invoice.KsefSessionRef);
@@ -230,7 +230,12 @@ public sealed class IssuedInvoiceSendProcessor(
 
         if (status is { Code: >= 400 and not (430 or 450) } && invoice.AttemptCount > 1)
         {
-            await WaitForUnresolvedAsync(invoice, ct);
+            var nextAttemptAt = Now().Add(ResendDelay(invoice));
+            logger.LogWarning(
+                "Issued invoice {InvoiceId} failed with status {Code} ({Description}) in session {SessionRef}, element {ElementRef}; next post at {NextAttemptAt}",
+                invoice.Id, status.Code, status.Description, invoice.KsefSessionRef, invoice.KsefElementRef, nextAttemptAt);
+            invoice.ScheduleResend(DuplicateUnresolvedMessage, nextAttemptAt, Now());
+            await db.SaveChangesAsync(ct);
             return;
         }
 
@@ -289,6 +294,19 @@ public sealed class IssuedInvoiceSendProcessor(
             : Join([.. duplicate.Details, $"Numer KSeF: {number}"]);
     }
 
+    private async Task<IReadOnlyList<KSeFSentInvoice>> ListOwnSessionAsync(IssuedInvoice invoice, string accessToken, CancellationToken ct)
+    {
+        try
+        {
+            return await submitter.ListInvoicesAsync(accessToken, invoice.KsefSessionRef!, ct);
+        }
+        catch (KsefApiException e) when (e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound)
+        {
+            logger.LogWarning("KSeF session {SessionRef} of issued invoice {InvoiceId} cannot be listed: {Error}", invoice.KsefSessionRef, invoice.Id, e.Message);
+            return [];
+        }
+    }
+
     private async Task<IReadOnlyList<KSeFSentInvoice>> ListOriginalSessionAsync(IssuedInvoice invoice, string accessToken, string sessionRef, CancellationToken ct)
     {
         try
@@ -342,6 +360,9 @@ public sealed class IssuedInvoiceSendProcessor(
             await db.SaveChangesAsync(ct);
         }
     }
+
+    private static TimeSpan ResendDelay(IssuedInvoice invoice) =>
+        MaxBackoff * Math.Pow(2, Math.Clamp(invoice.AttemptCount - 2, 0, 4));
 
     internal static TimeSpan Backoff(IssuedInvoice invoice)
     {

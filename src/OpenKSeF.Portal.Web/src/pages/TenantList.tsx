@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
+import toast from 'react-hot-toast'
 
+import { listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
 import { createTenant, deleteTenant, listTenants, updateTenant } from '@/api/endpoints/tenants'
+import { ApiError } from '@/api/errors'
 import type { TenantResponse } from '@/api/types'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
@@ -37,6 +40,20 @@ function validateForm(state: TenantFormState): string | null {
   return null
 }
 
+function issuedInvoicesNotice(count: number | undefined, countFailed: boolean): string {
+  if (count === 0) {
+    return 'Firma nie ma wystawionych faktur ani szkiców.'
+  }
+
+  const refusal = 'Firmy nie usuniemy, jeśli jej faktury są w trakcie wysyłki do KSeF lub zostały przyjęte przez produkcyjny KSeF.'
+  if (count !== undefined) {
+    return `Usuniemy też wystawione faktury i szkice tej firmy (liczba: ${count}). Nie będzie można ich przywrócić. ${refusal}`
+  }
+
+  const check = countFailed ? 'Nie udało się sprawdzić liczby wystawionych faktur i szkiców.' : 'Sprawdzamy liczbę wystawionych faktur i szkiców.'
+  return `${check} Jeśli firma je ma, też je usuniemy i nie będzie można ich przywrócić. ${refusal}`
+}
+
 export function TenantListPage(): ReactElement {
   const queryClient = useQueryClient()
   const [mode, setMode] = useState<FormMode>(null)
@@ -62,6 +79,14 @@ export function TenantListPage(): ReactElement {
   const tenantsQuery = useQuery({
     queryKey: ['tenants'],
     queryFn: () => listTenants(),
+  })
+
+  const deleteCountQuery = useQuery({
+    queryKey: ['tenant-delete-count', pendingDeleteId],
+    queryFn: () => listIssuedInvoices(pendingDeleteId ?? '', { pageSize: 1 }),
+    enabled: pendingDeleteId !== null,
+    retry: false,
+    gcTime: 0,
   })
 
   const createMutation = useMutation({
@@ -93,13 +118,18 @@ export function TenantListPage(): ReactElement {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteTenant(id),
-    onSuccess: async () => {
+    onSuccess: () => {
       notifyMutationSuccess('deleted', 'Tenant')
-      await queryClient.invalidateQueries({ queryKey: ['tenants'] })
     },
     onError: (error) => {
-      notifyMutationError('delete', 'Tenant', error)
+      if (error instanceof ApiError && error.status === 409) {
+        toast.error(error.message, { duration: 10_000 })
+        return
+      }
+
+      notifyMutationError('delete', 'Tenant', error instanceof ApiError && error.status === 404 ? 'Firma już nie istnieje.' : error)
     },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['tenants'] }),
   })
 
   const rows = tenantsQuery.data ?? []
@@ -233,13 +263,17 @@ export function TenantListPage(): ReactElement {
       <ConfirmDialog
         open={pendingDeleteId !== null}
         title="Usunąć firmę?"
-        message="Ta operacja jest nieodwracalna. Wszystkie powiązane dane logowania i synchronizacje zostaną usunięte."
+        message="Ta operacja jest nieodwracalna. Usuniemy dane logowania do KSeF, pobrane faktury zakupowe z oznaczeniami opłacenia, profil sprzedawcy z rachunkiem bankowym i dane synchronizacji. Po ponownym dodaniu firmy numeracja zacznie się od 1."
         confirmLabel="Usuń firmę"
         variant="danger"
         isPending={deleteMutation.isPending}
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
-      />
+      >
+        <p data-testid="tenant-delete-invoices" role="status" style={{ margin: '8px 0 0', fontSize: 14 }}>
+          {issuedInvoicesNotice(deleteCountQuery.data?.totalCount, deleteCountQuery.isError)}
+        </p>
+      </ConfirmDialog>
 
       {mode ? (
         <div

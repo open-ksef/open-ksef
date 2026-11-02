@@ -30,7 +30,7 @@ const envPresentation: Record<KsefEnvironment, { label: string; tone: string }> 
 }
 
 export function EnvBadge({ environment }: { environment: KsefEnvironment }): ReactElement {
-  const presentation = envPresentation[environment]
+  const presentation = envPresentation[environment] ?? { label: 'NIEZNANE', tone: 'warning' }
   return (
     <span className={`inv-badge inv-badge--${presentation.tone}`} title="Środowisko KSeF">
       <span className="visually-hidden">Środowisko KSeF: </span>

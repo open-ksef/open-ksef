@@ -65,6 +65,7 @@ public sealed class IssuedInvoice
     public int AttemptCount { get; private set; }
     public DateTime? NextAttemptAt { get; private set; }
     public string? LastError { get; private set; }
+    public DateTime? EscalatedAt { get; private set; }
 
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
@@ -244,6 +245,7 @@ public sealed class IssuedInvoice
         UpoXml = upoXml;
         NextAttemptAt = null;
         LastError = null;
+        EscalatedAt = null;
         UpdatedAt = now;
     }
 
@@ -254,6 +256,7 @@ public sealed class IssuedInvoice
         KsefStatusDescription = statusDescription;
         KsefStatusDetails = statusDetails;
         NextAttemptAt = null;
+        EscalatedAt = null;
         Status = IssuedInvoiceStatus.Rejected;
         UpdatedAt = now;
     }
@@ -264,6 +267,22 @@ public sealed class IssuedInvoice
         LastError = error;
         NextAttemptAt = nextAttemptAt;
         UpdatedAt = now;
+    }
+
+    public void ScheduleResend(string error, DateTime nextAttemptAt, DateTime now)
+    {
+        EnsureStatus(IssuedInvoiceStatus.Sending);
+        KsefElementRef = null;
+        LastError = error;
+        NextAttemptAt = nextAttemptAt;
+        UpdatedAt = now;
+    }
+
+    /// <summary>Leaves UpdatedAt alone: the send retry backoff is computed from it.</summary>
+    public void MarkEscalated(DateTime now)
+    {
+        EnsureStatus(IssuedInvoiceStatus.Queued, IssuedInvoiceStatus.Sending, IssuedInvoiceStatus.Accepted);
+        EscalatedAt = now;
     }
 
     private void EnsureStatus(params IssuedInvoiceStatus[] allowed)

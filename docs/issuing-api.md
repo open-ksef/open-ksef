@@ -21,7 +21,7 @@ POST /api/tenants/{tenantId}/issued-invoices/{id}/issue     -> 202 IssuedInvoice
 POST /api/tenants/{tenantId}/issued-invoices/{id}/copy      -> 201 IssuedInvoiceResponse (new Draft, same buyer+lines, dates = today, no number) | 409 (source Sending)
 GET  /api/tenants/{tenantId}/issued-invoices/{id}/xml       -> 200 application/xml (stored bytes) | 409 unless Accepted
 GET  /api/tenants/{tenantId}/issued-invoices/{id}/upo       -> 200 application/xml | 409 unless Accepted with UPO
-DELETE /api/tenants/{id}                                    -> 204 | 409 (tenant has issued invoices in any status, drafts included)
+DELETE /api/tenants/{id}                                    -> 204 | 409 (invoice Queued or Sending, or Accepted on production) | 404
 ```
 
 Cross-tenant on any route returns 404. A 409 without a `ValidationEnvelope` has the body `{ "message": "..." }`.
@@ -50,13 +50,17 @@ A rejected invoice may change `issueDate` only within the period of its number, 
 
 A rejected invoice with code 440 cannot be issued again: `issue` returns 422 `INV-VAL-023` and sends nothing, because KSeF holds that number for this seller and every resend returns 440. Copy stays available. A rejected invoice with any other code can be fixed and issued again under the same number.
 
-The send worker rejects on 440 only when a second document is certain: after one POST no earlier copy of ours exists, and after more POSTs the original must be listed with another hash. After more than one POST, an unresolved 440 or any failure status except 430 and 450 leaves the invoice in Sending with `lastError` and a re-check every 15 minutes; nothing is resent. Codes 430 and 450 stay final, because they judge the invoice content and would have failed the first copy too.
+The send worker rejects on 440 only when a second document is certain: after one POST no earlier copy of ours exists, and after more POSTs the original must be listed with another hash. After more than one POST, an unresolved 440 leaves the invoice in Sending with `lastError` and a re-check every 15 minutes; nothing is resent. Codes 430 and 450 stay final, because they judge the invoice content and would have failed the first copy too.
+
+After more than one POST, any other failure status (405, 410, 415, 435, unknown 4xx, 500 and above) leaves the invoice in Sending with `lastError` and posts the stored XML bytes again in a new session, after 15 minutes, doubling up to 4 hours. KSeF keys duplicates on seller NIP, invoice type and number, so these bytes cannot create a second document: a first copy returns 440, and the hash match recovers its KSeF number. A new post returning 200 accepts the invoice. No code only waits. Codes 410 and 415 keep failing until the token or the KSeF account changes, and that part escalates to a person (below).
+
+`needsAttention` in the list is true while the worker has flagged the invoice as stuck: Queued, Sending or Accepted without UPO, `Issuing:StuckAfterHours` (default 24) after `issuedAt`. It clears on UPO or rejection. The worker logs at Error once per window and pushes to the tenant owner once. The flag changes no status and no rule: copy of a Sending invoice stays 409, and copy of an Accepted invoice stays allowed. Support steps: [issuing-stuck-runbook.md](issuing-stuck-runbook.md).
 
 Copy of an invoice in status Sending returns 409: the first document may still reach KSeF, so a copy could become a second tax document.
 
 An issue date after today in Europe/Warsaw blocks issuing with `INV-VAL-020` before a number is assigned, because KSeF rejects it with code 450. Drafts may hold a future date.
 
-A tenant with any row in issued invoices, a draft included, cannot be deleted. Delete its drafts first. A tenant with a number-holding invoice stays.
+Tenant delete returns 409 while any invoice of the tenant is Queued or Sending, on any environment, or Accepted on production. `KsefEnvironment` stored on the invoice decides, not the current instance setting, and an Accepted invoice without one counts as production. Otherwise the delete removes the tenant and all its issued invoices in one transaction, and they cannot be restored. The delete also removes the seller profile with its bank account and number counter, and the paid marks on purchase invoices. The KSeF copy of an accepted invoice stays in KSeF. A tenant added again with the same NIP numbers from 1, so on the same KSeF environment a number already held there returns 440 and the invoice ends Rejected; set `nextNumber` in the seller profile above the last number used before issuing. To show the count before confirming, read `totalCount` from `GET /api/tenants/{tenantId}/issued-invoices?pageSize=1`; it includes drafts. The delete locks the tenant and invoice rows, so it waits for a concurrent issue or status change and decides on the committed status. An issue that waits for a delete that commits returns 404. Deleting the last invoices on the instance releases the KSeF environment lock. Deleting one Rejected invoice stays forbidden.
 
 Numbering patterns must contain `{RRRR}` (`SP-VAL-007`), because the counter resets every year and a number without the year would repeat. A profile stored before this rule keeps working: GET returns its pattern and issuing uses it, and a repeated number returns 409. Its next PUT must supply a pattern with `{RRRR}`.
 
@@ -95,7 +99,7 @@ Numbering patterns must contain `{RRRR}` (`SP-VAL-007`), because the counter res
 
 // IssuedInvoiceListItemResponse
 { "id": "guid", "status": "Accepted", "number": "FV/1/11/2026", "buyerName": "...", "buyerNip": "...",
-  "issueDate": "2026-11-03", "dueDate": "2026-11-17", "totalNet": 100.00, "totalGross": 123.00, "currency": "PLN", "ksefNumber": "..." }
+  "issueDate": "2026-11-03", "dueDate": "2026-11-17", "totalNet": 100.00, "totalGross": 123.00, "currency": "PLN", "ksefNumber": "...", "needsAttention": false }
 
 // ValidationEnvelope (400/422)
 { "errors": [ { "code": "INV-VAL-013", "field": "buyer.nip", "message": "Dla nabywcy firmy wymagany jest poprawny NIP" } ], "warnings": [] }

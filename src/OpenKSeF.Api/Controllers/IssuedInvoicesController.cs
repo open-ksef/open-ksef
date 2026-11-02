@@ -52,7 +52,8 @@ public class IssuedInvoicesController(
                     i.TotalNet,
                     i.TotalGross,
                     IssuedInvoice.Currency,
-                    i.KsefNumber))
+                    i.KsefNumber,
+                    i.EscalatedAt != null))
                 .ToListAsync(ct);
 
             return Ok(new PagedResult<IssuedInvoiceListItemResponse> { Items = items, Page = page, PageSize = pageSize, TotalCount = totalCount });

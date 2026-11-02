@@ -128,13 +128,23 @@ public class IssuedInvoiceService(
             return (await ViewAsync(invoice, ct), false);
 
         var profile = await db.SellerProfiles.SingleOrDefaultAsync(p => p.TenantId == tenantId, ct) ?? new SellerProfile(tenantId);
-        var sellerNip = await db.Tenants.Where(t => t.Id == tenantId).Select(t => t.Nip).SingleAsync(ct);
+        var sellerNip = await db.Tenants.Where(t => t.Id == tenantId).Select(t => t.Nip).SingleOrDefaultAsync(ct);
+        if (sellerNip is null)
+            return null;
+
         var errors = IssueChecks.Errors(invoice, profile, Today());
         if (errors.Count > 0)
             throw new InvoiceValidationException(errors);
 
         var now = Now();
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        // Before the counter row: DeleteTenantAsync locks the tenant first, so the reverse order could deadlock.
+        var tenantLocked = await db.Database
+            .SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "Tenants" WHERE "Id" = {tenantId} FOR KEY SHARE""")
+            .ToListAsync(ct);
+        if (tenantLocked.Count == 0)
+            return null;
+
         var number = invoice.Number ?? InvoiceNumbering.Format(
             profile.NumberingPattern,
             await sellerProfiles.AllocateNumberAsync(tenantId, InvoiceNumbering.PeriodKey(profile.NumberingPattern, invoice.IssueDate), ct),
@@ -189,6 +199,30 @@ public class IssuedInvoiceService(
         db.IssuedInvoices.Add(copy);
         await db.SaveChangesAsync(ct);
         return await ViewAsync(copy, ct);
+    }
+
+    public async Task<bool> DeleteTenantAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        // The tenant lock stops new invoices and IssueAsync; the row lock waits out any other status change, so the checks below read the final status.
+        var tenantLocked = await db.Database
+            .SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "Tenants" WHERE "Id" = {tenantId} FOR UPDATE""")
+            .ToListAsync(ct);
+        if (tenantLocked.Count == 0)
+            return false;
+
+        await db.Database.ExecuteSqlAsync($"""SELECT 1 FROM "IssuedInvoices" WHERE "TenantId" = {tenantId} FOR UPDATE""", ct);
+        var invoices = db.IssuedInvoices.Where(i => i.TenantId == tenantId);
+
+        if (await invoices.AnyAsync(i => i.Status == IssuedInvoiceStatus.Accepted && (i.KsefEnvironment == null || (i.KsefEnvironment != "test" && i.KsefEnvironment != "demo")), ct))
+            throw new InvoiceStateException("Nie można usunąć firmy, która ma faktury przyjęte przez produkcyjny KSeF. Faktury pozostają w KSeF. Aby usunąć dane firmy, skontaktuj się z właścicielem instancji.");
+        if (await invoices.AnyAsync(i => i.Status == IssuedInvoiceStatus.Queued || i.Status == IssuedInvoiceStatus.Sending, ct))
+            throw new InvoiceStateException("Nie można usunąć firmy w trakcie wysyłki faktur do KSeF. Poczekaj na wynik wysyłki i spróbuj ponownie.");
+
+        await invoices.ExecuteDeleteAsync(ct);
+        await db.Tenants.Where(t => t.Id == tenantId).ExecuteDeleteAsync(ct);
+        await transaction.CommitAsync(ct);
+        return true;
     }
 
     internal static bool IsUniqueViolation(DbUpdateException e) =>

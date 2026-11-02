@@ -23,7 +23,7 @@ public record IssuedInvoiceSeller(string Nip, string? Name, string? AddressLine1
 
 public record IssuedInvoiceView(IssuedInvoice Invoice, IssuedInvoiceSeller Seller, string KsefEnvironment, IReadOnlyList<InvoiceCheck> Warnings);
 
-/// <summary>Draft CRUD, issue and copy. Null means not found; <see cref="InvoiceStateException"/> maps to 409, <see cref="InvoiceValidationException"/> to 400/422.</summary>
+/// <summary>Draft CRUD, issue, copy and tenant delete. Null means not found; <see cref="InvoiceStateException"/> maps to 409, <see cref="InvoiceValidationException"/> to 400/422.</summary>
 public interface IIssuedInvoiceService
 {
     IQueryable<IssuedInvoice> Query(Guid tenantId, IssuedInvoiceListFilter filter);
@@ -39,4 +39,6 @@ public interface IIssuedInvoiceService
     Task<(IssuedInvoiceView View, bool Issued)?> IssueAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     Task<IssuedInvoiceView?> CopyAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    Task<bool> DeleteTenantAsync(Guid tenantId, CancellationToken ct = default);
 }

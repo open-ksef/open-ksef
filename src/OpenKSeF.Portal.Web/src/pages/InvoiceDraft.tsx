@@ -10,7 +10,7 @@ import {
   updateIssuedInvoice,
 } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
-import { readValidationEnvelope } from '@/api/errors'
+import { ApiError, readValidationEnvelope } from '@/api/errors'
 import type { IssuedInvoiceResponse, IssuedInvoiceStatus, SellerProfileResponse, ValidationIssue } from '@/api/types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
@@ -97,6 +97,11 @@ interface DraftFormProps {
 
 const timeFormat = new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit' })
 
+const failureText = (error: unknown, fallback: string): string =>
+  !(error instanceof Error) || (error instanceof ApiError && (error.status >= 500 || !(error.originalError instanceof Response) || !error.originalError.headers.get('Content-Type')?.includes('application/json')))
+    ? fallback
+    : error.message
+
 function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -104,7 +109,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   const [errors, setErrors] = useState<ValidationIssue[]>([])
   const [warnings, setWarnings] = useState<ValidationIssue[]>(invoice?.warnings ?? [])
   const [failure, setFailure] = useState<string | null>(null)
-  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmFor, setConfirmFor] = useState<IssuedInvoiceResponse | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   const totals = computeTotals(
@@ -134,7 +139,31 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
     const envelope = await readValidationEnvelope(failed)
     setErrors(envelope?.errors ?? [])
     setWarnings(envelope?.warnings ?? [])
-    setFailure(envelope ? null : failed instanceof Error ? failed.message : fallback)
+    setFailure(envelope ? null : failureText(failed, fallback))
+  }
+
+  async function recoverIssue(target: IssuedInvoiceResponse, failed: unknown): Promise<void> {
+    setConfirmFor(null)
+    if (await readValidationEnvelope(failed)) {
+      return showFailure(failed, 'Nie udało się wysłać faktury do KSeF')
+    }
+
+    setErrors([])
+    let fresh: IssuedInvoiceResponse
+    try {
+      fresh = await getIssuedInvoice(tenantId, target.id)
+    } catch {
+      setFailure('Brak połączenia z serwerem. Nie wiemy, czy faktura została wysłana. Sprawdź połączenie i odśwież stronę.')
+      return
+    }
+
+    queryClient.setQueryData(['issued-invoice', tenantId, fresh.id], fresh)
+    if (fresh.status !== target.status || fresh.issuedAt !== target.issuedAt) {
+      navigate(`/issued/${encodeURIComponent(fresh.id)}?tenantId=${encodeURIComponent(tenantId)}`, { replace: true })
+      return
+    }
+    const statusLabel = fresh.status === 'Draft' ? 'Szkic' : 'Odrzucona'
+    setFailure(failureText(failed, `Nie udało się połączyć z serwerem. Faktura nadal ma status: ${statusLabel}. Możesz spróbować ponownie.`))
   }
 
   const save = useMutation({
@@ -143,16 +172,25 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   })
 
   const issue = useMutation({
-    mutationFn: async () => issueIssuedInvoice(tenantId, (await saveDraft()).id),
+    mutationFn: (target: IssuedInvoiceResponse) => issueIssuedInvoice(tenantId, target.id),
     onSuccess: (issued) => {
       queryClient.setQueryData(['issued-invoice', tenantId, issued.id], issued)
       void queryClient.invalidateQueries({ queryKey: ['seller-profile', tenantId] })
       navigate(`/issued/${encodeURIComponent(issued.id)}?tenantId=${encodeURIComponent(tenantId)}`)
     },
-    onError: (issueError) => {
-      setConfirmOpen(false)
-      return showFailure(issueError, 'Nie udało się wysłać faktury do KSeF')
+    onError: (issueError, target) => recoverIssue(target, issueError),
+  })
+
+  const prepareIssue = useMutation({
+    mutationFn: saveDraft,
+    onSuccess: (saved) => {
+      if (saved.ksef.environment === 'test' || saved.ksef.environment === 'demo') {
+        issue.mutate(saved)
+      } else {
+        setConfirmFor(saved)
+      }
     },
+    onError: (saveError) => (invoice ? recoverIssue(invoice, saveError) : showFailure(saveError, 'Nie udało się zapisać szkicu')),
   })
 
   const remove = useMutation({
@@ -168,7 +206,8 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
     },
   })
 
-  const busy = save.isPending || issue.isPending || remove.isPending
+  const issuing = prepareIssue.isPending || issue.isPending
+  const busy = save.isPending || issuing || remove.isPending
   const expectedNumber = form.issueDate.startsWith(profile.nextNumberPeriod) ? profile.nextNumberPreview : null
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -208,9 +247,9 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
             type="button"
             className="ui-button ui-button--primary ui-button--md"
             disabled={busy || !profile.isComplete}
-            onClick={() => (profile.ksefEnvironment === 'production' ? setConfirmOpen(true) : issue.mutate())}
+            onClick={() => prepareIssue.mutate()}
           >
-            {issue.isPending ? 'Wysyłanie…' : 'Wystaw i wyślij do KSeF'}
+            {issuing ? 'Wysyłanie…' : 'Wystaw i wyślij do KSeF'}
           </button>
         </div>
       </header>
@@ -228,19 +267,21 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
       />
 
       <ConfirmDialog
-        open={confirmOpen}
+        open={confirmFor !== null}
         title="Wystawić fakturę i wysłać do KSeF?"
-        message="Środowisko PRODUKCJA: po przyjęciu przez KSeF faktura staje się dokumentem prawnym. Nie można jej usunąć ani edytować."
+        message={`${
+          confirmFor?.ksef.environment === 'production' ? 'Środowisko PRODUKCJA' : 'Nie znamy środowiska KSeF, więc może to być PRODUKCJA'
+        }: po przyjęciu przez KSeF faktura staje się dokumentem prawnym. Nie można jej usunąć ani edytować.`}
         confirmLabel="Wystaw i wyślij"
         cancelLabel="Wróć do edycji"
         pendingLabel="Wysyłanie…"
         isPending={issue.isPending}
-        onConfirm={() => issue.mutate()}
-        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => confirmFor && issue.mutate(confirmFor)}
+        onCancel={() => setConfirmFor(null)}
       >
         <dl className="inv-readonly">
           <dt>Numer</dt>
-          <dd className="mono">{invoice?.number ?? 'Nadamy przy wystawieniu'}</dd>
+          <dd className="mono">{confirmFor?.number ?? 'Nadamy przy wystawieniu'}</dd>
           <dt>Nabywca</dt>
           <dd>
             {form.buyer.name || '—'}

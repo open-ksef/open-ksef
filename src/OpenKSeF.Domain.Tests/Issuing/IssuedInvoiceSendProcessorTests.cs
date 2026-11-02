@@ -100,6 +100,19 @@ public class IssuedInvoiceSendProcessorTests
         return id;
     }
 
+    private async Task<Guid> SeedHeldThenResentAsync(int code)
+    {
+        var id = await SeedResentAsync();
+        _submitter.OnGet = _ => Status(code);
+        await RunAsync();
+        _time.Advance(TimeSpan.FromMinutes(15));
+        _submitter.OnSend = () => Task.FromResult("el-3");
+        await RunAsync();
+        var resent = await LoadAsync(id);
+        Assert.Equal((3, "el-3"), (resent.AttemptCount, resent.KsefElementRef));
+        return id;
+    }
+
     [Fact]
     public async Task Queued_SavesSessionRefAndSendStartedBeforeSend_ElementRefAfter()
     {
@@ -371,12 +384,15 @@ public class IssuedInvoiceSendProcessorTests
     [InlineData(405)]
     [InlineData(410)]
     [InlineData(415)]
+    [InlineData(420)]
     [InlineData(435)]
     [InlineData(500)]
     [InlineData(550)]
-    public async Task SystemStatus_AfterResend_StaysSending_AcceptedIfKSeFLaterConfirms(int code)
+    [InlineData(599)]
+    public async Task HeldStatus_AfterResend_WaitsBackoff_ThenPostsStoredBytesInNewSession(int code)
     {
         var id = await SeedResentAsync();
+        var stored = (await LoadAsync(id)).SentXml;
         _submitter.OnGet = _ => Status(code);
 
         await RunAsync();
@@ -386,13 +402,248 @@ public class IssuedInvoiceSendProcessorTests
         Assert.Equal(IssuedInvoiceSendProcessor.DuplicateUnresolvedMessage, waiting.LastError);
         Assert.Equal(_time.UtcNow.AddMinutes(15), waiting.NextAttemptAt);
         Assert.Null(waiting.KsefStatusCode);
+        Assert.Null(waiting.KsefElementRef);
 
-        _time.Advance(TimeSpan.FromMinutes(15));
-        _submitter.OnGet = _ => Status(200, "KSEF-1");
+        _time.Advance(TimeSpan.FromMinutes(14));
+        await RunAsync();
+        Assert.Equal(2, _submitter.Sends);
+
+        _time.Advance(TimeSpan.FromMinutes(1));
+        _submitter.OnSend = () => Task.FromResult("el-3");
         await RunAsync();
 
-        Assert.Equal(IssuedInvoiceStatus.Accepted, (await LoadAsync(id)).Status);
-        Assert.Equal(2, _submitter.Sends);
+        var resent = await LoadAsync(id);
+        Assert.Equal(3, _submitter.Sends);
+        Assert.Equal(3, resent.AttemptCount);
+        Assert.Equal("el-3", resent.KsefElementRef);
+        Assert.Equal("sess-3", resent.KsefSessionRef);
+        Assert.Equal(stored, _submitter.SentBytes[^1]);
+        Assert.Equal(stored, resent.SentXml);
+    }
+
+    [Theory]
+    [InlineData(405)]
+    [InlineData(410)]
+    [InlineData(415)]
+    [InlineData(420)]
+    [InlineData(435)]
+    [InlineData(500)]
+    [InlineData(550)]
+    [InlineData(599)]
+    public async Task HeldStatus_NewPostReturns440_HashMatch_AcceptedWithOriginalNumber(int code)
+    {
+        var id = await SeedHeldThenResentAsync(code);
+        _submitter.OnGet = _ => Duplicate();
+        _submitter.OnList = sessionRef => sessionRef == "sess-orig" ? [Status(200, "KSEF-ORIG", elementRef: "el-orig")] : [];
+        _submitter.OnUpo = () => Encoding.UTF8.GetBytes("<UPO/>");
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Accepted, invoice.Status);
+        Assert.Equal("KSEF-ORIG", invoice.KsefNumber);
+        Assert.Equal(("sess-orig", "el-orig"), _submitter.UpoRequests.Single());
+        Assert.Equal(3, _submitter.Sends);
+    }
+
+    [Theory]
+    [InlineData(405)]
+    [InlineData(410)]
+    [InlineData(415)]
+    [InlineData(420)]
+    [InlineData(435)]
+    [InlineData(500)]
+    [InlineData(550)]
+    [InlineData(599)]
+    public async Task HeldStatus_NewPostReturns200_Accepted(int code)
+    {
+        var id = await SeedHeldThenResentAsync(code);
+        _submitter.OnGet = _ => Status(200, "KSEF-NEW", elementRef: "el-3");
+        _submitter.OnUpo = () => Encoding.UTF8.GetBytes("<UPO/>");
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Accepted, invoice.Status);
+        Assert.Equal("KSEF-NEW", invoice.KsefNumber);
+        Assert.Null(invoice.LastError);
+        Assert.Equal(3, _submitter.Sends);
+    }
+
+    [Theory]
+    [InlineData(405)]
+    [InlineData(410)]
+    [InlineData(415)]
+    [InlineData(420)]
+    [InlineData(435)]
+    [InlineData(500)]
+    [InlineData(550)]
+    [InlineData(599)]
+    public async Task HeldStatus_KeepsFailing_BackoffDoublesToFourHours_NeverRejected(int code)
+    {
+        var id = await SeedResentAsync();
+        _submitter.OnGet = _ => Status(code);
+        var delays = new List<int>();
+
+        for (var round = 0; round < 8; round++)
+        {
+            await RunAsync();
+            var waiting = await LoadAsync(id);
+            Assert.Equal(IssuedInvoiceStatus.Sending, waiting.Status);
+            var delay = waiting.NextAttemptAt!.Value - _time.UtcNow;
+            delays.Add((int)delay.TotalMinutes);
+            _time.Advance(delay);
+            await RunAsync();
+            Assert.Equal(round + 3, _submitter.Sends);
+            Assert.Equal(IssuedInvoiceStatus.Sending, (await LoadAsync(id)).Status);
+        }
+
+        Assert.Equal([15, 30, 60, 120, 240, 240, 240, 240], delays);
+    }
+
+    [Theory]
+    [InlineData(405)]
+    [InlineData(440)]
+    [InlineData(450)]
+    [InlineData(550)]
+    public async Task HashLookup_SkipsFailedElementInCurrentSession_PostsAgain(int code)
+    {
+        var id = await SeedAsync(i => i.MarkSendStarted("sess-old", _time.UtcNow));
+        _submitter.OnList = _ => [Status(code, elementRef: "el-failed")];
+        _submitter.OnSend = () => Task.FromResult("el-new");
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Sending, invoice.Status);
+        Assert.Equal("el-new", invoice.KsefElementRef);
+        Assert.Equal(1, _submitter.Sends);
+    }
+
+    [Fact]
+    public async Task HashLookup_FailedAndLiveElementInSession_TakesLiveOne_NoPost()
+    {
+        var id = await SeedAsync(i => i.MarkSendStarted("sess-old", _time.UtcNow));
+        _submitter.OnList = _ => [Status(550, elementRef: "el-failed"), Status(150, elementRef: "el-live")];
+
+        await RunAsync();
+
+        Assert.Equal("el-live", (await LoadAsync(id)).KsefElementRef);
+        Assert.Equal(0, _submitter.Sends);
+    }
+
+    [Fact]
+    public async Task HeldStatus_ResendCycle_FailedElementListedInSession_NotTakenBack()
+    {
+        var id = await SeedResentAsync();
+        _submitter.OnGet = _ => Status(550, elementRef: "el-2");
+        await RunAsync();
+        _time.Advance(TimeSpan.FromMinutes(15));
+        _submitter.OnList = sessionRef => sessionRef == "sess-2" ? [Status(550, elementRef: "el-2")] : [];
+        _submitter.OnSend = () => Task.FromResult("el-3");
+
+        await RunAsync();
+
+        Assert.Equal("el-3", (await LoadAsync(id)).KsefElementRef);
+        Assert.Equal(3, _submitter.Sends);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.NotFound)]
+    public async Task HeldStatus_SessionCannotBeListed_PostsEveryOtherCycle_ThenAccepts(HttpStatusCode code)
+    {
+        var id = await SeedResentAsync();
+        _submitter.OnGet = _ => Status(550);
+        await RunAsync();
+        _submitter.OnList = _ => throw new KsefApiException("Brak sesji", code, null!, null!);
+
+        for (var i = 0; i < 50; i++)
+        {
+            _time.Advance(TimeSpan.FromHours(4));
+            await RunAsync();
+        }
+
+        var held = await LoadAsync(id);
+        Assert.Equal(27, _submitter.Sends);
+        Assert.Equal(27, held.AttemptCount);
+        Assert.Equal(IssuedInvoiceStatus.Sending, held.Status);
+        Assert.Null(held.KsefElementRef);
+        Assert.Equal(IssuedInvoiceSendProcessor.DuplicateUnresolvedMessage, held.LastError);
+        Assert.Equal(25, _logs.Messages.Count(m => m.Contains("cannot be listed: Brak sesji")));
+
+        _submitter.OnGet = _ => Status(200, "KSEF-1");
+        _time.Advance(TimeSpan.FromHours(4));
+        await RunAsync();
+        await RunAsync();
+
+        var accepted = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Accepted, accepted.Status);
+        Assert.Equal("KSEF-1", accepted.KsefNumber);
+        Assert.Equal(28, _submitter.Sends);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.NotFound)]
+    public async Task CrashBeforeElementRef_SessionCannotBeListed_PostsAgain(HttpStatusCode code)
+    {
+        var id = await SeedAsync(i => i.MarkSendStarted("sess-old", _time.UtcNow));
+        _submitter.OnList = _ => throw new KsefApiException("Brak sesji", code, null!, null!);
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(1, _submitter.Sends);
+        Assert.Equal(2, invoice.AttemptCount);
+        Assert.Equal(("sess-1", "el-1"), (invoice.KsefSessionRef, invoice.KsefElementRef));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SessionListForbidden_NoPost_WaitsWithKsefText(bool held)
+    {
+        Guid id;
+        if (held)
+        {
+            id = await SeedResentAsync();
+            _submitter.OnGet = _ => Status(550);
+            await RunAsync();
+        }
+        else
+        {
+            id = await SeedAsync(i => i.MarkSendStarted("sess-old", _time.UtcNow));
+        }
+
+        var sends = _submitter.Sends;
+        _submitter.OnList = _ => throw new KsefApiException("not your session", HttpStatusCode.Forbidden, null!, null!);
+        _time.Advance(TimeSpan.FromHours(4));
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(sends, _submitter.Sends);
+        Assert.Equal(IssuedInvoiceStatus.Sending, invoice.Status);
+        Assert.Equal("not your session", invoice.LastError);
+    }
+
+    [Fact]
+    public async Task HeldStatus_LogsCodeAndDescription_NoToken()
+    {
+        var id = await SeedResentAsync();
+        _submitter.OnGet = _ => Status(410);
+
+        await RunAsync();
+
+        var line = Assert.Single(_logs.Messages, m => m.Contains("failed with status"));
+        Assert.Contains(id.ToString(), line);
+        Assert.Contains("status 410", line);
+        Assert.Contains("desc 410", line);
+        Assert.Contains("session sess-2", line);
+        Assert.Contains("element el-2", line);
+        Assert.DoesNotContain(Token, line);
+        Assert.DoesNotContain(AccessToken, line);
     }
 
     [Theory]
@@ -940,6 +1191,7 @@ public class IssuedInvoiceSendProcessorTests
         public Func<byte[]?> OnUpo = () => null;
         public int Logins, Opens, Sends, Gets, Closes;
         public List<(string SessionRef, string ElementRef)> UpoRequests = [];
+        public List<byte[]> SentBytes = [];
 
         public Task<string> LoginAsync(string nip, string ksefToken, CancellationToken ct = default)
         {
@@ -959,6 +1211,7 @@ public class IssuedInvoiceSendProcessorTests
         public Task<string> SendAsync(KSeFOnlineSession session, byte[] invoiceXml, CancellationToken ct = default)
         {
             Sends++;
+            SentBytes.Add(invoiceXml);
             Assert.Equal(Xml, invoiceXml);
             return OnSend();
         }

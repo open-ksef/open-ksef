@@ -93,4 +93,5 @@ public record IssuedInvoiceListItemResponse(
     decimal TotalNet,
     decimal TotalGross,
     string Currency,
-    string? KsefNumber);
+    string? KsefNumber,
+    bool NeedsAttention);
