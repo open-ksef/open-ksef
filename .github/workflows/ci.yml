@@ -28,6 +28,9 @@ jobs:
             --store-password-in-clear-text \
             --configfile nuget.config
 
+      - name: Verify NuGet source mapping
+        run: ../scripts/verify-nuget-source-mapping.sh
+
       - name: Restore
         run: |
           dotnet restore OpenKSeF.Api/OpenKSeF.Api.csproj
