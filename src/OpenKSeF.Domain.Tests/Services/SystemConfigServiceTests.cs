@@ -65,19 +65,33 @@ public class SystemConfigServiceTests : IDisposable
     [Fact]
     public void GetValue_FallsBackToEnvVar()
     {
-        var value = _service.GetValue(SystemConfigKeys.EncryptionKey);
+        var value = _service.GetValue(SystemConfigKeys.KSeFEnvironment);
 
-        Assert.Equal("env-encryption-key-base64", value);
+        Assert.Equal("test", value);
     }
 
     [Fact]
     public async Task GetValue_DbOverridesEnvVar()
     {
+        await _service.SetValueAsync(SystemConfigKeys.KSeFEnvironment, "demo");
+
+        var value = _service.GetValue(SystemConfigKeys.KSeFEnvironment);
+
+        Assert.Equal("demo", value);
+    }
+
+    [Fact]
+    public void GetValue_EncryptionKey_DoesNotFallBackToEnvVar()
+    {
+        Assert.Null(_service.GetValue(SystemConfigKeys.EncryptionKey));
+    }
+
+    [Fact]
+    public async Task GetValue_EncryptionKey_ReturnsRow()
+    {
         await _service.SetValueAsync(SystemConfigKeys.EncryptionKey, "db-encryption-key");
 
-        var value = _service.GetValue(SystemConfigKeys.EncryptionKey);
-
-        Assert.Equal("db-encryption-key", value);
+        Assert.Equal("db-encryption-key", _service.GetValue(SystemConfigKeys.EncryptionKey));
     }
 
     [Fact]

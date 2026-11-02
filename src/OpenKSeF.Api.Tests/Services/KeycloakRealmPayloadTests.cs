@@ -15,6 +15,8 @@ namespace OpenKSeF.Api.Tests.Services;
 public class KeycloakRealmPayloadTests
 {
     private const string RealmUrl = "http://keycloak:8080/auth/admin/realms/openksef";
+    private const string ValidKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+    private const string UnpaddedKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY";
 
     private readonly FakeKeycloak _keycloak = new();
     private readonly IHttpClientFactory _httpClientFactory = Substitute.For<IHttpClientFactory>();
@@ -27,17 +29,8 @@ public class KeycloakRealmPayloadTests
     [Fact]
     public async Task ApplySetup_NewRealm_CreatesRealmWithBruteForceAndClientsWithoutWildcardOrigins()
     {
-        var service = new SystemSetupService(
-            _httpClientFactory, new ConfigurationBuilder().Build(), Substitute.For<ISystemConfigService>(),
-            new KSeFClientOptions(), Substitute.For<IServiceScopeFactory>(), NullLogger<SystemSetupService>.Instance);
-
-        await service.ApplySetupAsync(new SetupApplyRequest
-        {
-            ExternalBaseUrl = "https://ksef.example.com",
-            KSeFBaseUrl = "test",
-            AdminEmail = "admin@example.com",
-            AdminPassword = "Secret123!",
-        }, "token", "admin");
+        await CreateSetupService(Substitute.For<ISystemConfigService>(), ValidKey)
+            .ApplySetupAsync(NewSetupRequest(), "token", "admin");
 
         var realm = _keycloak.Body(HttpMethod.Post, "http://keycloak:8080/auth/admin/realms");
         Assert.True(realm.GetProperty("bruteForceProtected").GetBoolean());
@@ -47,6 +40,22 @@ public class KeycloakRealmPayloadTests
         var clients = _keycloak.Bodies(HttpMethod.Post, $"{RealmUrl}/clients");
         Assert.Equal(3, clients.Count);
         Assert.All(clients, c => Assert.Equal(["+"], c.GetProperty("webOrigins").EnumerateArray().Select(o => o.GetString())));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not-a-key")]
+    [InlineData(UnpaddedKey)]
+    public async Task ApplySetup_NoValidKey_FailsBeforeAnyKeycloakCall(string? key)
+    {
+        var systemConfig = Substitute.For<ISystemConfigService>();
+
+        var result = await CreateSetupService(systemConfig, key).ApplySetupAsync(NewSetupRequest(), "token", "admin");
+
+        Assert.False(result.Success);
+        Assert.Equal(0, _keycloak.RequestCount);
+        await systemConfig.DidNotReceiveWithAnyArgs().SetValuesAsync(default!, default);
     }
 
     [Fact]
@@ -137,6 +146,24 @@ public class KeycloakRealmPayloadTests
         Assert.False(realm.TryGetProperty("failureFactor", out _));
     }
 
+    private SystemSetupService CreateSetupService(ISystemConfigService systemConfig, string? encryptionKey) => new(
+        _httpClientFactory,
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ENCRYPTION_KEY"] = encryptionKey })
+            .Build(),
+        systemConfig,
+        new KSeFClientOptions(),
+        Substitute.For<IServiceScopeFactory>(),
+        NullLogger<SystemSetupService>.Instance);
+
+    private static SetupApplyRequest NewSetupRequest() => new()
+    {
+        ExternalBaseUrl = "https://ksef.example.com",
+        KSeFBaseUrl = "test",
+        AdminEmail = "admin@example.com",
+        AdminPassword = "Secret123!",
+    };
+
     private SystemSettingsService CreateSettingsService() => new(
         _httpClientFactory, new ConfigurationBuilder().Build(), Substitute.For<ISystemConfigService>(),
         new KSeFClientOptions(), Substitute.For<IServiceScopeFactory>(), NullLogger<SystemSettingsService>.Instance);
@@ -144,6 +171,8 @@ public class KeycloakRealmPayloadTests
     private sealed class FakeKeycloak : HttpMessageHandler
     {
         private readonly List<(HttpMethod Method, string Url, string? Body)> _requests = [];
+
+        public int RequestCount => _requests.Count;
 
         public string? RealmJson { get; set; }
 

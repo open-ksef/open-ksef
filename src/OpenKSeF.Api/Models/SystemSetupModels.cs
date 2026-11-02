@@ -62,7 +62,6 @@ public record SmtpConfig
 
 public record SetupApplyResponse(
     bool Success,
-    string? EncryptionKey,
     string? ApiClientSecret,
     string? Error);
 
