@@ -138,7 +138,7 @@ Account creation:
 API/Worker minimum:
 - `ConnectionStrings__Db`
 - `Auth__Authority`
-- `ENCRYPTION_KEY` (required in non-development)
+- `ENCRYPTION_KEY` or `ENCRYPTION_KEY_FILE` (required; `openssl rand -base64 32`, back it up outside the database)
 - `KSeF__BaseUrl`
 
 Portal Web minimum:

@@ -63,11 +63,9 @@ If you enable email verification or password reset, SMTP is required. The wizard
 
 ### Step 4: Security
 
-The wizard auto-generates:
-- **AES-256 encryption key** for encrypting KSeF tokens in the database
-- **API client secret** fetched from the Keycloak `openksef-api` client
+The wizard fetches the **API client secret** from the Keycloak `openksef-api` client and stores it in the database.
 
-These are stored securely in the database and shared between services automatically. No manual copying required.
+The **AES-256 encryption key** is not part of the wizard. Set `ENCRYPTION_KEY` (or `ENCRYPTION_KEY_FILE`) on the API and Worker before you start the stack, and back it up outside the database. The wizard refuses to apply without it.
 
 ### Step 5: Optional Integrations
 
@@ -84,15 +82,14 @@ SignalR local push is always active regardless of which mode you choose. The mod
 ### Step 6: Summary & Apply
 
 Review all settings and click "Apply". The wizard:
-1. Generates the encryption key
-2. Fetches the Keycloak API client secret
-3. Enables token-exchange for the service account
-4. Updates client redirect URIs with the external URL
-5. Configures the Keycloak realm (login policy, password policy, SMTP)
-6. Creates the admin user in Keycloak
-7. Configures Google IdP (if provided)
-8. Stores all configuration in the database
-9. Redirects to the login page
+1. Fetches the Keycloak API client secret
+2. Enables token-exchange for the service account
+3. Updates client redirect URIs with the external URL
+4. Configures the Keycloak realm (login policy, password policy, SMTP)
+5. Creates the admin user in Keycloak
+6. Configures Google IdP (if provided)
+7. Stores all configuration in the database
+8. Redirects to the login page
 
 ## Architecture
 

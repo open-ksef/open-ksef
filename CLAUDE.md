@@ -239,6 +239,8 @@ Portal Web tests (`vitest`) also verify cross-project contracts (docker-compose 
 - `Auth__Authority`
 - `Auth__RequireHttpsMetadata` - default `true`; set `false` when `Auth__Authority` is plain http (compose `http://keycloak`)
 - `Database__EnableSensitiveDataLogging` - default `false`; logs SQL parameter values, never enable in prod
-- `ENCRYPTION_KEY`
+- `ENCRYPTION_KEY` - required; base64 of 32 bytes; never stored in the DB
+- `ENCRYPTION_KEY_FILE` - file holding the key, used when `ENCRYPTION_KEY` is empty
+- `ENCRYPTION_KEY_NEW` - only for `rotate-encryption-key` on the API image
 - `KSeF__BaseUrl`
 - `Issuing__StuckAfterHours` - Worker; default `24`; hours after issue before an invoice is escalated as stuck
