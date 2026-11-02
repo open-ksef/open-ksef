@@ -12,10 +12,25 @@ concurrency:
 
 jobs:
   # ─────────────────────────────────────────────
+  # 0. Same jobs as CI, including integration tests.
+  #    docker-dev inside it is skipped on tags, but its
+  #    packages: write must be allowed here or the called
+  #    workflow fails to start.
+  # ─────────────────────────────────────────────
+  test:
+    name: Test
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+
+  # ─────────────────────────────────────────────
   # 1. Create draft GitHub Release
   # ─────────────────────────────────────────────
   create-release:
     name: Create Draft Release
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -60,7 +75,7 @@ jobs:
   # ─────────────────────────────────────────────
   docker:
     name: Docker → GHCR
-    needs: create-release
+    needs: [test, create-release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
