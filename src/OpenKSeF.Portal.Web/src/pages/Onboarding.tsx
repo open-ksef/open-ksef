@@ -228,7 +228,7 @@ export function OnboardingPage(): ReactElement {
               <div className="ui-form-group">
                 <label htmlFor="onboarding-display-name">
                   Nazwa wyświetlana{' '}
-                  <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span>
+                  <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(opcjonalnie)</span>
                 </label>
                 <input
                   id="onboarding-display-name"
@@ -245,7 +245,7 @@ export function OnboardingPage(): ReactElement {
               <div className="ui-form-group">
                 <label htmlFor="onboarding-email">
                   E-mail do powiadomień{' '}
-                  <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span>
+                  <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(opcjonalnie)</span>
                 </label>
                 <input
                   id="onboarding-email"
@@ -432,7 +432,7 @@ export function OnboardingPage(): ReactElement {
                     <div className="ui-form-group">
                       <label htmlFor="onboarding-certificate-password">
                         Hasło klucza prywatnego{' '}
-                        <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(jeśli zaszyfrowany)</span>
+                        <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(jeśli zaszyfrowany)</span>
                       </label>
                       <input
                         id="onboarding-certificate-password"

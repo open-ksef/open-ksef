@@ -1,24 +1,4 @@
-/* Design system v1 tokens scoped to issuing screens; delete this block when they move to :root in ui.css. */
 .invoicing {
-  --ui-primary: #4f46e5;
-  --ui-primary-hover: #4338ca;
-  --ui-primary-subtle: #eef2ff;
-  --ui-on-primary: #ffffff;
-  --ui-accent: #6366f1;
-  --ui-focus: #6366f1;
-  --ui-surface-2: #f9fafb;
-  --ui-border-strong: #d1d5db;
-  --ui-text-muted: #5b6474;
-  --ui-success: #047857;
-  --ui-warning: #b45309;
-  --ui-error: #b91c1c;
-  --ui-on-error: #ffffff;
-  --ui-info: #1d4ed8;
-  --ui-info-bg: #dbeafe;
-  --ui-neutral: #374151;
-  --ui-neutral-bg: #f3f4f6;
-  --ui-radius-md: 8px;
-  --ui-radius-lg: 12px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -46,26 +26,8 @@
 }
 
 .invoicing .mono {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-family: var(--ui-font-mono);
   font-size: 13px;
-}
-
-.invoicing .ui-button--primary {
-  background: var(--ui-primary);
-  color: var(--ui-on-primary);
-}
-
-.invoicing .ui-button--primary:hover {
-  background: var(--ui-primary-hover);
-}
-
-.invoicing .ui-button--ghost {
-  background: transparent;
-  color: var(--ui-primary);
-}
-
-.invoicing .ui-button--ghost:hover {
-  background: var(--ui-primary-subtle);
 }
 
 .inv-header {
@@ -117,7 +79,6 @@
   background: var(--ui-surface);
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-lg);
-  box-shadow: var(--ui-shadow-sm);
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -146,7 +107,7 @@ fieldset.inv-card {
 .inv-help {
   margin: 0;
   font-size: 12px;
-  color: var(--ui-text-muted);
+  color: var(--ui-muted);
 }
 
 .inv-field-error {
@@ -227,7 +188,7 @@ fieldset.inv-card {
 
 .inv-table th {
   background: var(--ui-surface-2);
-  color: var(--ui-text-muted);
+  color: var(--ui-muted);
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
@@ -255,7 +216,7 @@ fieldset.inv-card {
 
 .inv-table .inv-col-name { min-width: 200px; }
 
-.inv-table .muted { color: var(--ui-text-muted); }
+.inv-table .muted { color: var(--ui-muted); }
 
 .inv-total {
   display: flex;
@@ -290,8 +251,13 @@ fieldset.inv-card {
 }
 
 .inv-segmented button[aria-pressed='true'] {
-  background: var(--ui-surface);
-  box-shadow: var(--ui-shadow-sm);
+  background: var(--ui-primary-subtle);
+  color: var(--ui-link);
+  outline: 1px solid var(--ui-primary);
+}
+
+.inv-segmented button[aria-pressed='true']:focus-visible {
+  outline: 2px solid var(--ui-focus);
 }
 
 .inv-input-group {
@@ -333,7 +299,7 @@ fieldset.inv-card {
 }
 
 .inv-readonly dt {
-  color: var(--ui-text-muted);
+  color: var(--ui-muted);
 }
 
 .inv-readonly dd {
@@ -365,7 +331,7 @@ fieldset.inv-card {
   background: transparent;
   padding: 8px 12px;
   font-weight: 600;
-  color: var(--ui-text-muted);
+  color: var(--ui-muted);
   border-bottom: 2px solid transparent;
   cursor: pointer;
 }

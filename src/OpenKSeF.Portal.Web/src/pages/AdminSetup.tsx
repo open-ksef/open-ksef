@@ -347,12 +347,12 @@ export function AdminSetupPage(): ReactElement {
                   value={userPassword} onInput={e => setUserPassword((e.target as HTMLInputElement).value)} />
               </div>
               <div className="ui-form-group">
-                <label htmlFor="setup-user-fname">Imię <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span></label>
+                <label htmlFor="setup-user-fname">Imię <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(opcjonalnie)</span></label>
                 <input id="setup-user-fname" data-testid="setup-admin-fname" type="text"
                   value={userFirstName} onInput={e => setUserFirstName((e.target as HTMLInputElement).value)} />
               </div>
               <div className="ui-form-group">
-                <label htmlFor="setup-user-lname">Nazwisko <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span></label>
+                <label htmlFor="setup-user-lname">Nazwisko <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(opcjonalnie)</span></label>
                 <input id="setup-user-lname" data-testid="setup-admin-lname" type="text"
                   value={userLastName} onInput={e => setUserLastName((e.target as HTMLInputElement).value)} />
               </div>
@@ -367,7 +367,7 @@ export function AdminSetupPage(): ReactElement {
                   value={firstTenantNip} onInput={e => setFirstTenantNip((e.target as HTMLInputElement).value.replace(/\D/g, ''))} />
               </div>
               <div className="ui-form-group">
-                <label htmlFor="setup-tenant-name">Nazwa firmy <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span></label>
+                <label htmlFor="setup-tenant-name">Nazwa firmy <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(opcjonalnie)</span></label>
                 <input id="setup-tenant-name" data-testid="setup-tenant-name" type="text" placeholder="Moja Firma Sp. z o.o."
                   value={firstTenantDisplayName} onInput={e => setFirstTenantDisplayName((e.target as HTMLInputElement).value)} />
               </div>
@@ -550,7 +550,7 @@ export function AdminSetupPage(): ReactElement {
                 <label>
                   <input type="radio" name="pushMode" value="relay"
                     checked={pushMode === 'relay'} onChange={() => setPushMode('relay')} />
-                  {' '}Relay OpenKSeF <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(zalecane)</span>
+                  {' '}Relay OpenKSeF <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(zalecane)</span>
                 </label>
                 <span className="ui-form-hint">
                   Powiadomienia dostarczane przez serwer relay zespołu OpenKSeF. Nie wymaga konfiguracji Firebase.
@@ -584,7 +584,7 @@ export function AdminSetupPage(): ReactElement {
                 <label>
                   <input type="radio" name="pushMode" value="firebase"
                     checked={pushMode === 'firebase'} onChange={() => setPushMode('firebase')} />
-                  {' '}Własny projekt Firebase <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(zaawansowane)</span>
+                  {' '}Własny projekt Firebase <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(zaawansowane)</span>
                 </label>
                 <span className="ui-form-hint">
                   Użyj własnego projektu Firebase do dostarczania powiadomień.

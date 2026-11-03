@@ -103,7 +103,7 @@ export function MobileSetupPage(): ReactElement {
                 value={qrValue}
                 size={280}
                 level="M"
-                marginSize={2}
+                marginSize={4}
                 style={isExpired ? { opacity: 0.3, filter: 'grayscale(1)' } : undefined}
               />
             )}
@@ -117,7 +117,7 @@ export function MobileSetupPage(): ReactElement {
 
           <div className="mobile-setup-token-status" data-testid="mobile-setup-countdown" style={{ textAlign: 'center', margin: '12px 0' }}>
             {isExpired ? (
-              <span style={{ color: 'var(--ui-color-error, #c0392b)' }}>
+              <span style={{ color: 'var(--ui-error)' }}>
                 Token wygasł -- wygeneruj nowy
               </span>
             ) : secondsLeft > 0 ? (
