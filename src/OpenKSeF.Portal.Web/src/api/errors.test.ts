@@ -16,20 +16,31 @@ describe('normalizeError', () => {
     expect(error.message).toBe('Token expired')
   })
 
+  it('uses the Polish default for an ASP.NET problem response, not its raw JSON', async () => {
+    const response = new Response(JSON.stringify({ title: 'Not Found', status: 404, traceId: '00-abc' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/problem+json; charset=utf-8' },
+    })
+
+    const error = await normalizeError(response)
+
+    expect(error.message).toBe('Nie znaleziono.')
+  })
+
   it('uses default message when HTTP response has no body', async () => {
     const response = new Response('', { status: 404 })
 
     const error = await normalizeError(response)
 
     expect(error.status).toBe(404)
-    expect(error.message).toBe('Not Found')
+    expect(error.message).toBe('Nie znaleziono.')
   })
 
   it('maps network failures to service unavailable', async () => {
     const error = await normalizeError(new TypeError('Failed to fetch'))
 
     expect(error.status).toBe(503)
-    expect(error.message).toBe('Service Unavailable')
+    expect(error.message).toBe('Serwer jest chwilowo niedostępny.')
   })
 
   it('maps abort errors to request timeout', async () => {
@@ -38,7 +49,7 @@ describe('normalizeError', () => {
     const error = await normalizeError(abort)
 
     expect(error.status).toBe(408)
-    expect(error.message).toBe('Request Timeout')
+    expect(error.message).toBe('Serwer nie odpowiedział na czas.')
   })
 
   it('returns existing ApiError unchanged', async () => {

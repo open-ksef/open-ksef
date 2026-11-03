@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useMutationState, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
@@ -13,8 +13,10 @@ import { Icon } from '@/components/Icon'
 import { PaidStatus } from '@/components/PaidStatus'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
-import { formatDate, formatDecimal, formatMoney, formatNrb, formatWarsawDate } from '@/invoicing/format'
+import { accountDigits, formatDate, formatDecimal, formatMoney, formatNrb, formatWarsawDate } from '@/invoicing/format'
 import { vatRateLabel } from '@/invoicing/totals'
+
+const PAID_MUTATION_KEY = ['invoice-paid']
 
 function amountLabel(invoice: InvoiceResponse): string {
   if (invoice.isPaid) return 'Kwota faktury'
@@ -40,16 +42,17 @@ function PaymentCard({
   isSaving: boolean
   onTogglePaid: () => void
 }): ReactElement {
-  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [copied, setCopied] = useState<{ id: string; what: 'transfer' | 'account' } | null>(null)
+  const accountOnly = accountDigits(transfer?.recipientAccount)
 
-  async function handleCopy(text: string): Promise<void> {
+  async function handleCopy(text: string, what: 'transfer' | 'account'): Promise<void> {
     try {
       await navigator.clipboard.writeText(text)
-      setCopiedId(invoice.id)
-      setTimeout(() => setCopiedId(null), 2000)
+      setCopied({ id: invoice.id, what })
+      setTimeout(() => setCopied(null), 2000)
     } catch {
-      setCopiedId(null)
-      toast.error('Nie udało się skopiować danych przelewu.')
+      setCopied(null)
+      toast.error(what === 'account' ? 'Nie udało się skopiować numeru rachunku.' : 'Nie udało się skopiować danych przelewu.')
     }
   }
 
@@ -89,6 +92,12 @@ function PaymentCard({
           <div className="pay-nrb" data-testid="transfer-account">
             {transfer.recipientAccount ? formatNrb(transfer.recipientAccount) : 'brak'}
           </div>
+          {accountOnly ? (
+            <Button variant="outline" size="sm" className="pay-copy-account" data-testid="copy-account-btn" onClick={() => void handleCopy(accountOnly, 'account')}>
+              <Icon name="copy" size={14} />
+              {copied?.id === invoice.id && copied.what === 'account' ? 'Skopiowano!' : 'Kopiuj numer rachunku'}
+            </Button>
+          ) : null}
         </div>
       </div>
       {transfer.qrMessage ? (
@@ -99,7 +108,7 @@ function PaymentCard({
             {!hasQr && !invoice.invoiceType?.trim() ? (
               <>
                 {' '}
-                <Link to="/credentials" data-testid="pay-fetch-link">
+                <Link to="/company/token" data-testid="pay-fetch-link">
                   Przejdź do pobierania
                 </Link>
               </>
@@ -111,9 +120,9 @@ function PaymentCard({
   ) : null
 
   const copyButton = transfer ? (
-    <Button variant="outline" data-testid="copy-transfer-btn" onClick={() => void handleCopy(transfer.transferText)}>
+    <Button variant="outline" data-testid="copy-transfer-btn" onClick={() => void handleCopy(transfer.transferText, 'transfer')}>
       <Icon name="copy" />
-      {copiedId === invoice.id ? 'Skopiowano!' : 'Kopiuj dane przelewu'}
+      {copied?.id === invoice.id && copied.what === 'transfer' ? 'Skopiowano!' : 'Kopiuj dane przelewu'}
     </Button>
   ) : null
 
@@ -214,6 +223,7 @@ export function InvoiceDetailsPage(): ReactElement {
   })
 
   const paidMutation = useMutation({
+    mutationKey: PAID_MUTATION_KEY,
     mutationFn: ({ tenantId, invoiceId, isPaid }: { tenantId: string; invoiceId: string; isPaid: boolean }) =>
       setInvoicePaid(tenantId, invoiceId, isPaid),
     onSuccess: (data, vars) => {
@@ -233,10 +243,21 @@ export function InvoiceDetailsPage(): ReactElement {
     },
   })
 
+  const savingIds = useMutationState({
+    filters: { mutationKey: PAID_MUTATION_KEY, status: 'pending' },
+    select: (running) => (running.state.variables as { invoiceId: string }).invoiceId,
+  })
+
   const isNotFound = invoiceQuery.error instanceof ApiError && invoiceQuery.error.status === 404
   const isLoading = tenantsQuery.isLoading || invoiceQuery.isLoading
   const hasData = Boolean(invoiceQuery.data)
-  const shouldShowEmpty = !isLoading && (isNotFound || (!invoiceQuery.error && !hasData))
+  const companiesFailed = tenantsQuery.isError && !effectiveTenantId
+  const shouldShowEmpty = !isLoading && !companiesFailed && (isNotFound || (!invoiceQuery.error && !hasData))
+  const loadError = companiesFailed
+    ? new Error('Nie udało się pobrać listy firm. Spróbuj ponownie za chwilę.')
+    : isNotFound || !invoiceQuery.error
+      ? null
+      : new Error('Nie udało się pobrać faktury.')
 
   const walkTo = (number: string) => ({ pathname: `/invoices/${encodeURIComponent(number)}`, search: location.search })
   const onWalk = (): void => {
@@ -291,12 +312,12 @@ export function InvoiceDetailsPage(): ReactElement {
 
       <AsyncStateView
         isLoading={isLoading}
-        error={isNotFound ? null : invoiceQuery.error && new Error('Nie udało się pobrać faktury.')}
+        error={loadError}
         isEmpty={shouldShowEmpty}
         loadingLines={5}
         emptyTitle="Nie znaleziono faktury"
         emptyMessage="Nie znaleziono żądanej faktury."
-        onRetry={() => void invoiceQuery.refetch()}
+        onRetry={() => void (companiesFailed ? tenantsQuery.refetch() : invoiceQuery.refetch())}
       >
         {invoice ? (
           <div className="two">
@@ -305,7 +326,7 @@ export function InvoiceDetailsPage(): ReactElement {
               transfer={transferQuery.data}
               isLoading={transferQuery.isLoading}
               isError={transferQuery.isError}
-              isSaving={paidMutation.isPending && paidMutation.variables.invoiceId === invoice.id}
+              isSaving={savingIds.includes(invoice.id)}
               onTogglePaid={() =>
                 paidMutation.mutate({ tenantId: effectiveTenantId, invoiceId: invoice.id, isPaid: !invoice.isPaid })
               }

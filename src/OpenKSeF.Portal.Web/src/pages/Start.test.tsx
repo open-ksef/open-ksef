@@ -233,7 +233,7 @@ describe('StartPage', () => {
       await render()
       expect(attention()?.textContent).toContain('Nie pobieramy faktur od 31.10.2026')
       expect(attention()?.textContent).toContain('Sprawdź token KSeF')
-      expect(attention()?.querySelector('a[href="/credentials"]')).not.toBeNull()
+      expect(attention()?.querySelector('a[href="/company/token"]')).not.toBeNull()
       expect(text()).not.toContain('Powód')
     })
 
@@ -277,7 +277,7 @@ describe('StartPage', () => {
       await render()
       expect(text()).toContain('Firma dodana. Brakuje tokenu KSeF')
       expect(text()).not.toContain('Firma Firma')
-      expect(linkTo('/credentials')?.textContent).toContain('Dodaj token KSeF')
+      expect(linkTo('/company/token')?.textContent).toContain('Dodaj token KSeF')
       expect(fetchButton().disabled).toBe(true)
       expect(container.querySelector('.start-grid')).toBeNull()
     })
@@ -308,7 +308,7 @@ describe('StartPage', () => {
       expect(text()).toContain('Nie pobraliśmy jeszcze faktur.')
       expect(text()).toContain('Token dodano 01.10.2026')
       expect(text()).not.toContain('Czekamy na pierwsze pobranie z KSeF')
-      expect(linkTo('/credentials')?.textContent).toContain('Sprawdź token KSeF')
+      expect(linkTo('/company/token')?.textContent).toContain('Sprawdź token KSeF')
       expect(fetchButton().disabled).toBe(false)
     })
 
@@ -449,8 +449,8 @@ describe('StartPage', () => {
     it.each([
       [1280, 720, 6],
       [1799, 1440, 6],
-      [2560, 1440, 18],
-      [1800, 800, 6],
+      [2560, 1440, 15],
+      [1800, 800, 5],
       [1800, 600, 5],
     ])('at %ix%i asks for %i rows', async (width, height, rows) => {
       setViewport(width, height)

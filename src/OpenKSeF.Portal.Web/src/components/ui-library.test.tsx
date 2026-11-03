@@ -38,7 +38,7 @@ describe('UI component library', () => {
     expect(container.querySelector('[data-testid="sample-table"]')).toBeTruthy()
     const row = container.querySelector('tbody tr') as HTMLTableRowElement
     row.click()
-    expect(onRowClick).toHaveBeenCalledWith({ id: '1', name: 'Tenant A' })
+    expect(onRowClick).toHaveBeenCalledWith({ id: '1', name: 'Tenant A' }, expect.anything())
   })
 
   it('renders status, skeleton, empty state and error banner', async () => {

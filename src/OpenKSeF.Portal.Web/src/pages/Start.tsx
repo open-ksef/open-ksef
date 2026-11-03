@@ -21,7 +21,7 @@ import { useKsefFetch } from '@/hooks/useKsefFetch'
 import { formatDate, formatDateTime, formatMoney } from '@/invoicing/format'
 
 const WIDE_FROM_PX = 1800
-const RESERVED_HEIGHT_PX = 468
+const RESERVED_HEIGHT_PX = 640
 const ROW_HEIGHT_PX = 53
 const MIN_WIDE_ROWS = 5
 const NARROW_ROWS = 6
@@ -212,13 +212,13 @@ export function StartPage(): ReactElement {
 
   const attention = issuedAttentionItems(rejectedQuery.data?.items ?? [], issuedRows, tenantId)
   if (state === 'full' && credential && !credential.hasCredential) {
-    attention.push({ key: 'token', icon: 'key-round', tone: 'error', to: '/credentials', title: 'Ta firma nie ma tokenu KSeF', sub: 'Dodaj token KSeF' })
+    attention.push({ key: 'token', icon: 'key-round', tone: 'error', to: '/company/token', title: 'Ta firma nie ma tokenu KSeF', sub: 'Dodaj token KSeF' })
   } else if (state !== 'no-token' && summary?.lastSuccessfulSync && summary.syncStatus !== 'Success') {
     attention.push({
       key: 'stale',
       icon: 'circle-alert',
       tone: 'error',
-      to: '/credentials',
+      to: '/company/token',
       title: `Nie pobieramy faktur od ${formatDateTime(summary.lastSuccessfulSync)}`,
       sub: 'Sprawdź token KSeF',
     })

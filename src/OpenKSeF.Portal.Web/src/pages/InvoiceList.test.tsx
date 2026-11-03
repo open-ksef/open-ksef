@@ -338,9 +338,10 @@ describe('InvoiceListPage', () => {
       const router = await render('/invoices?tenantId=tenant-1&q=abc&page=2')
 
       await act(async () => (byTestId('invoice-row')?.querySelector('.received-gross') as HTMLElement).click())
+      await wait(300)
       await settle()
-
       expect(router.state.location.pathname).toBe('/invoices/KSEF-001')
+
       expect(router.state.location.search).toBe('?tenantId=tenant-1')
       expect(router.state.location.state).toEqual({ listSearch: '?tenantId=tenant-1&q=abc&page=2', siblings: ['KSEF-001'] })
     })
@@ -385,16 +386,131 @@ describe('InvoiceListPage', () => {
       })
     })
 
-    it('ctrl-click on the link leaves this tab', async () => {
+    it('ctrl-click on the link opens one tab with the opener and keeps the list here', async () => {
       const router = await render('/invoices?tenantId=tenant-1')
+      const open = vi.spyOn(window, 'open').mockReturnValue(null)
       const link = byTestId('invoice-view-details') as HTMLAnchorElement
 
       await act(async () => {
         link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true }))
       })
+      await wait(300)
+      await settle()
+
+      expect(open).toHaveBeenCalledExactlyOnceWith('/invoices/KSEF-001?tenantId=tenant-1', '_blank')
+      expect(router.state.location.pathname).toBe('/invoices')
+      open.mockRestore()
+    })
+
+    it('a double click on the name stays on the list, a single click opens', async () => {
+      const router = await render('/invoices?tenantId=tenant-1')
+      const link = byTestId('invoice-view-details') as HTMLAnchorElement
+
+      await act(async () => {
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }))
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 2 }))
+      })
+      await wait(300)
+      await settle()
+      expect(router.state.location.pathname).toBe('/invoices')
+
+      document.caretRangeFromPoint = () => {
+        const range = document.createRange()
+        range.setStart(link.firstChild!, 8)
+        return range
+      }
+      await act(async () => {
+        link.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, detail: 2 }))
+      })
+      expect(window.getSelection()?.toString()).toBe('A')
+      window.getSelection()?.removeAllRanges()
+      delete (document as Partial<Document>).caretRangeFromPoint
+
+      await act(async () => {
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }))
+      })
+      expect(router.state.location.pathname).toBe('/invoices')
+      await wait(300)
+      await settle()
+      expect(router.state.location.pathname).toBe('/invoices/KSEF-001')
+    })
+
+    it('ctrl-click on a row cell opens a new tab and keeps the list here', async () => {
+      const router = await render('/invoices?tenantId=tenant-1')
+      const open = vi.spyOn(window, 'open').mockReturnValue(null)
+      const cell = byTestId('invoice-row')?.querySelector('.received-gross') as HTMLElement
+
+      await act(async () => {
+        cell.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true }))
+      })
+      await wait(300)
+      await settle()
+
+      expect(open).toHaveBeenCalledExactlyOnceWith('/invoices/KSEF-001?tenantId=tenant-1', '_blank')
+      expect(router.state.location.pathname).toBe('/invoices')
+      open.mockRestore()
+    })
+
+    it('a double click on a row stays on the list', async () => {
+      const router = await render('/invoices?tenantId=tenant-1')
+      const cell = byTestId('invoice-row')?.querySelector('.received-gross') as HTMLElement
+
+      await act(async () => {
+        cell.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))
+        cell.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }))
+      })
+      await wait(300)
       await settle()
 
       expect(router.state.location.pathname).toBe('/invoices')
+    })
+
+    it('a page past the end goes to the last page instead of a false empty state', async () => {
+      vi.mocked(listInvoices).mockImplementation(async (_tenant, query) =>
+        (query?.page ?? 1) > 1
+          ? { items: [], page: query?.page ?? 1, pageSize: 25, totalCount: 3, totalPages: 1 }
+          : { items: [invoice()], page: 1, pageSize: 25, totalCount: 3, totalPages: 1 },
+      )
+      const router = await render('/invoices?tenantId=tenant-1&page=99')
+
+      await settle()
+      expect(router.state.location.search).toBe('?tenantId=tenant-1')
+      await settle()
+
+      expect(container.textContent).not.toContain('Nie znaleziono faktur')
+      expect(byTestId('invoice-row')).not.toBeNull()
+    })
+
+    it('an abandoned year below 1000 restores the applied filter on blur', async () => {
+      const router = await render('/invoices?tenantId=tenant-1&dateFrom=2026-10-01')
+      const field = byTestId('invoice-date-from') as HTMLInputElement
+
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(field, '0020-10-01')
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      expect(router.state.location.search).toContain('dateFrom=2026-10-01')
+      expect(field.value).toBe('0020-10-01')
+
+      await act(async () => {
+        field.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+      })
+      expect(field.value).toBe('2026-10-01')
+    })
+
+    it('a click on the name opens although a word is still selected', async () => {
+      const router = await render('/invoices?tenantId=tenant-1')
+      const link = byTestId('invoice-view-details') as HTMLAnchorElement
+      window.getSelection()?.selectAllChildren(link)
+
+      await act(async () => {
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }))
+      })
+      await wait(300)
+      await settle()
+      window.getSelection()?.removeAllRanges()
+
+      expect(router.state.location.pathname).toBe('/invoices/KSEF-001')
     })
 
     it('does not open when text is selected', async () => {
@@ -403,7 +519,8 @@ describe('InvoiceListPage', () => {
       range.selectNodeContents(byTestId('invoice-number') as HTMLElement)
       window.getSelection()?.addRange(range)
 
-      await act(async () => byTestId('invoice-row')?.click())
+      await act(async () => byTestId('invoice-row')?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })))
+      await wait(300)
       await settle()
 
       expect(router.state.location.pathname).toBe('/invoices')
@@ -466,7 +583,7 @@ describe('InvoiceListPage', () => {
 
       const note = byTestId('invoice-fetch-note')
       expect(note?.textContent).toBe('Ta firma nie ma tokenu KSeF. Dodaj token KSeF')
-      expect(note?.querySelector('a')?.getAttribute('href')).toBe('/credentials')
+      expect(note?.querySelector('a')?.getAttribute('href')).toBe('/company/token')
       expect(container.textContent).not.toContain(serverText)
       expect(toast.error).not.toHaveBeenCalled()
       expect(fetchButton().disabled).toBe(false)
@@ -535,7 +652,7 @@ describe('InvoiceListPage', () => {
 
       expect(line()?.textContent).toContain('Nie pobieramy faktur od 01.11.2026, 06:00')
       expect(line()?.querySelector('a')?.textContent).toBe('Sprawdź token KSeF')
-      expect(line()?.querySelector('a')?.getAttribute('href')).toBe('/credentials')
+      expect(line()?.querySelector('a')?.getAttribute('href')).toBe('/company/token')
     })
 
     it('shows nothing before the first successful fetch', async () => {
@@ -577,7 +694,7 @@ describe('InvoiceListPage', () => {
       useEmpty({ lastSuccessfulSync: null }, { hasCredential: false })
       await render('/invoices?tenantId=tenant-1')
       expect(container.textContent).toContain('Ta firma nie ma tokenu KSeF')
-      expect(container.querySelector('.ui-empty-state a[href="/credentials"]')?.textContent).toContain('Dodaj token KSeF')
+      expect(container.querySelector('.ui-empty-state a[href="/company/token"]')?.textContent).toContain('Dodaj token KSeF')
       expect(fetchButtonNode().disabled).toBe(true)
       expect(byTestId('invoice-search')).toBeNull()
     })

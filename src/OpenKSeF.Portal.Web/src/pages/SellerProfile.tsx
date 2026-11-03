@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useRef, useState, type FormEvent, type ReactElement, type Ref } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactElement, type Ref } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { getSellerProfile, updateSellerProfile } from '@/api/endpoints/sellerProfile'
@@ -8,7 +8,6 @@ import type { NipLookupResponse, SellerProfileResponse } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Skeleton } from '@/components/Skeleton'
-import { EnvBadge } from '@/components/invoicing/KsefStatusBadge'
 import { NipLookupField } from '@/components/invoicing/NipLookupField'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
@@ -66,8 +65,10 @@ interface SellerProfileFormProps {
 function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfileFormProps): ReactElement {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { setSwitchGuard } = useCompany()
   const patternRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState<SellerProfileFormValue>(() => fromProfile(profile))
+  const baseline = useRef(JSON.stringify(form))
   const [accounts, setAccounts] = useState<string[]>([])
   const [otherAccount, setOtherAccount] = useState(true)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -85,6 +86,7 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
       setErrors({})
       setFailure(null)
       setSaved(true)
+      baseline.current = JSON.stringify(form)
       queryClient.setQueryData(['seller-profile', tenantId], result)
       if (continueToDraft && result.isComplete) {
         navigate(`/issued/new?tenantId=${encodeURIComponent(tenantId)}`)
@@ -97,6 +99,21 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
     },
   })
 
+  useEffect(() => {
+    setSwitchGuard({
+      dirty: JSON.stringify(form) !== baseline.current,
+      busy: save.isPending,
+      environment: null,
+      save: async () => {
+        const clientErrors = validateSellerProfile(form)
+        setErrors(clientErrors)
+        if (Object.keys(clientErrors).length > 0) throw new Error('Popraw błędy w formularzu')
+        await save.mutateAsync()
+      },
+    })
+    return () => setSwitchGuard(null)
+  })
+
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     const clientErrors = validateSellerProfile(form)
@@ -105,6 +122,14 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
   }
 
   function onFound(result: NipLookupResponse): void {
+    const overwrites = ([
+      [form.legalName, result.name],
+      [form.addressLine1, result.addressLine1],
+      [form.addressLine2, result.addressLine2],
+    ] as const).some(([typed, found]) => found !== null && typed.trim() !== '' && typed !== found)
+    if (overwrites && !window.confirm('Zastąpić wpisane dane sprzedawcy danymi z białej listy?')) {
+      return
+    }
     const current = digitsOnly(form.bankAccount)
     const keepCurrent = current !== '' && !result.bankAccounts.includes(current)
     set({
@@ -135,12 +160,7 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
     : previewNumber(form.numberingPattern, Number(form.nextNumber) || 1, new Date())
 
   return (
-    <form onSubmit={onSubmit} noValidate className="inv-stack" aria-labelledby="seller-profile-title">
-      <header className="inv-header">
-        <h1 id="seller-profile-title">Dane do faktur</h1>
-        <EnvBadge environment={profile.ksefEnvironment} />
-      </header>
-
+    <form onSubmit={onSubmit} noValidate className="inv-stack" aria-label="Dane do faktur">
       {!profile.isComplete ? (
         <div className="inv-alert inv-alert--info" role="status">
           Uzupełnij dane firmy, aby wystawiać faktury.
@@ -148,7 +168,7 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
       ) : null}
       {failure ? <ErrorBanner message={failure} /> : null}
 
-      <div className="inv-card-grid">
+      <div className="company-grid">
         <section className="inv-card" aria-labelledby="seller-title">
           <h2 id="seller-title">Sprzedawca</h2>
           <NipLookupField id="seller-nip" label="NIP" value={profile.nip} readOnly onChange={() => {}} onFound={onFound} />
@@ -249,7 +269,7 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
         </div>
       </div>
 
-      <footer className="inv-header">
+      <footer className="inv-header company-grid-foot">
         <span className="inv-help" role="status">
           {saved ? 'Zapisano dane do faktur.' : ''}
         </span>

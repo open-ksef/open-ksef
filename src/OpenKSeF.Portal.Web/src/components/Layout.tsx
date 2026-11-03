@@ -6,12 +6,12 @@ import { CompanyCard } from '@/company/CompanyCard'
 import { BrandMark } from './BrandMark'
 import { Icon, type IconName } from './Icon'
 
-const navItems: { to: string; label: string; icon: IconName; alsoOn?: string[] }[] = [
+const navItems: { to: string; label: string; icon: IconName }[] = [
   { to: '/', label: 'Start', icon: 'house' },
   { to: '/invoices', label: 'Otrzymane', icon: 'inbox' },
   { to: '/issued', label: 'Wystawione', icon: 'send' },
-  { to: '/company', label: 'Firma', icon: 'building-2', alsoOn: ['/seller-profile', '/credentials', '/tenants'] },
-  { to: '/mobile-setup', label: 'Telefon', icon: 'smartphone', alsoOn: ['/devices'] },
+  { to: '/company', label: 'Firma', icon: 'building-2' },
+  { to: '/mobile-setup', label: 'Telefon', icon: 'smartphone' },
 ]
 
 const isUnder = (pathname: string, base: string): boolean =>
@@ -36,7 +36,7 @@ export function Layout(): ReactElement {
 
         <nav className="sidebar-nav" data-testid="mobile-nav" aria-label="Nawigacja główna">
           {navItems.map((item) => {
-            const active = [item.to, ...(item.alsoOn ?? [])].some((base) => isUnder(pathname, base))
+            const active = isUnder(pathname, item.to)
             return (
               <Link
                 key={item.to}

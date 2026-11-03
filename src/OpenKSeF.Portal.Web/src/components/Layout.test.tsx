@@ -79,11 +79,10 @@ describe('Layout', () => {
     ['/invoices/KSEF-1', 'Otrzymane'],
     ['/issued/new', 'Wystawione'],
     ['/company', 'Firma'],
-    ['/seller-profile', 'Firma'],
-    ['/credentials', 'Firma'],
-    ['/tenants', 'Firma'],
+    ['/company/invoice-data', 'Firma'],
+    ['/company/token', 'Firma'],
+    ['/company/details', 'Firma'],
     ['/mobile-setup', 'Telefon'],
-    ['/devices', 'Telefon'],
     ['/settings', 'Ustawienia'],
   ])('marks exactly one item on %s', async (path, item) => {
     await render(path)

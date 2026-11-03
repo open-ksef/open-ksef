@@ -1,6 +1,19 @@
-import type { ReactElement } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { Link } from 'react-router-dom'
+import { useState, type ReactElement } from 'react'
+import toast from 'react-hot-toast'
+
+import { listDevices, sendTestNotification, unregisterDevice } from '@/api/endpoints/devices'
+import { listTenants } from '@/api/endpoints/tenants'
+import type { DeviceTokenResponse } from '@/api/types'
+import { AsyncStateView } from '@/components/AsyncStateView'
+import { Button } from '@/components/Button'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { Table, type TableColumn } from '@/components/Table'
+import { formatWarsawDate } from '@/invoicing/format'
+import { notifyMutationError, notifyMutationSuccess } from '@/notifications'
+
+const PLATFORMS: Record<number, string> = { 0: 'Android', 1: 'iOS' }
 
 function buildQrPayload(serverUrl: string): string {
   return JSON.stringify({
@@ -10,48 +23,150 @@ function buildQrPayload(serverUrl: string): string {
   })
 }
 
+const deviceName = (device: DeviceTokenResponse): string => `Telefon: ${PLATFORMS[device.platform] ?? 'inna platforma'}`
+const shortToken = (token: string): string => `${token.slice(0, 8)}…${token.slice(-4)}`
+
 export function MobileSetupPage(): ReactElement {
   const serverUrl = globalThis.location?.origin ?? 'http://localhost:8080'
+  const queryClient = useQueryClient()
+  const [pendingRemoval, setPendingRemoval] = useState<DeviceTokenResponse | null>(null)
+  const [testingId, setTestingId] = useState<string | null>(null)
+
+  const devicesQuery = useQuery({ queryKey: ['devices'], queryFn: () => listDevices() })
+  const tenantsQuery = useQuery({ queryKey: ['tenants'], queryFn: () => listTenants() })
+
+  const remove = useMutation({
+    mutationFn: unregisterDevice,
+    onSuccess: async () => {
+      notifyMutationSuccess('deleted', 'Device')
+      await queryClient.invalidateQueries({ queryKey: ['devices'] })
+    },
+    onError: (error) => notifyMutationError('delete', 'Device', error),
+    onSettled: () => setPendingRemoval(null),
+  })
+
+  const sendTest = useMutation({
+    mutationFn: sendTestNotification,
+    onSuccess: (data) => {
+      if (data.success) toast.success('Wysłano powiadomienie testowe.')
+      else toast.error(`Nie udało się wysłać powiadomienia testowego: ${data.error ?? 'brak potwierdzenia dostarczenia'}`)
+    },
+    onError: (error) => toast.error(`Nie udało się wysłać powiadomienia testowego: ${error.message}`),
+    onSettled: () => setTestingId(null),
+  })
+
+  const companyOf = (device: DeviceTokenResponse): string => {
+    if (!device.tenantId) return 'Wszystkie firmy'
+    const tenant = tenantsQuery.data?.find((row) => row.id === device.tenantId)
+    return tenant ? tenant.displayName || tenant.nip : '—'
+  }
+
+  const columns: TableColumn<DeviceTokenResponse>[] = [
+    {
+      key: 'platform',
+      label: 'Urządzenie',
+      render: (row) => (
+        <span title={`Identyfikator: ${shortToken(row.token)}`}>
+          <b className="device-name">{deviceName(row)}</b>
+          <span className="device-dates">
+            Dodany {formatWarsawDate(row.createdAt)}, aktualizacja {formatWarsawDate(row.updatedAt)}
+          </span>
+        </span>
+      ),
+    },
+    { key: 'tenantId', label: 'Powiadomienia', className: 'device-company', render: companyOf },
+    {
+      key: 'id',
+      label: 'Akcje',
+      className: 'device-actions',
+      render: (row) => (
+        <div className="device-actions__row">
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="device-test-button"
+            disabled={testingId === row.id}
+            onClick={() => {
+              setTestingId(row.id)
+              sendTest.mutate(row.id)
+            }}
+          >
+            {testingId === row.id ? 'Wysyłanie…' : 'Wyślij test'}
+          </Button>
+          <button
+            type="button"
+            className="ui-button ui-button--danger-outline ui-button--sm"
+            data-testid="device-unregister-button"
+            aria-label={`Usuń urządzenie: ${PLATFORMS[row.platform] ?? 'inna platforma'}, dodane ${formatWarsawDate(row.createdAt)}`}
+            onClick={() => setPendingRemoval(row)}
+          >
+            Usuń
+          </button>
+        </div>
+      ),
+    },
+  ]
 
   return (
     <section>
       <header className="page-header">
-        <h1>Aplikacja mobilna</h1>
-        <Link to="/devices" data-testid="mobile-setup-devices-link">
-          Urządzenia
-        </Link>
+        <h1>Telefon</h1>
       </header>
 
-      <div className="mobile-setup-container">
-        <div className="mobile-setup-card">
-          <h2 className="mobile-setup-heading">Połącz aplikację mobilną</h2>
-          <p className="mobile-setup-description">
-            Zeskanuj poniższy kod QR w aplikacji OpenKSeF Mobile, aby ustawić adres serwera. Potem
-            zaloguj się w aplikacji.
-          </p>
-
-          <div className="mobile-setup-qr-wrapper" data-testid="mobile-setup-qr">
-            <QRCodeSVG value={buildQrPayload(serverUrl)} size={280} level="M" marginSize={4} />
+      <div className="company-grid">
+        <section className="ui-card" aria-labelledby="pair-title">
+          <h2 id="pair-title">Połącz aplikację mobilną</h2>
+          <div className="phone-pair">
+            <div className="phone-pair__qr" data-testid="mobile-setup-qr">
+              <QRCodeSVG value={buildQrPayload(serverUrl)} size={220} level="M" marginSize={4} title="Kod QR z adresem serwera" />
+            </div>
+            <div>
+              <p>Zeskanuj ten kod QR w aplikacji OpenKSeF, aby ustawić adres serwera. Potem zaloguj się w aplikacji.</p>
+              <p className="phone-pair__server">
+                <span className="inv-caption">Adres serwera</span>
+                <br />
+                <span className="mono">{serverUrl}</span>
+              </p>
+              <h3>Instrukcja</h3>
+              <ol className="phone-pair__howto">
+                <li>Zainstaluj aplikację OpenKSeF na telefonie.</li>
+                <li>Na ekranie logowania w aplikacji dotknij przycisku QR.</li>
+                <li>Zeskanuj ten kod. Adres serwera zostanie ustawiony, a aplikacja wróci do ekranu logowania.</li>
+              </ol>
+            </div>
           </div>
+        </section>
 
-          <div className="mobile-setup-server-info">
-            <span className="mobile-setup-server-label">Adres serwera:</span>
-            <code className="mobile-setup-server-url">{serverUrl}</code>
-          </div>
-
-          <div className="mobile-setup-instructions">
-            <h3>Instrukcja</h3>
-            <ol>
-              <li>Zainstaluj aplikację OpenKSeF Mobile na telefonie</li>
-              <li>
-                Na ekranie logowania w aplikacji wybierz przycisk „QR” (jeśli go nie widać, najpierw
-                dotknij „Zmień serwer” lub „Serwer”)
-              </li>
-              <li>Zeskanuj powyższy kod -- adres serwera zostanie ustawiony, a aplikacja wróci do ekranu logowania</li>
-            </ol>
-          </div>
-        </div>
+        <section className="ui-card" aria-labelledby="devices-title">
+          <h2 id="devices-title">Moje urządzenia</h2>
+          <AsyncStateView
+            isLoading={devicesQuery.isLoading}
+            error={devicesQuery.error}
+            isEmpty={(devicesQuery.data ?? []).length === 0}
+            emptyTitle="Brak zarejestrowanych urządzeń"
+            emptyMessage="Zeskanuj kod QR w aplikacji mobilnej, aby ustawić adres serwera. Po zalogowaniu w aplikacji telefon będzie mógł otrzymywać powiadomienia."
+            onRetry={() => void devicesQuery.refetch()}
+          >
+            <Table testId="device-table" columns={columns} data={devicesQuery.data ?? []} />
+          </AsyncStateView>
+          <p className="inv-help">Powiadomienia o nowych fakturach przychodzą na urządzenia z tej listy.</p>
+        </section>
       </div>
+
+      <ConfirmDialog
+        open={pendingRemoval !== null}
+        title="Usunąć urządzenie?"
+        message={
+          pendingRemoval
+            ? `${deviceName(pendingRemoval)}, dodany ${formatWarsawDate(pendingRemoval.createdAt)}, przestanie otrzymywać powiadomienia o nowych fakturach.`
+            : ''
+        }
+        confirmLabel="Usuń urządzenie"
+        variant="danger"
+        isPending={remove.isPending}
+        onConfirm={() => pendingRemoval && remove.mutate(pendingRemoval.id)}
+        onCancel={() => setPendingRemoval(null)}
+      />
     </section>
   )
 }

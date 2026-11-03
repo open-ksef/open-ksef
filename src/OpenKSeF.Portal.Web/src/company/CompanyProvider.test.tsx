@@ -168,8 +168,8 @@ describe('CompanyProvider', () => {
     ['/issued/i-1/edit?tenantId=a', '/issued/new'],
     ['/issued/new?tenantId=a', '/issued/new'],
     ['/issued?tenantId=a&status=Draft&q=abc&page=2', '/issued?status=Draft&q=abc'],
-    ['/seller-profile?tenantId=a&next=new', '/seller-profile?next=new'],
-    ['/tenants', '/tenants'],
+    ['/company/invoice-data?tenantId=a&next=new', '/company/invoice-data?next=new'],
+    ['/company/details', '/company/details'],
   ])('switching from %s goes to %s', async (from, to) => {
     await render(from)
     await chooseCompany('b')

@@ -7,7 +7,7 @@ public class TransferDetailsServiceTests
 {
     private const string ValidAccount = "PL61 1090 1014 0000 0712 1981 2874";
     private const string CorrectionMessage = "Faktura korygująca: kwota to różnica. Sprawdź, czy jest coś do zapłaty.";
-    private const string TypeMessage = "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Dane logowania).";
+    private const string TypeMessage = "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).";
     private const string AccountMessage = "Brak poprawnego numeru rachunku na fakturze.";
     private const string NameOrTitleMessage = "Nie można utworzyć kodu QR: brak czytelnej nazwy sprzedawcy lub numeru faktury.";
     private const string ManualMessage = "Zaliczka/rozliczenie: wpisz kwotę ręcznie.";

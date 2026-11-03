@@ -21,7 +21,7 @@ export function ExemptionBasisField({ choice, text, onChange, serverError }: Exe
   const error = serverError ?? (needsText && text.trim() === '' ? 'Podaj podstawę zwolnienia z VAT' : undefined)
 
   return (
-    <div className="inv-grid">
+    <div className="inv-fields">
       <div className="ui-form-group">
         <label htmlFor="exemption-choice">Podstawa zwolnienia z VAT</label>
         <select

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactElement } from 'react'
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom'
 
 import { listInvoices } from '@/api/endpoints/invoices'
 import type { InvoiceResponse } from '@/api/types'
@@ -14,6 +14,7 @@ import '@/components/invoicing/invoicing.css'
 import { Table, type TableColumn } from '@/components/Table'
 import { FIRST_FETCH_POLL_MS, useCompanyState } from '@/hooks/useCompanyState'
 import { useKsefFetch } from '@/hooks/useKsefFetch'
+import { selectWordAt, useRowOpen } from '@/hooks/useRowOpen'
 import { useTenants } from '@/hooks/useTenants'
 import { formatDate, formatMoney } from '@/invoicing/format'
 
@@ -39,6 +40,13 @@ function withFilters(current: URLSearchParams, filters: Record<string, string>):
   return next
 }
 
+function withPage(current: URLSearchParams, page: number): URLSearchParams {
+  const next = new URLSearchParams(current)
+  if (page > 1) next.set('page', String(page))
+  else next.delete('page')
+  return next
+}
+
 function DateFilter({ id, label, value, onCommit }: { id: string; label: string; value: string; onCommit: (value: string) => void }): ReactElement {
   const [draft, setDraft] = useState(value)
   const [seen, setSeen] = useState(value)
@@ -57,6 +65,7 @@ function DateFilter({ id, label, value, onCommit }: { id: string; label: string;
         data-testid={id}
         type="date"
         value={draft}
+        onBlur={() => setDraft(value)}
         onChange={(event) => {
           const next = event.target.value
           setDraft(next)
@@ -71,7 +80,6 @@ function DateFilter({ id, label, value, onCommit }: { id: string; label: string;
 export function InvoiceListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
-  const navigate = useNavigate()
 
   const q = searchParams.get('q') ?? ''
   const dateFrom = searchParams.get('dateFrom') ?? ''
@@ -126,17 +134,10 @@ export function InvoiceListPage(): ReactElement {
     `/invoices/${encodeURIComponent(row.ksefInvoiceNumber)}?tenantId=${encodeURIComponent(tenantId)}`
   const detailsState = { listSearch: location.search, siblings: rows.map((row) => row.ksefInvoiceNumber) }
 
-  const onChangePage = (nextPage: number): void => {
-    const next = new URLSearchParams(searchParams)
-    if (nextPage > 1) next.set('page', String(nextPage))
-    else next.delete('page')
-    setSearchParams(next)
-  }
+  const onChangePage = (nextPage: number): void => setSearchParams(withPage(searchParams, nextPage))
 
-  const onRowClick = (row: InvoiceResponse): void => {
-    if (window.getSelection()?.isCollapsed === false) return
-    void navigate(detailsPath(row), { state: detailsState })
-  }
+  const onRowClick = useRowOpen(detailsPath, detailsState)
+  const pastLastPage = invoicesQuery.isSuccess && rows.length === 0 && totalCount > 0 && page > totalPages
 
   const columns: TableColumn<InvoiceResponse>[] = [
     {
@@ -153,7 +154,8 @@ export function InvoiceListPage(): ReactElement {
               title={row.vendorName}
               aria-label={`${row.vendorName}, ${number}`}
               data-testid="invoice-view-details"
-              onClick={(event) => event.stopPropagation()}
+              onClick={(event) => event.preventDefault()}
+              onDoubleClick={selectWordAt}
             >
               {row.vendorName}
             </Link>
@@ -176,7 +178,9 @@ export function InvoiceListPage(): ReactElement {
       className: 'received-gross received-num',
       render: (row) => (
         <>
-          <span className="received-amount">{formatMoney(row.amountGross, row.currency)}</span>
+          <span className="received-amount" title={formatMoney(row.amountGross, row.currency)}>
+            {formatMoney(row.amountGross, row.currency)}
+          </span>
           <span className="received-status-mobile">
             <PaidStatus row={row} testId="invoice-paid-status-mobile" />
           </span>
@@ -203,6 +207,8 @@ export function InvoiceListPage(): ReactElement {
         <h1>Otrzymane faktury</h1>
         <KsefSync state={state} summary={summary} ksef={ksef} disabled={!tenantId} variant="primary" />
       </header>
+
+      {pastLastPage ? <Navigate to={{ search: withPage(searchParams, totalPages).toString() }} replace /> : null}
 
       {stateCard ? null : (
         <div className="received-tools">
@@ -236,7 +242,7 @@ export function InvoiceListPage(): ReactElement {
         <CompanyStateCard state={stateCard} place="list" summary={summary} credential={credential} />
       ) : (
         <AsyncStateView
-          isLoading={tenantsQuery.isLoading || invoicesQuery.isLoading || (unfilteredEmpty && stateLoading)}
+          isLoading={tenantsQuery.isLoading || invoicesQuery.isLoading || pastLastPage || (unfilteredEmpty && stateLoading)}
           error={tenantsQuery.error ?? invoicesQuery.error ?? (unfilteredEmpty ? stateError : null)}
           isEmpty={rows.length === 0}
           loadingLines={6}

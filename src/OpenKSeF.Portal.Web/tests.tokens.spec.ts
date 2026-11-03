@@ -63,7 +63,7 @@ describe('design tokens', () => {
 
   it('shows the selected choice on the invoice form', () => {
     const invoicing = readFileSync(resolve(src, 'components/invoicing/invoicing.css'), 'utf8')
-    const rule = invoicing.match(/\.inv-segmented button\[aria-pressed='true'\] \{([^}]*)\}/)
+    const rule = invoicing.match(/\.inv-chips button\[aria-pressed='true'\] \{([^}]*)\}/)
     expect(rule?.[1]).toContain('background: var(--ui-primary-subtle);')
   })
 

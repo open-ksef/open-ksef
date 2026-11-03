@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { lookupNip } from '@/api/endpoints/nipLookup'
 import { ApiError } from '@/api/errors'
-import { emptyLine, type InvoiceLineFormValue } from '@/invoicing/form'
+import type { NipLookupResponse } from '@/api/types'
+import { emptyLine, type BuyerFormValue, type InvoiceLineFormValue } from '@/invoicing/form'
+import { BuyerSection } from './BuyerSection'
 import { EnvBadge, KsefStatusBadge } from './KsefStatusBadge'
 import { LinesTable } from './LinesTable'
 import { NipLookupField } from './NipLookupField'
@@ -48,7 +50,7 @@ describe('issuing components', () => {
       ['8', '8%'],
       ['5', '5%'],
       ['0 KR', '0% (kraj)'],
-      ['zw', 'zw (zwolnione)'],
+      ['zw', 'zw'],
     ])
   })
 
@@ -62,17 +64,68 @@ describe('issuing components', () => {
     const price = container.querySelector<HTMLInputElement>('#line-0-unitNetPrice')!
     await act(async () => typeInto(price, '100,50'))
     const row = container.querySelector('[data-testid="line-0"]')!
-    expect(row.textContent?.replace(/\s/g, ' ')).toContain('100,50 PLN')
-    expect(row.textContent?.replace(/\s/g, ' ')).toContain('23,12 PLN')
+    expect(row.textContent?.replace(/\s/g, ' ')).toContain('123,62 PLN')
     expect(container.querySelector('#line-0-name')?.getAttribute('aria-invalid')).toBe('true')
     expect(container.textContent).toContain('Podaj nazwę')
 
     const add = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Dodaj pozycję'))!
     await act(async () => add.click())
-    expect(container.querySelectorAll('tbody tr')).toHaveLength(2)
+    expect(container.querySelectorAll('.inv-line')).toHaveLength(2)
 
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Usuń pozycję 2"]')!.click())
-    expect(container.querySelectorAll('tbody tr')).toHaveLength(1)
+    expect(container.querySelectorAll('.inv-line')).toHaveLength(1)
+  })
+
+  it('every line field has a real label naming its line', async () => {
+    await render(<LinesTable lines={[emptyLine(), emptyLine()]} onChange={() => {}} />)
+    for (const [name, label] of [['name', 'Nazwa'], ['unit', 'J.m.'], ['quantity', 'Ilość'], ['unitNetPrice', 'Cena netto'], ['vatRate', 'Stawka']]) {
+      expect(container.querySelector(`label[for="line-1-${name}"]`)?.textContent).toBe(`${label} pozycji 2`)
+    }
+  })
+
+  it('NipLookupField shows the loading state and blocks a second lookup', async () => {
+    let finish: (value: NipLookupResponse) => void = () => {}
+    vi.mocked(lookupNip).mockReturnValue(new Promise((resolve) => (finish = resolve)))
+    await render(<NipLookupField id="nip" value="5260250274" onChange={() => {}} onFound={() => {}} />)
+    const button = container.querySelector('button')!
+    await act(async () => button.click())
+    expect(button.getAttribute('aria-busy')).toBe('true')
+    expect(button.disabled).toBe(true)
+    await act(async () => finish({ nip: '5260250274', name: 'F', addressLine1: null, addressLine2: null, vatStatus: 'Zwolniony', bankAccounts: [] }))
+    expect(button.disabled).toBe(false)
+    expect(container.textContent).toContain('Zwolniony')
+  })
+
+  it.each([
+    [false, 'Wpisana nazwa'],
+    [true, 'Firma z listy'],
+  ])('BuyerSection lookup over typed data asks first, confirmed %s', async (confirmed, expected) => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(confirmed)
+    vi.mocked(lookupNip).mockResolvedValue({ nip: '5260250274', name: 'Firma z listy', addressLine1: 'ul. A', addressLine2: '00-001 B', vatStatus: 'Czynny', bankAccounts: [] })
+    function Harness(): ReactElement {
+      const [buyer, setBuyer] = useState<BuyerFormValue>({ kind: 'Company', nip: '5260250274', name: 'Wpisana nazwa', addressLine1: '', addressLine2: '' })
+      return <BuyerSection value={buyer} onChange={setBuyer} />
+    }
+    await render(<Harness />)
+    const lookup = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Pobierz z NIP'))!
+    await act(async () => lookup.click())
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(container.querySelector<HTMLInputElement>('#buyer-name')?.value).toBe(expected)
+    confirm.mockRestore()
+  })
+
+  it('BuyerSection fills empty fields without asking', async () => {
+    const confirm = vi.spyOn(window, 'confirm')
+    vi.mocked(lookupNip).mockResolvedValue({ nip: '5260250274', name: 'Firma z listy', addressLine1: null, addressLine2: null, vatStatus: 'Czynny', bankAccounts: [] })
+    function Harness(): ReactElement {
+      const [buyer, setBuyer] = useState<BuyerFormValue>({ kind: 'Company', nip: '5260250274', name: '', addressLine1: '', addressLine2: '' })
+      return <BuyerSection value={buyer} onChange={setBuyer} />
+    }
+    await render(<Harness />)
+    await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Pobierz z NIP'))!.click())
+    expect(confirm).not.toHaveBeenCalled()
+    expect(container.querySelector<HTMLInputElement>('#buyer-name')?.value).toBe('Firma z listy')
+    confirm.mockRestore()
   })
 
   it('NipLookupField disables lookup for an invalid NIP', async () => {

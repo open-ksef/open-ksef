@@ -75,7 +75,7 @@ describe('vatRateLabel', () => {
     ['22', '22%'],
     ['7', '7%'],
     ['0', '0%'],
-    ['zw', 'zw (zwolnione)'],
+    ['zw', 'zw'],
     ['0 KR', '0% (kraj)'],
     ['np I', 'np I'],
     ['oo', 'oo'],

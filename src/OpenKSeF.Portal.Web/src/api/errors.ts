@@ -1,17 +1,18 @@
 import type { ValidationEnvelope } from './types'
 
 const DEFAULT_MESSAGES: Record<number, string> = {
-  400: 'Bad Request',
-  401: 'Unauthorized',
-  403: 'Forbidden',
-  404: 'Not Found',
-  408: 'Request Timeout',
-  409: 'Conflict',
-  422: 'Unprocessable Entity',
-  500: 'Server Error',
-  502: 'Bad Gateway',
-  503: 'Service Unavailable',
-  504: 'Gateway Timeout',
+  400: 'Serwer nie przyjął żądania.',
+  401: 'Sesja wygasła. Zaloguj się ponownie.',
+  403: 'Brak uprawnień do tej operacji.',
+  404: 'Nie znaleziono.',
+  408: 'Serwer nie odpowiedział na czas.',
+  409: 'Operacja jest teraz niemożliwa. Odśwież stronę.',
+  422: 'Serwer nie przyjął danych.',
+  429: 'Za dużo żądań. Spróbuj ponownie za chwilę.',
+  500: 'Błąd serwera. Spróbuj ponownie później.',
+  502: 'Serwer jest chwilowo niedostępny.',
+  503: 'Serwer jest chwilowo niedostępny.',
+  504: 'Serwer nie odpowiedział na czas.',
 }
 
 export class ApiError extends Error {
@@ -85,7 +86,7 @@ function isNetworkError(input: unknown): boolean {
 }
 
 function getDefaultMessage(status: number): string {
-  return DEFAULT_MESSAGES[status] ?? `Request failed with status ${status}`
+  return DEFAULT_MESSAGES[status] ?? `Żądanie nie powiodło się (kod ${status}).`
 }
 
 async function extractResponseMessage(response: Response): Promise<string | null> {
@@ -93,7 +94,7 @@ async function extractResponseMessage(response: Response): Promise<string | null
     const contentType = response.headers.get('Content-Type') ?? ''
     const clonedResponse = response.clone()
 
-    if (contentType.includes('application/json')) {
+    if (contentType.includes('json')) {
       const parsed = (await clonedResponse.json()) as Record<string, unknown>
       const message = parsed.message ?? parsed.error
 

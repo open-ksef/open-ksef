@@ -25,7 +25,7 @@ interface CompanyStateCardProps {
 
 function AddToken(): ReactElement {
   return (
-    <Link to="/credentials" className={PRIMARY}>
+    <Link to="/company/token" className={PRIMARY}>
       <Icon name="key-round" /> Dodaj token KSeF
     </Link>
   )
@@ -133,7 +133,7 @@ export function CompanyStateCard({ state, place, summary, credential, attentionC
         message={`Token dodano ${formatDateTime(credential?.lastUpdatedAt)}.`}
         actions={
           <div className="ui-empty-state__actions">
-            <Link to="/credentials" className={PRIMARY}>
+            <Link to="/company/token" className={PRIMARY}>
               <Icon name="key-round" /> Sprawdź token KSeF
             </Link>
           </div>

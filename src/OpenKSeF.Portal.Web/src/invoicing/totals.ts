@@ -5,7 +5,7 @@ export const VAT_RATES: readonly { code: VatRateCode; label: string; percent: nu
   { code: '8', label: '8%', percent: 8 },
   { code: '5', label: '5%', percent: 5 },
   { code: '0 KR', label: '0% (kraj)', percent: 0 },
-  { code: 'zw', label: 'zw (zwolnione)', percent: 0 },
+  { code: 'zw', label: 'zw', percent: 0 },
 ]
 
 export interface TotalsLineInput {

@@ -162,7 +162,7 @@ docker exec -i openksef-postgres pg_restore -l < before-key-move.dump > /dev/nul
 7. **Verify:**
    - In `docker compose logs api worker` one host logs `Encryption key moved out of the database`. The other logs nothing about it. Neither logs Critical.
    - The query from step 1 returns 0.
-   - One manual sync succeeds: **Dane logowania** (Credentials) > the company row > **Wymuś synchronizację** (Force sync).
+   - One manual sync succeeds: **Firma** > **Token KSeF i pobieranie** > **Pobierz z KSeF**.
 
 The dump from step 3 is now the only copy of the old key. Keep it at least until a sync succeeds. Dumps taken before adoption can decrypt the tokens in them until you delete those dumps.
 

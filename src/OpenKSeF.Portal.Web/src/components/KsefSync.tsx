@@ -27,14 +27,14 @@ export function KsefSync({ state, summary, ksef, disabled, variant }: KsefSyncPr
             <span data-testid="invoice-sync-line" className="received-sync--stale">
               <Icon name="circle-alert" size={14} /> Nie pobieramy faktur od {formatDateTime(summary.lastSuccessfulSync)}
               <br />
-              <Link to="/credentials">Sprawdź token KSeF</Link>
+              <Link to="/company/token">Sprawdź token KSeF</Link>
             </span>
           )
         ) : null}
         <span role="status" data-testid="invoice-fetch-note" className={ksef.missingToken ? 'received-sync--stale' : undefined}>
           {ksef.missingToken ? (
             <>
-              Ta firma nie ma tokenu KSeF. <Link to="/credentials">Dodaj token KSeF</Link>
+              Ta firma nie ma tokenu KSeF. <Link to="/company/token">Dodaj token KSeF</Link>
             </>
           ) : ksef.fetched ? (
             `Pobrane: ${ksef.fetched.fetchedInvoices}, nowe: ${ksef.fetched.newInvoices}.`

@@ -37,7 +37,7 @@ export function BuyerSection({ value, onChange, fieldErrors = {} }: BuyerSection
     const id = `buyer-${key}`
     const error = fieldErrors[`buyer.${key}`]
     return (
-      <div className="ui-form-group">
+      <div className={key === 'name' ? 'ui-form-group inv-buyer-name' : 'ui-form-group'}>
         <label htmlFor={id}>
           {label}
           <span aria-hidden="true"> *</span>
@@ -62,18 +62,20 @@ export function BuyerSection({ value, onChange, fieldErrors = {} }: BuyerSection
 
   return (
     <section className="inv-card" aria-labelledby="buyer-title">
-      <h2 id="buyer-title">Nabywca</h2>
-      <div className="inv-segmented" role="group" aria-label="Rodzaj nabywcy">
-        {kinds.map((option) => (
-          <button
-            key={option.kind}
-            type="button"
-            aria-pressed={value.kind === option.kind}
-            onClick={() => onChange({ ...value, kind: option.kind })}
-          >
-            {option.label}
-          </button>
-        ))}
+      <div className="inv-card-head">
+        <h2 id="buyer-title">Nabywca</h2>
+        <div className="inv-chips" role="group" aria-label="Rodzaj nabywcy">
+          {kinds.map((option) => (
+            <button
+              key={option.kind}
+              type="button"
+              aria-pressed={value.kind === option.kind}
+              onClick={() => onChange({ ...value, kind: option.kind })}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
       {isPerson ? (
         <p className="inv-help">Nabywca dostaje PDF z kodem KOD I.</p>
@@ -87,8 +89,8 @@ export function BuyerSection({ value, onChange, fieldErrors = {} }: BuyerSection
           onFound={applyLookup}
         />
       )}
-      {textField('name', isPerson ? 'Imię i nazwisko' : 'Nazwa')}
-      <div className="inv-grid">
+      <div className="inv-fields">
+        {textField('name', isPerson ? 'Imię i nazwisko' : 'Nazwa')}
         {textField('addressLine1', 'Adres (ulica, numer)')}
         {textField('addressLine2', 'Kod pocztowy i miejscowość')}
       </div>

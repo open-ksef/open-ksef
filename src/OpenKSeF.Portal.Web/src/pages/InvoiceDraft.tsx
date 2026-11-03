@@ -15,6 +15,7 @@ import type { IssuedInvoiceResponse, IssuedInvoiceStatus, SellerProfileResponse,
 import { useCompany } from '@/company/useCompany'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
+import { Icon } from '@/components/Icon'
 import { Skeleton } from '@/components/Skeleton'
 import { BuyerSection } from '@/components/invoicing/BuyerSection'
 import { DatesSection } from '@/components/invoicing/DatesSection'
@@ -46,6 +47,12 @@ export function InvoiceDraftPage(): ReactElement {
   const { id } = useParams()
   const tenantsQuery = useTenants()
   const { tenantId } = useCompany()
+  const [formSlot, setFormSlot] = useState<{ id?: string; created?: string; generation: number }>({ id, generation: 0 })
+
+  // A new form stays mounted through the replace navigation to the invoice it created, because the issue flow continues there. Any other id change must remount, or the form saves one invoice's content into another.
+  if (formSlot.id !== id) {
+    setFormSlot({ id, generation: id !== undefined && formSlot.created === id ? formSlot.generation : formSlot.generation + 1 })
+  }
 
   const profileQuery = useQuery({
     queryKey: ['seller-profile', tenantId],
@@ -74,15 +81,16 @@ export function InvoiceDraftPage(): ReactElement {
       ) : loading || !profileQuery.data ? (
         <Skeleton lines={8} />
       ) : !id && !profileQuery.data.isComplete ? (
-        <Navigate to={`/seller-profile?tenantId=${encodeURIComponent(tenantId)}&next=new`} replace />
+        <Navigate to={`/company/invoice-data?tenantId=${encodeURIComponent(tenantId)}&next=new`} replace />
       ) : invoiceQuery.data && (!EDITABLE.includes(invoiceQuery.data.status) || isReissueBlocked(invoiceQuery.data)) ? (
         <Navigate to={`/issued/${encodeURIComponent(invoiceQuery.data.id)}?tenantId=${encodeURIComponent(tenantId)}`} replace />
       ) : (
         <DraftForm
-          key={tenantId}
+          key={`${tenantId}:${formSlot.generation}`}
           tenantId={tenantId}
           profile={profileQuery.data}
           invoice={invoiceQuery.data}
+          onCreated={(created) => setFormSlot((slot) => ({ ...slot, created }))}
         />
       )}
     </div>
@@ -93,16 +101,17 @@ interface DraftFormProps {
   tenantId: string
   profile: SellerProfileResponse
   invoice?: IssuedInvoiceResponse
+  onCreated: (id: string) => void
 }
 
 const timeFormat = new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit' })
 
 const failureText = (error: unknown, fallback: string): string =>
-  !(error instanceof Error) || (error instanceof ApiError && (error.status >= 500 || !(error.originalError instanceof Response) || !error.originalError.headers.get('Content-Type')?.includes('application/json')))
+  !(error instanceof Error) || (error instanceof ApiError && (error.status >= 500 || !(error.originalError instanceof Response) || !error.originalError.headers.get('Content-Type')?.includes('json')))
     ? fallback
     : error.message
 
-function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement {
+function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): ReactElement {
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
@@ -114,6 +123,15 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   const [failure, setFailure] = useState<string | null>(null)
   const [confirmFor, setConfirmFor] = useState<IssuedInvoiceResponse | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const issueOpener = useRef<HTMLButtonElement | null>(null)
+  const mounted = useRef(true)
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const totals = computeTotals(
     form.lines.map((line) => ({
@@ -135,6 +153,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
     queryClient.setQueryData(['issued-invoice', tenantId, saved.id], saved)
     void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
     if (!invoice && !stay) {
+      if (mounted.current) onCreated(saved.id)
       navigate(`/issued/${encodeURIComponent(saved.id)}/edit?tenantId=${encodeURIComponent(tenantId)}`, { replace: true })
     }
     return saved
@@ -216,6 +235,21 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   const expectedNumber = form.issueDate.startsWith(profile.nextNumberPeriod) ? profile.nextNumberPreview : null
   const noticeState = location.state as { companyNotice?: string; companyId?: string } | null
   const companyNotice = noticeState?.companyId === tenantId ? noticeState.companyNotice : undefined
+  const totalText = formatMoney(totals.totalGross)
+  const title = invoice?.status === 'Rejected' ? `Popraw fakturę ${invoice.number ?? ''}`.trim() : invoice ? 'Szkic faktury' : 'Nowa faktura'
+  const issueButton = (
+    <button
+      type="button"
+      className="ui-button ui-button--primary ui-button--md inv-issue-button"
+      disabled={busy || !profile.isComplete}
+      onClick={(event) => {
+        issueOpener.current = event.currentTarget
+        prepareIssue.mutate()
+      }}
+    >
+      {issuing ? 'Wysyłanie…' : 'Wystaw i wyślij do KSeF'} <EnvBadge environment={profile.ksefEnvironment} />
+    </button>
+  )
 
   useEffect(() => {
     setSwitchGuard({
@@ -232,44 +266,111 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
     save.mutate(false)
   }
 
-  const profileHref = `/seller-profile?tenantId=${encodeURIComponent(tenantId)}`
+  const profileHref = `/company/invoice-data?tenantId=${encodeURIComponent(tenantId)}`
 
   return (
-    <form onSubmit={onSubmit} noValidate className="inv-stack" aria-labelledby="draft-title">
-      <header className="inv-header">
-        <Link to={`/issued?tenantId=${encodeURIComponent(tenantId)}`} className="back-link">
-          ← Wystawione
-        </Link>
-        <h1 id="draft-title">{invoice ? 'Edycja szkicu' : 'Nowa faktura'}</h1>
-        <KsefStatusBadge status={invoice?.status ?? 'Draft'} />
-        <EnvBadge environment={profile.ksefEnvironment} />
-        <span className="inv-help" role="status">
-          {invoice ? `Zapisano ${timeFormat.format(new Date(invoice.updatedAt))}` : ''}
-        </span>
-        <div className="inv-header__actions">
-          {invoice?.status === 'Draft' ? (
-            <button
-              type="button"
-              className="ui-button ui-button--ghost ui-button--md"
-              disabled={busy}
-              onClick={() => setDeleteOpen(true)}
-            >
-              Usuń szkic
-            </button>
-          ) : null}
-          <button type="submit" className="ui-button ui-button--outline ui-button--md" disabled={busy}>
-            {save.isPending ? 'Zapisywanie…' : 'Zapisz szkic'}
-          </button>
-          <button
-            type="button"
-            className="ui-button ui-button--primary ui-button--md"
-            disabled={busy || !profile.isComplete}
-            onClick={() => prepareIssue.mutate()}
-          >
-            {issuing ? 'Wysyłanie…' : 'Wystaw i wyślij do KSeF'}
-          </button>
+    <form onSubmit={onSubmit} noValidate className="inv-form" aria-labelledby="draft-title">
+      <div className="inv-form__main">
+        <div>
+          <Link to={`/issued?tenantId=${encodeURIComponent(tenantId)}`} className="back-link">
+            <Icon name="arrow-left" size={14} /> Wystawione
+          </Link>
+          <div className="inv-form__head">
+            <h1 id="draft-title">{title}</h1>
+            <KsefStatusBadge status={invoice?.status ?? 'Draft'} />
+            <span className="inv-help" role="status">
+              {invoice ? `Zapisano ${timeFormat.format(new Date(invoice.updatedAt))}` : ''}
+            </span>
+            {invoice?.status === 'Draft' ? (
+              <button type="button" className="ui-button ui-button--danger-outline ui-button--sm inv-form__delete" disabled={busy} onClick={() => setDeleteOpen(true)}>
+                Usuń szkic
+              </button>
+            ) : null}
+          </div>
         </div>
-      </header>
+
+        {companyNotice ? (
+          <div className="inv-alert inv-alert--info" role="status">
+            {companyNotice}
+          </div>
+        ) : null}
+        {!profile.isComplete ? (
+          <div className="inv-alert inv-alert--info" role="status">
+            Uzupełnij dane firmy, aby wystawiać faktury. <Link to={profileHref}>Dane do faktur</Link>
+          </div>
+        ) : null}
+        {failure ? <ErrorBanner message={failure} /> : null}
+        <ValidationSummary errors={errors} warnings={warnings} />
+
+        <BuyerSection value={form.buyer} fieldErrors={fieldErrors} onChange={(buyer) => setForm({ ...form, buyer })} />
+        <LinesTable lines={form.lines} fieldErrors={fieldErrors} onChange={(lines) => setForm({ ...form, lines })}>
+          {hasExemptLine(form.lines) ? (
+            <ExemptionBasisField
+              choice={form.exemptionChoice}
+              text={form.exemptionText}
+              serverError={fieldErrors.exemptionBasis}
+              onChange={({ choice, text }) => setForm({ ...form, exemptionChoice: choice, exemptionText: text })}
+            />
+          ) : null}
+        </LinesTable>
+        <section className="inv-card" aria-labelledby="dates-title">
+          <h2 id="dates-title">Daty i płatność</h2>
+          <DatesSection
+            issueDate={form.issueDate}
+            saleDate={form.saleDate}
+            dueDate={form.dueDate}
+            fieldErrors={fieldErrors}
+            onChange={(dates) => setForm({ ...form, ...dates })}
+          />
+          <PaymentSection
+            paymentMethod={form.paymentMethod}
+            splitPayment={form.splitPayment}
+            bankAccount={profile.bankAccount}
+            totalGross={totals.totalGross}
+            profileHref={profileHref}
+            onChange={(payment) => setForm({ ...form, ...payment })}
+          />
+        </section>
+      </div>
+
+      <aside className="inv-side" aria-label="Podsumowanie faktury">
+        <SellerCard nip={profile.nip} name={profile.legalName} environment={profile.ksefEnvironment} />
+        <div className="inv-card inv-totals">
+          <div>
+            <span className="inv-caption">Do zapłaty</span>
+            <output className="inv-amount" data-testid="total-gross">
+              {totalText}
+            </output>
+          </div>
+          {invoice?.number ? (
+            <p className="inv-help">
+              Numer <span className="mono">{invoice.number}</span> zostaje — po poprawce wyślemy fakturę z tym samym numerem.
+            </p>
+          ) : (
+            <p className="inv-help">
+              Numer nadamy przy wystawieniu{expectedNumber ? ': ' : '.'}
+              {expectedNumber ? <span className="mono">{expectedNumber}</span> : null}
+            </p>
+          )}
+          <div className="inv-totals__actions">
+            {issueButton}
+            <button type="submit" className="ui-button ui-button--outline ui-button--md" disabled={busy}>
+              {save.isPending ? 'Zapisywanie…' : 'Zapisz szkic'}
+            </button>
+          </div>
+        </div>
+        <VatSummary sticky rows={totals.vatSummary} totalNet={totals.totalNet} totalVat={totals.totalVat} totalGross={totals.totalGross} />
+      </aside>
+
+      <div className="inv-dock">
+        <span className="inv-dock__seller">
+          <b>{profile.legalName ?? '—'}</b> · NIP {profile.nip}
+        </span>
+        <span>
+          <span className="inv-caption">Do zapłaty</span> <b>{totalText}</b>
+        </span>
+        {issueButton}
+      </div>
 
       <ConfirmDialog
         open={deleteOpen}
@@ -294,94 +395,40 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
         pendingLabel="Wysyłanie…"
         isPending={issue.isPending}
         onConfirm={() => confirmFor && issue.mutate(confirmFor)}
-        onCancel={() => setConfirmFor(null)}
+        onCancel={() => {
+          setConfirmFor(null)
+          issueOpener.current?.focus()
+        }}
       >
-        <dl className="inv-readonly">
-          <dt>Numer</dt>
-          <dd className="mono">{confirmFor?.number ?? 'Nadamy przy wystawieniu'}</dd>
-          <dt>Nabywca</dt>
-          <dd>
-            {form.buyer.name || '—'}
-            {form.buyer.kind === 'Company' && form.buyer.nip ? <span className="mono"> · NIP {form.buyer.nip}</span> : null}
-          </dd>
-          <dt>Data wystawienia</dt>
-          <dd>{formatDate(form.issueDate)}</dd>
-          <dt>Do zapłaty</dt>
-          <dd className="num">{formatMoney(totals.totalGross)}</dd>
-        </dl>
+        {confirmFor ? (
+          <>
+            <div className="company-switch-seller" data-testid="confirm-seller">
+              <span className="company-switch-seller__caption">Sprzedawca</span>
+              <b>{confirmFor.seller.name ?? '—'}</b>
+              <span className="company-nip">NIP {confirmFor.seller.nip}</span> <EnvBadge environment={confirmFor.ksef.environment} />
+              {confirmFor.seller.addressLine1 || confirmFor.seller.addressLine2 ? (
+                <span className="inv-help company-switch-seller__address">{[confirmFor.seller.addressLine1, confirmFor.seller.addressLine2].filter(Boolean).join(', ')}</span>
+              ) : null}
+            </div>
+            <dl className="inv-readonly">
+              <dt>Numer</dt>
+              <dd className="mono">{confirmFor.number ?? 'Nadamy przy wystawieniu'}</dd>
+              <dt>Nabywca</dt>
+              <dd>
+                {confirmFor.buyer.name || '—'}
+                {confirmFor.buyer.kind === 'Company' && confirmFor.buyer.nip ? <span className="mono"> · NIP {confirmFor.buyer.nip}</span> : null}
+              </dd>
+              <dt>Data wystawienia</dt>
+              <dd>{formatDate(confirmFor.issueDate)}</dd>
+              <dt>Do zapłaty</dt>
+              <dd className="num" data-testid="confirm-total">
+                <b>{formatMoney(confirmFor.totalGross, confirmFor.currency)}</b>
+              </dd>
+            </dl>
+          </>
+        ) : null}
         <p className="inv-help">Korekt nie wystawisz jeszcze w OpenKSeF — użyj Aplikacji Podatnika KSeF.</p>
       </ConfirmDialog>
-
-      {companyNotice ? (
-        <div className="inv-alert inv-alert--info" role="status">
-          {companyNotice}
-        </div>
-      ) : null}
-      {!profile.isComplete ? (
-        <div className="inv-alert inv-alert--info" role="status">
-          Uzupełnij dane firmy, aby wystawiać faktury. <Link to={profileHref}>Dane do faktur</Link>
-        </div>
-      ) : null}
-      {failure ? <ErrorBanner message={failure} /> : null}
-      <ValidationSummary errors={errors} warnings={warnings} />
-
-      <div className="inv-columns">
-        <div className="inv-columns__main">
-          <BuyerSection value={form.buyer} fieldErrors={fieldErrors} onChange={(buyer) => setForm({ ...form, buyer })} />
-          <DatesSection
-            issueDate={form.issueDate}
-            saleDate={form.saleDate}
-            fieldErrors={fieldErrors}
-            onChange={(dates) => setForm({ ...form, ...dates })}
-          />
-          <LinesTable lines={form.lines} fieldErrors={fieldErrors} onChange={(lines) => setForm({ ...form, lines })}>
-            {hasExemptLine(form.lines) ? (
-              <ExemptionBasisField
-                choice={form.exemptionChoice}
-                text={form.exemptionText}
-                serverError={fieldErrors.exemptionBasis}
-                onChange={({ choice, text }) => setForm({ ...form, exemptionChoice: choice, exemptionText: text })}
-              />
-            ) : null}
-          </LinesTable>
-          <PaymentSection
-            paymentMethod={form.paymentMethod}
-            dueDate={form.dueDate}
-            issueDate={form.issueDate}
-            splitPayment={form.splitPayment}
-            bankAccount={profile.bankAccount}
-            totalGross={totals.totalGross}
-            fieldErrors={fieldErrors}
-            onChange={(payment) => setForm({ ...form, ...payment })}
-          />
-        </div>
-        <aside className="inv-columns__side" aria-label="Podsumowanie faktury">
-          <SellerCard
-            nip={profile.nip}
-            name={profile.legalName}
-            addressLine1={profile.addressLine1}
-            addressLine2={profile.addressLine2}
-            bankAccount={profile.bankAccount}
-            editHref={profileHref}
-          />
-          <VatSummary
-            rows={totals.vatSummary}
-            totalNet={totals.totalNet}
-            totalVat={totals.totalVat}
-            totalGross={totals.totalGross}
-          />
-          {invoice?.number ? (
-            <p className="inv-help">
-              Numer <span className="mono">{invoice.number}</span> zostaje — po poprawce wyślemy fakturę z tym samym numerem.
-            </p>
-          ) : (
-            <p className="inv-help">
-              Numer nadamy przy wystawieniu{expectedNumber ? ': ' : '.'}
-              {expectedNumber ? <span className="mono">{expectedNumber}</span> : null}
-            </p>
-          )}
-        </aside>
-      </div>
     </form>
   )
 }

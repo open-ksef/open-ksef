@@ -60,7 +60,7 @@ public class TransferDetailsService : ITransferDetailsService
         if (invoice.InvoiceType?.StartsWith("Kor", StringComparison.OrdinalIgnoreCase) == true)
             return "Faktura korygująca: kwota to różnica. Sprawdź, czy jest coś do zapłaty.";
         if (string.IsNullOrWhiteSpace(invoice.InvoiceType))
-            return "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Dane logowania).";
+            return "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).";
         if (invoice.AmountGross <= 0m)
             return "Brak kwoty do zapłaty.";
         if (QrCodeService.SanitizeAccount(invoice.VendorBankAccount).Length == 0)

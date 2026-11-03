@@ -1,17 +1,16 @@
 import type { ReactElement } from 'react'
+import { Link } from 'react-router-dom'
 
 import type { PaymentMethod } from '@/api/types'
-import { addDaysIso, formatNrb } from '@/invoicing/format'
+import { formatNrb } from '@/invoicing/format'
 
 interface PaymentSectionProps {
   paymentMethod: PaymentMethod
-  dueDate: string
-  issueDate: string
   splitPayment: boolean
   bankAccount: string | null
   totalGross: number
-  onChange: (value: { paymentMethod: PaymentMethod; dueDate: string; splitPayment: boolean }) => void
-  fieldErrors?: Record<string, string>
+  profileHref: string
+  onChange: (value: { paymentMethod: PaymentMethod; splitPayment: boolean }) => void
 }
 
 const methods: { method: PaymentMethod; label: string }[] = [
@@ -22,89 +21,49 @@ const methods: { method: PaymentMethod; label: string }[] = [
 
 const MPP_THRESHOLD = 15000
 
-export function PaymentSection({
-  paymentMethod,
-  dueDate,
-  issueDate,
-  splitPayment,
-  bankAccount,
-  totalGross,
-  onChange,
-  fieldErrors = {},
-}: PaymentSectionProps): ReactElement {
-  const current = { paymentMethod, dueDate, splitPayment }
-  const dueError = fieldErrors.dueDate
+export function PaymentSection({ paymentMethod, splitPayment, bankAccount, totalGross, profileHref, onChange }: PaymentSectionProps): ReactElement {
+  const current = { paymentMethod, splitPayment }
 
   return (
-    <section className="inv-card" aria-labelledby="payment-title">
-      <h2 id="payment-title">Płatność</h2>
-      <div className="inv-segmented" role="group" aria-label="Forma płatności">
-        {methods.map((option) => (
-          <button
-            key={option.method}
-            type="button"
-            aria-pressed={paymentMethod === option.method}
-            onClick={() => onChange({ ...current, paymentMethod: option.method })}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-      <div className="inv-grid">
-        <div className="ui-form-group">
-          <label htmlFor="due-date">Termin płatności</label>
-          <input
-            id="due-date"
-            type="date"
-            value={dueDate}
-            aria-invalid={dueError ? 'true' : 'false'}
-            aria-describedby={dueError ? 'due-date-error' : undefined}
-            onChange={(event) => onChange({ ...current, dueDate: event.target.value })}
-          />
-          {dueError ? (
-            <span className="inv-field-error" id="due-date-error">
-              {dueError}
-            </span>
-          ) : null}
-          <div className="inv-chips" role="group" aria-label="Termin płatności od daty wystawienia">
-            {[7, 14, 30].map((days) => {
-              const target = issueDate ? addDaysIso(issueDate, days) : ''
-              return (
-                <button
-                  key={days}
-                  type="button"
-                  disabled={!issueDate}
-                  aria-pressed={target !== '' && dueDate === target}
-                  onClick={() => onChange({ ...current, dueDate: target })}
-                >
-                  {days} dni
-                </button>
-              )
-            })}
-          </div>
+    <>
+      <div className="inv-fields inv-fields--center">
+        <div className="inv-chips" role="group" aria-label="Forma płatności">
+          {methods.map((option) => (
+            <button
+              key={option.method}
+              type="button"
+              aria-pressed={paymentMethod === option.method}
+              onClick={() => onChange({ ...current, paymentMethod: option.method })}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
-        {paymentMethod === 'Transfer' ? (
-          <div className="ui-form-group">
-            <span id="bank-account-label">Rachunek</span>
-            <span className="mono" aria-labelledby="bank-account-label">
-              {formatNrb(bankAccount)}
-            </span>
-          </div>
-        ) : null}
+        <label className="inv-check">
+          <input
+            type="checkbox"
+            checked={splitPayment}
+            onChange={(event) => onChange({ ...current, splitPayment: event.target.checked })}
+          />
+          Mechanizm podzielonej płatności
+        </label>
       </div>
-      <label className="inv-check">
-        <input
-          type="checkbox"
-          checked={splitPayment}
-          onChange={(event) => onChange({ ...current, splitPayment: event.target.checked })}
-        />
-        Mechanizm podzielonej płatności
-      </label>
+      {paymentMethod === 'Transfer' ? (
+        <div className="inv-account">
+          <span id="bank-account-label" className="inv-caption">
+            Rachunek
+          </span>
+          <span className="mono" aria-labelledby="bank-account-label">
+            {formatNrb(bankAccount)}
+          </span>
+          <Link to={profileHref}>Zmień w Danych do faktur</Link>
+        </div>
+      ) : null}
       {totalGross > MPP_THRESHOLD && !splitPayment ? (
         <div className="inv-alert inv-alert--warning" role="status">
           Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15).
         </div>
       ) : null}
-    </section>
+    </>
   )
 }

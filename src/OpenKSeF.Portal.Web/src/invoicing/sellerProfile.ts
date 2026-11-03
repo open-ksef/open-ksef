@@ -1,5 +1,8 @@
 import type { SellerProfileRequest, SellerProfileResponse } from '@/api/types'
 import { formatNrb } from './format'
+import { digitsOnly, isValidNrb } from './nrb'
+
+export { digitsOnly, isValidNrb }
 
 export interface SellerProfileFormValue {
   legalName: string
@@ -12,15 +15,6 @@ export interface SellerProfileFormValue {
 }
 
 export const NUMBER_TOKENS = ['{nr}', '{MM}', '{RRRR}'] as const
-
-export const digitsOnly = (value: string): string => value.replace(/\D+/g, '')
-
-export function isValidNrb(value: string): boolean {
-  const digits = digitsOnly(value)
-  if (digits.length !== 26 || digits !== value.replace(/\s+/g, '')) return false
-  const rearranged = `${digits.slice(2)}2521${digits.slice(0, 2)}`
-  return [...rearranged].reduce((rest, digit) => (rest * 10 + Number(digit)) % 97, 0) === 1
-}
 
 export function numberingPeriod(pattern: string, today: Date): string {
   const year = String(today.getFullYear())

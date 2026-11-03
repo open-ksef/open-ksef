@@ -1,7 +1,13 @@
+import { isValidNrb } from './nrb'
+
 const moneyFormat = new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })
 
+export function formatAmount(amount: number): string {
+  return moneyFormat.format(amount)
+}
+
 export function formatMoney(amount: number, currency = 'PLN'): string {
-  return `${moneyFormat.format(amount)} ${currency}`
+  return `${formatAmount(amount)} ${currency}`
 }
 
 export function formatDecimal(value: number, minimumFractionDigits: number): string {
@@ -17,6 +23,11 @@ export function formatNrb(digits: string | null | undefined): string {
   if (!digits) return '—'
   const nrb = digits.replace(/[\s-]/g, '').replace(/^PL/i, '')
   return /^\d{26}$/.test(nrb) ? `${nrb.slice(0, 2)} ${nrb.slice(2).replace(/(\d{4})(?=\d)/g, '$1 ')}` : digits
+}
+
+export function accountDigits(account: string | null | undefined): string | null {
+  const nrb = account?.replace(/[\s-]/g, '').replace(/^PL/i, '') ?? ''
+  return isValidNrb(nrb) ? nrb : null
 }
 
 export function todayIso(now = new Date()): string {
