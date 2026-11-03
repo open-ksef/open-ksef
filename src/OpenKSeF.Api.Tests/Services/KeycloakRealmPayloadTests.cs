@@ -205,7 +205,7 @@ public class KeycloakRealmPayloadTests
             }
 
             if (url.Contains("/clients/uuid-"))
-                return Json("""{"redirectUris":["/*"]}""");
+                return Json("""{"redirectUris":["/*"],"serviceAccountsEnabled":true}""");
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         }

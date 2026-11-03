@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Services;
 
@@ -8,23 +9,26 @@ public interface IKeycloakUserService
     Task<CreateUserResult> CreateUserAsync(string email, string password, string? firstName, string? lastName);
 }
 
-public record CreateUserResult(bool Success, string? ErrorMessage, HttpStatusCode StatusCode);
+public record CreateUserResult(bool Success, string? ErrorMessage, HttpStatusCode StatusCode, string? ErrorCode = null);
 
 public class KeycloakUserService : IKeycloakUserService
 {
     private readonly HttpClient _httpClient;
     private readonly string _tokenEndpoint;
+    private readonly string _adminRealmEndpoint;
     private readonly string _adminUsersEndpoint;
     private readonly string _clientId;
-    private readonly string _clientSecret;
+    private readonly ISystemConfigService _systemConfig;
     private readonly ILogger<KeycloakUserService> _logger;
 
     public KeycloakUserService(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
+        ISystemConfigService systemConfig,
         ILogger<KeycloakUserService> logger)
     {
         _httpClient = httpClientFactory.CreateClient("keycloak");
+        _systemConfig = systemConfig;
         _logger = logger;
 
         var authority = configuration["Auth:Authority"]?.TrimEnd('/') ?? "";
@@ -37,32 +41,42 @@ public class KeycloakUserService : IKeycloakUserService
         {
             var baseUrl = authority[..realmsIndex];
             var realmName = authority[(realmsIndex + "/realms/".Length)..];
-            _adminUsersEndpoint = $"{baseUrl}/admin/realms/{realmName}/users";
+            _adminRealmEndpoint = $"{baseUrl}/admin/realms/{realmName}";
         }
         else
         {
-            _adminUsersEndpoint = $"{authority}/admin/realms/openksef/users";
+            _adminRealmEndpoint = $"{authority}/admin/realms/openksef";
         }
+        _adminUsersEndpoint = $"{_adminRealmEndpoint}/users";
 
         _clientId = configuration["Auth:ServiceAccount:ClientId"] ?? "openksef-api";
-        _clientSecret = configuration["Auth:ServiceAccount:ClientSecret"] ?? "";
     }
 
     public async Task<CreateUserResult> CreateUserAsync(
         string email, string password, string? firstName, string? lastName)
     {
-        if (string.IsNullOrEmpty(_clientSecret))
-        {
-            _logger.LogWarning(
-                "Auth:ServiceAccount:ClientSecret not configured — user registration disabled.");
-            return new CreateUserResult(false, "Registration service not configured.", HttpStatusCode.ServiceUnavailable);
-        }
-
         try
         {
-            var adminToken = await GetServiceAccountTokenAsync();
+            var clientSecret = _systemConfig.GetValue(SystemConfigKeys.ApiClientSecret);
+            if (string.IsNullOrEmpty(clientSecret))
+            {
+                _logger.LogWarning("API client secret not configured: user registration unavailable.");
+                return Unavailable();
+            }
+
+            var adminToken = await GetServiceAccountTokenAsync(clientSecret);
             if (adminToken is null)
-                return new CreateUserResult(false, "Failed to authenticate with identity provider.", HttpStatusCode.ServiceUnavailable);
+                return Unavailable();
+
+            var policy = await GetRealmPolicyAsync(adminToken);
+            if (policy is null)
+                return Unavailable();
+
+            if (!policy.Value.RegistrationAllowed)
+            {
+                return new CreateUserResult(false, "Rejestracja nowych kont jest wyłączona. Skontaktuj się z administratorem.",
+                    HttpStatusCode.Forbidden, "registration_disabled");
+            }
 
             var userPayload = new
             {
@@ -71,7 +85,8 @@ public class KeycloakUserService : IKeycloakUserService
                 firstName = firstName ?? "",
                 lastName = lastName ?? "",
                 enabled = true,
-                emailVerified = true,
+                emailVerified = false,
+                requiredActions = policy.Value.VerifyEmail ? new[] { "VERIFY_EMAIL" } : [],
                 credentials = new[]
                 {
                     new { type = "password", value = password, temporary = false }
@@ -87,32 +102,87 @@ public class KeycloakUserService : IKeycloakUserService
             var response = await _httpClient.SendAsync(request);
 
             if (response.StatusCode == HttpStatusCode.Conflict)
-                return new CreateUserResult(false, "An account with this email already exists.", HttpStatusCode.Conflict);
+                return new CreateUserResult(false, "Konto z tym adresem e-mail już istnieje.", HttpStatusCode.Conflict, "email_taken");
 
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
                 _logger.LogWarning("Keycloak user creation failed: {StatusCode} {Body}",
                     response.StatusCode, errorBody);
-                return new CreateUserResult(false, "Registration failed. Please try again.", response.StatusCode);
+
+                if (response.StatusCode == HttpStatusCode.BadRequest)
+                {
+                    return new CreateUserResult(false, "Rejestracja nie powiodła się. Sprawdź podane dane i hasło.",
+                        HttpStatusCode.BadRequest, "registration_rejected");
+                }
+
+                return Unavailable();
             }
+
+            if (policy.Value.VerifyEmail)
+                await SendVerificationEmailAsync(adminToken, response.Headers.Location);
 
             return new CreateUserResult(true, null, response.StatusCode);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "User creation failed for email {Email}", email);
-            return new CreateUserResult(false, "An unexpected error occurred.", HttpStatusCode.InternalServerError);
+            return Unavailable();
         }
     }
 
-    private async Task<string?> GetServiceAccountTokenAsync()
+    private static CreateUserResult Unavailable() => new(
+        false, "Rejestracja jest chwilowo niedostępna. Spróbuj ponownie później.",
+        HttpStatusCode.ServiceUnavailable, "registration_unavailable");
+
+    private async Task<(bool RegistrationAllowed, bool VerifyEmail)?> GetRealmPolicyAsync(string adminToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, _adminRealmEndpoint);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminToken);
+
+        using var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Keycloak realm read failed: {StatusCode}. The service account needs view-realm.", response.StatusCode);
+            return null;
+        }
+
+        // Without view-realm Keycloak answers 200 with a reduced representation, so an absent field must not read as false.
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("registrationAllowed", out var registrationAllowed)
+            || !json.TryGetProperty("verifyEmail", out var verifyEmail))
+        {
+            _logger.LogWarning("Keycloak realm read returned no registration policy. The service account needs view-realm.");
+            return null;
+        }
+
+        return (registrationAllowed.GetBoolean(), verifyEmail.GetBoolean());
+    }
+
+    private async Task SendVerificationEmailAsync(string adminToken, Uri? createdUser)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Put, $"{_adminUsersEndpoint}/{createdUser?.Segments[^1]}/send-verify-email");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminToken);
+
+            using var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+                _logger.LogWarning("Keycloak verification email failed: {StatusCode}", response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Keycloak verification email failed");
+        }
+    }
+
+    private async Task<string?> GetServiceAccountTokenAsync(string clientSecret)
     {
         var formData = new Dictionary<string, string>
         {
             ["grant_type"] = "client_credentials",
             ["client_id"] = _clientId,
-            ["client_secret"] = _clientSecret
+            ["client_secret"] = clientSecret
         };
 
         var response = await _httpClient.PostAsync(_tokenEndpoint, new FormUrlEncodedContent(formData));

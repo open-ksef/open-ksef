@@ -138,6 +138,8 @@ public sealed class SystemSettingsService : ISystemSettingsService
             await UpdateRealmConfigAsync(client, kcBase, kcAdminToken, request, ct);
             _logger.LogInformation("Updated Keycloak realm settings");
 
+            await EnsureRegistrationRolesAsync(client, kcBase, kcAdminToken, ct);
+
             // Update Google IdP
             if (!string.IsNullOrEmpty(request.GoogleClientId) && !string.IsNullOrEmpty(request.GoogleClientSecret))
             {
@@ -442,9 +444,30 @@ public sealed class SystemSettingsService : ISystemSettingsService
 
             using var putReq = new HttpRequestMessage(HttpMethod.Put, clientUrl);
             putReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
-            putReq.Content = JsonContent.Create(new { redirectUris = merged, webOrigins });
+            // Keycloak 26.0 replaces the service account user, losing its roles, when a client PUT omits this field.
+            var serviceAccountsEnabled = clientJson.GetProperty("serviceAccountsEnabled").GetBoolean();
+            putReq.Content = JsonContent.Create(new { redirectUris = merged, webOrigins, serviceAccountsEnabled });
             var putResp = await client.SendAsync(putReq, ct);
             putResp.EnsureSuccessStatusCode();
+        }
+    }
+
+    private async Task EnsureRegistrationRolesAsync(
+        HttpClient client, string kcBase, string adminToken, CancellationToken ct)
+    {
+        try
+        {
+            var apiClientUuid = await GetClientUuidAsync(client, kcBase, adminToken, "openksef-api", ct);
+            var rmUuid = await GetClientUuidAsync(client, kcBase, adminToken, "realm-management", ct);
+            if (apiClientUuid is null || rmUuid is null)
+                return;
+
+            await SystemSetupService.GrantApiServiceAccountRolesAsync(client, kcBase, adminToken, apiClientUuid, rmUuid,
+                SystemSetupService.RegistrationServiceAccountRoles, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Could not grant registration roles to the openksef-api service account; registration returns 503 until it has them");
         }
     }
 
