@@ -78,6 +78,35 @@ public class KeycloakRealmPayloadTests
             ["https://ksef.example.com"], c.GetProperty("webOrigins").EnumerateArray().Select(o => o.GetString())));
     }
 
+    private static SmtpConfig Smtp(string? password) =>
+        new() { Host = "smtp.example.com", From = "noreply@example.com", Auth = true, User = "mailer", Password = password };
+
+    [Theory]
+    [InlineData(null, "**********")]
+    [InlineData("", "**********")]
+    [InlineData("typed-password", "typed-password")]
+    public async Task UpdateSettings_SmtpPassword_MaskKeepsStoredOneUnlessTyped(string? password, string sent)
+    {
+        _keycloak.RealmJson = """{"bruteForceProtected":true,"failureFactor":10}""";
+
+        var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest { Smtp = Smtp(password) }, "token");
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal(sent, _keycloak.Body(HttpMethod.Put, RealmUrl).GetProperty("smtpServer").GetProperty("password").GetString());
+    }
+
+    [Fact]
+    public async Task ApplySetup_EmptySmtpPassword_SendsTheMask()
+    {
+        _keycloak.RealmJson = "{}";
+
+        await CreateSetupService(Substitute.For<ISystemConfigService>(), ValidKey)
+            .ApplySetupAsync(NewSetupRequest() with { Smtp = Smtp(null) }, "token", "admin");
+
+        var realm = _keycloak.Bodies(HttpMethod.Put, RealmUrl).Single(b => b.TryGetProperty("smtpServer", out _));
+        Assert.Equal("**********", realm.GetProperty("smtpServer").GetProperty("password").GetString());
+    }
+
     [Fact]
     public async Task UpdateSettings_BruteForceAlreadyEnabled_KeepsAdminValues()
     {
@@ -204,8 +233,11 @@ public class KeycloakRealmPayloadTests
                 return Json(RealmJson is null ? "[]" : $$"""[{"id":"uuid-{{clientId}}"}]""");
             }
 
+            if (url.EndsWith("/available"))
+                return Json("[]");
+
             if (url.Contains("/clients/uuid-"))
-                return Json("""{"redirectUris":["/*"],"serviceAccountsEnabled":true}""");
+                return Json("""{"id":"user-1","value":"client-secret","redirectUris":["/*"],"serviceAccountsEnabled":true}""");
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         }

@@ -2,6 +2,8 @@ import { ApiClient, apiClient } from '../client'
 
 const anonClient = new ApiClient(import.meta.env.VITE_API_BASE_URL ?? '/api')
 
+export const DEFAULT_RELAY_URL = 'https://push.open-ksef.pl'
+
 export interface SetupStatusResponse {
   isInitialized: boolean
 }
@@ -54,7 +56,6 @@ export interface SetupApplyRequest {
 
 export interface SetupApplyResponse {
   success: boolean
-  apiClientSecret?: string
   error?: string
 }
 
@@ -98,7 +99,7 @@ export interface SettingsResponse {
   googleClientId?: string
   googleConfigured: boolean
   pushRelayUrl?: string
-  pushRelayApiKey?: string
+  pushRelayApiKeyConfigured: boolean
   pushRelayInstanceId?: string
   firebaseConfigured: boolean
 }
@@ -127,6 +128,7 @@ export interface SettingsUpdateRequest {
 export interface SettingsUpdateResponse {
   success: boolean
   error?: string
+  requiresConfirmation?: boolean
 }
 
 export function getSettings(

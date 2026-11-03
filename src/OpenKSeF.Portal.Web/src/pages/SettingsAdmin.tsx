@@ -8,6 +8,7 @@ import { listTenants } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
 
 import {
+  DEFAULT_RELAY_URL,
   getSettings,
   updateSettings,
   type SettingsResponse,
@@ -145,6 +146,7 @@ export function SettingsAdminPage(): ReactElement {
       setSmtpSsl(resp.smtp.ssl)
       setSmtpAuth(resp.smtp.auth)
       setSmtpUser(resp.smtp.user ?? '')
+      setSmtpPassword('')
     } else {
       setSmtpEnabled(false)
     }
@@ -152,7 +154,7 @@ export function SettingsAdminPage(): ReactElement {
     setGoogleClientId(resp.googleClientId ?? '')
     setGoogleClientSecret('')
     setPushRelayUrl(resp.pushRelayUrl ?? '')
-    setPushRelayApiKey(resp.pushRelayApiKey ?? '')
+    setPushRelayApiKey('')
     setPushRelayInstanceId(resp.pushRelayInstanceId ?? '')
     setReRegisterRelay(false)
 
@@ -194,7 +196,7 @@ export function SettingsAdminPage(): ReactElement {
           ssl: smtpSsl,
           auth: smtpAuth,
           user: smtpAuth ? smtpUser : undefined,
-          password: smtpAuth ? smtpPassword : undefined,
+          password: smtpAuth ? smtpPassword || undefined : undefined,
         }
       : undefined
 
@@ -213,7 +215,7 @@ export function SettingsAdminPage(): ReactElement {
       googleClientId: googleClientId || undefined,
       googleClientSecret: googleClientSecret || undefined,
       pushRelayUrl: pushMode === 'relay' ? (pushRelayUrl || undefined) : '',
-      pushRelayApiKey: pushMode === 'relay' && pushRelayUrl !== 'https://push.open-ksef.pl'
+      pushRelayApiKey: pushMode === 'relay' && pushRelayUrl !== DEFAULT_RELAY_URL
         ? (pushRelayApiKey || undefined) : undefined,
       reRegisterRelay: pushMode === 'relay' && reRegisterRelay,
       firebaseCredentialsJson: pushMode === 'firebase' ? (firebaseJson || undefined) : '',
@@ -227,12 +229,12 @@ export function SettingsAdminPage(): ReactElement {
     try {
       const request = buildUpdateRequest()
       const result = await updateSettings(request)
+      if (result.requiresConfirmation) {
+        setPendingRequest(request)
+        setConfirmWipeOpen(true)
+        return
+      }
       if (!result.success) {
-        if (result.error?.includes('Potwierdź operację')) {
-          setPendingRequest(request)
-          setConfirmWipeOpen(true)
-          return
-        }
         setError(result.error ?? 'Zapisywanie nie powiodło się')
         return
       }
@@ -447,8 +449,11 @@ export function SettingsAdminPage(): ReactElement {
                     </div>
                     <div className="ui-form-group">
                       <label htmlFor="settings-smtp-pass">Hasło SMTP</label>
-                      <input id="settings-smtp-pass" type="password"
+                      <input id="settings-smtp-pass" data-testid="settings-smtp-pass" type="password" autoComplete="new-password"
                         value={smtpPassword} onInput={e => setSmtpPassword((e.target as HTMLInputElement).value)} />
+                      {settings?.smtp?.auth && (
+                        <span className="ui-form-hint" data-testid="settings-smtp-pass-hint">Pozostaw puste, aby zachować obecne hasło.</span>
+                      )}
                     </div>
                   </>
                 )}
@@ -505,7 +510,7 @@ export function SettingsAdminPage(): ReactElement {
                   </div>
                 )}
 
-                {pushRelayUrl === 'https://push.open-ksef.pl' ? (
+                {pushRelayUrl === DEFAULT_RELAY_URL ? (
                   <>
                     {!pushRelayInstanceId && (
                       <div className="onboarding-instruction" style={{ color: 'var(--ui-warning)' }}>
@@ -529,9 +534,12 @@ export function SettingsAdminPage(): ReactElement {
                 ) : (
                   <div className="ui-form-group">
                     <label htmlFor="settings-relay-key">Klucz API relay</label>
-                    <input id="settings-relay-key" data-testid="settings-relay-key" type="password"
+                    <input id="settings-relay-key" data-testid="settings-relay-key" type="password" autoComplete="new-password"
                       placeholder="Klucz API dla niestandardowego serwera relay"
                       value={pushRelayApiKey} onInput={e => setPushRelayApiKey((e.target as HTMLInputElement).value)} />
+                    {settings?.pushRelayApiKeyConfigured && (
+                      <span className="ui-form-hint" data-testid="settings-relay-key-hint">Klucz jest zapisany. Pozostaw puste, aby go zachować.</span>
+                    )}
                   </div>
                 )}
               </>

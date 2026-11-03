@@ -66,9 +66,9 @@ If you enable email verification or password reset, SMTP is required. The wizard
 
 ### Step 4: Security
 
-The wizard fetches the **API client secret** from the Keycloak `openksef-api` client and stores it in the database.
+The wizard fetches the **API client secret** from the Keycloak `openksef-api` client and stores it in the database. The API never returns it to the browser. If you need it, for example for `API_CLIENT_SECRET`, read it in the Keycloak admin console: **Clients > openksef-api > Credentials**, see [login page setup](login-page-setup.md).
 
-The **AES-256 encryption key** is not part of the wizard. Set `ENCRYPTION_KEY` (or `ENCRYPTION_KEY_FILE`) on the API and Worker before you start the stack, and back it up outside the database. The wizard refuses to apply without it. Shipped `docker-compose.yml` forwards only `ENCRYPTION_KEY` and refuses to start without it, so `ENCRYPTION_KEY_FILE` needs your own compose file. An override file alone is not enough, because the check in the base file still runs. See [Encryption key](#encryption-key) for the upgrade and rotation steps.
+The **AES-256 encryption key** is not part of the wizard, and no API response contains it. Its only sources are your copy outside the database and the `ENCRYPTION_KEY` value in `.env` or the stack environment. Set `ENCRYPTION_KEY` (or `ENCRYPTION_KEY_FILE`) on the API and Worker before you start the stack, and back it up outside the database. The wizard refuses to apply without it. Shipped `docker-compose.yml` forwards only `ENCRYPTION_KEY` and refuses to start without it, so `ENCRYPTION_KEY_FILE` needs your own compose file. An override file alone is not enough, because the check in the base file still runs. See [Encryption key](#encryption-key) for the upgrade and rotation steps.
 
 ### Step 5: Optional Integrations
 
@@ -81,6 +81,8 @@ The **AES-256 encryption key** is not part of the wizard. Set `ENCRYPTION_KEY` (
 - **Local only (SignalR)** -- No remote push. Users receive notifications only when the mobile app is actively connected to the server.
 
 SignalR local push is always active regardless of which mode you choose. The mode only affects remote (background) delivery.
+
+The settings page says only whether a relay key is stored, and no API response contains it. On the default relay, **Zarejestruj ponownie** issues a new key. On a custom relay, type the new key; an empty field keeps the stored one. An empty SMTP password also keeps the stored one.
 
 ### Step 6: Summary & Apply
 
