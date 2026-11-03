@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from 'react'
+import type { MouseEvent, ReactElement, ReactNode } from 'react'
 
 export interface TableColumn<T> {
   key: keyof T
@@ -10,7 +10,7 @@ export interface TableColumn<T> {
 interface TableProps<T extends object> {
   columns: TableColumn<T>[]
   data: T[]
-  onRowClick?: (row: T) => void
+  onRowClick?: (row: T, event: MouseEvent) => void
   testId?: string
   getRowProps?: (row: T, index: number) => Record<string, string | number | boolean | undefined>
 }
@@ -37,7 +37,7 @@ export function Table<T extends object>({
             const rowProps = getRowProps ? getRowProps(row, rowIndex) : undefined
             const rowId = (row as { id?: string | number }).id
             return (
-              <tr key={String(rowId ?? rowIndex)} onClick={() => onRowClick?.(row)} {...rowProps}>
+              <tr key={String(rowId ?? rowIndex)} onClick={(event) => onRowClick?.(row, event)} {...rowProps}>
               {columns.map((column) => (
                 <td key={`${String(column.key)}-${rowIndex}`} className={column.className}>
                   {column.render ? column.render(row) : String(row[column.key] ?? '')}

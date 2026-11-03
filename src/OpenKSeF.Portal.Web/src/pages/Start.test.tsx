@@ -449,8 +449,8 @@ describe('StartPage', () => {
     it.each([
       [1280, 720, 6],
       [1799, 1440, 6],
-      [2560, 1440, 18],
-      [1800, 800, 6],
+      [2560, 1440, 15],
+      [1800, 800, 5],
       [1800, 600, 5],
     ])('at %ix%i asks for %i rows', async (width, height, rows) => {
       setViewport(width, height)

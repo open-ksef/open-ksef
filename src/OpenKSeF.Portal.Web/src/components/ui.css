@@ -1384,7 +1384,7 @@ label {
   }
 
   .received-status { display: none; }
-  .received-gross { width: 148px; }
+  .received-gross { width: 172px; }
 
   .received-status-mobile {
     display: block;
@@ -1605,6 +1605,11 @@ label {
   flex: 1;
 }
 
+.pay-actions .pay-copy-account,
+.pay-copy-account {
+  margin-top: 4px;
+}
+
 .pay-details {
   margin-top: 12px;
 }
@@ -1723,6 +1728,13 @@ dd {
   font-weight: 500;
   display: flex;
   align-items: center;
+}
+
+/* ─── Toasts ─────────────────────────────────────────────────────────────── */
+@media (max-width: 820px) {
+  .app-toaster {
+    bottom: 72px !important;
+  }
 }
 
 /* ─── Back link ──────────────────────────────────────────────────────────── */

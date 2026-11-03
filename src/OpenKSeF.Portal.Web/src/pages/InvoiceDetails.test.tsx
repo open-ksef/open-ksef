@@ -508,6 +508,66 @@ describe('InvoiceDetailsPage', () => {
       await act(async () => save.resolve(paid))
     })
 
+    it('keeps its own mark disabled while another invoice is marked after walking away', async () => {
+      const saves = { 'inv-1': deferred<InvoiceResponse>(), 'inv-2': deferred<InvoiceResponse>() }
+      const other = invoiceOf({ id: 'inv-2', ksefInvoiceNumber: 'KSEF-002', invoiceNumber: 'FV/2026/002' })
+      vi.mocked(listTenants).mockResolvedValue([{ id: 'tenant-1', nip: '1111111111', displayName: 'Firma', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' }])
+      vi.mocked(getInvoiceByKSeFNumber).mockImplementation(async (_tenant, number) => (number === 'KSEF-002' ? other : invoiceOf()))
+      vi.mocked(getTransferDetails).mockResolvedValue(transferOf())
+      vi.mocked(setInvoicePaid).mockImplementation((_tenant, id) => saves[id as 'inv-1' | 'inv-2'].promise)
+      const state = { listSearch: '', siblings: ['KSEF-001', 'KSEF-002'] }
+      await render({ pathname: '/invoices/KSEF-001', search: '?tenantId=tenant-1', state })
+
+      await click(testId('toggle-paid-btn'))
+      await click(testId('invoice-next'))
+      expect(testId('toggle-paid-btn')?.textContent).toBe('Oznacz jako opłaconą')
+
+      await click(testId('toggle-paid-btn'))
+      await click(testId('invoice-prev'))
+      expect(testId('toggle-paid-btn')?.textContent).toBe('Zapisywanie...')
+      expect((testId('toggle-paid-btn') as HTMLButtonElement).disabled).toBe(true)
+
+      await act(async () => saves['inv-2'].resolve({ ...other, isPaid: true }))
+      await settle()
+      expect(testId('toggle-paid-btn')?.textContent).toBe('Zapisywanie...')
+
+      await act(async () => saves['inv-1'].resolve({ ...invoiceOf(), isPaid: true }))
+      await settle()
+      expect(testId('toggle-paid-btn')?.textContent).toBe('Cofnij oznaczenie')
+    })
+
+    it('429 on the company list reads as a retryable error, not a missing invoice', async () => {
+      vi.mocked(listTenants).mockRejectedValue(new ApiError('Za dużo żądań.', 429))
+      await render('/invoices/KSEF-001')
+
+      expect(container.textContent).not.toContain('Nie znaleziono faktury')
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Nie udało się pobrać listy firm')
+      expect([...container.querySelectorAll('[role="alert"] button')].map((button) => button.textContent)).toEqual(['Spróbuj ponownie'])
+    })
+
+    it('copies the 26 digits alone, and shows no such button without a valid account', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+      vi.mocked(listTenants).mockResolvedValue([{ id: 'tenant-1', nip: '1111111111', displayName: 'Firma', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' }])
+      vi.mocked(getInvoiceByKSeFNumber).mockResolvedValue(invoiceOf())
+      vi.mocked(getTransferDetails).mockResolvedValue(transferOf({ recipientAccount: 'PL61 1090 1014 0000 0712 1981 2874' }))
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      await click(testId('copy-account-btn'))
+      expect(writeText).toHaveBeenCalledExactlyOnceWith('61109010140000071219812874')
+      expect(testId('copy-transfer-btn')?.textContent).toBe('Kopiuj dane przelewu')
+    })
+
+    it('hides the account button for an account failing the checksum', async () => {
+      vi.mocked(listTenants).mockResolvedValue([{ id: 'tenant-1', nip: '1111111111', displayName: 'Firma', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' }])
+      vi.mocked(getInvoiceByKSeFNumber).mockResolvedValue(invoiceOf())
+      vi.mocked(getTransferDetails).mockResolvedValue(transferOf({ recipientAccount: '12345678901234567890123456' }))
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      expect(testId('copy-transfer-btn')).not.toBeNull()
+      expect(testId('copy-account-btn')).toBeNull()
+    })
+
     it('toasts on failure and leaves the status', async () => {
       mockOne()
       vi.mocked(setInvoicePaid).mockRejectedValue(new Error('boom'))

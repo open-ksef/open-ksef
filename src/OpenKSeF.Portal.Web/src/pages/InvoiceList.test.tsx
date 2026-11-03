@@ -338,9 +338,10 @@ describe('InvoiceListPage', () => {
       const router = await render('/invoices?tenantId=tenant-1&q=abc&page=2')
 
       await act(async () => (byTestId('invoice-row')?.querySelector('.received-gross') as HTMLElement).click())
+      await wait(300)
       await settle()
-
       expect(router.state.location.pathname).toBe('/invoices/KSEF-001')
+
       expect(router.state.location.search).toBe('?tenantId=tenant-1')
       expect(router.state.location.state).toEqual({ listSearch: '?tenantId=tenant-1&q=abc&page=2', siblings: ['KSEF-001'] })
     })
@@ -390,11 +391,75 @@ describe('InvoiceListPage', () => {
       const link = byTestId('invoice-view-details') as HTMLAnchorElement
 
       await act(async () => {
+        link.addEventListener('click', (event) => event.preventDefault())
         link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true }))
       })
       await settle()
 
       expect(router.state.location.pathname).toBe('/invoices')
+    })
+
+    it('ctrl-click on a row cell opens a new tab and keeps the list here', async () => {
+      const router = await render('/invoices?tenantId=tenant-1')
+      const open = vi.spyOn(window, 'open').mockReturnValue(null)
+      const cell = byTestId('invoice-row')?.querySelector('.received-gross') as HTMLElement
+
+      await act(async () => {
+        cell.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true }))
+      })
+      await wait(300)
+      await settle()
+
+      expect(open).toHaveBeenCalledExactlyOnceWith('/invoices/KSEF-001?tenantId=tenant-1', '_blank', 'noopener')
+      expect(router.state.location.pathname).toBe('/invoices')
+      open.mockRestore()
+    })
+
+    it('a double click on a row stays on the list', async () => {
+      const router = await render('/invoices?tenantId=tenant-1')
+      const cell = byTestId('invoice-row')?.querySelector('.received-gross') as HTMLElement
+
+      await act(async () => {
+        cell.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))
+        cell.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }))
+      })
+      await wait(300)
+      await settle()
+
+      expect(router.state.location.pathname).toBe('/invoices')
+    })
+
+    it('a page past the end goes to the last page instead of a false empty state', async () => {
+      vi.mocked(listInvoices).mockImplementation(async (_tenant, query) =>
+        (query?.page ?? 1) > 1
+          ? { items: [], page: query?.page ?? 1, pageSize: 25, totalCount: 3, totalPages: 1 }
+          : { items: [invoice()], page: 1, pageSize: 25, totalCount: 3, totalPages: 1 },
+      )
+      const router = await render('/invoices?tenantId=tenant-1&page=99')
+
+      await settle()
+      expect(router.state.location.search).toBe('?tenantId=tenant-1')
+      await settle()
+
+      expect(container.textContent).not.toContain('Nie znaleziono faktur')
+      expect(byTestId('invoice-row')).not.toBeNull()
+    })
+
+    it('an abandoned year below 1000 restores the applied filter on blur', async () => {
+      const router = await render('/invoices?tenantId=tenant-1&dateFrom=2026-10-01')
+      const field = byTestId('invoice-date-from') as HTMLInputElement
+
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(field, '0020-10-01')
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      expect(router.state.location.search).toContain('dateFrom=2026-10-01')
+      expect(field.value).toBe('0020-10-01')
+
+      await act(async () => {
+        field.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+      })
+      expect(field.value).toBe('2026-10-01')
     })
 
     it('does not open when text is selected', async () => {
@@ -404,6 +469,7 @@ describe('InvoiceListPage', () => {
       window.getSelection()?.addRange(range)
 
       await act(async () => byTestId('invoice-row')?.click())
+      await wait(300)
       await settle()
 
       expect(router.state.location.pathname).toBe('/invoices')

@@ -486,9 +486,11 @@ describe('issue and detail pages', () => {
     expect(container.textContent).not.toContain('Popraw i wyślij ponownie')
     expect(container.querySelector('a[href*="/edit"]')).toBeNull()
 
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     await act(async () => buttonByText(container, 'Pobierz XML')!.click())
     await waitFor(() => createObjectURL.mock.calls.length === 1)
     expect(getIssuedInvoiceXml).toHaveBeenCalledWith('t-1', 'i-1')
+    anchorClick.mockRestore()
   })
 
   it('Rejected shows the KSeF message, details and the edit link', async () => {

@@ -21,7 +21,7 @@ import { useKsefFetch } from '@/hooks/useKsefFetch'
 import { formatDate, formatDateTime, formatMoney } from '@/invoicing/format'
 
 const WIDE_FROM_PX = 1800
-const RESERVED_HEIGHT_PX = 468
+const RESERVED_HEIGHT_PX = 640
 const ROW_HEIGHT_PX = 53
 const MIN_WIDE_ROWS = 5
 const NARROW_ROWS = 6
