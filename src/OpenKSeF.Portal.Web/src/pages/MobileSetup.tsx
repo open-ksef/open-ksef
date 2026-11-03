@@ -41,7 +41,7 @@ export function MobileSetupPage(): ReactElement {
               <li>Zainstaluj aplikację OpenKSeF Mobile na telefonie</li>
               <li>
                 Na ekranie logowania w aplikacji wybierz przycisk „QR” (jeśli go nie widać, najpierw
-                dotknij „Zmień serwer”)
+                dotknij „Zmień serwer” lub „Serwer”)
               </li>
               <li>Zeskanuj powyższy kod -- adres serwera zostanie ustawiony, a aplikacja wróci do ekranu logowania</li>
             </ol>

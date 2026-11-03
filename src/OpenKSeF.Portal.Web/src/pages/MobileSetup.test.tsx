@@ -17,6 +17,7 @@ describe('MobileSetupPage', () => {
   beforeEach(async () => {
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     fetchSpy.mockReset()
+    fetchSpy.mockResolvedValue(Response.json({ setupToken: 'leaked', expiresInSeconds: 300 }))
     vi.stubGlobal('fetch', fetchSpy)
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -57,5 +58,6 @@ describe('MobileSetupPage', () => {
     expect(text).not.toContain('login zostaną')
     expect(text).toContain('Potem zaloguj się w aplikacji.')
     expect(text).toContain('przycisk „QR”')
+    expect(text).toContain('dotknij „Zmień serwer” lub „Serwer”')
   })
 })
