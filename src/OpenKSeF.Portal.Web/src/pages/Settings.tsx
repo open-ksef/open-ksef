@@ -239,7 +239,7 @@ export function SettingsPage(): ReactElement {
         </header>
 
         <div style={{ maxWidth: '480px' }}>
-          <p style={{ color: 'var(--ui-text-muted)', marginBottom: '16px' }}>
+          <p style={{ color: 'var(--ui-muted)', marginBottom: '16px' }}>
             Zaloguj się jako administrator Keycloak, aby zarządzać ustawieniami systemu.
           </p>
           <div className="onboarding-form">
@@ -295,7 +295,7 @@ export function SettingsPage(): ReactElement {
                 <option value="production">Produkcja (ksef.podatki.gov.pl)</option>
               </select>
               {settings?.kSeFEnvironmentLockReason && (
-                <span className="ui-form-hint" style={{ color: settings.kSeFEnvironmentLocked ? 'var(--ui-color-error, #c0392b)' : 'var(--ui-warning)' }}>
+                <span className="ui-form-hint" style={{ color: settings.kSeFEnvironmentLocked ? 'var(--ui-error)' : 'var(--ui-warning)' }}>
                   {settings.kSeFEnvironmentLockReason}
                 </span>
               )}
@@ -419,7 +419,7 @@ export function SettingsPage(): ReactElement {
               <label>
                 <input type="radio" name="pushMode" value="relay"
                   checked={pushMode === 'relay'} onChange={() => setPushMode('relay')} />
-                {' '}Relay OpenKSeF <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(zalecane)</span>
+                {' '}Relay OpenKSeF <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(zalecane)</span>
               </label>
             </div>
 

@@ -227,7 +227,7 @@ export function InvoiceListPage(): ReactElement {
         applyButtonTestId="invoice-apply-filters"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label htmlFor="invoice-tenant-filter" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-text-muted)' }}>
+          <label htmlFor="invoice-tenant-filter" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-muted)' }}>
             Firma
           </label>
           <select
@@ -245,7 +245,7 @@ export function InvoiceListPage(): ReactElement {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label htmlFor="invoice-date-from" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-text-muted)' }}>
+          <label htmlFor="invoice-date-from" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-muted)' }}>
             Od
           </label>
           <input
@@ -258,7 +258,7 @@ export function InvoiceListPage(): ReactElement {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label htmlFor="invoice-date-to" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-text-muted)' }}>
+          <label htmlFor="invoice-date-to" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-muted)' }}>
             Do
           </label>
           <input
@@ -271,7 +271,7 @@ export function InvoiceListPage(): ReactElement {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label htmlFor="invoice-page-size" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-text-muted)' }}>
+          <label htmlFor="invoice-page-size" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-muted)' }}>
             Na stronę
           </label>
           <select

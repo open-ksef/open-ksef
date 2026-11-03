@@ -72,7 +72,7 @@ export function ConfirmDialog({
         </div>
 
         <div className="ui-modal-body" id="confirm-dialog-message">
-          <p style={{ margin: 0, fontSize: 14, color: 'var(--ui-text-muted)' }}>{message}</p>
+          <p style={{ margin: 0, fontSize: 14, color: 'var(--ui-muted)' }}>{message}</p>
           {children}
         </div>
 

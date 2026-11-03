@@ -23,7 +23,7 @@ import { notifyMutationError, notifyMutationSuccess } from '@/notifications'
 type CredentialFormMode = 'add' | 'update' | null
 
 function CredentialTypeBadge({ type }: { type: CredentialType | null }) {
-  if (!type) return <span style={{ color: 'var(--ui-text-muted)' }}>-</span>
+  if (!type) return <span style={{ color: 'var(--ui-muted)' }}>-</span>
   return (
     <span
       data-testid="credential-type-badge"
@@ -160,7 +160,7 @@ export function CredentialListPage(): ReactElement {
         row.lastUpdatedAt ? (
           new Date(row.lastUpdatedAt).toLocaleDateString('pl-PL')
         ) : (
-          <span style={{ color: 'var(--ui-text-muted)' }}>-</span>
+          <span style={{ color: 'var(--ui-muted)' }}>-</span>
         ),
     },
     {
@@ -495,7 +495,7 @@ export function CredentialListPage(): ReactElement {
                       <div className="ui-form-group">
                         <label htmlFor="credential-certificate-password">
                           Hasło klucza prywatnego{' '}
-                          <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(jeśli zaszyfrowany)</span>
+                          <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(jeśli zaszyfrowany)</span>
                         </label>
                         <input
                           id="credential-certificate-password"

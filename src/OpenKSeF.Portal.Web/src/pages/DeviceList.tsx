@@ -341,7 +341,7 @@ export function DeviceListPage(): ReactElement {
               <div className="ui-form-group">
                 <label htmlFor="device-form-tenant">
                   Firma{' '}
-                  <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span>
+                  <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(opcjonalnie)</span>
                 </label>
                 <select
                   id="device-form-tenant"
