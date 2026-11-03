@@ -45,6 +45,7 @@ API_CLIENT_SECRET=<paste-secret-here>
 6. Ensure the service account has the roles:
    - **Clients > openksef-api > Service Account Roles**
    - Assign `realm-management` > `manage-users` and `view-realm`
-7. Restart API: `docker compose -f docker-compose.dev.yml restart api`
+7. With realm **Verify email** on, set **Realm settings > General > Frontend URL** to the public URL, `https://<your-host>/auth`. Otherwise the confirmation link in the email is unreachable and the user cannot log in.
+8. Restart API: `docker compose -f docker-compose.dev.yml restart api`
 
 Without `API_CLIENT_SECRET` or these roles, registration returns `503 Service Unavailable`. Login and Google sign-in work independently.
