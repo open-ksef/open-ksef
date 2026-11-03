@@ -94,6 +94,8 @@ export function TenantListPage(): ReactElement {
     onSuccess: async () => {
       notifyMutationSuccess('created', 'Tenant')
       await queryClient.invalidateQueries({ queryKey: ['tenants'] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      await queryClient.invalidateQueries({ queryKey: ['credentials'] })
       setMode(null)
       setForm(INITIAL_FORM)
     },

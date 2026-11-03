@@ -39,7 +39,7 @@ export function useCompanyState() {
     summary,
     summaries: dashboard.data ?? [],
     credential,
-    isLoading: queries.some((query) => query.isLoading),
+    isLoading: queries.some((query) => query.isLoading) || ((!summary || !credential) && queries.some((query) => query.isFetching)),
     error: queries.find((query) => query.isLoadingError)?.error ?? null,
     refetch: () => queries.forEach((query) => void query.refetch()),
   }

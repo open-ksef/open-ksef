@@ -117,6 +117,7 @@ describe('StartPage', () => {
     rejected = [],
     rejectedTotal = rejected.length,
     recent = [],
+    recentTotal = recent.length,
     invoices = [received()],
   }: {
     summaries?: TenantDashboardSummaryResponse[]
@@ -124,18 +125,20 @@ describe('StartPage', () => {
     rejected?: IssuedInvoiceListItemResponse[]
     rejectedTotal?: number
     recent?: IssuedInvoiceListItemResponse[]
+    recentTotal?: number
     invoices?: InvoiceResponse[]
   } = {}) => {
     vi.mocked(getDashboardOverview).mockResolvedValue(summaries)
     vi.mocked(listCredentials).mockResolvedValue(credentials)
     vi.mocked(listInvoices).mockResolvedValue(paged(invoices))
     vi.mocked(listIssuedInvoices).mockImplementation(async (_, params) =>
-      params?.status === 'Rejected' ? paged(rejected, rejectedTotal) : paged(recent),
+      params?.status === 'Rejected' ? paged(rejected, rejectedTotal) : paged(recent, recentTotal),
     )
   }
 
-  async function render(path = '/') {
+  async function render(path = '/', seed?: (client: QueryClient) => void) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    seed?.(client)
     const page = (
       <QueryClientProvider client={client}>
         <CompanyProvider>
@@ -243,6 +246,13 @@ describe('StartPage', () => {
       expect(text()).not.toContain('Brakuje tokenu KSeF')
     })
 
+    it('does not claim all clear when more issued invoices exist than were scanned', async () => {
+      useData({ recent: [issued()], recentTotal: 101 })
+      await render()
+      expect(attention()?.textContent).not.toContain('Nic nie wymaga uwagi.')
+      expect(attention()?.textContent).toContain('W 100 najnowszych fakturach wystawionych nic nie wymaga uwagi.')
+    })
+
     it('does not claim all is clear when an issued query failed', async () => {
       vi.mocked(listIssuedInvoices).mockRejectedValue(new Error('issued down'))
       await render()
@@ -258,7 +268,7 @@ describe('StartPage', () => {
         credentials: [credential({ hasCredential: false }), credential({ tenantId: 'b' })],
       })
       await render('/?tenantId=b')
-      expect(text()).toContain('Pobieramy faktury z KSeF')
+      expect(text()).toContain('Czekamy na pierwsze pobranie z KSeF')
       expect(text()).not.toContain('Brakuje tokenu KSeF')
     })
 
@@ -283,7 +293,7 @@ describe('StartPage', () => {
     it('first fetch: says it runs and keeps the fetch enabled', async () => {
       useData({ summaries: [summary({ totalInvoices: 0, lastSuccessfulSync: null })] })
       await render()
-      expect(text()).toContain('Pobieramy faktury z KSeF')
+      expect(text()).toContain('Czekamy na pierwsze pobranie z KSeF')
       expect(text()).toContain('Także te już zapłacone.')
       expect(fetchButton().disabled).toBe(false)
       expect(vi.mocked(listInvoices)).not.toHaveBeenCalled()
@@ -297,7 +307,7 @@ describe('StartPage', () => {
       await render()
       expect(text()).toContain('Nie pobraliśmy jeszcze faktur.')
       expect(text()).toContain('Token dodano 01.10.2026')
-      expect(text()).not.toContain('Pobieramy faktury z KSeF')
+      expect(text()).not.toContain('Czekamy na pierwsze pobranie z KSeF')
       expect(linkTo('/credentials')?.textContent).toContain('Sprawdź token KSeF')
       expect(fetchButton().disabled).toBe(false)
     })
@@ -322,6 +332,13 @@ describe('StartPage', () => {
       expect(text()).not.toContain('Nic nie wymaga uwagi.')
       expect(text()).not.toContain('Wystaw pierwszą fakturę')
       expect(card.textContent).toContain('Nowa faktura')
+    })
+
+    it('makes no state claim while the current company is missing from the cached rows', async () => {
+      vi.mocked(getDashboardOverview).mockReturnValue(new Promise(() => {}))
+      await render('/', (client) => client.setQueryData(['dashboard'], [summary({ tenantId: 'other' })], { updatedAt: 1 }))
+      expect(container.querySelector('.ui-skeleton')).not.toBeNull()
+      expect(attention()).toBeNull()
     })
 
     it('makes no state claim while loading', async () => {
@@ -522,7 +539,7 @@ describe('StartPage', () => {
       expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toMatch(/^Firma A: /)
     })
 
-    it.each([401, 403, 404])('on %i says the fetch did not start, without a hint that invoices came', async (status) => {
+    it.each([401, 403, 404, 429])('on %i says the fetch did not start, without a hint that invoices came', async (status) => {
       vi.mocked(forceCredentialSync).mockRejectedValue(new ApiError('raw', status))
       await render()
       await act(async () => fetchButton().click())

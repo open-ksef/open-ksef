@@ -539,7 +539,7 @@ export function OnboardingPage(): ReactElement {
                 size="lg"
                 onClick={handleGoToDashboard}
               >
-                Przejdź do pulpitu
+                Przejdź do strony Start
               </Button>
             </div>
           </div>

@@ -60,7 +60,7 @@ function issuedAttentionItems(rejected: IssuedInvoiceListItemResponse[], issued:
     title: `${row.number ?? '—'}: KSeF nie przyjął faktury`,
     sub: row.buyerName ?? '',
   }))
-  // shortcut: API has no needsAttention filter, only newest 100 scanned; add filter when REQ-0042 allows API changes
+  // shortcut: API has no needsAttention filter, only the 100 latest by IssueDate are scanned, drafts included, so an older stuck invoice is missed; add filter when REQ-0042 allows API changes
   for (const row of issued) {
     if (!row.needsAttention) continue
     const base = { key: row.id, icon: 'triangle-alert', tone: 'warning', to: issuedPath(row, tenantId) } as const
@@ -80,9 +80,10 @@ interface AttentionCardProps {
   isLoading: boolean
   error: unknown
   onRetry: () => void
+  scanCapped: boolean
 }
 
-function AttentionCard({ items, rejectedTotal, isLoading, error, onRetry }: AttentionCardProps): ReactElement {
+function AttentionCard({ items, rejectedTotal, isLoading, error, onRetry, scanCapped }: AttentionCardProps): ReactElement {
   return (
     <section className="start-card start-card--attention" aria-labelledby="start-attention">
       <h2 id="start-attention">Wymaga uwagi</h2>
@@ -110,7 +111,7 @@ function AttentionCard({ items, rejectedTotal, isLoading, error, onRetry }: Atte
       ) : null}
       {!error && !isLoading && items.length === 0 ? (
         <p className="start-clear">
-          <Icon name="circle-check" size={18} /> Nic nie wymaga uwagi.
+          <Icon name="circle-check" size={18} /> {scanCapped ? `W ${ISSUED_SCANNED} najnowszych fakturach wystawionych nic nie wymaga uwagi.` : 'Nic nie wymaga uwagi.'}
         </p>
       ) : null}
     </section>
@@ -224,7 +225,8 @@ export function StartPage(): ReactElement {
   }
   const attentionError = rejectedQuery.error ?? issuedQuery.error
   const attentionLoading = rejectedQuery.isLoading || issuedQuery.isLoading
-  const attentionClear = attention.length === 0 && !attentionError && !attentionLoading
+  const scanCapped = (issuedQuery.data?.totalCount ?? 0) > ISSUED_SCANNED
+  const attentionClear = attention.length === 0 && !attentionError && !attentionLoading && !scanCapped
   const retryAttention = (): void => {
     void rejectedQuery.refetch()
     void issuedQuery.refetch()
@@ -236,6 +238,7 @@ export function StartPage(): ReactElement {
       isLoading={attentionLoading}
       error={attentionError}
       onRetry={retryAttention}
+      scanCapped={scanCapped}
     />
   )
 

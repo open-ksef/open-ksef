@@ -16,7 +16,7 @@ function isMissingToken(error: Error | null): boolean {
 }
 
 function fetchErrorMessage(error: Error): string {
-  if (error instanceof ApiError && [401, 403, 404].includes(error.status)) return FETCH_NOT_STARTED
+  if (error instanceof ApiError && [401, 403, 404, 429].includes(error.status)) return FETCH_NOT_STARTED
   const syncFailed =
     error instanceof ApiError &&
     error.status === 502 &&

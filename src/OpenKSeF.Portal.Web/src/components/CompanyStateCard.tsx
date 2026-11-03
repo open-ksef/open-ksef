@@ -110,9 +110,9 @@ export function CompanyStateCard({ state, place, summary, credential, attentionC
   if (state === 'first-fetch') {
     return (
       <EmptyState
-        icon="loader"
-        title="Pobieramy faktury z KSeF"
-        message="Pierwsze pobranie obejmuje ostatnie 6 miesięcy i może chwilę potrwać. Możesz zamknąć stronę, faktury pojawią się tutaj."
+        icon="clock"
+        title="Czekamy na pierwsze pobranie z KSeF"
+        message="Pobieranie uruchamia się samo co kilka godzin. Pierwsze obejmie ostatnie 6 miesięcy. Możesz uruchomić je teraz przyciskiem Pobierz z KSeF albo zamknąć stronę."
         actions={
           place === 'start' ? (
             <p className="start-note">
@@ -142,7 +142,7 @@ export function CompanyStateCard({ state, place, summary, credential, attentionC
     )
   }
 
-  const fetchedLine = `Pobrano ${formatDateTime(summary?.lastSuccessfulSync)}. KSeF nie ma faktur zakupu dla NIP ${nip} z ostatnich 6 miesięcy.`
+  const fetchedLine = `Pobrano ${formatDateTime(summary?.lastSuccessfulSync)}. KSeF nie zwrócił faktur zakupu dla NIP ${nip}.`
   const issueLabel = hasIssued ? 'Nowa faktura' : 'Wystaw pierwszą fakturę'
   if (place === 'list') {
     return (

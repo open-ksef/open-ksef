@@ -585,7 +585,7 @@ describe('InvoiceListPage', () => {
     it('first fetch: card, fetch stays enabled', async () => {
       useEmpty({ lastSuccessfulSync: null })
       await render('/invoices?tenantId=tenant-1')
-      expect(container.textContent).toContain('Pobieramy faktury z KSeF')
+      expect(container.textContent).toContain('Czekamy na pierwsze pobranie z KSeF')
       expect(fetchButtonNode().disabled).toBe(false)
     })
 
