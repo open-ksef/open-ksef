@@ -871,6 +871,20 @@ describe('InvoiceDetailsPage', () => {
       expect(container.textContent).not.toContain('Server Error')
     })
 
+    it('clears the copied label when a copy fails after a good one', async () => {
+      const writeText = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('denied'))
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+      await render(entry('KSEF-A'))
+
+      await click(testId('copy-transfer-btn'))
+      expect(testId('copy-transfer-btn')?.textContent).toBe('Skopiowano!')
+
+      await click(testId('copy-transfer-btn'))
+
+      expect(toast.error).toHaveBeenCalledExactlyOnceWith('Nie udało się skopiować danych przelewu.')
+      expect(testId('copy-transfer-btn')?.textContent).toBe('Kopiuj dane przelewu')
+    })
+
     it('toasts a late failure after walking on', async () => {
       const save = deferred<InvoiceResponse>()
       vi.mocked(setInvoicePaid).mockReturnValue(save.promise)

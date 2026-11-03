@@ -48,6 +48,7 @@ function PaymentCard({
       setCopiedId(invoice.id)
       setTimeout(() => setCopiedId(null), 2000)
     } catch {
+      setCopiedId(null)
       toast.error('Nie udało się skopiować danych przelewu.')
     }
   }
