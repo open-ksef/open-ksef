@@ -31,6 +31,54 @@ public class InvoiceServiceTests : IDisposable
         Assert.Equal(expectedNotifications, _notifications.Count);
     }
 
+    [Fact]
+    public async Task UpsertInvoicesAsync_FillsDueDate_KeepsItWithoutXml_AndNeverTouchesPaid()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var tenantId = Guid.NewGuid();
+        var paidAt = new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
+        var ids = await sut.UpsertInvoicesAsync(tenantId, [CreateInvoice()], notify: false);
+        var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
+        Assert.Null(stored.DueDate);
+        stored.IsPaid = true;
+        stored.PaidAt = paidAt;
+        await _db.SaveChangesAsync();
+
+        await sut.UpsertInvoicesAsync(tenantId, [CreateInvoice() with { DueDate = new DateOnly(2026, 11, 20) }], notify: false);
+        Assert.Equal(new DateOnly(2026, 11, 20), stored.DueDate);
+
+        await sut.UpsertInvoicesAsync(tenantId, [CreateInvoice()], notify: false);
+        Assert.Equal(new DateOnly(2026, 11, 20), stored.DueDate);
+        Assert.True(stored.IsPaid);
+        Assert.Equal(paidAt, stored.PaidAt);
+    }
+
+    [Fact]
+    public async Task UpsertInvoicesAsync_NewInvoice_StoresDueDate()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+
+        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice() with { DueDate = new DateOnly(2026, 11, 20) }], notify: false);
+
+        Assert.Equal(new DateOnly(2026, 11, 20), (await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0])).DueDate);
+    }
+
+    [Theory]
+    [InlineData("2026-11-03", "2026-11-03T22:59:00Z", false, false)]
+    [InlineData("2026-11-03", "2026-11-03T23:00:00Z", false, true)]
+    [InlineData("2026-07-03", "2026-07-03T21:59:00Z", false, false)]
+    [InlineData("2026-07-03", "2026-07-03T22:00:00Z", false, true)]
+    [InlineData("2026-11-04", "2026-11-03T12:00:00Z", false, false)]
+    [InlineData("2026-11-02", "2026-11-03T12:00:00Z", false, true)]
+    [InlineData("2026-11-02", "2026-11-03T12:00:00Z", true, false)]
+    [InlineData(null, "2026-11-03T12:00:00Z", false, false)]
+    public void IsOverdue_UsesTodayInWarsaw_NotPaidNotUndated(string? due, string now, bool isPaid, bool expected)
+    {
+        var dueDate = due is null ? (DateOnly?)null : DateOnly.Parse(due, System.Globalization.CultureInfo.InvariantCulture);
+
+        Assert.Equal(expected, Entities.InvoiceHeader.IsOverdue(isPaid, dueDate, DateTimeOffset.Parse(now, System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
     private static InvoiceDto CreateInvoice() => new(
         Number: "KSEF-1",
         ReferenceNumber: "REF-1",

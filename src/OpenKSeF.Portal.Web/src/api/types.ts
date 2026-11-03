@@ -51,6 +51,8 @@ export interface InvoiceResponse {
   paidAt: string | null
   vendorBankAccount?: string | null
   lines?: InvoiceLineResponse[] | null
+  dueDate?: string | null
+  isOverdue?: boolean
 }
 
 export interface TransferDetailsResponse {

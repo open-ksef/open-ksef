@@ -9,6 +9,7 @@ import type { InvoiceResponse, PagedResult, TransferDetailsResponse } from '@/ap
 import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
+import { DueDate } from '@/components/DueDate'
 import { Icon } from '@/components/Icon'
 import { PaidStatus } from '@/components/PaidStatus'
 import '@/components/invoicing/invoicing.css'
@@ -81,6 +82,10 @@ function PaymentCard({
         <div>
           {invoice.isPaid ? null : amount}
           <dl className="kv">
+            <dt>Termin płatności</dt>
+            <dd>
+              <DueDate row={invoice} testId="transfer-due-date" />
+            </dd>
             <dt>Odbiorca</dt>
             <dd data-testid="transfer-recipient">{transfer.recipientName}</dd>
             <dt>Tytuł</dt>
@@ -408,6 +413,10 @@ export function InvoiceDetailsPage(): ReactElement {
                   ) : null}
                   <dt>Data wystawienia</dt>
                   <dd data-testid="invoice-detail-issue-date">{formatDate(invoice.issueDate)}</dd>
+                  <dt>Termin płatności</dt>
+                  <dd>
+                    <DueDate row={invoice} testId="invoice-detail-due-date" />
+                  </dd>
                   {invoice.acquisitionDate ? (
                     <>
                       <dt>Data przyjęcia w KSeF</dt>

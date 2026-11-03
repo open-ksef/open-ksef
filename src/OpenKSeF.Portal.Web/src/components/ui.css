@@ -1223,6 +1223,15 @@ label {
   font-weight: 600;
 }
 
+.received-overdue {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ui-error);
+  font-weight: 600;
+}
+
+.received-due { width: 228px; }
 .received-gross { width: 168px; }
 .received-status { width: 144px; }
 .received-net { display: none; width: 160px; }
@@ -1266,9 +1275,10 @@ label {
   }
 
   .received-status,
+  .received-due,
   .issued-due,
   .issued-status { display: none; }
-  .received-gross { width: 172px; }
+  .received-gross { width: 196px; }
 
   .received-status-mobile {
     display: block;
@@ -2181,9 +2191,10 @@ input.nip-input {
   display: grid;
   gap: 16px;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto auto 1fr;
   grid-template-areas:
-    'received attention'
+    'unpaid attention'
+    'unpaid issued'
     'received issued'
     'received companies';
   align-items: start;
@@ -2213,6 +2224,7 @@ input.nip-input {
 }
 
 .start-card--attention { grid-area: attention; }
+.start-card--unpaid { grid-area: unpaid; }
 .start-card--received { grid-area: received; }
 .start-card--issued { grid-area: issued; }
 .start-card--companies { grid-area: companies; }
@@ -2379,18 +2391,18 @@ input.nip-input {
   .start--full > .start-grid {
     flex: 1;
     min-height: 0;
-    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-rows: fit-content(40vh) minmax(0, 1fr);
     grid-template-areas:
-      'attention companies'
-      'received issued';
+      'attention attention companies'
+      'unpaid received issued';
     align-items: stretch;
   }
 
   .start--full > .start-grid--solo {
     grid-template-areas:
-      'attention attention'
-      'received issued';
+      'attention attention attention'
+      'unpaid received issued';
   }
 
   .start--full .start-list {
@@ -2414,6 +2426,7 @@ input.nip-input {
     grid-template-rows: none;
     grid-template-areas:
       'attention'
+      'unpaid'
       'received'
       'issued'
       'companies';

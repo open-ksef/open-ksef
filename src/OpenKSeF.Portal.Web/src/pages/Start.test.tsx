@@ -119,6 +119,8 @@ describe('StartPage', () => {
     recent = [],
     recentTotal = recent.length,
     invoices = [received()],
+    unpaid = [],
+    unpaidTotal = unpaid.length,
   }: {
     summaries?: TenantDashboardSummaryResponse[]
     credentials?: TenantCredentialStatusResponse[]
@@ -127,10 +129,12 @@ describe('StartPage', () => {
     recent?: IssuedInvoiceListItemResponse[]
     recentTotal?: number
     invoices?: InvoiceResponse[]
+    unpaid?: InvoiceResponse[]
+    unpaidTotal?: number
   } = {}) => {
     vi.mocked(getDashboardOverview).mockResolvedValue(summaries)
     vi.mocked(listCredentials).mockResolvedValue(credentials)
-    vi.mocked(listInvoices).mockResolvedValue(paged(invoices))
+    vi.mocked(listInvoices).mockImplementation(async (_, params) => (params?.isPaid === false ? paged(unpaid, unpaidTotal) : paged(invoices)))
     vi.mocked(listIssuedInvoices).mockImplementation(async (_, params) =>
       params?.status === 'Rejected' ? paged(rejected, rejectedTotal) : paged(recent, recentTotal),
     )
@@ -426,8 +430,47 @@ describe('StartPage', () => {
       expect(text()).not.toContain('Pulpit')
       expect(text().match(/PLN/g)).toHaveLength(3)
       expect(container.querySelectorAll('.start-row__end b')).toHaveLength(3)
-      expect(text()).not.toContain('Nieopłacone')
       expect(text()).not.toContain('Termin')
+    })
+
+    it('lists unpaid invoices in the API order with no total, a count link and the unmarked note', async () => {
+      useData({
+        unpaid: [
+          received({ id: 'u-1', vendorName: 'Po terminie', ksefInvoiceNumber: 'K-1', dueDate: '2026-10-01', isOverdue: true }),
+          received({ id: 'u-2', vendorName: 'Z terminem', ksefInvoiceNumber: 'K-2', dueDate: '2026-12-01' }),
+          received({ id: 'u-3', vendorName: 'Bez terminu', ksefInvoiceNumber: 'K-3', dueDate: null }),
+        ],
+        unpaidTotal: 41,
+        invoices: [],
+      })
+      await render()
+
+      const card = container.querySelector('.start-card--unpaid')!
+      const rows = [...card.querySelectorAll('li')].map((row) => row.textContent)
+      expect(rows[0]).toContain('01.10.2026 po terminie')
+      expect(card.querySelectorAll('li')[0].querySelector('.received-overdue svg')).toBeTruthy()
+      expect(rows[1]).toContain('Termin płatności 01.12.2026')
+      expect(rows[1]).not.toContain('po terminie')
+      expect(rows[2]).toContain('Termin płatności —')
+      expect(linkTo('/invoices?unpaid=1')?.textContent).toBe('Wszystkie nieopłacone (41)')
+      expect(card.textContent).toContain('Na liście jest to, czego nie oznaczono jako opłacone.')
+      expect(card.querySelector('h2')?.textContent).toBe('Nieopłacone, od najbliższego terminu')
+      expect(card.textContent?.replace(/\s/g, ' ').match(/PLN/g)).toHaveLength(3)
+      expect(card.textContent).not.toMatch(/razem|suma|łącznie/i)
+      expect(vi.mocked(listInvoices)).toHaveBeenCalledWith('a', { page: 1, pageSize: 6, isPaid: false })
+    })
+
+    it('says when nothing is unpaid', async () => {
+      await render()
+      expect(container.querySelector('.start-card--unpaid')?.textContent).toContain('Nie ma nieopłaconych faktur')
+      expect(linkTo('/invoices?unpaid=1')).toBeNull()
+    })
+
+    it('opens an unpaid row with the filter as the list to go back to', async () => {
+      useData({ unpaid: [received({ id: 'u-1', ksefInvoiceNumber: 'K-1' }), received({ id: 'u-2', ksefInvoiceNumber: 'K-2' })] })
+      const router = await render()
+      await act(async () => container.querySelector<HTMLAnchorElement>('.start-card--unpaid li a')!.click())
+      expect(router.state.location.state).toEqual({ listSearch: '?unpaid=1', siblings: ['K-1', 'K-2'] })
     })
 
     it('opens a received row with the list search and the siblings', async () => {
@@ -456,6 +499,7 @@ describe('StartPage', () => {
       setViewport(width, height)
       await render()
       expect(vi.mocked(listInvoices)).toHaveBeenCalledWith('a', { page: 1, pageSize: rows })
+      expect(vi.mocked(listInvoices)).toHaveBeenCalledWith('a', { page: 1, pageSize: rows, isPaid: false })
     })
 
     it('limits recent issued to the row count', async () => {

@@ -190,12 +190,25 @@ describe('InvoiceDetailsPage', () => {
     expect(testId('invoice-details-back-link')?.textContent).toBe('Otrzymane')
   })
 
-  it('has no payment due row until the API sends a due date', async () => {
+  it('reads a dash without a due date', async () => {
     mockOne()
 
     await render('/invoices/KSEF-001?tenantId=tenant-1')
 
-    expect(container.textContent).not.toContain('Termin płatności')
+    expect(testId('invoice-detail-due-date')?.textContent).toBe('—')
+  })
+
+  it('shows the due date as dd.MM.yyyy', async () => {
+    mockOne(invoiceOf({ dueDate: '2026-03-15', isOverdue: false }))
+    await render('/invoices/KSEF-001?tenantId=tenant-1')
+    expect(testId('invoice-detail-due-date')?.textContent).toBe('15.03.2026')
+  })
+
+  it('reads {data} po terminie for an overdue invoice', async () => {
+    mockOne(invoiceOf({ dueDate: '2026-03-15', isOverdue: true }))
+    await render('/invoices/KSEF-001?tenantId=tenant-1')
+    expect(testId('invoice-detail-due-date')?.textContent?.trim()).toBe('15.03.2026 po terminie')
+    expect(testId('invoice-detail-due-date')?.querySelector('svg')).toBeTruthy()
   })
 
   it('renders not found state for 404 errors', async () => {

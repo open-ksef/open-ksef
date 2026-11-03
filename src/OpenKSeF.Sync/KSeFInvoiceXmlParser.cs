@@ -11,6 +11,7 @@ namespace OpenKSeF.Sync;
 ///
 /// XML paths:
 ///   Bank account: Faktura / Fa / Platnosc / RachunekBankowy / NrRB
+///   Due date:     Faktura / Fa / Platnosc / TerminPlatnosci / Termin (earliest of up to 100)
 ///   Line items:   Faktura / Fa / FaWiersz
 /// Schema reference: ksef-docs/faktury/schemy/FA/
 /// </summary>
@@ -26,7 +27,7 @@ public sealed class KSeFInvoiceXmlParser
         _logger = logger;
     }
 
-    public (string? BankAccount, IReadOnlyList<InvoiceLineDto> Lines) ExtractInvoiceDetails(byte[] invoiceXml)
+    public (string? BankAccount, IReadOnlyList<InvoiceLineDto> Lines, DateOnly? DueDate) ExtractInvoiceDetails(byte[] invoiceXml)
     {
         try
         {
@@ -37,7 +38,7 @@ public sealed class KSeFInvoiceXmlParser
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to parse invoice XML for details extraction");
-            return (null, Array.Empty<InvoiceLineDto>());
+            return (null, Array.Empty<InvoiceLineDto>(), null);
         }
     }
 
@@ -70,13 +71,13 @@ public sealed class KSeFInvoiceXmlParser
         }
     }
 
-    private static (string? BankAccount, IReadOnlyList<InvoiceLineDto> Lines) ExtractDetails(XDocument doc)
+    private static (string? BankAccount, IReadOnlyList<InvoiceLineDto> Lines, DateOnly? DueDate) ExtractDetails(XDocument doc)
     {
         var root = doc.Root;
-        if (root is null) return (null, Array.Empty<InvoiceLineDto>());
+        if (root is null) return (null, Array.Empty<InvoiceLineDto>(), null);
 
         var ns = DetectNamespace(root);
-        if (ns is null) return (null, Array.Empty<InvoiceLineDto>());
+        if (ns is null) return (null, Array.Empty<InvoiceLineDto>(), null);
 
         var bankAccount = root
             .Descendants(ns + "Platnosc")
@@ -125,8 +126,15 @@ public sealed class KSeFInvoiceXmlParser
             }
         }
 
-        return (bankAccount, lines);
+        return (bankAccount, lines, ExtractDueDate(root, ns));
     }
+
+    private static DateOnly? ExtractDueDate(XElement root, XNamespace ns) =>
+        root.Descendants(ns + "Platnosc")
+            .Elements(ns + "TerminPlatnosci")
+            .Elements(ns + "Termin")
+            .Select(t => DateOnly.TryParseExact(t.Value.Trim(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var date) ? date : (DateOnly?)null)
+            .Min();
 
     private static string? ExtractNrRB(XDocument doc)
     {

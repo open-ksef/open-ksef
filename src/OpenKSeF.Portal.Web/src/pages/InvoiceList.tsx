@@ -8,6 +8,7 @@ import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
 import { CompanyStateCard } from '@/components/CompanyStateCard'
+import { DueDate } from '@/components/DueDate'
 import { KsefSync } from '@/components/KsefSync'
 import { PaidStatus } from '@/components/PaidStatus'
 import '@/components/invoicing/invoicing.css'
@@ -84,6 +85,7 @@ export function InvoiceListPage(): ReactElement {
   const q = searchParams.get('q') ?? ''
   const dateFrom = searchParams.get('dateFrom') ?? ''
   const dateTo = searchParams.get('dateTo') ?? ''
+  const unpaid = searchParams.get('unpaid') === '1'
   const page = parsePage(searchParams.get('page'))
 
   const [draft, setDraft] = useState(q)
@@ -108,7 +110,7 @@ export function InvoiceListPage(): ReactElement {
 
   const filterByVendor = vendorFilter(q)
   const invoicesQuery = useQuery({
-    queryKey: ['invoices', tenantId, filterByVendor, dateFrom, dateTo, page],
+    queryKey: ['invoices', tenantId, filterByVendor, dateFrom, dateTo, unpaid, page],
     queryFn: () =>
       listInvoices(tenantId, {
         page,
@@ -116,6 +118,7 @@ export function InvoiceListPage(): ReactElement {
         filterByVendor: filterByVendor || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
+        isPaid: unpaid ? false : undefined,
       }),
     enabled: Boolean(tenantId),
     retry: false,
@@ -127,7 +130,7 @@ export function InvoiceListPage(): ReactElement {
   const totalCount = invoicesQuery.data?.totalCount ?? 0
   const firstRow = (page - 1) * PAGE_SIZE + 1
 
-  const unfilteredEmpty = invoicesQuery.isSuccess && rows.length === 0 && !q && !dateFrom && !dateTo && page === 1
+  const unfilteredEmpty = invoicesQuery.isSuccess && rows.length === 0 && !q && !dateFrom && !dateTo && !unpaid && page === 1
   const stateCard = unfilteredEmpty && state && state !== 'full' ? state : null
 
   const detailsPath = (row: InvoiceResponse): string =>
@@ -167,6 +170,12 @@ export function InvoiceListPage(): ReactElement {
       },
     },
     {
+      key: 'dueDate',
+      label: 'Termin płatności',
+      className: 'received-due',
+      render: (row) => <DueDate row={row} testId="invoice-due-date" />,
+    },
+    {
       key: 'amountNet',
       label: 'Netto',
       className: 'received-net received-num',
@@ -182,7 +191,7 @@ export function InvoiceListPage(): ReactElement {
             {formatMoney(row.amountGross, row.currency)}
           </span>
           <span className="received-status-mobile">
-            <PaidStatus row={row} testId="invoice-paid-status-mobile" />
+            {row.isOverdue ? <DueDate row={row} testId="invoice-due-date-mobile" /> : <PaidStatus row={row} testId="invoice-paid-status-mobile" />}
           </span>
         </>
       ),
@@ -212,6 +221,21 @@ export function InvoiceListPage(): ReactElement {
 
       {stateCard ? null : (
         <div className="received-tools">
+          <div className="inv-chips" role="group" aria-label="Filtr płatności">
+            {[
+              { label: 'Wszystkie', value: '' },
+              { label: 'Nieopłacone', value: '1' },
+            ].map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                aria-pressed={unpaid === (chip.value === '1')}
+                onClick={() => setSearchParams(withFilters(searchParams, { unpaid: chip.value }), { replace: true })}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
           <label htmlFor="invoice-search" className="visually-hidden">
             Szukaj sprzedawcy
           </label>
@@ -246,7 +270,7 @@ export function InvoiceListPage(): ReactElement {
           error={tenantsQuery.error ?? invoicesQuery.error ?? (unfilteredEmpty ? stateError : null)}
           isEmpty={rows.length === 0}
           loadingLines={6}
-          emptyTitle="Nie znaleziono faktur"
+          emptyTitle={unpaid ? 'Nie ma nieopłaconych faktur' : 'Nie znaleziono faktur'}
           emptyMessage="Zmień filtry lub wybierz inną firmę."
           onRetry={() => {
             void tenantsQuery.refetch()
@@ -259,7 +283,10 @@ export function InvoiceListPage(): ReactElement {
 
             <nav className="ui-pagination" aria-label="Paginacja faktur">
               <span className="ui-pagination-info">
-                {firstRow}–{firstRow + rows.length - 1} z {totalCount} {totalCount === 1 ? 'faktury' : 'faktur'}, od najnowszej
+                {firstRow}–{firstRow + rows.length - 1} z {totalCount}{' '}
+                {unpaid
+                  ? `${totalCount === 1 ? 'nieopłaconej' : 'nieopłaconych'}, od najbliższego terminu, bez terminu na końcu`
+                  : `${totalCount === 1 ? 'faktury' : 'faktur'}, od najnowszej`}
               </span>
               <div className="ui-pagination-controls">
                 <Button

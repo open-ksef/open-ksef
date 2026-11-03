@@ -170,6 +170,74 @@ describe('InvoiceListPage', () => {
     expect(lastListCall()).toEqual(['tenant-1', expect.objectContaining({ page: 1, pageSize: 25 })])
   })
 
+  describe('due date and Nieopłacone', () => {
+    const chip = (label: string) =>
+      [...container.querySelectorAll<HTMLButtonElement>('.inv-chips button')].find((button) => button.textContent === label)!
+
+    it('shows the date, a dash without one, and po terminie in text with an icon', async () => {
+      vi.mocked(listInvoices).mockResolvedValue({
+        items: [
+          invoice({ id: 'a', dueDate: '2026-11-20', isOverdue: false }),
+          invoice({ id: 'b', ksefInvoiceNumber: 'KSEF-002', dueDate: null }),
+          invoice({ id: 'c', ksefInvoiceNumber: 'KSEF-003', dueDate: '2026-10-01', isOverdue: true }),
+        ],
+        page: 1,
+        pageSize: 25,
+        totalCount: 3,
+        totalPages: 1,
+      })
+      await render('/invoices')
+
+      const cells = [...container.querySelectorAll('[data-testid="invoice-due-date"]')]
+      expect(cells.map((cell) => cell.textContent?.trim())).toEqual(['20.11.2026', '—', '01.10.2026 po terminie'])
+      expect(cells[2].querySelector('svg')).toBeTruthy()
+      expect(cells[0].querySelector('svg')).toBeNull()
+      expect(byTestId('invoice-due-date-mobile')?.textContent?.trim()).toBe('01.10.2026 po terminie')
+      expect(container.querySelector('thead')?.textContent).toContain('Termin płatności')
+    })
+
+    it('defaults to Wszystkie and sends no paid filter', async () => {
+      await render('/invoices')
+
+      expect(chip('Wszystkie').getAttribute('aria-pressed')).toBe('true')
+      expect(chip('Nieopłacone').getAttribute('aria-pressed')).toBe('false')
+      expect(lastListCall()?.[1]?.isPaid).toBeUndefined()
+      expect(container.textContent).toContain('od najnowszej')
+    })
+
+    it('the chip filters unpaid from page 1, says the order, keeps other filters, and goes back', async () => {
+      await render('/invoices?q=abc&page=3')
+      vi.mocked(listInvoices).mockClear()
+
+      await act(async () => chip('Nieopłacone').click())
+      await settle()
+
+      expect(lastListCall()).toEqual(['tenant-1', expect.objectContaining({ isPaid: false, page: 1, filterByVendor: 'abc' })])
+      expect(chip('Nieopłacone').getAttribute('aria-pressed')).toBe('true')
+      expect(container.textContent).toContain('nieopłaconej, od najbliższego terminu, bez terminu na końcu')
+
+      await act(async () => chip('Wszystkie').click())
+      await settle()
+      expect(lastListCall()?.[1]?.isPaid).toBeUndefined()
+    })
+
+    it('reads the filter from the link on Start and pages inside it', async () => {
+      vi.mocked(listInvoices).mockResolvedValue({ items: [invoice()], page: 2, pageSize: 25, totalCount: 30, totalPages: 2 })
+      await render('/invoices?unpaid=1&page=2')
+
+      expect(lastListCall()).toEqual(['tenant-1', expect.objectContaining({ isPaid: false, page: 2 })])
+      expect(container.textContent).toContain('26–26 z 30 nieopłaconych')
+    })
+
+    it('an empty filter keeps the chips and says nothing is unpaid', async () => {
+      vi.mocked(listInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 })
+      await render('/invoices?unpaid=1')
+
+      expect(chip('Nieopłacone')).toBeTruthy()
+      expect(container.textContent).toContain('Nie ma nieopłaconych faktur')
+    })
+  })
+
   it('search sends the term, resets page to 1 and keeps the term in the URL over a reload', async () => {
     const router = await render('/invoices?tenantId=tenant-1&page=3')
     expect(lastListCall()?.[1]).toMatchObject({ page: 3 })
