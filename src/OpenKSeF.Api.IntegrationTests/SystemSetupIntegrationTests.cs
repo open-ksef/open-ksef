@@ -68,6 +68,7 @@ public class SystemSetupIntegrationTests : IDisposable
     public async Task FullSetupFlow_PersistsConfigInDb()
     {
         await ClearSystemConfigAsync();
+        await _fixture.RemoveServiceAccountRolesAsync(TestcontainersFixture.RegistrationRoles);
 
         // 1. Authenticate
         var authRequest = new SetupAuthenticateRequest("admin", "admin");
@@ -110,6 +111,8 @@ public class SystemSetupIntegrationTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Null(await db.SystemConfigs.FindAsync("encryption_key"));
         Assert.NotNull(await db.SystemConfigs.FindAsync("api_client_secret"));
+
+        Assert.Empty((await _fixture.GetServiceAccountRoleNamesAsync()).Intersect(TestcontainersFixture.RegistrationRoles));
     }
 
     [Fact]

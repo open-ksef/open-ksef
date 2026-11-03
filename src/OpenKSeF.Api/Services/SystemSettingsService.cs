@@ -442,7 +442,9 @@ public sealed class SystemSettingsService : ISystemSettingsService
 
             using var putReq = new HttpRequestMessage(HttpMethod.Put, clientUrl);
             putReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
-            putReq.Content = JsonContent.Create(new { redirectUris = merged, webOrigins });
+            // Keycloak 26.0 replaces the service account user, losing its roles, when a client PUT omits this field.
+            var serviceAccountsEnabled = clientJson.GetProperty("serviceAccountsEnabled").GetBoolean();
+            putReq.Content = JsonContent.Create(new { redirectUris = merged, webOrigins, serviceAccountsEnabled });
             var putResp = await client.SendAsync(putReq, ct);
             putResp.EnsureSuccessStatusCode();
         }

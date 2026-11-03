@@ -215,6 +215,8 @@ builder.Services.AddSingleton<IPushProvider, ApnsPushProvider>(sp =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = (context, ct) => new ValueTask(context.HttpContext.Response.WriteAsJsonAsync(
+        new { code = "rate_limited", error = "Zbyt wiele prób. Spróbuj ponownie później." }, ct));
 
     // Strict limit for setup authentication: 5 attempts per 15 minutes per IP
     options.AddPolicy("setup-auth", context =>
@@ -231,6 +233,19 @@ builder.Services.AddRateLimiter(options =>
 
     // Strict limit for setup apply: 5 attempts per 15 minutes per IP
     options.AddPolicy("setup-apply", context =>
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(15),
+            PermitLimit = 5,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+
+    // Until T-030 every client behind the gateway shares this bucket: the short window makes a lockout end by itself.
+    options.AddPolicy("register", context =>
     {
         var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions

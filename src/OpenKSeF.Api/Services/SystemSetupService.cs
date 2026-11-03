@@ -434,8 +434,11 @@ public sealed class SystemSetupService : ISystemSetupService
 
             var merged = existingRedirects.Concat(redirectUris).Distinct().ToArray();
 
+            // Keycloak 26.0 replaces the service account user, losing its roles, when a client PUT omits this field.
+            var serviceAccountsEnabled = clientJson.GetProperty("serviceAccountsEnabled").GetBoolean();
+
             await SendKeycloakJsonAsync(client, HttpMethod.Put, clientUrl, adminToken,
-                new { redirectUris = merged, webOrigins }, ct);
+                new { redirectUris = merged, webOrigins, serviceAccountsEnabled }, ct);
         }
     }
 

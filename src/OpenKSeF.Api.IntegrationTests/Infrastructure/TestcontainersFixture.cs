@@ -1,4 +1,6 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Testcontainers.Keycloak;
 using Testcontainers.PostgreSql;
 
@@ -6,6 +8,8 @@ namespace OpenKSeF.Api.IntegrationTests.Infrastructure;
 
 public sealed class TestcontainersFixture : IAsyncLifetime
 {
+    public static readonly string[] RegistrationRoles = ["manage-users", "view-realm"];
+
     public PostgreSqlContainer Postgres { get; } = new PostgreSqlBuilder("postgres:16-alpine")
         .WithDatabase("openksef")
         .WithUsername("openksef")
@@ -88,6 +92,83 @@ public sealed class TestcontainersFixture : IAsyncLifetime
 
         return tokenResponse?.AccessToken
             ?? throw new InvalidOperationException("Token response did not contain access_token");
+    }
+
+    public async Task<string> GetAdminTokenAsync()
+    {
+        using var http = new HttpClient();
+        var response = await http.PostAsync(
+            $"{Keycloak.GetBaseAddress().ToString().TrimEnd('/')}/realms/master/protocol/openid-connect/token",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "password",
+                ["client_id"] = "admin-cli",
+                ["username"] = "admin",
+                ["password"] = "admin",
+            }));
+
+        response.EnsureSuccessStatusCode();
+        var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponse>();
+        return tokenResponse!.AccessToken;
+    }
+
+    public async Task UpdateRealmAsync(object settings)
+    {
+        using var http = await CreateAdminClientAsync();
+        (await http.PutAsJsonAsync(AdminRealmUrl, settings)).EnsureSuccessStatusCode();
+    }
+
+    public async Task<JsonElement?> FindUserAsync(string email)
+    {
+        using var http = await CreateAdminClientAsync();
+        var users = await http.GetFromJsonAsync<JsonElement[]>(
+            $"{AdminRealmUrl}/users?email={Uri.EscapeDataString(email)}&exact=true");
+        return users!.Length > 0 ? users[0] : null;
+    }
+
+    public async Task GrantServiceAccountRolesAsync(IReadOnlyCollection<string> names)
+    {
+        using var http = await CreateAdminClientAsync();
+        var (mappingsUrl, _) = await GetServiceAccountRoleMappingsUrlAsync(http);
+        var available = await http.GetFromJsonAsync<JsonElement[]>($"{mappingsUrl}/available");
+        var roles = available!.Where(r => names.Contains(r.GetProperty("name").GetString()!)).ToArray();
+        if (roles.Length > 0)
+            (await http.PostAsJsonAsync(mappingsUrl, roles)).EnsureSuccessStatusCode();
+    }
+
+    public async Task RemoveServiceAccountRolesAsync(IReadOnlyCollection<string> names)
+    {
+        using var http = await CreateAdminClientAsync();
+        var (mappingsUrl, mapped) = await GetServiceAccountRoleMappingsUrlAsync(http);
+        var roles = mapped.Where(r => names.Contains(r.GetProperty("name").GetString()!)).ToArray();
+        using var request = new HttpRequestMessage(HttpMethod.Delete, mappingsUrl) { Content = JsonContent.Create(roles) };
+        (await http.SendAsync(request)).EnsureSuccessStatusCode();
+    }
+
+    public async Task<IReadOnlyCollection<string>> GetServiceAccountRoleNamesAsync()
+    {
+        using var http = await CreateAdminClientAsync();
+        var (_, mapped) = await GetServiceAccountRoleMappingsUrlAsync(http);
+        return mapped.Select(r => r.GetProperty("name").GetString()!).ToArray();
+    }
+
+    private string AdminRealmUrl => $"{Keycloak.GetBaseAddress().ToString().TrimEnd('/')}/admin/realms/openksef";
+
+    private async Task<HttpClient> CreateAdminClientAsync()
+    {
+        var http = new HttpClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await GetAdminTokenAsync());
+        return http;
+    }
+
+    private async Task<(string Url, JsonElement[] Mapped)> GetServiceAccountRoleMappingsUrlAsync(HttpClient http)
+    {
+        var apiClient = (await http.GetFromJsonAsync<JsonElement[]>($"{AdminRealmUrl}/clients?clientId=openksef-api"))!.Single();
+        var realmManagement = (await http.GetFromJsonAsync<JsonElement[]>($"{AdminRealmUrl}/clients?clientId=realm-management"))!.Single();
+        var serviceAccount = await http.GetFromJsonAsync<JsonElement>(
+            $"{AdminRealmUrl}/clients/{apiClient.GetProperty("id").GetString()}/service-account-user");
+        var url = $"{AdminRealmUrl}/users/{serviceAccount.GetProperty("id").GetString()}/role-mappings/clients/{realmManagement.GetProperty("id").GetString()}";
+        return (url, (await http.GetFromJsonAsync<JsonElement[]>(url))!);
     }
 
     private sealed record TokenResponse(

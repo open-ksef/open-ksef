@@ -83,6 +83,14 @@
           "temporary": false
         }
       ]
+    },
+    {
+      "username": "service-account-openksef-api",
+      "enabled": true,
+      "serviceAccountClientId": "openksef-api",
+      "clientRoles": {
+        "realm-management": ["manage-users", "view-realm"]
+      }
     }
   ]
 }
