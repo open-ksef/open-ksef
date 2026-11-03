@@ -21,4 +21,5 @@ public record InvoiceResponse(
     DateTime FirstSeenAt,
     bool IsPaid,
     DateTime? PaidAt,
+    string? VendorBankAccount = null,
     IReadOnlyList<InvoiceLineResponse>? Lines = null);

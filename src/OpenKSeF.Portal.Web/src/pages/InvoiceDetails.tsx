@@ -319,12 +319,15 @@ export function InvoiceDetailsPage(): ReactElement {
 
                   <div className="qr-code-section" data-testid="qr-code-section">
                     <h3 className="qr-code-title">Kod QR do przelewu</h3>
-                    <img
-                      src={transfer.qrCodeBase64}
-                      alt="Kod QR do przelewu"
-                      className="qr-code-image"
-                      data-testid="qr-code-image"
-                    />
+                    {transfer.qrCodeBase64 && (
+                      <img
+                        src={transfer.qrCodeBase64}
+                        alt="Kod QR do przelewu"
+                        className="qr-code-image"
+                        data-testid="qr-code-image"
+                      />
+                    )}
+                    {transfer.qrMessage && <p data-testid="qr-message">{transfer.qrMessage}</p>}
                   </div>
                 </>
               ) : transferQuery.isError ? (

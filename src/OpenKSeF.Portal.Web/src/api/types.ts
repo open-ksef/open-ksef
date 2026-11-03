@@ -49,6 +49,7 @@ export interface InvoiceResponse {
   firstSeenAt: string
   isPaid: boolean
   paidAt: string | null
+  vendorBankAccount?: string | null
   lines?: InvoiceLineResponse[] | null
 }
 
@@ -60,7 +61,8 @@ export interface TransferDetailsResponse {
   currency: string
   title: string
   transferText: string
-  qrCodeBase64: string
+  qrCodeBase64: string | null
+  qrMessage: string | null
 }
 
 export interface PagedResult<T> {
