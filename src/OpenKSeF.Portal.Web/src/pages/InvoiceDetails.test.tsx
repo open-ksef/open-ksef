@@ -117,6 +117,121 @@ describe('InvoiceDetailsPage', () => {
     expect(container.querySelector('[data-testid="invoice-details-back-link"]')).toBeTruthy()
   })
 
+  describe('formats', () => {
+    const plain = (id: string) => container.querySelector(`[data-testid="${id}"]`)?.textContent?.replace(/\s/g, ' ')
+
+    async function renderDetails(entry: string | { pathname: string; search: string; state: unknown }): Promise<void> {
+      vi.mocked(listTenants).mockResolvedValue([
+        { id: 'tenant-1', nip: '1234567890', displayName: 'Tenant A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      ])
+      vi.mocked(getInvoiceByKSeFNumber).mockResolvedValue({
+        id: 'inv-1',
+        ksefInvoiceNumber: 'KSEF-001',
+        ksefReferenceNumber: 'REF-001',
+        invoiceNumber: 'FV/2026/001',
+        vendorName: 'Vendor A',
+        vendorNip: '9876543210',
+        buyerName: null,
+        buyerNip: null,
+        amountNet: 1200,
+        amountVat: 276,
+        amountGross: 1476,
+        currency: 'PLN',
+        issueDate: '2026-02-01T00:00:00Z',
+        acquisitionDate: null,
+        invoiceType: 'Vat',
+        firstSeenAt: '2026-02-01T12:00:00Z',
+        isPaid: false,
+        paidAt: null,
+        lines: [
+          {
+            lineNumber: 1,
+            name: 'Usługa',
+            unit: 'szt',
+            quantity: 1500,
+            unitPriceNet: 1234.5,
+            unitPriceGross: 0.123456,
+            amountNet: 1200,
+            amountVat: 276,
+            amountGross: 1476,
+            vatRate: '23',
+          },
+        ],
+      })
+      vi.mocked(getTransferDetails).mockResolvedValue({
+        recipientName: 'Vendor A',
+        recipientAccount: 'PL12 3456 7890 1234 5678 9012 3456',
+        recipientNip: '9876543210',
+        amount: 1476,
+        currency: 'PLN',
+        title: 'FV/2026/001',
+        transferText: 'text',
+        qrCodeBase64: null,
+        qrMessage: null,
+      })
+
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/invoices/:ksefInvoiceNumber',
+            element: (
+              <QueryClientProvider client={client}>
+                <CompanyProvider>
+                  <InvoiceDetailsPage />
+                </CompanyProvider>
+              </QueryClientProvider>
+            ),
+          },
+        ],
+        { initialEntries: [entry] },
+      )
+
+      await act(async () => {
+        root.render(<RouterProvider router={router} />)
+        await flushPromises()
+      })
+      await act(async () => {
+        await waitFor(() => container.querySelector('[data-testid="transfer-account"]') !== null)
+      })
+    }
+
+    it('groups money, NRB and quantities, and marks the VAT rate', async () => {
+      await renderDetails('/invoices/KSEF-001?tenantId=tenant-1')
+
+      expect(plain('invoice-detail-amount')).toBe('1 476,00 PLN')
+      expect(plain('invoice-detail-amount-net')).toBe('1 200,00 PLN')
+      expect(plain('invoice-detail-amount-vat')).toBe('276,00 PLN')
+      expect(plain('transfer-amount')).toBe('1 476,00 PLN')
+      expect(plain('transfer-account')).toBe('12 3456 7890 1234 5678 9012 3456')
+
+      const cells = Array.from(container.querySelectorAll('[data-testid="invoice-lines"] tbody td')).map((cell) =>
+        cell.textContent?.replace(/\s/g, ' '),
+      )
+      expect(cells.slice(3)).toEqual(['1 500', '1 234,50', '0,123456', '1 200,00 PLN', '276,00 PLN', '1 476,00 PLN', '23%'])
+    })
+
+    it('back link returns to the list search it came from', async () => {
+      await renderDetails({
+        pathname: '/invoices/KSEF-001',
+        search: '?tenantId=tenant-1',
+        state: { listSearch: '?tenantId=tenant-1&q=abc&page=2' },
+      })
+
+      expect(container.querySelector('[data-testid="invoice-details-back-link"]')?.getAttribute('href')).toBe(
+        '/invoices?tenantId=tenant-1&q=abc&page=2',
+      )
+    })
+
+    it('back link keeps the company on a deep link', async () => {
+      await renderDetails('/invoices/KSEF-001?tenantId=tenant-1')
+
+      expect(container.querySelector('[data-testid="invoice-details-back-link"]')?.getAttribute('href')).toBe(
+        '/invoices?tenantId=tenant-1',
+      )
+    })
+  })
+
   it('renders not found state for 404 errors', async () => {
     vi.mocked(listTenants).mockResolvedValue([
       {

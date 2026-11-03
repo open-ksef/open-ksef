@@ -24,6 +24,7 @@ describe('ErrorBanner', () => {
     })
 
     expect(container.textContent).toContain('Failure')
+    expect(container.querySelector('button')?.textContent).toBe('Spróbuj ponownie')
     ;(container.querySelector('button') as HTMLButtonElement).click()
     expect(onRetry).toHaveBeenCalledTimes(1)
   })

@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from 'react'
 export interface TableColumn<T> {
   key: keyof T
   label: string
+  className?: string
   render?: (row: T) => ReactNode
 }
 
@@ -27,7 +28,7 @@ export function Table<T extends object>({
         <thead>
           <tr>
             {columns.map((column) => (
-              <th key={String(column.key)}>{column.label}</th>
+              <th key={String(column.key)} scope="col" className={column.className}>{column.label}</th>
             ))}
           </tr>
         </thead>
@@ -38,7 +39,7 @@ export function Table<T extends object>({
             return (
               <tr key={String(rowId ?? rowIndex)} onClick={() => onRowClick?.(row)} {...rowProps}>
               {columns.map((column) => (
-                <td key={`${String(column.key)}-${rowIndex}`}>
+                <td key={`${String(column.key)}-${rowIndex}`} className={column.className}>
                   {column.render ? column.render(row) : String(row[column.key] ?? '')}
                 </td>
               ))}

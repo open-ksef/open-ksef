@@ -1,20 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactElement } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 
 import { getInvoiceByKSeFNumber, getTransferDetails, setInvoicePaid } from '@/api/endpoints/invoices'
 import { ApiError } from '@/api/errors'
 import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { useTenants } from '@/hooks/useTenants'
+import { formatDecimal, formatMoney, formatNrb } from '@/invoicing/format'
+import { vatRateLabel } from '@/invoicing/totals'
 
 export function InvoiceDetailsPage(): ReactElement {
   const { ksefInvoiceNumber = '' } = useParams()
   const [searchParams] = useSearchParams()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const [copySuccess, setCopySuccess] = useState(false)
 
   const tenantIdFromUrl = searchParams.get('tenantId') ?? ''
+  const listSearch = (location.state as { listSearch?: string } | null)?.listSearch
 
   const tenantsQuery = useTenants()
   const { tenantId: effectiveTenantId } = useCompany()
@@ -61,7 +65,7 @@ export function InvoiceDetailsPage(): ReactElement {
     <section>
       <Link
         data-testid="invoice-details-back-link"
-        to={tenantIdFromUrl ? `/invoices?tenantId=${encodeURIComponent(tenantIdFromUrl)}` : '/invoices'}
+        to={listSearch !== undefined ? `/invoices${listSearch}` : tenantIdFromUrl ? `/invoices?tenantId=${encodeURIComponent(tenantIdFromUrl)}` : '/invoices'}
         className="back-link"
       >
         ← Powrót do faktur
@@ -173,14 +177,14 @@ export function InvoiceDetailsPage(): ReactElement {
               <div className="invoice-detail-row">
                 <span className="invoice-detail-label">Kwota netto</span>
                 <span className="invoice-detail-value" data-testid="invoice-detail-amount-net">
-                  {invoice.amountNet.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency}
+                  {formatMoney(invoice.amountNet, invoice.currency)}
                 </span>
               </div>
 
               <div className="invoice-detail-row">
                 <span className="invoice-detail-label">VAT</span>
                 <span className="invoice-detail-value" data-testid="invoice-detail-amount-vat">
-                  {invoice.amountVat.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency}
+                  {formatMoney(invoice.amountVat, invoice.currency)}
                 </span>
               </div>
 
@@ -190,7 +194,7 @@ export function InvoiceDetailsPage(): ReactElement {
                   className="invoice-detail-value invoice-detail-value--amount"
                   data-testid="invoice-detail-amount"
                 >
-                  {invoice.amountGross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency}
+                  {formatMoney(invoice.amountGross, invoice.currency)}
                 </span>
               </div>
 
@@ -234,13 +238,13 @@ export function InvoiceDetailsPage(): ReactElement {
                           <td>{line.lineNumber}</td>
                           <td>{line.name ?? '—'}</td>
                           <td>{line.unit ?? '—'}</td>
-                          <td>{line.quantity != null ? line.quantity.toLocaleString('pl-PL', { maximumFractionDigits: 6 }) : '—'}</td>
-                          <td>{line.unitPriceNet != null ? line.unitPriceNet.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 6 }) : '—'}</td>
-                          <td>{line.unitPriceGross != null ? line.unitPriceGross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 6 }) : '—'}</td>
-                          <td>{line.amountNet != null ? line.amountNet.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
-                          <td>{line.amountVat != null ? line.amountVat.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
-                          <td>{line.amountGross != null ? line.amountGross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
-                          <td>{line.vatRate ?? '—'}</td>
+                          <td>{line.quantity != null ? formatDecimal(line.quantity, 0) : '—'}</td>
+                          <td>{line.unitPriceNet != null ? formatDecimal(line.unitPriceNet, 2) : '—'}</td>
+                          <td>{line.unitPriceGross != null ? formatDecimal(line.unitPriceGross, 2) : '—'}</td>
+                          <td>{line.amountNet != null ? formatMoney(line.amountNet, invoice.currency) : '—'}</td>
+                          <td>{line.amountVat != null ? formatMoney(line.amountVat, invoice.currency) : '—'}</td>
+                          <td>{line.amountGross != null ? formatMoney(line.amountGross, invoice.currency) : '—'}</td>
+                          <td>{line.vatRate ? vatRateLabel(line.vatRate) : '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -288,13 +292,13 @@ export function InvoiceDetailsPage(): ReactElement {
                   <div className="invoice-detail-row">
                     <span className="invoice-detail-label">Nr rachunku</span>
                     <span className="invoice-detail-value" data-testid="transfer-account" style={{ fontFamily: 'ui-monospace, monospace' }}>
-                      {transfer.recipientAccount ?? 'brak'}
+                      {transfer.recipientAccount ? formatNrb(transfer.recipientAccount) : 'brak'}
                     </span>
                   </div>
                   <div className="invoice-detail-row">
                     <span className="invoice-detail-label">Kwota</span>
                     <span className="invoice-detail-value invoice-detail-value--amount" data-testid="transfer-amount">
-                      {transfer.amount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {transfer.currency}
+                      {formatMoney(transfer.amount, transfer.currency)}
                     </span>
                   </div>
                   <div className="invoice-detail-row">
