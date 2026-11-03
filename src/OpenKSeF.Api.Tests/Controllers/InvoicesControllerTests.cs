@@ -117,6 +117,25 @@ public class InvoicesControllerTests : IDisposable
         Assert.Equal("I-2", paged.Items[0].KSeFInvoiceNumber);
     }
 
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("  aBc  ")]
+    [InlineData("654321")]
+    public async Task List_WithFilterByVendor_IgnoresCaseAndSurroundingSpaces(string term)
+    {
+        var match = MakeInvoice("MATCH", new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc), vendor: "ABC Sp. z o.o.");
+        match.VendorNip = "9876543210";
+        var other = MakeInvoice("OTHER", new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        other.VendorNip = "1111111111";
+        _db.InvoiceHeaders.AddRange(match, other);
+        await _db.SaveChangesAsync();
+
+        var result = await CreateController().List(_tenantId, filterByVendor: term) as OkObjectResult;
+
+        var paged = Assert.IsType<PagedResult<InvoiceResponse>>(result!.Value);
+        Assert.Equal("MATCH", Assert.Single(paged.Items).KSeFInvoiceNumber);
+    }
+
     [Fact]
     public async Task GetByKSeFNumber_ExistingInvoice_ReturnsOk()
     {
