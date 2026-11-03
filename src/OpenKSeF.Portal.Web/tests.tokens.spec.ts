@@ -71,6 +71,11 @@ describe('design tokens', () => {
     expect(readFileSync(resolve(src, 'components/invoicing/invoicing.css'), 'utf8')).not.toMatch(/--ui-[a-z0-9-]+:/)
   })
 
+  it('underlines links in the list status line, which keep the color of the text around them', () => {
+    const css = readFileSync(resolve(src, 'components/ui.css'), 'utf8')
+    expect(css).toMatch(/\.received-sync--stale a \{[^}]*text-decoration: underline;/)
+  })
+
   it('loads fonts locally', () => {
     const index = readFileSync(resolve(src, 'index.css'), 'utf8')
     expect(index).not.toMatch(/https?:/)

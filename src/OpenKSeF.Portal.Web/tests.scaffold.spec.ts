@@ -17,6 +17,12 @@ function readJson<T>(path: string): T {
   return parsed.config as T
 }
 
+describe('Bundled font licences', () => {
+  it.each(['LICENSE-Inter.txt', 'LICENSE-JetBrainsMono.txt'])('ships %s next to the built fonts', (file) => {
+    expect(readFileSync(resolve(projectRoot, 'public/assets', file), 'utf8')).toContain('SIL Open Font License')
+  })
+})
+
 describe('Third-party notices', () => {
   const notices = readFileSync(resolve(projectRoot, 'public/THIRD-PARTY-NOTICES.txt'), 'utf8').replace(/\r\n/g, '\n')
 

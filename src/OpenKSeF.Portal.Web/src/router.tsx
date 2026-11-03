@@ -8,7 +8,6 @@ import { AdminSetupPage } from '@/pages/AdminSetup'
 import { Callback } from '@/pages/Callback'
 import { CompanyHubPage } from '@/pages/CompanyHub'
 import { CredentialListPage } from '@/pages/CredentialList'
-import { DashboardPage } from '@/pages/Dashboard'
 import { DeviceListPage } from '@/pages/DeviceList'
 import { InvoiceDetailsPage } from '@/pages/InvoiceDetails'
 import { InvoiceDraftPage } from '@/pages/InvoiceDraft'
@@ -22,6 +21,7 @@ import { SellerProfilePage } from '@/pages/SellerProfile'
 import { SettingsPage } from '@/pages/Settings'
 import { OnboardingPage } from '@/pages/Onboarding'
 import { SilentCallbackPage } from '@/pages/SilentCallback'
+import { StartPage } from '@/pages/Start'
 import { TenantListPage } from '@/pages/TenantList'
 
 export const appRoutes: RouteObject[] = [
@@ -35,7 +35,7 @@ export const appRoutes: RouteObject[] = [
       </ProtectedRoute>
     ),
     children: [
-      { index: true, element: <DashboardPage /> },
+      { index: true, element: <StartPage /> },
       { path: 'invoices', element: <InvoiceListPage /> },
       { path: 'invoices/:ksefInvoiceNumber', element: <InvoiceDetailsPage /> },
       { path: 'issued', element: <IssuedInvoiceListPage /> },

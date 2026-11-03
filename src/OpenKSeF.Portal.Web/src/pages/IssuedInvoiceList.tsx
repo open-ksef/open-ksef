@@ -7,9 +7,12 @@ import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import type { IssuedInvoiceListItemResponse, IssuedInvoiceStatus } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
+import { EmptyState } from '@/components/EmptyState'
+import { Icon } from '@/components/Icon'
 import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
 import '@/components/invoicing/invoicing.css'
 import { Table, type TableColumn } from '@/components/Table'
+import { useCredentials } from '@/hooks/useCredentials'
 import { useTenants } from '@/hooks/useTenants'
 import { formatDate, formatMoney } from '@/invoicing/format'
 
@@ -66,9 +69,13 @@ export function IssuedInvoiceListPage(): ReactElement {
     update({ q: String(new FormData(event.currentTarget).get('q') ?? '').trim(), page: 1 })
   }
 
+  const credentialsQuery = useCredentials()
   const tenantQuery = `tenantId=${encodeURIComponent(tenantId)}`
   const rows = listQuery.data?.items ?? []
   const totalPages = Math.max(listQuery.data?.totalPages ?? 1, 1)
+  const unfilteredEmpty = listQuery.isSuccess && rows.length === 0 && !status && !month && !q && page === 1
+  const hasCredential = credentialsQuery.data?.find((row) => row.tenantId === tenantId)?.hasCredential
+  const stateCard = unfilteredEmpty && credentialsQuery.isSuccess
 
   const columns: TableColumn<IssuedInvoiceListItemResponse>[] = [
     {
@@ -140,60 +147,86 @@ export function IssuedInvoiceListPage(): ReactElement {
         </div>
       </header>
 
-      <div className="inv-tabs" role="group" aria-label="Filtr statusu">
-        {tabs.map((tab) => (
-          <button
-            key={tab.label}
-            type="button"
-            aria-pressed={status === tab.status}
-            onClick={() => update({ status: tab.status, page: 1 })}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="inv-header">
-        <form className="inv-input-group" role="search" onSubmit={onSearch}>
-          <label htmlFor="issued-q" className="visually-hidden">
-            Szukaj po numerze, nabywcy lub NIP
-          </label>
-          <input id="issued-q" name="q" type="search" key={q} defaultValue={q} placeholder="Numer, nabywca, NIP" />
-          <button type="submit" className="ui-button ui-button--secondary ui-button--md">
-            Szukaj
-          </button>
-        </form>
-        <div className="ui-form-group">
-          <label htmlFor="issued-month" className="visually-hidden">
-            Miesiąc wystawienia
-          </label>
-          <input id="issued-month" type="month" value={month} onChange={(event) => update({ month: event.target.value, page: 1 })} />
-        </div>
-      </div>
-
-      <AsyncStateView
-        isLoading={tenantsQuery.isLoading || listQuery.isLoading}
-        error={tenantsQuery.error ?? listQuery.error}
-        isEmpty={rows.length === 0}
-        emptyTitle={status || month || q ? 'Brak faktur spełniających kryteria' : 'Nie wystawiono jeszcze faktur'}
-        emptyMessage="Kliknij „Nowa faktura”, aby wystawić pierwszą."
-        onRetry={() => void listQuery.refetch()}
-      >
-        <Table testId="issued-invoice-table" columns={columns} data={rows} />
-        <nav className="ui-pagination" aria-label="Paginacja wystawionych faktur">
-          <span className="ui-pagination-info">
-            Strona {page} z {totalPages} · {listQuery.data?.totalCount ?? 0} łącznie
-          </span>
-          <div className="ui-pagination-controls">
-            <button type="button" disabled={page <= 1} onClick={() => update({ page: page - 1 })}>
-              ← Poprzednia
-            </button>
-            <button type="button" disabled={page >= totalPages} onClick={() => update({ page: page + 1 })}>
-              Następna →
-            </button>
+      {stateCard ? null : (
+        <>
+          <div className="inv-tabs" role="group" aria-label="Filtr statusu">
+            {tabs.map((tab) => (
+              <button
+                key={tab.label}
+                type="button"
+                aria-pressed={status === tab.status}
+                onClick={() => update({ status: tab.status, page: 1 })}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-        </nav>
-      </AsyncStateView>
+
+          <div className="inv-header">
+            <form className="inv-input-group" role="search" onSubmit={onSearch}>
+              <label htmlFor="issued-q" className="visually-hidden">
+                Szukaj po numerze, nabywcy lub NIP
+              </label>
+              <input id="issued-q" name="q" type="search" key={q} defaultValue={q} placeholder="Numer, nabywca, NIP" />
+              <button type="submit" className="ui-button ui-button--secondary ui-button--md">
+                Szukaj
+              </button>
+            </form>
+            <div className="ui-form-group">
+              <label htmlFor="issued-month" className="visually-hidden">
+                Miesiąc wystawienia
+              </label>
+              <input id="issued-month" type="month" value={month} onChange={(event) => update({ month: event.target.value, page: 1 })} />
+            </div>
+          </div>
+        </>
+      )}
+
+      {stateCard ? (
+        <EmptyState
+          icon="send"
+          title="Nie masz jeszcze wystawionych faktur"
+          message={
+            hasCredential === false
+              ? 'Możesz przygotować szkic. Do wysłania do KSeF potrzebny jest token z uprawnieniem zapisu.'
+              : 'Wystawiona faktura pojawi się tutaj razem ze statusem w KSeF.'
+          }
+          actions={
+            <div className="ui-empty-state__actions">
+              <Link to={`/issued/new?${tenantQuery}`} className="ui-button ui-button--primary ui-button--md">
+                <Icon name="plus" /> Nowa faktura
+              </Link>
+            </div>
+          }
+        />
+      ) : (
+        <AsyncStateView
+          isLoading={tenantsQuery.isLoading || listQuery.isLoading || (unfilteredEmpty && credentialsQuery.isLoading)}
+          error={tenantsQuery.error ?? listQuery.error ?? (unfilteredEmpty ? credentialsQuery.error : null)}
+          isEmpty={rows.length === 0}
+          emptyTitle="Brak faktur spełniających kryteria"
+          emptyMessage="Zmień filtry lub kliknij „Nowa faktura”."
+          onRetry={() => {
+            void listQuery.refetch()
+            void credentialsQuery.refetch()
+          }}
+        >
+          <Table testId="issued-invoice-table" columns={columns} data={rows} />
+          <nav className="ui-pagination" aria-label="Paginacja wystawionych faktur">
+            <span className="ui-pagination-info">
+              Strona {page} z {totalPages} · {listQuery.data?.totalCount ?? 0} łącznie
+            </span>
+            <div className="ui-pagination-controls">
+              <button type="button" disabled={page <= 1} onClick={() => update({ page: page - 1 })}>
+                ← Poprzednia
+              </button>
+              <button type="button" disabled={page >= totalPages} onClick={() => update({ page: page + 1 })}>
+                Następna →
+              </button>
+            </div>
+          </nav>
+        </AsyncStateView>
+      )}
     </div>
   )
 }

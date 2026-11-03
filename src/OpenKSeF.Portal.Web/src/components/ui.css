@@ -824,147 +824,6 @@ label {
   background: var(--ui-surface-2);
 }
 
-/* ─── Dashboard ──────────────────────────────────────────────────────────── */
-.dashboard-grid {
-  display: grid;
-  gap: 20px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.dashboard-card {
-  background: var(--ui-surface);
-  border-radius: var(--ui-radius-lg);
-  padding: 20px;
-  box-shadow: var(--ui-shadow-card);
-  transition:
-    transform var(--ui-transition-slow),
-    box-shadow var(--ui-transition-slow);
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.dashboard-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--ui-shadow-card-hover);
-}
-
-.dashboard-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.dashboard-tenant-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--ui-radius-md);
-  background: var(--ui-primary-subtle);
-  color: var(--ui-link);
-  font-size: 15px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  text-transform: uppercase;
-}
-
-.dashboard-tenant-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.dashboard-tenant-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--ui-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dashboard-tenant-nip {
-  font-size: 12px;
-  color: var(--ui-muted);
-  margin-top: 2px;
-  font-family: var(--ui-font-mono);
-}
-
-.dashboard-kpi-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  background: var(--ui-border);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-md);
-  overflow: hidden;
-}
-
-.dashboard-kpi {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 10px 8px;
-  background: var(--ui-surface-2);
-  text-align: center;
-}
-
-.dashboard-kpi-value {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--ui-text);
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-}
-
-.dashboard-kpi-label {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ui-muted);
-  margin-top: 3px;
-}
-
-.dashboard-sync-info {
-  font-size: 12px;
-  color: var(--ui-muted);
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.dashboard-sync-info span {
-  color: var(--ui-text);
-  font-weight: 500;
-}
-
-.dashboard-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.dashboard-link {
-  display: inline-flex;
-  align-items: center;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ui-primary);
-  background: var(--ui-primary-subtle);
-  padding: 4px 10px;
-  border-radius: 999px;
-  text-decoration: none;
-  transition: background var(--ui-transition), color var(--ui-transition);
-}
-
-.dashboard-link:hover {
-  background: var(--ui-surface-2);
-  color: var(--ui-primary-hover);
-}
-
 /* ─── Status Badges ──────────────────────────────────────────────────────── */
 .ui-status-badge {
   display: inline-flex;
@@ -1033,7 +892,7 @@ label {
   opacity: 0.6;
 }
 
-.ui-empty-state h3 {
+.ui-empty-state h2 {
   font-size: 16px;
   font-weight: 700;
   color: var(--ui-text);
@@ -1043,6 +902,29 @@ label {
 .ui-empty-state p {
   font-size: 14px;
   color: var(--ui-muted);
+}
+
+.ui-empty-state--setup {
+  max-width: 760px;
+  margin: 24px auto;
+  padding: 20px;
+  text-align: left;
+  border-style: solid;
+}
+
+.ui-empty-state--setup h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 22px;
+  line-height: 30px;
+}
+
+.ui-empty-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 /* ─── Error Banner ───────────────────────────────────────────────────────── */
@@ -1318,6 +1200,7 @@ label {
 
 .received-sync--stale a {
   color: inherit;
+  text-decoration: underline;
 }
 
 .received-tools {
@@ -1858,19 +1741,251 @@ dd {
   color: var(--ui-primary);
 }
 
-/* ─── Responsive ─────────────────────────────────────────────────────────── */
-@media (max-width: 1279px) {
-  .dashboard-grid {
+/* ─── Start ───────────────────────────────────────────────────────────────── */
+.start-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  grid-template-areas:
+    'received attention'
+    'received issued'
+    'received companies';
+  align-items: start;
+}
+
+.start-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 16px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+}
+
+.start > .start-card {
+  margin-bottom: 16px;
+}
+
+.start-card h2 {
+  flex: none;
+  margin-bottom: 8px;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.start-card--attention { grid-area: attention; }
+.start-card--received { grid-area: received; }
+.start-card--issued { grid-area: issued; }
+.start-card--companies { grid-area: companies; }
+
+.start-list {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.start-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.start-list li:last-child {
+  border-bottom: 0;
+}
+
+.start-row__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.start-row__main > a,
+.start-row__main > b {
+  display: block;
+  overflow: hidden;
+  font-weight: 600;
+  color: inherit;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-decoration: none;
+}
+
+.start-row__main > a:hover {
+  text-decoration: underline;
+}
+
+.start-row__sub {
+  display: block;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ui-muted);
+}
+
+.start-row__sub.received-sync--stale {
+  color: var(--ui-error);
+}
+
+.start-row__end {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.start-row__current {
+  flex: none;
+  font-size: 13px;
+  color: var(--ui-muted);
+}
+
+.start-attention-icon {
+  flex: none;
+  display: flex;
+}
+
+.start-attention-icon--error { color: var(--ui-error); }
+.start-attention-icon--warning { color: var(--ui-warning); }
+
+.start-more {
+  display: block;
+  flex: none;
+  margin-top: 8px;
+  font-weight: 600;
+  color: var(--ui-link);
+}
+
+.start-clear {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--ui-muted);
+}
+
+.ui-empty-state .start-steps {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.start-steps li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--ui-border);
+}
+
+.start-steps__n {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  font-weight: 600;
+  color: var(--ui-link);
+  background: var(--ui-primary-subtle);
+  border-radius: 50%;
+}
+
+.start-steps__text {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.start-steps__text > b {
+  display: block;
+  font-weight: 600;
+}
+
+.start-steps__text > span {
+  font-size: 13px;
+  color: var(--ui-muted);
+}
+
+.ui-empty-state p.start-note {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ui-info);
+  background: var(--ui-info-bg);
+  border-radius: var(--ui-radius-md);
+}
+
+@media (min-width: 1800px) {
+  .start--full {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 40px);
+    min-height: 640px;
+  }
+
+  .start--full > .page-header {
+    flex: none;
+  }
+
+  .start--full > .start-grid {
+    flex: 1;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    grid-template-rows: fit-content(40vh) minmax(0, 1fr);
+    grid-template-areas:
+      'attention companies'
+      'received issued';
+    align-items: stretch;
+  }
+
+  .start--full > .start-grid--solo {
+    grid-template-areas:
+      'attention attention'
+      'received issued';
+  }
+
+  .start--full .start-list {
+    overflow-y: auto;
+  }
+
+  .start--full .start-card--attention .start-list {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+  }
+
+  .start--full .start-card--attention .start-list li:last-child {
+    border-bottom: 1px solid var(--ui-border);
   }
 }
 
-@media (max-width: 1023px) {
-  .dashboard-grid {
-    grid-template-columns: 1fr;
+@media (max-width: 1100px) {
+  .start-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas:
+      'attention'
+      'received'
+      'issued'
+      'companies';
   }
 }
 
+/* ─── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 767px) {
   .ui-table {
     min-width: 680px;
@@ -1936,7 +2051,7 @@ dd {
 }
 
 .auth-logo {
-  font-size: 40px;
+  color: var(--ui-accent);
   line-height: 1;
   margin-bottom: 4px;
 }

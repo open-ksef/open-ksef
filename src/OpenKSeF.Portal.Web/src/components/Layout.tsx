@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom'
 
 import { useAuth } from '@/auth/useAuth'
 import { CompanyCard } from '@/company/CompanyCard'
+import { BrandMark } from './BrandMark'
 import { Icon, type IconName } from './Icon'
 
 const navItems: { to: string; label: string; icon: IconName; alsoOn?: string[] }[] = [
@@ -27,11 +28,7 @@ export function Layout(): ReactElement {
     <div className="app-shell">
       <aside className="app-sidebar">
         <Link to="/" className="sidebar-brand">
-          <svg width={24} height={24} viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 1.5h11L20 6.5v16H4z" fill="currentColor" />
-            <path d="M15 1.5v5h5" fill="none" stroke="var(--ui-surface)" strokeWidth={1.6} />
-            <circle cx={12} cy={14} r={4} fill="none" stroke="var(--ui-surface)" strokeWidth={2.2} />
-          </svg>
+          <BrandMark size={24} />
           <span>OpenKSeF</span>
         </Link>
 
