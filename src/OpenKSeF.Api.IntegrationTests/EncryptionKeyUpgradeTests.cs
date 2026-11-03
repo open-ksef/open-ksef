@@ -656,6 +656,19 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
             Assert.DoesNotContain(MalformedKey, output.ToString());
         }
 
+        foreach (var (configuration, expected, unexpected) in new[]
+                 {
+                     (Config(MalformedKey, NewKey), "Restore the key that encrypted the credentials", "openssl rand"),
+                     (Config(OldKey, MalformedKey), "openssl rand", "Restore the key"),
+                 })
+        {
+            var output = new StringWriter();
+            await using var db = NewContext();
+            Assert.Equal(1, await EncryptionKeyMigration.RunRotateCommandAsync(db, configuration, output));
+            Assert.Contains(expected, output.ToString());
+            Assert.DoesNotContain(unexpected, output.ToString());
+        }
+
         Assert.Equal(before, await CiphertextAsync());
     }
 

@@ -118,7 +118,7 @@ public static class EncryptionKeyMigration
         byte[] newKey;
         try
         {
-            currentKey = EncryptionServiceExtensions.ReadConfiguredKey(configuration);
+            currentKey = EncryptionServiceExtensions.ReadConfiguredKey(configuration, EncryptionServiceExtensions.RestoreKeyHint);
             newKey = EncryptionServiceExtensions.DecodeKey(newKeyBase64);
         }
         catch (InvalidOperationException ex)
