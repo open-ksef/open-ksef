@@ -10,11 +10,11 @@ import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
+import { PaidStatus } from '@/components/PaidStatus'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
-import { formatDate, formatDecimal, formatMoney, formatNrb } from '@/invoicing/format'
+import { formatDate, formatDecimal, formatMoney, formatNrb, formatWarsawDate } from '@/invoicing/format'
 import { vatRateLabel } from '@/invoicing/totals'
-import { PaidStatus } from '@/pages/InvoiceList'
 
 function amountLabel(invoice: InvoiceResponse): string {
   if (invoice.isPaid) return 'Kwota faktury'
@@ -42,11 +42,14 @@ function PaymentCard({
 }): ReactElement {
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
-  function handleCopy(text: string): void {
-    void navigator.clipboard.writeText(text).then(() => {
+  async function handleCopy(text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text)
       setCopiedId(invoice.id)
       setTimeout(() => setCopiedId(null), 2000)
-    })
+    } catch {
+      toast.error('Nie udało się skopiować danych przelewu.')
+    }
   }
 
   const hasQr = Boolean(transfer?.qrCodeBase64)
@@ -68,7 +71,7 @@ function PaymentCard({
       <div className={hasQr ? 'pay-grid' : 'pay-grid pay-grid--one'}>
         {transfer.qrCodeBase64 ? (
           <div className="pay-qr" data-testid="qr-code-section">
-            <img src={transfer.qrCodeBase64} alt="Kod QR do przelewu" width={200} height={200} data-testid="qr-code-image" />
+            <img key={invoice.id} src={transfer.qrCodeBase64} alt="Kod QR do przelewu" width={200} height={200} data-testid="qr-code-image" />
           </div>
         ) : null}
         <div>
@@ -107,7 +110,7 @@ function PaymentCard({
   ) : null
 
   const copyButton = transfer ? (
-    <Button variant="outline" data-testid="copy-transfer-btn" onClick={() => handleCopy(transfer.transferText)}>
+    <Button variant="outline" data-testid="copy-transfer-btn" onClick={() => void handleCopy(transfer.transferText)}>
       <Icon name="copy" />
       {copiedId === invoice.id ? 'Skopiowano!' : 'Kopiuj dane przelewu'}
     </Button>
@@ -140,7 +143,7 @@ function PaymentCard({
         <>
           {amount}
           <p className="pay-paid-note">
-            {invoice.paidAt ? <span data-testid="invoice-detail-paid-date">{formatDate(invoice.paidAt)} </span> : null}
+            {invoice.paidAt ? <span data-testid="invoice-detail-paid-date">{formatWarsawDate(invoice.paidAt)} </span> : null}
             <span>Oznaczona w OpenKSeF. To nie jest potwierdzenie przelewu.</span>
           </p>
           <div className="pay-actions">{markButton}</div>
@@ -221,7 +224,7 @@ export function InvoiceDetailsPage(): ReactElement {
             items: page.items.map((row) => (row.id === data.id ? { ...row, isPaid: data.isPaid, paidAt: data.paidAt } : row)),
           },
       )
-      void queryClient.invalidateQueries({ queryKey: ['invoice-details', vars.tenantId, data.ksefInvoiceNumber] })
+      queryClient.setQueryData(['invoice-details', vars.tenantId, data.ksefInvoiceNumber], data)
       void queryClient.invalidateQueries({ queryKey: ['invoices'] })
     },
     onError: () => {
@@ -287,7 +290,7 @@ export function InvoiceDetailsPage(): ReactElement {
 
       <AsyncStateView
         isLoading={isLoading}
-        error={isNotFound ? null : invoiceQuery.error}
+        error={isNotFound ? null : invoiceQuery.error && new Error('Nie udało się pobrać faktury.')}
         isEmpty={shouldShowEmpty}
         loadingLines={5}
         emptyTitle="Nie znaleziono faktury"
@@ -386,7 +389,7 @@ export function InvoiceDetailsPage(): ReactElement {
                   {invoice.acquisitionDate ? (
                     <>
                       <dt>Data przyjęcia w KSeF</dt>
-                      <dd data-testid="invoice-detail-acquisition-date">{formatDate(invoice.acquisitionDate)}</dd>
+                      <dd data-testid="invoice-detail-acquisition-date">{formatWarsawDate(invoice.acquisitionDate)}</dd>
                     </>
                   ) : null}
                   <dt>Netto</dt>

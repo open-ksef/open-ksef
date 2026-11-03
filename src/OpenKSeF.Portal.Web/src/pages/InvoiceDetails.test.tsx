@@ -472,13 +472,12 @@ describe('InvoiceDetailsPage', () => {
   describe('mark paid', () => {
     const paid = invoiceOf({ isPaid: true, paidAt: '2026-03-04T10:00:00Z' })
 
-    it('sends !isPaid, flips the status after the refetch, and can be undone', async () => {
+    it('sends !isPaid, flips the status from the response, and can be undone', async () => {
       vi.mocked(getTransferDetails).mockResolvedValue(transferOf())
       vi.mocked(getInvoiceByKSeFNumber).mockResolvedValueOnce(invoiceOf())
       await render('/invoices/KSEF-001?tenantId=tenant-1')
       expect(testId('invoice-detail-paid-status')?.textContent).toBe('Nieopłacona')
 
-      vi.mocked(getInvoiceByKSeFNumber).mockResolvedValueOnce(paid)
       vi.mocked(setInvoicePaid).mockResolvedValueOnce(paid)
       await click(testId('toggle-paid-btn'))
 
@@ -486,7 +485,6 @@ describe('InvoiceDetailsPage', () => {
       expect(testId('invoice-detail-paid-status')?.textContent).toBe('Opłacona')
       expect(testId('toggle-paid-btn')?.textContent).toBe('Cofnij oznaczenie')
 
-      vi.mocked(getInvoiceByKSeFNumber).mockResolvedValueOnce(invoiceOf())
       vi.mocked(setInvoicePaid).mockResolvedValueOnce(invoiceOf())
       await click(testId('toggle-paid-btn'))
 
@@ -763,10 +761,114 @@ describe('InvoiceDetailsPage', () => {
       const items = client.getQueryData<PagedResult<InvoiceResponse>>(listKey)!.items
       expect(items[0]).toMatchObject({ id: 'inv-a', isPaid: true, paidAt: paidA.paidAt })
       expect(items[1]).toMatchObject({ id: 'inv-b', isPaid: false, paidAt: null })
-      expect(client.getQueryState(['invoice-details', 'tenant-1', 'KSEF-A'])?.isInvalidated).toBe(true)
-      expect(client.getQueryState(['invoice-details', 'tenant-1', 'KSEF-B'])?.isInvalidated).toBe(false)
+      expect(client.getQueryData<InvoiceResponse>(['invoice-details', 'tenant-1', 'KSEF-A'])?.isPaid).toBe(true)
+      expect(client.getQueryData<InvoiceResponse>(['invoice-details', 'tenant-1', 'KSEF-B'])?.isPaid).toBe(false)
       expect(fetchesOfB()).toBe(before)
       expect(testId('invoice-detail-paid-status')?.textContent).toBe('Nieopłacona')
+    })
+
+    it('shows a marked invoice as paid when walking back, before any refetch lands', async () => {
+      const save = deferred<InvoiceResponse>()
+      vi.mocked(setInvoicePaid).mockReturnValue(save.promise)
+      await render(entry('KSEF-A'))
+      await click(testId('toggle-paid-btn'))
+      await click(testId('invoice-next'))
+
+      vi.mocked(getInvoiceByKSeFNumber).mockImplementation((_tenant, number) =>
+        number === 'KSEF-A' ? new Promise<InvoiceResponse>(() => {}) : Promise.resolve(invoiceB),
+      )
+      await act(async () => save.resolve({ ...invoiceA, isPaid: true, paidAt: '2026-03-04T10:00:00Z' }))
+      await settle()
+      await click(testId('invoice-prev'))
+
+      expect(testId('invoice-detail-title')?.textContent).toBe('FV/A')
+      expect(testId('invoice-detail-paid-status')?.textContent).toBe('Opłacona')
+      expect(testId('pay-title')?.textContent).toBe('Opłacona')
+    })
+
+    it('flips the status from the saved response, with a slow GET pending', async () => {
+      vi.mocked(setInvoicePaid).mockResolvedValue({ ...invoiceA, isPaid: true, paidAt: '2026-03-04T10:00:00Z' })
+      await render(entry('KSEF-A'))
+      vi.mocked(getInvoiceByKSeFNumber).mockImplementation(() => new Promise<InvoiceResponse>(() => {}))
+
+      await click(testId('toggle-paid-btn'))
+
+      expect(testId('invoice-detail-paid-status')?.textContent).toBe('Opłacona')
+      expect(testId('toggle-paid-btn')?.textContent).toBe('Cofnij oznaczenie')
+    })
+
+    it('replaces the QR element when walking to an invoice already cached', async () => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      client.setQueryData(['invoice-details', 'tenant-1', 'KSEF-B'], invoiceB)
+      client.setQueryData(['transfer-details', 'tenant-1', 'inv-b'], transferOf({ qrCodeBase64: OTHER_QR_IMAGE, title: 'FV/B' }))
+      await render(entry('KSEF-A'), client)
+      const first = testId('qr-code-image')
+
+      await click(testId('invoice-next'))
+
+      expect(testId('qr-code-image')?.getAttribute('src')).toBe(OTHER_QR_IMAGE)
+      expect(testId('qr-code-image')).not.toBe(first)
+    })
+
+    it('applies both when A and B are marked while both responses are pending', async () => {
+      const saveA = deferred<InvoiceResponse>()
+      const saveB = deferred<InvoiceResponse>()
+      vi.mocked(setInvoicePaid).mockImplementation((_tenant, id) => (id === 'inv-a' ? saveA.promise : saveB.promise))
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const listKey = ['invoices', 'tenant-1', '', '', '', 1]
+      client.setQueryData<PagedResult<InvoiceResponse>>(listKey, { items: [invoiceA, invoiceB], page: 1, pageSize: 25, totalCount: 2, totalPages: 1 })
+      await render(entry('KSEF-A'), client)
+      await click(testId('toggle-paid-btn'))
+      await click(testId('invoice-next'))
+      await click(testId('toggle-paid-btn'))
+
+      await act(async () => saveA.resolve({ ...invoiceA, isPaid: true, paidAt: '2026-03-04T10:00:00Z' }))
+      await settle()
+      await act(async () => saveB.resolve({ ...invoiceB, isPaid: true, paidAt: '2026-03-04T10:00:01Z' }))
+      await settle()
+
+      const items = client.getQueryData<PagedResult<InvoiceResponse>>(listKey)!.items
+      expect(items.map((row) => row.isPaid)).toEqual([true, true])
+      expect(toast.error).not.toHaveBeenCalled()
+    })
+
+    it('shows paidAt and acquisitionDate as the Warsaw date', async () => {
+      mockOne(invoiceOf({ isPaid: true, paidAt: '2026-11-30T23:30:00Z', acquisitionDate: '2026-06-30T22:30:00Z', issueDate: '2026-11-30T00:00:00Z' }))
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      expect(testId('invoice-detail-paid-date')?.textContent?.trim()).toBe('01.12.2026')
+      expect(testId('invoice-detail-acquisition-date')?.textContent).toBe('01.07.2026')
+      expect(testId('invoice-detail-issue-date')?.textContent).toBe('30.11.2026')
+    })
+
+    it('tells the user when the clipboard write fails', async () => {
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) }, configurable: true })
+      await render(entry('KSEF-A'))
+
+      await click(testId('copy-transfer-btn'))
+
+      expect(toast.error).toHaveBeenCalledExactlyOnceWith('Nie udało się skopiować danych przelewu.')
+      expect(testId('copy-transfer-btn')?.textContent).toBe('Kopiuj dane przelewu')
+    })
+
+    it('keeps the saved status with no banner when the GET would fail after a mark', async () => {
+      vi.mocked(setInvoicePaid).mockResolvedValue({ ...invoiceA, isPaid: true, paidAt: '2026-03-04T10:00:00Z' })
+      await render(entry('KSEF-A'))
+      vi.mocked(getInvoiceByKSeFNumber).mockRejectedValue(new ApiError('Server Error', 500))
+
+      await click(testId('toggle-paid-btn'))
+
+      expect(testId('invoice-detail-paid-status')?.textContent).toBe('Opłacona')
+      expect(container.querySelector('[role="alert"]')).toBeNull()
+    })
+
+    it('shows the invoice load failure in Polish, not the server text', async () => {
+      vi.mocked(getInvoiceByKSeFNumber).mockRejectedValue(new ApiError('Server Error', 500))
+
+      await render(entry('KSEF-A'))
+
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Nie udało się pobrać faktury.')
+      expect(container.textContent).not.toContain('Server Error')
     })
 
     it('toasts a late failure after walking on', async () => {

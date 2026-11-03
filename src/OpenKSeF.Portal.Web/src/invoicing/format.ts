@@ -38,6 +38,17 @@ const dateTimeFormat = new Intl.DateTimeFormat('pl-PL', {
   minute: '2-digit',
 })
 
+const warsawDateFormat = new Intl.DateTimeFormat('pl-PL', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  timeZone: 'Europe/Warsaw',
+})
+
+export function formatWarsawDate(iso: string | null | undefined): string {
+  return iso ? warsawDateFormat.format(new Date(iso)) : '—'
+}
+
 export function formatDateTime(iso: string | null | undefined): string {
   return iso ? dateTimeFormat.format(new Date(iso)) : '—'
 }
