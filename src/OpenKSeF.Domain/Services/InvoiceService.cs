@@ -62,6 +62,7 @@ public class InvoiceService : IInvoiceService
                     AcquisitionDate = invoice.AcquisitionDate,
                     InvoiceType = invoice.InvoiceType,
                     VendorBankAccount = invoice.VendorBankAccount,
+                    DueDate = invoice.DueDate,
                     FirstSeenAt = now,
                     LastUpdatedAt = now
                 };
@@ -95,6 +96,8 @@ public class InvoiceService : IInvoiceService
                 existing.InvoiceType = invoice.InvoiceType;
                 if (invoice.VendorBankAccount is not null)
                     existing.VendorBankAccount = invoice.VendorBankAccount;
+                if (invoice.DueDate is not null)
+                    existing.DueDate = invoice.DueDate;
                 existing.LastUpdatedAt = now;
 
                 if (invoice.Lines is not null)

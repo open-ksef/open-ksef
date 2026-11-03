@@ -26,33 +26,24 @@ public sealed class InvoiceIssuingMigrationTests : IAsyncLifetime
     {
         var tenant = new Tenant { Id = Guid.NewGuid(), UserId = "user-1", Nip = "1234563218", CreatedAt = Now, UpdatedAt = Now };
         db.Tenants.Add(tenant);
-        db.InvoiceHeaders.Add(new InvoiceHeader
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenant.Id,
-            KSeFInvoiceNumber = "5261040828-20261001-0100A0B0C0D0-E1",
-            KSeFReferenceNumber = "ref-1",
-            VendorName = "Dostawca",
-            VendorNip = "5261040828",
-            AmountNet = 100m,
-            AmountVat = 23m,
-            AmountGross = 123m,
-            IssueDate = Now,
-            FirstSeenAt = Now,
-            LastUpdatedAt = Now,
-            Lines = [new InvoiceLine { Id = Guid.NewGuid(), LineNumber = 1, Name = "Towar", VatRate = "23", AmountNet = 100m }]
-        });
         await db.SaveChangesAsync();
+        var headerId = Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "InvoiceHeaders" ("Id", "TenantId", "KSeFInvoiceNumber", "KSeFReferenceNumber", "VendorName", "VendorNip", "AmountNet", "AmountVat", "AmountGross", "IssueDate", "FirstSeenAt", "LastUpdatedAt", "IsPaid")
+            VALUES ({headerId}, {tenant.Id}, '5261040828-20261001-0100A0B0C0D0-E1', 'ref-1', 'Dostawca', '5261040828', 100, 23, 123, {Now}, {Now}, {Now}, false)
+            """);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "InvoiceLines" ("Id", "InvoiceHeaderId", "LineNumber", "Name", "VatRate", "AmountNet")
+            VALUES ({Guid.NewGuid()}, {headerId}, 1, 'Towar', '23', 100)
+            """);
         return tenant.Id;
     }
 
     private static async Task AssertSyncedDataIntactAsync(ApplicationDbContext db)
     {
-        var header = await db.InvoiceHeaders.Include(h => h.Lines).SingleAsync();
-        Assert.Equal("5261040828-20261001-0100A0B0C0D0-E1", header.KSeFInvoiceNumber);
-        Assert.Equal(123m, header.AmountGross);
-        var line = Assert.Single(header.Lines);
-        Assert.Equal(("Towar", "23", 100m), (line.Name, line.VatRate, line.AmountNet));
+        Assert.Equal("5261040828-20261001-0100A0B0C0D0-E1", await db.Database.SqlQueryRaw<string>("""SELECT "KSeFInvoiceNumber" AS "Value" FROM "InvoiceHeaders" """).SingleAsync());
+        Assert.Equal(123m, await db.Database.SqlQueryRaw<decimal>("""SELECT "AmountGross" AS "Value" FROM "InvoiceHeaders" """).SingleAsync());
+        Assert.Equal("Towar 23 100.00", await db.Database.SqlQueryRaw<string>("""SELECT concat_ws(' ', "Name", "VatRate", "AmountNet") AS "Value" FROM "InvoiceLines" """).SingleAsync());
         Assert.Equal(1, await db.Tenants.CountAsync());
     }
 

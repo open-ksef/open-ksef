@@ -190,7 +190,7 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
               <li>
                 <span>
                   <b>Pełna resynchronizacja</b>
-                  <span>Usuwa pozycje pobranych faktur i pobiera je ponownie z KSeF. Oznaczenia opłacenia zostają.</span>
+                  <span>Usuwa pozycje pobranych faktur i pobiera je ponownie z KSeF. Uzupełnia terminy płatności starszych faktur. Oznaczenia opłacenia zostają.</span>
                 </span>
                 <button
                   type="button"

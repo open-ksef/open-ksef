@@ -1,3 +1,5 @@
+using OpenKSeF.Domain.Invoicing;
+
 namespace OpenKSeF.Domain.Entities;
 
 public class InvoiceHeader
@@ -21,9 +23,13 @@ public class InvoiceHeader
     public DateTime FirstSeenAt { get; set; }
     public DateTime LastUpdatedAt { get; set; }
     public string? VendorBankAccount { get; set; }
+    public DateOnly? DueDate { get; set; }
     public bool IsPaid { get; set; }
     public DateTime? PaidAt { get; set; }
 
     public Tenant Tenant { get; set; } = null!;
     public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();
+
+    public static bool IsOverdue(bool isPaid, DateOnly? dueDate, DateTimeOffset utcNow) =>
+        !isPaid && dueDate < IssuedInvoice.PolandDate(utcNow);
 }

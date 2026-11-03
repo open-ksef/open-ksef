@@ -99,6 +99,37 @@ public class KSeFInvoiceXmlParserTests
         </Faktura>
         """;
 
+    public static TheoryData<string, string, string?> DueDateCases => new()
+    {
+        { Fa2Namespace, "<TerminPlatnosci><Termin>2026-03-15</Termin></TerminPlatnosci>", "2026-03-15" },
+        { Fa3Namespace, "<TerminPlatnosci><Termin>2026-03-15</Termin></TerminPlatnosci>", "2026-03-15" },
+        { Fa2Namespace, "<TerminPlatnosci><Termin>2026-03-15</Termin><TerminOpis>30 dni</TerminOpis></TerminPlatnosci>", "2026-03-15" },
+        { Fa3Namespace, "<TerminPlatnosci><Termin>2026-04-30</Termin></TerminPlatnosci><TerminPlatnosci><Termin>2026-03-15</Termin></TerminPlatnosci><TerminPlatnosci><Termin>2026-05-01</Termin></TerminPlatnosci>", "2026-03-15" },
+        { Fa3Namespace, "<TerminPlatnosci><TerminOpis><Ilosc>30</Ilosc><Jednostka>dni</Jednostka><ZdarzeniePoczatkowe>doreczenie</ZdarzeniePoczatkowe></TerminOpis></TerminPlatnosci>", null },
+        { Fa3Namespace, "<TerminPlatnosci><TerminOpis><Ilosc>30</Ilosc><Jednostka>dni</Jednostka><ZdarzeniePoczatkowe>doreczenie</ZdarzeniePoczatkowe></TerminOpis></TerminPlatnosci><TerminPlatnosci><Termin>2026-03-15</Termin></TerminPlatnosci>", "2026-03-15" },
+        { Fa3Namespace, "<TerminPlatnosci/>", null },
+        { Fa3Namespace, "<TerminPlatnosci><Termin>not-a-date</Termin></TerminPlatnosci>", null },
+        { Fa3Namespace, "", null },
+    };
+
+    [Theory]
+    [MemberData(nameof(DueDateCases))]
+    public void ExtractInvoiceDetails_DueDate(string ns, string terms, string? expected)
+    {
+        var xml = $"""<Faktura xmlns="{ns}"><Fa><Platnosc>{terms}<FormaPlatnosci>6</FormaPlatnosci></Platnosc></Fa></Faktura>""";
+
+        var (_, _, dueDate) = _sut.ExtractInvoiceDetails(Encoding.UTF8.GetBytes(xml));
+
+        Assert.Equal(expected is null ? null : DateOnly.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), dueDate);
+    }
+
+    [Fact]
+    public void ExtractInvoiceDetails_NoPlatnoscOrMalformed_NoDueDate()
+    {
+        Assert.Null(_sut.ExtractInvoiceDetails(Encoding.UTF8.GetBytes(BuildInvoiceXmlNoPlatnosc(Fa3Namespace))).DueDate);
+        Assert.Null(_sut.ExtractInvoiceDetails(Encoding.UTF8.GetBytes("<not-xml")).DueDate);
+    }
+
     private static string BuildInvoiceXmlNoPlatnosc(string ns) =>
         $"""
         <?xml version="1.0" encoding="UTF-8"?>

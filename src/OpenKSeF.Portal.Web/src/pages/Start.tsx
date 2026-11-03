@@ -9,6 +9,7 @@ import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
 import { CompanyStateCard } from '@/components/CompanyStateCard'
+import { DueDate } from '@/components/DueDate'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Icon, type IconName } from '@/components/Icon'
 import { KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
@@ -181,6 +182,29 @@ function ReceivedRow({ row, tenantId, siblings }: { row: InvoiceResponse; tenant
   )
 }
 
+function UnpaidRow({ row, tenantId, siblings }: { row: InvoiceResponse; tenantId: string; siblings: string[] }): ReactElement {
+  return (
+    <li>
+      <span className="start-row__main">
+        <Link
+          to={`/invoices/${encodeURIComponent(row.ksefInvoiceNumber)}?tenantId=${encodeURIComponent(tenantId)}`}
+          state={{ listSearch: '?unpaid=1', siblings }}
+          title={row.vendorName}
+        >
+          {row.vendorName}
+        </Link>
+        <span className="start-row__sub">
+          {row.isOverdue ? null : 'Termin płatności '}
+          <DueDate row={row} testId="start-due-date" />
+        </span>
+      </span>
+      <span className="start-row__end">
+        <b>{formatMoney(row.amountGross, row.currency)}</b>
+      </span>
+    </li>
+  )
+}
+
 export function StartPage(): ReactElement {
   const { tenantId, switchCompany } = useCompany()
   const { state, summary, summaries, credential, isLoading, error, refetch } = useCompanyState()
@@ -205,6 +229,14 @@ export function StartPage(): ReactElement {
     enabled: hasTenant && !isLoading && isFull,
   })
 
+  const unpaidQuery = useQuery({
+    queryKey: ['invoices', tenantId, 'start', 'unpaid', rowCount],
+    queryFn: () => listInvoices(tenantId, { page: 1, pageSize: rowCount, isPaid: false }),
+    enabled: hasTenant && !isLoading && isFull,
+  })
+
+  const unpaid = unpaidQuery.data?.items ?? []
+  const unpaidSiblings = unpaid.map((row) => row.ksefInvoiceNumber)
   const issuedRows = issuedQuery.data?.items ?? []
   const received = receivedQuery.data?.items ?? []
   const siblings = received.map((row) => row.ksefInvoiceNumber)
@@ -261,6 +293,27 @@ export function StartPage(): ReactElement {
         ) : (
           <div className={summaries.length >= 2 ? 'start-grid' : 'start-grid start-grid--solo'}>
             {attentionCard}
+            <section className="start-card start-card--unpaid" aria-labelledby="start-unpaid">
+              <h2 id="start-unpaid">Nieopłacone, od najbliższego terminu</h2>
+              <AsyncStateView
+                isLoading={unpaidQuery.isLoading}
+                error={unpaidQuery.error}
+                isEmpty={unpaid.length === 0}
+                emptyTitle="Nie ma nieopłaconych faktur"
+                emptyMessage="Wszystkie pobrane faktury są oznaczone jako opłacone."
+                onRetry={() => void unpaidQuery.refetch()}
+              >
+                <ul className="start-list">
+                  {unpaid.map((row) => (
+                    <UnpaidRow key={row.id} row={row} tenantId={tenantId} siblings={unpaidSiblings} />
+                  ))}
+                </ul>
+                <Link className="start-more" to="/invoices?unpaid=1">
+                  Wszystkie nieopłacone ({unpaidQuery.data?.totalCount ?? 0})
+                </Link>
+                <p className="start-row__sub">Na liście jest to, czego nie oznaczono jako opłacone.</p>
+              </AsyncStateView>
+            </section>
             <section className="start-card start-card--received" aria-labelledby="start-received">
               <h2 id="start-received">Ostatnio otrzymane</h2>
               <AsyncStateView

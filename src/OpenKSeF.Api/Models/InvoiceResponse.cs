@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using OpenKSeF.Domain.Entities;
 
 namespace OpenKSeF.Api.Models;
 
@@ -22,4 +23,8 @@ public record InvoiceResponse(
     bool IsPaid,
     DateTime? PaidAt,
     string? VendorBankAccount = null,
-    IReadOnlyList<InvoiceLineResponse>? Lines = null);
+    IReadOnlyList<InvoiceLineResponse>? Lines = null,
+    DateOnly? DueDate = null)
+{
+    public bool IsOverdue => InvoiceHeader.IsOverdue(IsPaid, DueDate, DateTimeOffset.UtcNow);
+}

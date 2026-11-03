@@ -16,4 +16,5 @@ public record InvoiceDto(
     DateTime? AcquisitionDate,
     string? InvoiceType,
     string? VendorBankAccount = null,
-    IReadOnlyList<InvoiceLineDto>? Lines = null);
+    IReadOnlyList<InvoiceLineDto>? Lines = null,
+    DateOnly? DueDate = null);

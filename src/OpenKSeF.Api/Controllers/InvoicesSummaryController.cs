@@ -136,7 +136,8 @@ public class InvoicesSummaryController : ControllerBase
             i.IsPaid,
             i.PaidAt,
             i.VendorBankAccount,
-            null);
+            null,
+            i.DueDate);
 
     private static InvoiceResponse ToDetailResponse(InvoiceHeader i) => new(
         i.Id,
@@ -164,5 +165,6 @@ public class InvoicesSummaryController : ControllerBase
                 l.LineNumber, l.Name, l.Unit, l.Quantity,
                 l.UnitPriceNet, l.UnitPriceGross,
                 l.AmountNet, l.AmountGross, l.AmountVat, l.VatRate))
-            .ToList());
+            .ToList(),
+        DueDate: i.DueDate);
 }

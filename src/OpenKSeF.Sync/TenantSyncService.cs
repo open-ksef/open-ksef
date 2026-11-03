@@ -176,9 +176,10 @@ public sealed class TenantSyncService : ITenantSyncService
                     {
                         string? bankAccount = null;
                         IReadOnlyList<Domain.DTOs.InvoiceLineDto>? lines = null;
+                        DateOnly? dueDate = null;
                         if (!skipDownloadSet.Contains(i.KSeFNumber))
                         {
-                            (bankAccount, lines) = await DownloadInvoiceDetailsAsync(
+                            (bankAccount, lines, dueDate) = await DownloadInvoiceDetailsAsync(
                                 session, i.KSeFNumber, cancellationToken);
                         }
 
@@ -198,7 +199,8 @@ public sealed class TenantSyncService : ITenantSyncService
                             AcquisitionDate: i.AcquisitionDate,
                             InvoiceType: i.InvoiceType,
                             VendorBankAccount: bankAccount,
-                            Lines: lines));
+                            Lines: lines,
+                            DueDate: dueDate));
                     }
 
                     var newIds = await _invoiceService.UpsertInvoicesAsync(tenant.Id, invoiceDtos, notify);
@@ -257,7 +259,7 @@ public sealed class TenantSyncService : ITenantSyncService
         }
     }
 
-    private async Task<(string? BankAccount, IReadOnlyList<Domain.DTOs.InvoiceLineDto>? Lines)> DownloadInvoiceDetailsAsync(
+    private async Task<(string? BankAccount, IReadOnlyList<Domain.DTOs.InvoiceLineDto>? Lines, DateOnly? DueDate)> DownloadInvoiceDetailsAsync(
         KSeFSession session, string ksefNumber, CancellationToken ct)
     {
         try
@@ -269,7 +271,7 @@ public sealed class TenantSyncService : ITenantSyncService
         {
             _logger.LogWarning(ex,
                 "Failed to download invoice XML for details extraction: {KSeFNumber}", ksefNumber);
-            return (null, null);
+            return (null, null, null);
         }
     }
 

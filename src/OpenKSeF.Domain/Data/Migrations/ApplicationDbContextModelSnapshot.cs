@@ -95,6 +95,9 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasColumnType("character varying(3)")
                         .HasDefaultValue("PLN");
 
+                    b.Property<DateOnly?>("DueDate")
+                        .HasColumnType("date");
+
                     b.Property<DateTime>("FirstSeenAt")
                         .HasColumnType("timestamp with time zone");
 

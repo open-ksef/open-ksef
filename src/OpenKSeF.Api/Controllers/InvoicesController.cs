@@ -41,7 +41,8 @@ public class InvoicesController : ControllerBase
         [FromQuery] int pageSize = 20,
         [FromQuery] string? filterByVendor = null,
         [FromQuery] DateTime? dateFrom = null,
-        [FromQuery] DateTime? dateTo = null)
+        [FromQuery] DateTime? dateTo = null,
+        [FromQuery] bool? isPaid = null)
     {
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
@@ -73,11 +74,16 @@ public class InvoicesController : ControllerBase
             query = query.Where(i => i.IssueDate <= to);
         }
 
+        if (isPaid.HasValue)
+            query = query.Where(i => i.IsPaid == isPaid.Value);
+
         var totalCount = await query.CountAsync();
 
-        var items = await query
-            .OrderByDescending(i => i.IssueDate)
-            .ThenBy(i => i.Id)
+        var ordered = isPaid == false
+            ? query.OrderBy(i => i.DueDate == null).ThenBy(i => i.DueDate).ThenByDescending(i => i.IssueDate).ThenBy(i => i.Id)
+            : query.OrderByDescending(i => i.IssueDate).ThenBy(i => i.Id);
+
+        var items = await ordered
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(i => new InvoiceResponse(
@@ -100,7 +106,8 @@ public class InvoicesController : ControllerBase
                 i.IsPaid,
                 i.PaidAt,
                 i.VendorBankAccount,
-                null))
+                null,
+                i.DueDate))
             .ToListAsync();
 
         return Ok(new PagedResult<InvoiceResponse>
@@ -237,5 +244,6 @@ public class InvoicesController : ControllerBase
                 l.LineNumber, l.Name, l.Unit, l.Quantity,
                 l.UnitPriceNet, l.UnitPriceGross,
                 l.AmountNet, l.AmountGross, l.AmountVat, l.VatRate))
-            .ToList());
+            .ToList(),
+        DueDate: i.DueDate);
 }
