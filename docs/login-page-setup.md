@@ -26,7 +26,7 @@ GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx
 
 ## Registration endpoint
 
-`POST /api/account/register` needs the `openksef-api` service account with `realm-management` roles `manage-users` and `view-realm`. The setup wizard and every Settings save grant them, and the client secret comes from the wizard's stored value or, without it, from `API_CLIENT_SECRET`. The steps below are only for a stack without the wizard.
+`POST /api/account/register` works only after the manual steps below. The setup wizard does not do them, on purpose: `manage-users` lets whoever holds the `openksef-api` secret reset the password of any user, and the wizard's copy of that secret is in the database and its backups. On a wizard install with self-registration on, the sign-up form returns 503. Use Google sign-in or create the account in the Keycloak console until the Keycloak-hosted register page ships.
 
 Every request reads the realm, with no cache: registration off returns 403, a failed read returns 503, and no user is created in either case.
 
@@ -47,4 +47,4 @@ API_CLIENT_SECRET=<paste-secret-here>
    - Assign `realm-management` > `manage-users` and `view-realm`
 7. Restart API: `docker compose -f docker-compose.dev.yml restart api`
 
-Without a client secret or these roles, registration returns `503 Service Unavailable`. Login and Google sign-in work independently.
+Without `API_CLIENT_SECRET` or these roles, registration returns `503 Service Unavailable`. Login and Google sign-in work independently.

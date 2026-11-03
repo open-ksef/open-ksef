@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text.Json;
-using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Services;
 
@@ -18,17 +17,15 @@ public class KeycloakUserService : IKeycloakUserService
     private readonly string _adminRealmEndpoint;
     private readonly string _adminUsersEndpoint;
     private readonly string _clientId;
-    private readonly ISystemConfigService _systemConfig;
+    private readonly string _clientSecret;
     private readonly ILogger<KeycloakUserService> _logger;
 
     public KeycloakUserService(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
-        ISystemConfigService systemConfig,
         ILogger<KeycloakUserService> logger)
     {
         _httpClient = httpClientFactory.CreateClient("keycloak");
-        _systemConfig = systemConfig;
         _logger = logger;
 
         var authority = configuration["Auth:Authority"]?.TrimEnd('/') ?? "";
@@ -50,21 +47,21 @@ public class KeycloakUserService : IKeycloakUserService
         _adminUsersEndpoint = $"{_adminRealmEndpoint}/users";
 
         _clientId = configuration["Auth:ServiceAccount:ClientId"] ?? "openksef-api";
+        _clientSecret = configuration["Auth:ServiceAccount:ClientSecret"] ?? "";
     }
 
     public async Task<CreateUserResult> CreateUserAsync(
         string email, string password, string? firstName, string? lastName)
     {
+        if (string.IsNullOrEmpty(_clientSecret))
+        {
+            _logger.LogWarning("Auth:ServiceAccount:ClientSecret not configured: user registration unavailable.");
+            return Unavailable();
+        }
+
         try
         {
-            var clientSecret = _systemConfig.GetValue(SystemConfigKeys.ApiClientSecret);
-            if (string.IsNullOrEmpty(clientSecret))
-            {
-                _logger.LogWarning("API client secret not configured: user registration unavailable.");
-                return Unavailable();
-            }
-
-            var adminToken = await GetServiceAccountTokenAsync(clientSecret);
+            var adminToken = await GetServiceAccountTokenAsync();
             if (adminToken is null)
                 return Unavailable();
 
@@ -132,7 +129,7 @@ public class KeycloakUserService : IKeycloakUserService
     }
 
     private static CreateUserResult Unavailable() => new(
-        false, "Rejestracja jest chwilowo niedostępna. Spróbuj ponownie później.",
+        false, "Rejestracja nie jest teraz dostępna. Skontaktuj się z administratorem.",
         HttpStatusCode.ServiceUnavailable, "registration_unavailable");
 
     private async Task<(bool RegistrationAllowed, bool VerifyEmail)?> GetRealmPolicyAsync(string adminToken)
@@ -176,13 +173,13 @@ public class KeycloakUserService : IKeycloakUserService
         }
     }
 
-    private async Task<string?> GetServiceAccountTokenAsync(string clientSecret)
+    private async Task<string?> GetServiceAccountTokenAsync()
     {
         var formData = new Dictionary<string, string>
         {
             ["grant_type"] = "client_credentials",
             ["client_id"] = _clientId,
-            ["client_secret"] = clientSecret
+            ["client_secret"] = _clientSecret
         };
 
         var response = await _httpClient.PostAsync(_tokenEndpoint, new FormUrlEncodedContent(formData));

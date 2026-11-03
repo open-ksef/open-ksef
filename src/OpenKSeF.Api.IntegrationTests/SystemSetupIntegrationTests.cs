@@ -112,9 +112,7 @@ public class SystemSetupIntegrationTests : IDisposable
         Assert.Null(await db.SystemConfigs.FindAsync("encryption_key"));
         Assert.NotNull(await db.SystemConfigs.FindAsync("api_client_secret"));
 
-        Assert.Superset(
-            TestcontainersFixture.RegistrationRoles.ToHashSet(),
-            (await _fixture.GetServiceAccountRoleNamesAsync()).ToHashSet());
+        Assert.Empty((await _fixture.GetServiceAccountRoleNamesAsync()).Intersect(TestcontainersFixture.RegistrationRoles));
     }
 
     [Fact]

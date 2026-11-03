@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Api.Models;
@@ -141,11 +142,9 @@ public class AccountRegisterApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SettingsSave_GrantsServiceAccountRoles_SoRegistrationOffReturns403()
+    public async Task SettingsSave_GrantsNoServiceAccountRoles()
     {
         await _fixture.RemoveServiceAccountRolesAsync(TestcontainersFixture.RegistrationRoles);
-        await _fixture.UpdateRealmAsync(new { registrationAllowed = false });
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await RegisterAsync(_client, NewEmail())).StatusCode);
 
         using (var scope = _factory.Services.CreateScope())
         {
@@ -156,7 +155,8 @@ public class AccountRegisterApiTests : IAsyncLifetime
             Assert.True(result.Success, result.Error);
         }
 
-        Assert.Equal(HttpStatusCode.Forbidden, (await RegisterAsync(_client, NewEmail())).StatusCode);
+        Assert.Empty((await _fixture.GetServiceAccountRoleNamesAsync()).Intersect(TestcontainersFixture.RegistrationRoles));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await RegisterAsync(_client, NewEmail())).StatusCode);
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public class AccountRegisterApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Register_ClientSecretOnlyInSystemConfig_CreatesUser()
+    public async Task Register_ClientSecretOnlyInSystemConfig_Returns503AndCreatesNoUser()
     {
         await SetStoredConfigAsync(SystemConfigKeys.ApiClientSecret, "test-api-client-secret");
         try
@@ -190,15 +190,35 @@ public class AccountRegisterApiTests : IAsyncLifetime
             using var factory = _factory.WithWebHostBuilder(builder =>
                 builder.UseSetting("Auth:ServiceAccount:ClientSecret", ""));
             using var client = factory.CreateClient();
+            var email = NewEmail();
 
-            var response = await RegisterAsync(client, NewEmail());
+            var response = await RegisterAsync(client, email);
 
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+            Assert.Null(await _fixture.FindUserAsync(email));
         }
         finally
         {
             await SetStoredConfigAsync(SystemConfigKeys.ApiClientSecret, null);
         }
+    }
+
+    [Fact]
+    public async Task Register_BlankSecret_MakesNoKeycloakCall()
+    {
+        var calls = new List<Uri?>();
+        using var factory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("Auth:ServiceAccount:ClientSecret", "");
+            builder.ConfigureTestServices(services => services.AddHttpClient("keycloak")
+                .AddHttpMessageHandler(() => new RecordingHandler(calls)));
+        });
+        using var client = factory.CreateClient();
+
+        var response = await RegisterAsync(client, NewEmail());
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Empty(calls);
     }
 
     [Fact]
@@ -215,6 +235,15 @@ public class AccountRegisterApiTests : IAsyncLifetime
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("rate_limited", body.GetProperty("code").GetString());
         Assert.False(string.IsNullOrEmpty(body.GetProperty("error").GetString()));
+    }
+
+    private sealed class RecordingHandler(List<Uri?> calls) : DelegatingHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            calls.Add(request.RequestUri);
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 
     private static string NewEmail() => $"register-{Guid.NewGuid():N}@openksef.test";
