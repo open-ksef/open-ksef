@@ -2,8 +2,12 @@ import { isValidNrb } from './nrb'
 
 const moneyFormat = new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })
 
+export function formatAmount(amount: number): string {
+  return moneyFormat.format(amount)
+}
+
 export function formatMoney(amount: number, currency = 'PLN'): string {
-  return `${moneyFormat.format(amount)} ${currency}`
+  return `${formatAmount(amount)} ${currency}`
 }
 
 export function formatDecimal(value: number, minimumFractionDigits: number): string {

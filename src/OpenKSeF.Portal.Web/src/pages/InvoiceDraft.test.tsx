@@ -223,7 +223,7 @@ describe('issuing pages', () => {
     expect(container.querySelector<HTMLInputElement>('#issue-date')?.value).toBe('2026-11-01')
     expect(container.querySelector<HTMLInputElement>('#sale-date')?.value).toBe('2026-10-29')
     expect(buttonByText(container, 'Gotówka').getAttribute('aria-pressed')).toBe('true')
-    expect(container.textContent).toContain('Edycja szkicu')
+    expect(container.textContent).toContain('Szkic faktury')
   })
 
   it('list shows issued invoices and drafts', async () => {

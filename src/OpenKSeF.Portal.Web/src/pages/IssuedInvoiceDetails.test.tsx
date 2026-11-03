@@ -23,6 +23,7 @@ import { memoryStorage } from '@/company/memoryStorage'
 import { ksefPollInterval } from '@/invoicing/status'
 import { generateInvoice } from '@/vendor/ksef-pdf-generator/ksef-fe-invoice-converter.js'
 import { InvoiceDraftPage } from './InvoiceDraft'
+import { formatMoney } from '@/invoicing/format'
 import { IssuedInvoiceDetailsPage } from './IssuedInvoiceDetails'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
@@ -174,6 +175,15 @@ describe('issue and detail pages', () => {
     await waitFor(() => Boolean(container.querySelector('[role="alertdialog"]')))
     const dialog = container.querySelector('[role="alertdialog"]')?.textContent
     expect(dialog).toContain('Środowisko PRODUKCJA')
+    expect(dialog).toContain('PRODUKCJA')
+    const seller = container.querySelector('[data-testid="confirm-seller"]')
+    expect(seller?.textContent).toContain('Sprzedawca')
+    expect(seller?.textContent).toContain('NIP 5260250274')
+    expect(dialog?.indexOf('Sprzedawca')).toBeLessThan(dialog?.indexOf('Nabywca') ?? -1)
+    expect(dialog).toContain('Nabywca')
+    expect(container.querySelector('[data-testid="confirm-total"]')?.textContent?.replace(/\s/g, ' ')).toBe(
+      `${formatMoney(draft.totalGross, draft.currency).replace(/\s/g, ' ')}`,
+    )
     expect(dialog).toContain('dokumentem prawnym')
     expect(dialog).toContain('Nadamy przy wystawieniu')
     expect(dialog).not.toContain('FV/1/11/2026')

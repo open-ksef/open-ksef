@@ -15,6 +15,7 @@ import type { IssuedInvoiceResponse, IssuedInvoiceStatus, SellerProfileResponse,
 import { useCompany } from '@/company/useCompany'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
+import { Icon } from '@/components/Icon'
 import { Skeleton } from '@/components/Skeleton'
 import { BuyerSection } from '@/components/invoicing/BuyerSection'
 import { DatesSection } from '@/components/invoicing/DatesSection'
@@ -216,6 +217,18 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   const expectedNumber = form.issueDate.startsWith(profile.nextNumberPeriod) ? profile.nextNumberPreview : null
   const noticeState = location.state as { companyNotice?: string; companyId?: string } | null
   const companyNotice = noticeState?.companyId === tenantId ? noticeState.companyNotice : undefined
+  const totalText = formatMoney(totals.totalGross)
+  const title = invoice?.status === 'Rejected' ? `Popraw fakturę ${invoice.number ?? ''}`.trim() : invoice ? 'Szkic faktury' : 'Nowa faktura'
+  const issueButton = (
+    <button
+      type="button"
+      className="ui-button ui-button--primary ui-button--md inv-issue-button"
+      disabled={busy || !profile.isComplete}
+      onClick={() => prepareIssue.mutate()}
+    >
+      {issuing ? 'Wysyłanie…' : 'Wystaw i wyślij do KSeF'} <EnvBadge environment={profile.ksefEnvironment} />
+    </button>
+  )
 
   useEffect(() => {
     setSwitchGuard({
@@ -235,41 +248,108 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   const profileHref = `/company/invoice-data?tenantId=${encodeURIComponent(tenantId)}`
 
   return (
-    <form onSubmit={onSubmit} noValidate className="inv-stack" aria-labelledby="draft-title">
-      <header className="inv-header">
-        <Link to={`/issued?tenantId=${encodeURIComponent(tenantId)}`} className="back-link">
-          ← Wystawione
-        </Link>
-        <h1 id="draft-title">{invoice ? 'Edycja szkicu' : 'Nowa faktura'}</h1>
-        <KsefStatusBadge status={invoice?.status ?? 'Draft'} />
-        <EnvBadge environment={profile.ksefEnvironment} />
-        <span className="inv-help" role="status">
-          {invoice ? `Zapisano ${timeFormat.format(new Date(invoice.updatedAt))}` : ''}
-        </span>
-        <div className="inv-header__actions">
-          {invoice?.status === 'Draft' ? (
-            <button
-              type="button"
-              className="ui-button ui-button--ghost ui-button--md"
-              disabled={busy}
-              onClick={() => setDeleteOpen(true)}
-            >
-              Usuń szkic
-            </button>
-          ) : null}
-          <button type="submit" className="ui-button ui-button--outline ui-button--md" disabled={busy}>
-            {save.isPending ? 'Zapisywanie…' : 'Zapisz szkic'}
-          </button>
-          <button
-            type="button"
-            className="ui-button ui-button--primary ui-button--md"
-            disabled={busy || !profile.isComplete}
-            onClick={() => prepareIssue.mutate()}
-          >
-            {issuing ? 'Wysyłanie…' : 'Wystaw i wyślij do KSeF'}
-          </button>
+    <form onSubmit={onSubmit} noValidate className="inv-form" aria-labelledby="draft-title">
+      <div className="inv-form__main">
+        <div>
+          <Link to={`/issued?tenantId=${encodeURIComponent(tenantId)}`} className="back-link">
+            <Icon name="arrow-left" size={14} /> Wystawione
+          </Link>
+          <div className="inv-form__head">
+            <h1 id="draft-title">{title}</h1>
+            <KsefStatusBadge status={invoice?.status ?? 'Draft'} />
+            <span className="inv-help" role="status">
+              {invoice ? `Zapisano ${timeFormat.format(new Date(invoice.updatedAt))}` : ''}
+            </span>
+            {invoice?.status === 'Draft' ? (
+              <button type="button" className="ui-button ui-button--danger-outline ui-button--sm inv-form__delete" disabled={busy} onClick={() => setDeleteOpen(true)}>
+                Usuń szkic
+              </button>
+            ) : null}
+          </div>
         </div>
-      </header>
+
+        {companyNotice ? (
+          <div className="inv-alert inv-alert--info" role="status">
+            {companyNotice}
+          </div>
+        ) : null}
+        {!profile.isComplete ? (
+          <div className="inv-alert inv-alert--info" role="status">
+            Uzupełnij dane firmy, aby wystawiać faktury. <Link to={profileHref}>Dane do faktur</Link>
+          </div>
+        ) : null}
+        {failure ? <ErrorBanner message={failure} /> : null}
+        <ValidationSummary errors={errors} warnings={warnings} />
+
+        <BuyerSection value={form.buyer} fieldErrors={fieldErrors} onChange={(buyer) => setForm({ ...form, buyer })} />
+        <LinesTable lines={form.lines} fieldErrors={fieldErrors} onChange={(lines) => setForm({ ...form, lines })}>
+          {hasExemptLine(form.lines) ? (
+            <ExemptionBasisField
+              choice={form.exemptionChoice}
+              text={form.exemptionText}
+              serverError={fieldErrors.exemptionBasis}
+              onChange={({ choice, text }) => setForm({ ...form, exemptionChoice: choice, exemptionText: text })}
+            />
+          ) : null}
+        </LinesTable>
+        <section className="inv-card" aria-labelledby="dates-title">
+          <h2 id="dates-title">Daty i płatność</h2>
+          <DatesSection
+            issueDate={form.issueDate}
+            saleDate={form.saleDate}
+            dueDate={form.dueDate}
+            fieldErrors={fieldErrors}
+            onChange={(dates) => setForm({ ...form, ...dates })}
+          />
+          <PaymentSection
+            paymentMethod={form.paymentMethod}
+            splitPayment={form.splitPayment}
+            bankAccount={profile.bankAccount}
+            totalGross={totals.totalGross}
+            profileHref={profileHref}
+            onChange={(payment) => setForm({ ...form, ...payment })}
+          />
+        </section>
+      </div>
+
+      <aside className="inv-side" aria-label="Podsumowanie faktury">
+        <SellerCard nip={profile.nip} name={profile.legalName} environment={profile.ksefEnvironment} />
+        <div className="inv-card inv-totals">
+          <div>
+            <span className="inv-caption">Do zapłaty</span>
+            <output className="inv-amount" data-testid="total-gross">
+              {totalText}
+            </output>
+          </div>
+          {invoice?.number ? (
+            <p className="inv-help">
+              Numer <span className="mono">{invoice.number}</span> zostaje — po poprawce wyślemy fakturę z tym samym numerem.
+            </p>
+          ) : (
+            <p className="inv-help">
+              Numer nadamy przy wystawieniu{expectedNumber ? ': ' : '.'}
+              {expectedNumber ? <span className="mono">{expectedNumber}</span> : null}
+            </p>
+          )}
+          <div className="inv-totals__actions">
+            {issueButton}
+            <button type="submit" className="ui-button ui-button--outline ui-button--md" disabled={busy}>
+              {save.isPending ? 'Zapisywanie…' : 'Zapisz szkic'}
+            </button>
+          </div>
+        </div>
+        <VatSummary sticky rows={totals.vatSummary} totalNet={totals.totalNet} totalVat={totals.totalVat} totalGross={totals.totalGross} />
+      </aside>
+
+      <div className="inv-dock">
+        <span className="inv-dock__seller">
+          <b>{profile.legalName ?? '—'}</b> · NIP {profile.nip}
+        </span>
+        <span>
+          <span className="inv-caption">Do zapłaty</span> <b>{totalText}</b>
+        </span>
+        {issueButton}
+      </div>
 
       <ConfirmDialog
         open={deleteOpen}
@@ -296,92 +376,35 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
         onConfirm={() => confirmFor && issue.mutate(confirmFor)}
         onCancel={() => setConfirmFor(null)}
       >
-        <dl className="inv-readonly">
-          <dt>Numer</dt>
-          <dd className="mono">{confirmFor?.number ?? 'Nadamy przy wystawieniu'}</dd>
-          <dt>Nabywca</dt>
-          <dd>
-            {form.buyer.name || '—'}
-            {form.buyer.kind === 'Company' && form.buyer.nip ? <span className="mono"> · NIP {form.buyer.nip}</span> : null}
-          </dd>
-          <dt>Data wystawienia</dt>
-          <dd>{formatDate(form.issueDate)}</dd>
-          <dt>Do zapłaty</dt>
-          <dd className="num">{formatMoney(totals.totalGross)}</dd>
-        </dl>
+        {confirmFor ? (
+          <>
+            <div className="company-switch-seller" data-testid="confirm-seller">
+              <span className="company-switch-seller__caption">Sprzedawca</span>
+              <b>{confirmFor.seller.name ?? '—'}</b>
+              <span className="company-nip">NIP {confirmFor.seller.nip}</span> <EnvBadge environment={confirmFor.ksef.environment} />
+              {confirmFor.seller.addressLine1 || confirmFor.seller.addressLine2 ? (
+                <span className="inv-help">{[confirmFor.seller.addressLine1, confirmFor.seller.addressLine2].filter(Boolean).join(', ')}</span>
+              ) : null}
+            </div>
+            <dl className="inv-readonly">
+              <dt>Numer</dt>
+              <dd className="mono">{confirmFor.number ?? 'Nadamy przy wystawieniu'}</dd>
+              <dt>Nabywca</dt>
+              <dd>
+                {confirmFor.buyer.name || '—'}
+                {confirmFor.buyer.kind === 'Company' && confirmFor.buyer.nip ? <span className="mono"> · NIP {confirmFor.buyer.nip}</span> : null}
+              </dd>
+              <dt>Data wystawienia</dt>
+              <dd>{formatDate(confirmFor.issueDate)}</dd>
+              <dt>Do zapłaty</dt>
+              <dd className="num" data-testid="confirm-total">
+                <b>{formatMoney(confirmFor.totalGross, confirmFor.currency)}</b>
+              </dd>
+            </dl>
+          </>
+        ) : null}
         <p className="inv-help">Korekt nie wystawisz jeszcze w OpenKSeF — użyj Aplikacji Podatnika KSeF.</p>
       </ConfirmDialog>
-
-      {companyNotice ? (
-        <div className="inv-alert inv-alert--info" role="status">
-          {companyNotice}
-        </div>
-      ) : null}
-      {!profile.isComplete ? (
-        <div className="inv-alert inv-alert--info" role="status">
-          Uzupełnij dane firmy, aby wystawiać faktury. <Link to={profileHref}>Dane do faktur</Link>
-        </div>
-      ) : null}
-      {failure ? <ErrorBanner message={failure} /> : null}
-      <ValidationSummary errors={errors} warnings={warnings} />
-
-      <div className="inv-columns">
-        <div className="inv-columns__main">
-          <BuyerSection value={form.buyer} fieldErrors={fieldErrors} onChange={(buyer) => setForm({ ...form, buyer })} />
-          <DatesSection
-            issueDate={form.issueDate}
-            saleDate={form.saleDate}
-            fieldErrors={fieldErrors}
-            onChange={(dates) => setForm({ ...form, ...dates })}
-          />
-          <LinesTable lines={form.lines} fieldErrors={fieldErrors} onChange={(lines) => setForm({ ...form, lines })}>
-            {hasExemptLine(form.lines) ? (
-              <ExemptionBasisField
-                choice={form.exemptionChoice}
-                text={form.exemptionText}
-                serverError={fieldErrors.exemptionBasis}
-                onChange={({ choice, text }) => setForm({ ...form, exemptionChoice: choice, exemptionText: text })}
-              />
-            ) : null}
-          </LinesTable>
-          <PaymentSection
-            paymentMethod={form.paymentMethod}
-            dueDate={form.dueDate}
-            issueDate={form.issueDate}
-            splitPayment={form.splitPayment}
-            bankAccount={profile.bankAccount}
-            totalGross={totals.totalGross}
-            fieldErrors={fieldErrors}
-            onChange={(payment) => setForm({ ...form, ...payment })}
-          />
-        </div>
-        <aside className="inv-columns__side" aria-label="Podsumowanie faktury">
-          <SellerCard
-            nip={profile.nip}
-            name={profile.legalName}
-            addressLine1={profile.addressLine1}
-            addressLine2={profile.addressLine2}
-            bankAccount={profile.bankAccount}
-            editHref={profileHref}
-          />
-          <VatSummary
-            rows={totals.vatSummary}
-            totalNet={totals.totalNet}
-            totalVat={totals.totalVat}
-            totalGross={totals.totalGross}
-          />
-          {invoice?.number ? (
-            <p className="inv-help">
-              Numer <span className="mono">{invoice.number}</span> zostaje — po poprawce wyślemy fakturę z tym samym numerem.
-            </p>
-          ) : (
-            <p className="inv-help">
-              Numer nadamy przy wystawieniu{expectedNumber ? ': ' : '.'}
-              {expectedNumber ? <span className="mono">{expectedNumber}</span> : null}
-            </p>
-          )}
-        </aside>
-      </div>
     </form>
   )
 }

@@ -59,6 +59,7 @@ export function NipLookupField({
       <div className="inv-input-group">
         <input
           id={id}
+          className="mono nip-input"
           type="text"
           inputMode="numeric"
           autoComplete="off"
