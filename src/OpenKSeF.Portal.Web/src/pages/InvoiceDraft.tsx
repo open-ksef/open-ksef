@@ -90,7 +90,7 @@ export function InvoiceDraftPage(): ReactElement {
           tenantId={tenantId}
           profile={profileQuery.data}
           invoice={invoiceQuery.data}
-          onCreated={(created) => setFormSlot((slot) => (slot.generation === formSlot.generation ? { ...slot, created } : slot))}
+          onCreated={(created) => setFormSlot((slot) => ({ ...slot, created }))}
         />
       )}
     </div>
@@ -124,6 +124,14 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   const [confirmFor, setConfirmFor] = useState<IssuedInvoiceResponse | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const issueOpener = useRef<HTMLButtonElement | null>(null)
+  const mounted = useRef(true)
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const totals = computeTotals(
     form.lines.map((line) => ({
@@ -145,7 +153,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
     queryClient.setQueryData(['issued-invoice', tenantId, saved.id], saved)
     void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
     if (!invoice && !stay) {
-      onCreated(saved.id)
+      if (mounted.current) onCreated(saved.id)
       navigate(`/issued/${encodeURIComponent(saved.id)}/edit?tenantId=${encodeURIComponent(tenantId)}`, { replace: true })
     }
     return saved

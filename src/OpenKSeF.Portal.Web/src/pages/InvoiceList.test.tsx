@@ -498,6 +498,21 @@ describe('InvoiceListPage', () => {
       expect(field.value).toBe('2026-10-01')
     })
 
+    it('a click on the name opens although a word is still selected', async () => {
+      const router = await render('/invoices?tenantId=tenant-1')
+      const link = byTestId('invoice-view-details') as HTMLAnchorElement
+      window.getSelection()?.selectAllChildren(link)
+
+      await act(async () => {
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }))
+      })
+      await wait(300)
+      await settle()
+      window.getSelection()?.removeAllRanges()
+
+      expect(router.state.location.pathname).toBe('/invoices/KSEF-001')
+    })
+
     it('does not open when text is selected', async () => {
       const router = await render('/invoices?tenantId=tenant-1')
       const range = document.createRange()

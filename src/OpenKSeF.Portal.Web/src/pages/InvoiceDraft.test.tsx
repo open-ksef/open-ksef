@@ -401,6 +401,30 @@ describe('issuing pages', () => {
       drafts.pop()
     })
 
+    it('a create that lands after the form was replaced under the same key does not put the new form on the created invoice', async () => {
+      vi.mocked(listTenants).mockResolvedValue([
+        { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+        { id: 't-2', nip: '1234563218', displayName: 'B', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      ])
+      let answer: (saved: IssuedInvoiceResponse) => void = () => undefined
+      vi.mocked(createIssuedInvoice).mockImplementation(() => new Promise((resolve) => (answer = resolve)))
+      vi.mocked(getIssuedInvoice).mockImplementation(async (_tenant, id) => draft(id, 'Z pierwszego'))
+      await render('/issued/new?tenantId=t-1', true, seedDrafts)
+      await waitFor(() => Boolean(container.querySelector('#buyer-name')))
+      await act(async () => typeInto(container.querySelector<HTMLInputElement>('#buyer-name')!, 'Z pierwszego'))
+      await act(async () => buttonByText(container, 'Zapisz szkic').click())
+
+      await navigate('/issued/new?tenantId=t-2')
+      await waitFor(() => buyerName() === '')
+      await navigate('/issued/new?tenantId=t-1')
+      await waitFor(() => buyerName() === '')
+      await act(async () => typeInto(container.querySelector<HTMLInputElement>('#buyer-name')!, 'Z drugiego'))
+      await act(async () => answer(draft('i-late', 'Z pierwszego')))
+
+      await waitFor(() => container.querySelector('[data-testid="location"]')?.textContent === edit('i-late'))
+      expect(buyerName()).toBe('Z pierwszego')
+    })
+
     it('a create that lands after the user left does not put the old form on the created invoice', async () => {
       let answer: (saved: IssuedInvoiceResponse) => void = () => undefined
       vi.mocked(createIssuedInvoice).mockImplementation(() => new Promise((resolve) => (answer = resolve)))

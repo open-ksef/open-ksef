@@ -30,9 +30,11 @@ export function useRowOpen<T>(pathOf: (row: T) => string, state?: unknown): (row
       void navigate(pathOf(row), { state })
       return
     }
+    // A click on a link does not collapse a selection, and a drag selection never ends with a click whose target is a link.
+    const onLink = event.target instanceof Element && event.target.closest('a') !== null
     // The first click of a double click must not leave the page, or the word it selects cannot be copied.
     timer.current = setTimeout(() => {
-      if (window.getSelection()?.isCollapsed === false) return
+      if (!onLink && window.getSelection()?.isCollapsed === false) return
       void navigate(pathOf(row), { state })
     }, DOUBLE_CLICK_MS)
   }
