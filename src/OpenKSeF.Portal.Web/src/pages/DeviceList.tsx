@@ -238,7 +238,7 @@ export function DeviceListPage(): ReactElement {
         error={combinedError}
         isEmpty={rows.length === 0}
         emptyTitle="Brak zarejestrowanych urządzeń"
-        emptyMessage="Połącz aplikację mobilną za pomocą kodu QR, aby automatycznie skonfigurować urządzenie i otrzymywać powiadomienia push."
+        emptyMessage="Zeskanuj kod QR w aplikacji mobilnej, aby ustawić adres serwera. Po zalogowaniu w aplikacji urządzenie będzie mogło otrzymywać powiadomienia push."
         onRetry={() => {
           void devicesQuery.refetch()
           void tenantsQuery.refetch()
