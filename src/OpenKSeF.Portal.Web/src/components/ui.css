@@ -448,9 +448,9 @@ summary.company-card:focus-visible {
 .app-content {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 100vh;
   background: var(--ui-bg);
-  overflow-x: hidden;
 }
 
 .app-main {

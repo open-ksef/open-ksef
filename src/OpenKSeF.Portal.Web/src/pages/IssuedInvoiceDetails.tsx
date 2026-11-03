@@ -161,7 +161,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
         <Icon name="arrow-left" size={14} /> Wystawione
       </Link>
       <header className="page-header invoice-details-head">
-        <h1 className="mono">{invoice.number ?? 'Szkic'}</h1>
+        <h1>{invoice.number ?? 'Szkic'}</h1>
         <KsefStatusBadge status={invoice.status} />
         <EnvBadge environment={invoice.ksef.environment} />
       </header>

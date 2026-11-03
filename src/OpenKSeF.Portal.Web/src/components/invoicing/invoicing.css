@@ -148,6 +148,10 @@
   min-width: 0;
 }
 
+.inv-fields > .inv-buyer-name {
+  flex-basis: 100%;
+}
+
 .inv-fields--center {
   align-items: center;
 }
@@ -162,8 +166,13 @@
 
 .inv-days .inv-chips {
   flex-wrap: nowrap;
+  gap: 4px;
   min-height: 40px;
   align-items: center;
+}
+
+.inv-days .inv-chips button {
+  padding: 0 8px;
 }
 
 .inv-account {
@@ -346,7 +355,7 @@
   display: none;
 }
 
-@media (max-width: 1240px) and (min-width: 1101px) {
+@media (max-width: 1240px) {
   .inv-line {
     grid-template-columns: 20px 64px 64px minmax(96px, 1fr) 88px 40px;
   }
@@ -383,6 +392,10 @@
   .inv-lines-head > *,
   .inv-line > * {
     grid-row: 1;
+  }
+
+  .inv-fields > .inv-buyer-name {
+    flex-basis: 200px;
   }
 
   .inv-line__name { grid-column: 2; }
@@ -465,7 +478,10 @@
   .inv-line__qty { grid-column: 3; }
   .inv-line__price { grid-column: 2; }
   .inv-line__rate { grid-column: 3; }
-  .inv-line__gross { grid-column: 2; }
+  .inv-line__gross {
+    grid-column: 2;
+    text-align: left;
+  }
 
   .inv-line__del {
     grid-column: 3;

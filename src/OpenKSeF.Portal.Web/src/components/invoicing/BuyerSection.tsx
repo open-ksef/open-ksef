@@ -37,7 +37,7 @@ export function BuyerSection({ value, onChange, fieldErrors = {} }: BuyerSection
     const id = `buyer-${key}`
     const error = fieldErrors[`buyer.${key}`]
     return (
-      <div className="ui-form-group">
+      <div className={key === 'name' ? 'ui-form-group inv-buyer-name' : 'ui-form-group'}>
         <label htmlFor={id}>
           {label}
           <span aria-hidden="true"> *</span>
@@ -89,8 +89,8 @@ export function BuyerSection({ value, onChange, fieldErrors = {} }: BuyerSection
           onFound={applyLookup}
         />
       )}
-      {textField('name', isPerson ? 'Imię i nazwisko' : 'Nazwa')}
       <div className="inv-fields">
+        {textField('name', isPerson ? 'Imię i nazwisko' : 'Nazwa')}
         {textField('addressLine1', 'Adres (ulica, numer)')}
         {textField('addressLine2', 'Kod pocztowy i miejscowość')}
       </div>

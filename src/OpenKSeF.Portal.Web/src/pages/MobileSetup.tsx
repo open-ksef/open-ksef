@@ -118,7 +118,7 @@ export function MobileSetupPage(): ReactElement {
           <h2 id="pair-title">Połącz aplikację mobilną</h2>
           <div className="phone-pair">
             <div className="phone-pair__qr" data-testid="mobile-setup-qr">
-              <QRCodeSVG value={buildQrPayload(serverUrl)} size={220} level="M" marginSize={4} />
+              <QRCodeSVG value={buildQrPayload(serverUrl)} size={220} level="M" marginSize={4} title="Kod QR z adresem serwera" />
             </div>
             <div>
               <p>Zeskanuj ten kod QR w aplikacji OpenKSeF, aby ustawić adres serwera. Potem zaloguj się w aplikacji.</p>
