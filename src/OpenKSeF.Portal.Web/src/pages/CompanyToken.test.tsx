@@ -157,7 +157,7 @@ describe('Firma, Token KSeF i pobieranie', () => {
     await render()
 
     expect(by('credential-type-badge')?.textContent).toBe('Certyfikat')
-    expect(by('credential-certificate-hint')?.textContent).toContain('zastąpić go tokenem')
+    expect(by('credential-certificate-hint')?.textContent).toContain('wysyłka faktur do KSeF wymaga tokenu')
     expect(deleteCredential).not.toHaveBeenCalled()
 
     await act(async () => by('credential-delete-button')?.click())

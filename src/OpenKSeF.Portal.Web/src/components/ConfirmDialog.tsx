@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactElement, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactElement, type ReactNode } from 'react'
 
 import { Button } from '@/components/Button'
 
@@ -43,6 +43,14 @@ export function ConfirmDialog({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel()
+      const dialog = dialogRef.current
+      if (e.key !== 'Tab' || !dialog) return
+      const controls = [...dialog.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]')]
+      const edge = e.shiftKey ? controls[0] : controls[controls.length - 1]
+      if (document.activeElement === edge || !dialog.contains(document.activeElement)) {
+        e.preventDefault()
+        ;(e.shiftKey ? controls[controls.length - 1] : controls[0])?.focus()
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
@@ -50,16 +58,6 @@ export function ConfirmDialog({
   }, [open, onCancel])
 
   if (!open) return null
-
-  function keepFocusInside(event: ReactKeyboardEvent<HTMLDivElement>): void {
-    if (event.key !== 'Tab') return
-    const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]')]
-    const edge = event.shiftKey ? controls[0] : controls[controls.length - 1]
-    if (document.activeElement === edge) {
-      event.preventDefault()
-      ;(event.shiftKey ? controls[controls.length - 1] : controls[0])?.focus()
-    }
-  }
 
   return (
     <div
@@ -71,7 +69,6 @@ export function ConfirmDialog({
       <div
         ref={dialogRef}
         className="ui-modal ui-modal--confirm"
-        onKeyDown={keepFocusInside}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"

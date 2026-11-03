@@ -145,7 +145,7 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
           ) : null}
           {isCertificate ? (
             <p className="inv-alert inv-alert--info" data-testid="credential-certificate-hint">
-              Ta firma używa certyfikatu. Certyfikat działa dalej, ale zalecamy zastąpić go tokenem: wklej token poniżej.
+              Ta firma używa certyfikatu. Pobieranie faktur działa dalej, ale wysyłka faktur do KSeF wymaga tokenu. Wklej token poniżej: zastąpi certyfikat na stałe, a w portalu nie wgrasz go ponownie.
             </p>
           ) : null}
           <form onSubmit={onSubmit} noValidate>

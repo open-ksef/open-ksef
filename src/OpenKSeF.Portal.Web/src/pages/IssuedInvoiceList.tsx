@@ -14,7 +14,7 @@ import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadg
 import '@/components/invoicing/invoicing.css'
 import { Table, type TableColumn } from '@/components/Table'
 import { useCredentials } from '@/hooks/useCredentials'
-import { useRowOpen } from '@/hooks/useRowOpen'
+import { selectWordAt, useRowOpen } from '@/hooks/useRowOpen'
 import { useTenants } from '@/hooks/useTenants'
 import { formatDate, formatMoney } from '@/invoicing/format'
 
@@ -114,7 +114,8 @@ export function IssuedInvoiceListPage(): ReactElement {
               className="rowlink"
               title={row.buyerName ?? undefined}
               aria-label={`${row.buyerName ?? 'Bez nabywcy'}, ${number}`}
-              onClick={(event) => event.stopPropagation()}
+              onClick={(event) => event.preventDefault()}
+              onDoubleClick={selectWordAt}
             >
               {row.buyerName ?? '—'}
             </Link>

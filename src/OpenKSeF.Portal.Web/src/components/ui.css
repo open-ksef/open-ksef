@@ -930,6 +930,8 @@ label {
 }
 
 .ui-modal {
+  max-height: 100%;
+  overflow-y: auto;
   background: var(--ui-surface);
   border-radius: var(--ui-radius-xl);
   box-shadow: var(--ui-shadow-lg);

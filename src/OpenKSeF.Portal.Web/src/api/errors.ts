@@ -94,7 +94,7 @@ async function extractResponseMessage(response: Response): Promise<string | null
     const contentType = response.headers.get('Content-Type') ?? ''
     const clonedResponse = response.clone()
 
-    if (contentType.includes('application/json')) {
+    if (contentType.includes('json')) {
       const parsed = (await clonedResponse.json()) as Record<string, unknown>
       const message = parsed.message ?? parsed.error
 

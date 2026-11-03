@@ -16,6 +16,17 @@ describe('normalizeError', () => {
     expect(error.message).toBe('Token expired')
   })
 
+  it('uses the Polish default for an ASP.NET problem response, not its raw JSON', async () => {
+    const response = new Response(JSON.stringify({ title: 'Not Found', status: 404, traceId: '00-abc' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/problem+json; charset=utf-8' },
+    })
+
+    const error = await normalizeError(response)
+
+    expect(error.message).toBe('Nie znaleziono.')
+  })
+
   it('uses default message when HTTP response has no body', async () => {
     const response = new Response('', { status: 404 })
 

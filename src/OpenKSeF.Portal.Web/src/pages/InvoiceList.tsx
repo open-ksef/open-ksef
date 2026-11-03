@@ -14,7 +14,7 @@ import '@/components/invoicing/invoicing.css'
 import { Table, type TableColumn } from '@/components/Table'
 import { FIRST_FETCH_POLL_MS, useCompanyState } from '@/hooks/useCompanyState'
 import { useKsefFetch } from '@/hooks/useKsefFetch'
-import { useRowOpen } from '@/hooks/useRowOpen'
+import { selectWordAt, useRowOpen } from '@/hooks/useRowOpen'
 import { useTenants } from '@/hooks/useTenants'
 import { formatDate, formatMoney } from '@/invoicing/format'
 
@@ -154,7 +154,8 @@ export function InvoiceListPage(): ReactElement {
               title={row.vendorName}
               aria-label={`${row.vendorName}, ${number}`}
               data-testid="invoice-view-details"
-              onClick={(event) => event.stopPropagation()}
+              onClick={(event) => event.preventDefault()}
+              onDoubleClick={selectWordAt}
             >
               {row.vendorName}
             </Link>

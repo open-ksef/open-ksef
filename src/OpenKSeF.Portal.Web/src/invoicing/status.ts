@@ -11,7 +11,7 @@ export const isReissueBlocked = ({ status, ksef }: IssuedInvoiceResponse): boole
   status === 'Rejected' && ksef.statusCode === 440
 
 // Stored by IssuedInvoiceSendProcessor. The API has no cause field, and only a new token fixes these.
-const TOKEN_REJECTIONS = [
+export const TOKEN_REJECTIONS = [
   'Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy.',
   'KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.',
   'Wysyłka faktur wymaga tokenu KSeF w ustawieniach firmy',

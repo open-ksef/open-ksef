@@ -47,6 +47,12 @@ export function InvoiceDraftPage(): ReactElement {
   const { id } = useParams()
   const tenantsQuery = useTenants()
   const { tenantId } = useCompany()
+  const [formSlot, setFormSlot] = useState<{ id?: string; created?: string; generation: number }>({ id, generation: 0 })
+
+  // A new form stays mounted through the replace navigation to the invoice it created, because the issue flow continues there. Any other id change must remount, or the form saves one invoice's content into another.
+  if (formSlot.id !== id) {
+    setFormSlot({ id, generation: id !== undefined && formSlot.created === id ? formSlot.generation : formSlot.generation + 1 })
+  }
 
   const profileQuery = useQuery({
     queryKey: ['seller-profile', tenantId],
@@ -80,10 +86,11 @@ export function InvoiceDraftPage(): ReactElement {
         <Navigate to={`/issued/${encodeURIComponent(invoiceQuery.data.id)}?tenantId=${encodeURIComponent(tenantId)}`} replace />
       ) : (
         <DraftForm
-          key={tenantId}
+          key={`${tenantId}:${formSlot.generation}`}
           tenantId={tenantId}
           profile={profileQuery.data}
           invoice={invoiceQuery.data}
+          onCreated={(created) => setFormSlot((slot) => (slot.generation === formSlot.generation ? { ...slot, created } : slot))}
         />
       )}
     </div>
@@ -94,16 +101,17 @@ interface DraftFormProps {
   tenantId: string
   profile: SellerProfileResponse
   invoice?: IssuedInvoiceResponse
+  onCreated: (id: string) => void
 }
 
 const timeFormat = new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit' })
 
 const failureText = (error: unknown, fallback: string): string =>
-  !(error instanceof Error) || (error instanceof ApiError && (error.status >= 500 || !(error.originalError instanceof Response) || !error.originalError.headers.get('Content-Type')?.includes('application/json')))
+  !(error instanceof Error) || (error instanceof ApiError && (error.status >= 500 || !(error.originalError instanceof Response) || !error.originalError.headers.get('Content-Type')?.includes('json')))
     ? fallback
     : error.message
 
-function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement {
+function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): ReactElement {
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
@@ -115,6 +123,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   const [failure, setFailure] = useState<string | null>(null)
   const [confirmFor, setConfirmFor] = useState<IssuedInvoiceResponse | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const issueOpener = useRef<HTMLButtonElement | null>(null)
 
   const totals = computeTotals(
     form.lines.map((line) => ({
@@ -136,6 +145,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
     queryClient.setQueryData(['issued-invoice', tenantId, saved.id], saved)
     void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
     if (!invoice && !stay) {
+      onCreated(saved.id)
       navigate(`/issued/${encodeURIComponent(saved.id)}/edit?tenantId=${encodeURIComponent(tenantId)}`, { replace: true })
     }
     return saved
@@ -224,7 +234,10 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
       type="button"
       className="ui-button ui-button--primary ui-button--md inv-issue-button"
       disabled={busy || !profile.isComplete}
-      onClick={() => prepareIssue.mutate()}
+      onClick={(event) => {
+        issueOpener.current = event.currentTarget
+        prepareIssue.mutate()
+      }}
     >
       {issuing ? 'Wysyłanie…' : 'Wystaw i wyślij do KSeF'} <EnvBadge environment={profile.ksefEnvironment} />
     </button>
@@ -374,7 +387,10 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
         pendingLabel="Wysyłanie…"
         isPending={issue.isPending}
         onConfirm={() => confirmFor && issue.mutate(confirmFor)}
-        onCancel={() => setConfirmFor(null)}
+        onCancel={() => {
+          setConfirmFor(null)
+          issueOpener.current?.focus()
+        }}
       >
         {confirmFor ? (
           <>

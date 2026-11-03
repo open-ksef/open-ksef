@@ -386,17 +386,53 @@ describe('InvoiceListPage', () => {
       })
     })
 
-    it('ctrl-click on the link leaves this tab', async () => {
+    it('ctrl-click on the link opens one tab with the opener and keeps the list here', async () => {
+      const router = await render('/invoices?tenantId=tenant-1')
+      const open = vi.spyOn(window, 'open').mockReturnValue(null)
+      const link = byTestId('invoice-view-details') as HTMLAnchorElement
+
+      await act(async () => {
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true }))
+      })
+      await wait(300)
+      await settle()
+
+      expect(open).toHaveBeenCalledExactlyOnceWith('/invoices/KSEF-001?tenantId=tenant-1', '_blank')
+      expect(router.state.location.pathname).toBe('/invoices')
+      open.mockRestore()
+    })
+
+    it('a double click on the name stays on the list, a single click opens', async () => {
       const router = await render('/invoices?tenantId=tenant-1')
       const link = byTestId('invoice-view-details') as HTMLAnchorElement
 
       await act(async () => {
-        link.addEventListener('click', (event) => event.preventDefault())
-        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true }))
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }))
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 2 }))
       })
+      await wait(300)
       await settle()
-
       expect(router.state.location.pathname).toBe('/invoices')
+
+      document.caretRangeFromPoint = () => {
+        const range = document.createRange()
+        range.setStart(link.firstChild!, 8)
+        return range
+      }
+      await act(async () => {
+        link.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, detail: 2 }))
+      })
+      expect(window.getSelection()?.toString()).toBe('A')
+      window.getSelection()?.removeAllRanges()
+      delete (document as Partial<Document>).caretRangeFromPoint
+
+      await act(async () => {
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }))
+      })
+      expect(router.state.location.pathname).toBe('/invoices')
+      await wait(300)
+      await settle()
+      expect(router.state.location.pathname).toBe('/invoices/KSEF-001')
     })
 
     it('ctrl-click on a row cell opens a new tab and keeps the list here', async () => {
@@ -410,7 +446,7 @@ describe('InvoiceListPage', () => {
       await wait(300)
       await settle()
 
-      expect(open).toHaveBeenCalledExactlyOnceWith('/invoices/KSEF-001?tenantId=tenant-1', '_blank', 'noopener')
+      expect(open).toHaveBeenCalledExactlyOnceWith('/invoices/KSEF-001?tenantId=tenant-1', '_blank')
       expect(router.state.location.pathname).toBe('/invoices')
       open.mockRestore()
     })
@@ -468,7 +504,7 @@ describe('InvoiceListPage', () => {
       range.selectNodeContents(byTestId('invoice-number') as HTMLElement)
       window.getSelection()?.addRange(range)
 
-      await act(async () => byTestId('invoice-row')?.click())
+      await act(async () => byTestId('invoice-row')?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })))
       await wait(300)
       await settle()
 
