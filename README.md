@@ -13,7 +13,9 @@ Mobile app: see [open-ksef-mobile](https://github.com/OpenKSeF/open-ksef-mobile)
 
 ## Quick start (Docker)
 
-1. Create env file:
+New installations only. On an existing installation do not run these steps: they can overwrite the only copy of the encryption key. Follow the [upgrade procedure](docs/admin-setup.md#upgrade-from-v007-or-earlier).
+
+1. Create env file, then set `ENCRYPTION_KEY` in it (`openssl rand -base64 32`):
 ```bash
 cp .env.example .env
 ```
