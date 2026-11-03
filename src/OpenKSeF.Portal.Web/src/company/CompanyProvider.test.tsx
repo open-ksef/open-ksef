@@ -2,21 +2,26 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { RouterProvider, createMemoryRouter, useLocation } from 'react-router-dom'
+import { Route, RouterProvider, Routes, createMemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { listInvoices } from '@/api/endpoints/invoices'
+import { getInvoiceByKSeFNumber, listInvoices } from '@/api/endpoints/invoices'
+import { getIssuedInvoice, listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { listTenants } from '@/api/endpoints/tenants'
 import type { SellerProfileResponse } from '@/api/types'
+import { InvoiceDetailsPage } from '@/pages/InvoiceDetails'
 import { InvoiceListPage } from '@/pages/InvoiceList'
+import { IssuedInvoiceDetailsPage } from '@/pages/IssuedInvoiceDetails'
+import { IssuedInvoiceListPage } from '@/pages/IssuedInvoiceList'
 import { CompanyCard } from './CompanyCard'
 import { CompanyProvider } from './CompanyProvider'
 import { memoryStorage } from './memoryStorage'
 import { useCompany } from './useCompany'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
-vi.mock('@/api/endpoints/invoices', () => ({ listInvoices: vi.fn() }))
+vi.mock('@/api/endpoints/invoices', () => ({ listInvoices: vi.fn(), getInvoiceByKSeFNumber: vi.fn() }))
+vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedInvoices: vi.fn(), getIssuedInvoice: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn() }))
 
 const STORAGE_KEY = 'openksef.company'
@@ -61,6 +66,9 @@ describe('CompanyProvider', () => {
     ])
     vi.mocked(getSellerProfile).mockResolvedValue({ ksefEnvironment: 'test' } as SellerProfileResponse)
     vi.mocked(listInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 })
+    vi.mocked(listIssuedInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 })
+    vi.mocked(getInvoiceByKSeFNumber).mockReturnValue(new Promise(() => {}))
+    vi.mocked(getIssuedInvoice).mockReturnValue(new Promise(() => {}))
   })
 
   afterEach(() => {
@@ -180,6 +188,35 @@ describe('CompanyProvider', () => {
     expect(listInvoices).toHaveBeenCalledWith('b', expect.objectContaining({ page: 1 }))
     expect(listInvoices).not.toHaveBeenCalledWith('b', expect.objectContaining({ page: 3 }))
     expect(probe().textContent).toBe('/invoices?pageSize=10')
+  })
+
+  it.each([
+    ['received', '/invoices', <InvoiceListPage />, listInvoices],
+    ['issued', '/issued', <IssuedInvoiceListPage />, listIssuedInvoices],
+  ])('a switch on the %s list with no page in the URL queries the new company', async (_, path, page, list) => {
+    localStorage.setItem(STORAGE_KEY, 'a')
+    await render(path, page)
+    expect(list).toHaveBeenCalledWith('a', expect.anything())
+
+    await chooseCompany('b')
+
+    expect(list).toHaveBeenCalledWith('b', expect.anything())
+  })
+
+  it.each([
+    ['/invoices/K-1', getInvoiceByKSeFNumber, 'K-1'],
+    ['/issued/i-1', getIssuedInvoice, 'i-1'],
+  ])('%s reads the current company, not the first one', async (path, read, id) => {
+    localStorage.setItem(STORAGE_KEY, 'b')
+    await render(
+      path,
+      <Routes>
+        <Route path="/invoices/:ksefInvoiceNumber" element={<InvoiceDetailsPage />} />
+        <Route path="/issued/:id" element={<IssuedInvoiceDetailsPage />} />
+      </Routes>,
+    )
+
+    expect(read).toHaveBeenCalledWith('b', id)
   })
 
   it('shows name and NIP, falls back to NIP for an unnamed company', async () => {

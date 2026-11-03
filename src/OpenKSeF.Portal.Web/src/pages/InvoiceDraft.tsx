@@ -214,7 +214,8 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   const issuing = prepareIssue.isPending || issue.isPending
   const busy = save.isPending || issuing || remove.isPending
   const expectedNumber = form.issueDate.startsWith(profile.nextNumberPeriod) ? profile.nextNumberPreview : null
-  const companyNotice = (location.state as { companyNotice?: string } | null)?.companyNotice
+  const noticeState = location.state as { companyNotice?: string; companyId?: string } | null
+  const companyNotice = noticeState?.companyId === tenantId ? noticeState.companyNotice : undefined
 
   useEffect(() => {
     setSwitchGuard({

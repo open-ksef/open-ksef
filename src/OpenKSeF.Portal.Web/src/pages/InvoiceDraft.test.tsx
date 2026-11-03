@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import toast from 'react-hot-toast'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation, type InitialEntry } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createIssuedInvoice, getIssuedInvoice, listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
@@ -85,13 +85,18 @@ describe('issuing pages', () => {
     container.remove()
   })
 
+  const visited: string[] = []
+
   function LocationProbe() {
     const location = useLocation()
+    visited.push(location.pathname)
     return <output data-testid="location">{location.pathname + location.search}</output>
   }
 
-  async function render(path: string, withCard = false): Promise<void> {
+  async function render(path: InitialEntry, withCard = false, seed?: (client: QueryClient) => void): Promise<void> {
+    visited.length = 0
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    seed?.(client)
     await act(async () =>
       root.render(
         <QueryClientProvider client={client}>
@@ -307,6 +312,28 @@ describe('issuing pages', () => {
       expect(byTestId('company-card').textContent).toContain('Firma A')
     })
 
+    it('clear does not carry content when the new company is already cached', async () => {
+      await render('/issued/new?tenantId=t-1', true, (client) =>
+        client.setQueryData(['seller-profile', 't-2'], seller('Sprzedawca B')),
+      )
+      await waitFor(() => Boolean(container.querySelector('#line-0-unitNetPrice')))
+      await act(async () => typeInto(container.querySelector<HTMLInputElement>('#buyer-name')!, 'Nabywca X'))
+      await fill()
+      await chooseB()
+      await act(async () => byTestId('company-switch-clear').click())
+
+      await waitFor(() => container.textContent?.includes('Sprzedawca B') ?? false)
+      expect(price().value).toBe('')
+      expect(container.querySelector<HTMLInputElement>('#buyer-name')?.value).toBe('')
+    })
+
+    it('hides a notice left in history for another company', async () => {
+      await render({ pathname: '/issued/new', search: '?tenantId=t-1', state: { companyNotice: 'Nowy sprzedawca: Firma B', companyId: 't-2' } }, true)
+      await waitFor(() => Boolean(container.querySelector('#line-0-unitNetPrice')))
+
+      expect(container.textContent).not.toContain('Nowy sprzedawca: Firma B')
+    })
+
     it('stay keeps the company and the content', async () => {
       await openNewForm()
       await fill()
@@ -356,6 +383,7 @@ describe('issuing pages', () => {
       await waitFor(() => container.textContent?.includes('Sprzedawca B') ?? false)
       await waitFor(() => Boolean(container.querySelector('#line-0-unitNetPrice')))
       expect(createIssuedInvoice).toHaveBeenCalledWith('t-1', expect.anything())
+      expect(visited).not.toContain('/issued/i-a/edit')
       expect(byTestId('location').textContent).toBe('/issued/new')
       expect(byTestId('company-card').textContent).toContain('Firma B')
       expect(price().value).toBe('')
@@ -382,6 +410,7 @@ describe('issuing pages', () => {
       await openNewForm()
       await fill()
       await act(async () => buttonByText(container, 'Zapisz szkic').click())
+      await waitFor(() => container.textContent?.includes('Zapisywanie…') ?? false)
       await chooseB()
 
       expect(dialog()).toBeNull()

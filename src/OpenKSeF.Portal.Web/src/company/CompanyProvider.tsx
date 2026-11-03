@@ -64,6 +64,10 @@ export function CompanyProvider({ children }: PropsWithChildren): ReactElement {
     setChosenId(arriving.id)
   }
 
+  if (dialog && location.key !== dialog.fromKey) {
+    setDialog(null)
+  }
+
   useEffect(() => {
     if (validUrlId) writeStored(validUrlId)
   }, [validUrlId])
@@ -89,7 +93,7 @@ export function CompanyProvider({ children }: PropsWithChildren): ReactElement {
     const pathname = pathAfterSwitch(location.pathname)
     void navigate(
       { pathname, search: params.toString() },
-      pathname === '/issued/new' ? { state: { companyNotice: notice } } : undefined,
+      pathname === '/issued/new' ? { state: { companyNotice: notice, companyId: target.id } } : undefined,
     )
   }
 
@@ -114,7 +118,7 @@ export function CompanyProvider({ children }: PropsWithChildren): ReactElement {
       value={{ tenantId: company?.id ?? '', company, tenants: tenants ?? [], switchCompany, setSwitchGuard }}
     >
       {children}
-      {dialog && company && dialog.fromKey === location.key ? (
+      {dialog && company ? (
         <CompanySwitchDialog
           current={company}
           target={dialog.target}
