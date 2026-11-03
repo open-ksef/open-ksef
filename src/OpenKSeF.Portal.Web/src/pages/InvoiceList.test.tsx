@@ -6,12 +6,13 @@ import toast from 'react-hot-toast'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { forceCredentialSync } from '@/api/endpoints/credentials'
+import { forceCredentialSync, listCredentials } from '@/api/endpoints/credentials'
 import { getDashboardOverview } from '@/api/endpoints/dashboard'
 import { listInvoices } from '@/api/endpoints/invoices'
+import { listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
 import { listTenants } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
-import type { InvoiceResponse, TenantDashboardSummaryResponse } from '@/api/types'
+import type { InvoiceResponse, TenantCredentialStatusResponse, TenantDashboardSummaryResponse } from '@/api/types'
 import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
 import { InvoiceListPage } from './InvoiceList'
@@ -19,7 +20,8 @@ import { InvoiceListPage } from './InvoiceList'
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/invoices', () => ({ listInvoices: vi.fn() }))
 vi.mock('@/api/endpoints/dashboard', () => ({ getDashboardOverview: vi.fn() }))
-vi.mock('@/api/endpoints/credentials', () => ({ forceCredentialSync: vi.fn() }))
+vi.mock('@/api/endpoints/credentials', () => ({ forceCredentialSync: vi.fn(), listCredentials: vi.fn() }))
+vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedInvoices: vi.fn() }))
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 
 const SEARCH_WAIT_MS = 340
@@ -65,6 +67,15 @@ const summary = (overrides: Partial<TenantDashboardSummaryResponse>): TenantDash
   ...overrides,
 })
 
+const credential = (overrides: Partial<TenantCredentialStatusResponse> = {}): TenantCredentialStatusResponse => ({
+  tenantId: 'tenant-1',
+  tenantDisplayName: 'Tenant A',
+  hasCredential: true,
+  credentialType: 'Token',
+  lastUpdatedAt: new Date().toISOString(),
+  ...overrides,
+})
+
 describe('InvoiceListPage', () => {
   let root: Root
   let container: HTMLDivElement
@@ -72,6 +83,7 @@ describe('InvoiceListPage', () => {
   const byTestId = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
   const input = (id: string) => byTestId(id) as HTMLInputElement
   const lastListCall = () => vi.mocked(listInvoices).mock.lastCall
+  const fetchButtonNode = () => byTestId('invoice-fetch-button') as HTMLButtonElement
 
   function renderPage(path: string) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -123,6 +135,8 @@ describe('InvoiceListPage', () => {
     ])
     vi.mocked(listInvoices).mockResolvedValue({ items: [invoice()], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 })
     vi.mocked(getDashboardOverview).mockResolvedValue([summary({})])
+    vi.mocked(listCredentials).mockResolvedValue([credential()])
+    vi.mocked(listIssuedInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 0, totalPages: 0 })
     vi.mocked(forceCredentialSync).mockResolvedValue({
       tenantId: 'tenant-1',
       fetchedInvoices: 3,
@@ -483,7 +497,7 @@ describe('InvoiceListPage', () => {
 
       expect(toast.error).toHaveBeenCalledTimes(1)
       expect(toast.error).toHaveBeenCalledWith(
-        'Pobieranie z KSeF nie powiodło się. Spróbuj ponownie później. Jeśli błąd wraca, sprawdź token KSeF.',
+        'Tenant A: Pobieranie z KSeF nie powiodło się. Spróbuj ponownie później. Jeśli błąd wraca, sprawdź token KSeF.',
       )
       expect(fetchButton().disabled).toBe(false)
     })
@@ -500,7 +514,7 @@ describe('InvoiceListPage', () => {
       await settle()
 
       expect(toast.error).toHaveBeenCalledWith(
-        'Nie mamy potwierdzenia pobrania z KSeF. Część faktur mogła się pobrać. Sprawdź listę i w razie potrzeby spróbuj ponownie.',
+        'Tenant A: Nie mamy potwierdzenia pobrania z KSeF. Część faktur mogła się pobrać. Sprawdź listę i w razie potrzeby spróbuj ponownie.',
       )
     })
   })
@@ -548,6 +562,94 @@ describe('InvoiceListPage', () => {
       expect(line()).toBeNull()
       expect(container.textContent).not.toContain('Dashboard failed')
       expect(byTestId('invoice-row')).toBeTruthy()
+    })
+  })
+
+  describe('company states', () => {
+    const empty = { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 }
+    const useEmpty = (row: Partial<TenantDashboardSummaryResponse>, cred: Partial<TenantCredentialStatusResponse> = {}) => {
+      vi.mocked(listInvoices).mockResolvedValue(empty)
+      vi.mocked(getDashboardOverview).mockResolvedValue([summary({ totalInvoices: 0, ...row })])
+      vi.mocked(listCredentials).mockResolvedValue([credential(cred)])
+    }
+
+    it('no token: card with the link, fetch disabled, no filters', async () => {
+      useEmpty({ lastSuccessfulSync: null }, { hasCredential: false })
+      await render('/invoices?tenantId=tenant-1')
+      expect(container.textContent).toContain('Ta firma nie ma tokenu KSeF')
+      expect(container.querySelector('.ui-empty-state a[href="/credentials"]')?.textContent).toContain('Dodaj token KSeF')
+      expect(fetchButtonNode().disabled).toBe(true)
+      expect(byTestId('invoice-search')).toBeNull()
+    })
+
+    it('first fetch: card, fetch stays enabled', async () => {
+      useEmpty({ lastSuccessfulSync: null })
+      await render('/invoices?tenantId=tenant-1')
+      expect(container.textContent).toContain('Czekamy na pierwsze pobranie z KSeF')
+      expect(fetchButtonNode().disabled).toBe(false)
+    })
+
+    it('first fetch after 24 h: says when the token was added', async () => {
+      useEmpty({ lastSuccessfulSync: null }, { lastUpdatedAt: '2026-10-01T10:00:00Z' })
+      await render('/invoices?tenantId=tenant-1')
+      expect(container.textContent).toContain('Nie pobraliśmy jeszcze faktur.')
+      expect(container.textContent).toContain('Token dodano 01.10.2026')
+    })
+
+    it('zero: names the fetch date and NIP, and offers the first invoice', async () => {
+      useEmpty({})
+      await render('/invoices?tenantId=tenant-1')
+      expect(container.textContent).toContain('Brak faktur otrzymanych w KSeF')
+      expect(container.textContent).toContain('NIP 1234567890')
+      expect(container.textContent).toContain('Wystaw pierwszą fakturę')
+    })
+
+    it.each(['q=abc', 'dateFrom=2026-01-01', 'dateTo=2026-01-01', 'page=2'])('with %s keeps the plain empty message and the filters', async (filter) => {
+      useEmpty({ lastSuccessfulSync: null }, { hasCredential: false })
+      await render(`/invoices?tenantId=tenant-1&${filter}`)
+      expect(container.textContent).not.toContain('Bez tokenu')
+      expect(container.textContent).toContain('Nie znaleziono faktur')
+      expect(byTestId('invoice-search')).not.toBeNull()
+    })
+
+    it('rows win over a stale zero on the dashboard', async () => {
+      vi.mocked(getDashboardOverview).mockResolvedValue([summary({ totalInvoices: 0 })])
+      await render('/invoices?tenantId=tenant-1')
+      expect(container.querySelector('[data-testid="invoice-row"]')).not.toBeNull()
+      expect(container.textContent).not.toContain('Brak faktur otrzymanych')
+    })
+
+    it('polls the list and the dashboard every minute in first fetch only', async () => {
+      useEmpty({ lastSuccessfulSync: null })
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'], now: Date.now() })
+      try {
+        const router = renderPage('/invoices?tenantId=tenant-1')
+        await act(async () => {
+          root.render(<RouterProvider router={router} />)
+        })
+        await act(() => vi.advanceTimersByTimeAsync(1000))
+        const lists = vi.mocked(listInvoices).mock.calls.length
+        const dashboards = vi.mocked(getDashboardOverview).mock.calls.length
+        await act(() => vi.advanceTimersByTimeAsync(60_000))
+        expect(vi.mocked(listInvoices).mock.calls.length).toBe(lists + 1)
+        expect(vi.mocked(getDashboardOverview).mock.calls.length).toBe(dashboards + 1)
+
+        vi.mocked(getDashboardOverview).mockResolvedValue([summary({ totalInvoices: 3 })])
+        await act(() => vi.advanceTimersByTimeAsync(60_000))
+        const after = vi.mocked(listInvoices).mock.calls.length
+        await act(() => vi.advanceTimersByTimeAsync(180_000))
+        expect(vi.mocked(listInvoices).mock.calls.length).toBe(after)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('no state claim when empty and the credentials query failed', async () => {
+      useEmpty({})
+      vi.mocked(listCredentials).mockRejectedValue(new Error('credentials down'))
+      await render('/invoices?tenantId=tenant-1')
+      expect(container.textContent).toContain('credentials down')
+      expect(container.textContent).not.toContain('Brak faktur otrzymanych')
     })
   })
 

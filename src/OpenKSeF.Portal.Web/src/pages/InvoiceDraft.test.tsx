@@ -16,11 +16,13 @@ import { memoryStorage } from '@/company/memoryStorage'
 import type { IssuedInvoiceResponse, SellerProfileResponse } from '@/api/types'
 import { todayIso } from '@/invoicing/format'
 import { InvoiceDraftPage } from './InvoiceDraft'
+import { listCredentials } from '@/api/endpoints/credentials'
 import { IssuedInvoiceListPage } from './IssuedInvoiceList'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn() }))
 vi.mock('@/api/endpoints/nipLookup', () => ({ lookupNip: vi.fn() }))
+vi.mock('@/api/endpoints/credentials', () => ({ listCredentials: vi.fn() }))
 vi.mock('@/api/endpoints/issuedInvoices', () => ({
   createIssuedInvoice: vi.fn(),
   updateIssuedInvoice: vi.fn(),
@@ -255,10 +257,42 @@ describe('issuing pages', () => {
     await waitFor(() => vi.mocked(listIssuedInvoices).mock.calls.some((call) => call[1]?.status === 'Draft'))
   })
 
-  it('list shows the empty state', async () => {
-    vi.mocked(listIssuedInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 })
-    await render('/issued?tenantId=t-1')
-    await waitFor(() => container.textContent?.includes('Nie wystawiono jeszcze faktur') ?? false)
+  describe('list without invoices', () => {
+    const credentialRow = (hasCredential: boolean) => ({ tenantId: 't-1', tenantDisplayName: 'A', hasCredential, credentialType: null, lastUpdatedAt: null })
+
+    beforeEach(() => {
+      vi.mocked(listIssuedInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 })
+    })
+
+    it('with a token says where invoices appear, and hides the filters', async () => {
+      vi.mocked(listCredentials).mockResolvedValue([credentialRow(true)])
+      await render('/issued?tenantId=t-1')
+      await waitFor(() => container.textContent?.includes('Nie masz jeszcze wystawionych faktur') ?? false)
+      expect(container.textContent).toContain('razem ze statusem w KSeF')
+      expect(container.querySelector('.ui-empty-state a[href="/issued/new?tenantId=t-1"]')).not.toBeNull()
+      expect(container.querySelector('#issued-q')).toBeNull()
+    })
+
+    it('without a token says a draft is possible', async () => {
+      vi.mocked(listCredentials).mockResolvedValue([credentialRow(false)])
+      await render('/issued?tenantId=t-1')
+      await waitFor(() => container.textContent?.includes('Możesz przygotować szkic.') ?? false)
+    })
+
+    it('with a filter keeps the filters and the plain message', async () => {
+      vi.mocked(listCredentials).mockResolvedValue([credentialRow(false)])
+      await render('/issued?tenantId=t-1&status=Rejected')
+      await waitFor(() => container.textContent?.includes('Brak faktur spełniających kryteria') ?? false)
+      expect(container.textContent).not.toContain('Możesz przygotować szkic.')
+      expect(container.querySelector('#issued-q')).not.toBeNull()
+    })
+
+    it('makes no claim when the credentials query failed', async () => {
+      vi.mocked(listCredentials).mockRejectedValue(new Error('credentials down'))
+      await render('/issued?tenantId=t-1')
+      await waitFor(() => container.textContent?.includes('credentials down') ?? false)
+      expect(container.textContent).not.toContain('Nie masz jeszcze wystawionych faktur')
+    })
   })
 
   describe('switching company on the form', () => {
