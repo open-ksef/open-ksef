@@ -83,7 +83,7 @@ function DateFilter({ id, label, value, onCommit }: { id: string; label: string;
   )
 }
 
-function PaidStatus({ row, testId }: { row: InvoiceResponse; testId: string }): ReactElement {
+export function PaidStatus({ row, testId }: { row: InvoiceResponse; testId: string }): ReactElement {
   return (
     <span data-testid={testId} className={row.isPaid ? 'received-paid' : 'received-paid received-paid--unpaid'}>
       <Icon name={row.isPaid ? 'circle-check' : 'circle-dashed'} size={14} />
@@ -159,7 +159,7 @@ export function InvoiceListPage(): ReactElement {
 
   const detailsPath = (row: InvoiceResponse): string =>
     `/invoices/${encodeURIComponent(row.ksefInvoiceNumber)}?tenantId=${encodeURIComponent(tenantId)}`
-  const detailsState = { listSearch: location.search }
+  const detailsState = { listSearch: location.search, siblings: rows.map((row) => row.ksefInvoiceNumber) }
 
   const onChangePage = (nextPage: number): void => {
     const next = new URLSearchParams(searchParams)

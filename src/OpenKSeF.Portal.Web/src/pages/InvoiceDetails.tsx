@@ -1,24 +1,195 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type ReactElement } from 'react'
+import toast from 'react-hot-toast'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 
 import { getInvoiceByKSeFNumber, getTransferDetails, setInvoicePaid } from '@/api/endpoints/invoices'
 import { ApiError } from '@/api/errors'
+import type { InvoiceResponse, PagedResult, TransferDetailsResponse } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
+import { Button } from '@/components/Button'
+import { Icon } from '@/components/Icon'
+import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
-import { formatDecimal, formatMoney, formatNrb } from '@/invoicing/format'
+import { formatDate, formatDecimal, formatMoney, formatNrb } from '@/invoicing/format'
 import { vatRateLabel } from '@/invoicing/totals'
+import { PaidStatus } from '@/pages/InvoiceList'
+
+function amountLabel(invoice: InvoiceResponse): string {
+  if (invoice.isPaid) return 'Kwota faktury'
+  const type = invoice.invoiceType?.toLowerCase() ?? ''
+  if (type === 'zal' || type === 'roz') return 'Kwota faktury'
+  if (type.startsWith('kor')) return 'Kwota brutto (różnica)'
+  if (!type.trim()) return 'Kwota brutto'
+  return 'Do zapłaty'
+}
+
+function PaymentCard({
+  invoice,
+  transfer,
+  isLoading,
+  isError,
+  isSaving,
+  onTogglePaid,
+}: {
+  invoice: InvoiceResponse
+  transfer: TransferDetailsResponse | undefined
+  isLoading: boolean
+  isError: boolean
+  isSaving: boolean
+  onTogglePaid: () => void
+}): ReactElement {
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  function handleCopy(text: string): void {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(invoice.id)
+      setTimeout(() => setCopiedId(null), 2000)
+    })
+  }
+
+  const hasQr = Boolean(transfer?.qrCodeBase64)
+  const title = invoice.isPaid ? 'Opłacona' : hasQr ? 'Zapłać tę fakturę' : 'Dane do przelewu'
+
+  const amount = transfer ? (
+    <>
+      <span className="pay-caption" data-testid="pay-amount-label">
+        {amountLabel(invoice)}
+      </span>
+      <div className="pay-amount" data-testid="transfer-amount">
+        {formatMoney(transfer.amount, transfer.currency)}
+      </div>
+    </>
+  ) : null
+
+  const transferData = transfer ? (
+    <>
+      <div className={hasQr ? 'pay-grid' : 'pay-grid pay-grid--one'}>
+        {transfer.qrCodeBase64 ? (
+          <div className="pay-qr" data-testid="qr-code-section">
+            <img src={transfer.qrCodeBase64} alt="Kod QR do przelewu" width={200} height={200} data-testid="qr-code-image" />
+          </div>
+        ) : null}
+        <div>
+          {invoice.isPaid ? null : amount}
+          <dl className="kv">
+            <dt>Odbiorca</dt>
+            <dd data-testid="transfer-recipient">{transfer.recipientName}</dd>
+            <dt>Tytuł</dt>
+            <dd data-testid="transfer-title">{transfer.title}</dd>
+          </dl>
+        </div>
+        <div className="pay-full">
+          <span className="pay-caption">Rachunek odbiorcy</span>
+          <div className="pay-nrb" data-testid="transfer-account">
+            {transfer.recipientAccount ? formatNrb(transfer.recipientAccount) : 'brak'}
+          </div>
+        </div>
+      </div>
+      {transfer.qrMessage ? (
+        <div className="inv-alert inv-alert--warning pay-notice" role="status">
+          <Icon name="triangle-alert" />
+          <span>
+            <span data-testid="qr-message">{transfer.qrMessage}</span>
+            {!hasQr && !invoice.invoiceType?.trim() ? (
+              <>
+                {' '}
+                <Link to="/credentials" data-testid="pay-fetch-link">
+                  Przejdź do pobierania
+                </Link>
+              </>
+            ) : null}
+          </span>
+        </div>
+      ) : null}
+    </>
+  ) : null
+
+  const copyButton = transfer ? (
+    <Button variant="outline" data-testid="copy-transfer-btn" onClick={() => handleCopy(transfer.transferText)}>
+      <Icon name="copy" />
+      {copiedId === invoice.id ? 'Skopiowano!' : 'Kopiuj dane przelewu'}
+    </Button>
+  ) : null
+
+  const markButton = (
+    <Button
+      variant={invoice.isPaid ? 'outline' : 'primary'}
+      data-testid="toggle-paid-btn"
+      disabled={isSaving}
+      onClick={onTogglePaid}
+    >
+      {invoice.isPaid ? null : <Icon name="check" />}
+      {isSaving ? 'Zapisywanie...' : invoice.isPaid ? 'Cofnij oznaczenie' : 'Oznacz jako opłaconą'}
+    </Button>
+  )
+
+  return (
+    <section className="card" aria-labelledby="pay-title" data-testid="transfer-details">
+      <h2 id="pay-title" data-testid="pay-title">
+        {title}
+      </h2>
+      {isLoading ? <p className="pay-state">Ładowanie danych przelewu...</p> : null}
+      {isError ? (
+        <p className="pay-state pay-state--error" role="alert">
+          Nie udało się załadować danych przelewu.
+        </p>
+      ) : null}
+      {invoice.isPaid ? (
+        <>
+          {amount}
+          <p className="pay-paid-note">
+            {invoice.paidAt ? <span data-testid="invoice-detail-paid-date">{formatDate(invoice.paidAt)} </span> : null}
+            <span>Oznaczona w OpenKSeF. To nie jest potwierdzenie przelewu.</span>
+          </p>
+          <div className="pay-actions">{markButton}</div>
+          {transfer ? (
+            <details key={invoice.id} className="pay-details" data-testid="pay-collapsed">
+              <summary>Pokaż dane do przelewu</summary>
+              {transferData}
+              <div className="pay-actions">{copyButton}</div>
+            </details>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {transferData}
+          {hasQr ? <p className="pay-help">Zeskanuj kod aplikacją banku w telefonie, a potem oznacz fakturę.</p> : null}
+          <div className="pay-actions">
+            {markButton}
+            {copyButton}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
 
 export function InvoiceDetailsPage(): ReactElement {
   const { ksefInvoiceNumber = '' } = useParams()
   const [searchParams] = useSearchParams()
   const location = useLocation()
   const queryClient = useQueryClient()
-  const [copySuccess, setCopySuccess] = useState(false)
 
   const tenantIdFromUrl = searchParams.get('tenantId') ?? ''
-  const listSearch = (location.state as { listSearch?: string } | null)?.listSearch
+  const walkState = location.state as { listSearch?: string; siblings?: string[] } | null
+  const listSearch = walkState?.listSearch
+  const siblings = walkState?.siblings ?? []
+  const position = siblings.indexOf(ksefInvoiceNumber)
+  const previous = position > 0 ? siblings[position - 1] : undefined
+  const next = position >= 0 ? siblings[position + 1] : undefined
+
+  const previousLink = useRef<HTMLAnchorElement>(null)
+  const nextLink = useRef<HTMLAnchorElement>(null)
+  const walked = useRef(false)
+
+  useEffect(() => {
+    if (walked.current && document.activeElement === document.body) {
+      ;(previousLink.current ?? nextLink.current)?.focus()
+    }
+    walked.current = false
+  }, [ksefInvoiceNumber])
 
   const tenantsQuery = useTenants()
   const { tenantId: effectiveTenantId } = useCompany()
@@ -39,10 +210,22 @@ export function InvoiceDetailsPage(): ReactElement {
   })
 
   const paidMutation = useMutation({
-    mutationFn: (isPaid: boolean) => setInvoicePaid(effectiveTenantId, invoice!.id, isPaid),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['invoice-details', effectiveTenantId, ksefInvoiceNumber] })
+    mutationFn: ({ tenantId, invoiceId, isPaid }: { tenantId: string; invoiceId: string; isPaid: boolean }) =>
+      setInvoicePaid(tenantId, invoiceId, isPaid),
+    onSuccess: (data, vars) => {
+      queryClient.setQueriesData<PagedResult<InvoiceResponse>>(
+        { queryKey: ['invoices', vars.tenantId] },
+        (page) =>
+          page && {
+            ...page,
+            items: page.items.map((row) => (row.id === data.id ? { ...row, isPaid: data.isPaid, paidAt: data.paidAt } : row)),
+          },
+      )
+      void queryClient.invalidateQueries({ queryKey: ['invoice-details', vars.tenantId, data.ksefInvoiceNumber] })
       void queryClient.invalidateQueries({ queryKey: ['invoices'] })
+    },
+    onError: () => {
+      toast.error('Nie udało się zmienić statusu płatności.')
     },
   })
 
@@ -51,28 +234,55 @@ export function InvoiceDetailsPage(): ReactElement {
   const hasData = Boolean(invoiceQuery.data)
   const shouldShowEmpty = !isLoading && (isNotFound || (!invoiceQuery.error && !hasData))
 
-  const transfer = transferQuery.data
-
-  function handleCopyTransferText(): void {
-    if (!transfer) return
-    void navigator.clipboard.writeText(transfer.transferText).then(() => {
-      setCopySuccess(true)
-      setTimeout(() => setCopySuccess(false), 2000)
-    })
+  const walkTo = (number: string) => ({ pathname: `/invoices/${encodeURIComponent(number)}`, search: location.search })
+  const onWalk = (): void => {
+    walked.current = true
   }
 
   return (
-    <section>
+    <section className="invoice-details">
       <Link
         data-testid="invoice-details-back-link"
         to={listSearch !== undefined ? `/invoices${listSearch}` : tenantIdFromUrl ? `/invoices?tenantId=${encodeURIComponent(tenantIdFromUrl)}` : '/invoices'}
         className="back-link"
       >
-        ← Powrót do faktur
+        <Icon name="arrow-left" size={14} />
+        Otrzymane
       </Link>
 
-      <header className="page-header">
-        <h1>Szczegóły faktury</h1>
+      <header className="page-header invoice-details-head">
+        <h1 data-testid="invoice-detail-title">{invoice?.invoiceNumber ?? ksefInvoiceNumber}</h1>
+        {invoice ? <PaidStatus row={invoice} testId="invoice-detail-paid-status" /> : null}
+        <div className="invoice-walk">
+          {previous !== undefined ? (
+            <Link
+              ref={previousLink}
+              to={walkTo(previous)}
+              state={walkState}
+              replace
+              onClick={onWalk}
+              className="ui-button ui-button--outline ui-button--sm"
+              aria-label="Poprzednia faktura"
+              data-testid="invoice-prev"
+            >
+              Poprzednia
+            </Link>
+          ) : null}
+          {next !== undefined ? (
+            <Link
+              ref={nextLink}
+              to={walkTo(next)}
+              state={walkState}
+              replace
+              onClick={onWalk}
+              className="ui-button ui-button--outline ui-button--sm"
+              aria-label="Następna faktura"
+              data-testid="invoice-next"
+            >
+              Następna
+            </Link>
+          ) : null}
+        </div>
       </header>
 
       <AsyncStateView
@@ -85,257 +295,114 @@ export function InvoiceDetailsPage(): ReactElement {
         onRetry={() => void invoiceQuery.refetch()}
       >
         {invoice ? (
-          <>
-            <div className="invoice-detail-card" data-testid="invoice-details-card">
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">Numer KSeF</span>
-                <span
-                  className="invoice-detail-value invoice-detail-value--mono"
-                  data-testid="invoice-detail-ksef-number"
-                >
-                  {invoice.ksefInvoiceNumber}
-                </span>
-              </div>
+          <div className="two">
+            <PaymentCard
+              invoice={invoice}
+              transfer={transferQuery.data}
+              isLoading={transferQuery.isLoading}
+              isError={transferQuery.isError}
+              isSaving={paidMutation.isPending && paidMutation.variables.invoiceId === invoice.id}
+              onTogglePaid={() =>
+                paidMutation.mutate({ tenantId: effectiveTenantId, invoiceId: invoice.id, isPaid: !invoice.isPaid })
+              }
+            />
 
-              {invoice.invoiceNumber && (
-                <div className="invoice-detail-row">
-                  <span className="invoice-detail-label">Numer faktury</span>
-                  <span
-                    className="invoice-detail-value invoice-detail-value--mono"
-                    data-testid="invoice-detail-invoice-number"
-                  >
-                    {invoice.invoiceNumber}
-                  </span>
-                </div>
-              )}
-
-              {invoice.invoiceType && (
-                <div className="invoice-detail-row">
-                  <span className="invoice-detail-label">Typ faktury</span>
-                  <span className="invoice-detail-value" data-testid="invoice-detail-invoice-type">
-                    {invoice.invoiceType.toUpperCase()}
-                  </span>
-                </div>
-              )}
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">Sprzedawca</span>
-                <span className="invoice-detail-value" data-testid="invoice-detail-vendor-name">
-                  {invoice.vendorName}
-                </span>
-              </div>
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">NIP sprzedawcy</span>
-                <span
-                  className="invoice-detail-value"
-                  data-testid="invoice-detail-vendor-nip"
-                  style={{ fontFamily: 'ui-monospace, monospace' }}
-                >
-                  {invoice.vendorNip}
-                </span>
-              </div>
-
-              {invoice.buyerName && (
-                <div className="invoice-detail-row">
-                  <span className="invoice-detail-label">Nabywca</span>
-                  <span className="invoice-detail-value" data-testid="invoice-detail-buyer-name">
-                    {invoice.buyerName}
-                  </span>
-                </div>
-              )}
-
-              {invoice.buyerNip && (
-                <div className="invoice-detail-row">
-                  <span className="invoice-detail-label">NIP nabywcy</span>
-                  <span
-                    className="invoice-detail-value"
-                    data-testid="invoice-detail-buyer-nip"
-                    style={{ fontFamily: 'ui-monospace, monospace' }}
-                  >
-                    {invoice.buyerNip}
-                  </span>
-                </div>
-              )}
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">Data wystawienia</span>
-                <span className="invoice-detail-value" data-testid="invoice-detail-issue-date">
-                  {new Date(invoice.issueDate).toLocaleDateString('pl-PL')}
-                </span>
-              </div>
-
-              {invoice.acquisitionDate && (
-                <div className="invoice-detail-row">
-                  <span className="invoice-detail-label">Data przyjęcia w KSeF</span>
-                  <span className="invoice-detail-value" data-testid="invoice-detail-acquisition-date">
-                    {new Date(invoice.acquisitionDate).toLocaleDateString('pl-PL')}
-                  </span>
-                </div>
-              )}
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">Kwota netto</span>
-                <span className="invoice-detail-value" data-testid="invoice-detail-amount-net">
-                  {formatMoney(invoice.amountNet, invoice.currency)}
-                </span>
-              </div>
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">VAT</span>
-                <span className="invoice-detail-value" data-testid="invoice-detail-amount-vat">
-                  {formatMoney(invoice.amountVat, invoice.currency)}
-                </span>
-              </div>
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">Kwota brutto</span>
-                <span
-                  className="invoice-detail-value invoice-detail-value--amount"
-                  data-testid="invoice-detail-amount"
-                >
-                  {formatMoney(invoice.amountGross, invoice.currency)}
-                </span>
-              </div>
-
-              <div className="invoice-detail-row">
-                <span className="invoice-detail-label">Status płatności</span>
-                <span className="invoice-detail-value" data-testid="invoice-detail-paid-status">
-                  <span className={`payment-status-badge ${invoice.isPaid ? 'payment-status-badge--paid' : 'payment-status-badge--unpaid'}`}>
-                    {invoice.isPaid ? 'Opłacona' : 'Nieopłacona'}
-                  </span>
-                  {invoice.isPaid && invoice.paidAt && (
-                    <span className="payment-status-date">
-                      {new Date(invoice.paidAt).toLocaleDateString('pl-PL')}
-                    </span>
-                  )}
-                </span>
-              </div>
-            </div>
-
-            {invoice.lines && invoice.lines.length > 0 && (
-              <div className="invoice-lines-card" data-testid="invoice-lines">
-                <h2 className="invoice-lines-title">Pozycje faktury</h2>
-                <div className="invoice-lines-table-wrapper">
-                  <table className="invoice-lines-table">
+            <div className="col">
+              <section className="card" aria-labelledby="lines-title" data-testid="invoice-lines">
+                <h2 id="lines-title">Pozycje</h2>
+                {invoice.lines?.length ? (
+                  <table className="lines">
                     <thead>
                       <tr>
-                        <th>Lp.</th>
-                        <th>Nazwa</th>
-                        <th>Jm.</th>
-                        <th>Ilość</th>
-                        <th>Cena netto</th>
-                        <th>Cena brutto</th>
-                        <th>Netto</th>
-                        <th>VAT</th>
-                        <th>Brutto</th>
-                        <th>Stawka VAT</th>
+                        <th scope="col">Ilość</th>
+                        <th scope="col">Cena netto</th>
+                        <th scope="col">Stawka</th>
+                        <th scope="col">Brutto</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {invoice.lines.map((line) => (
-                        <tr key={line.lineNumber}>
-                          <td>{line.lineNumber}</td>
-                          <td>{line.name ?? '—'}</td>
-                          <td>{line.unit ?? '—'}</td>
-                          <td>{line.quantity != null ? formatDecimal(line.quantity, 0) : '—'}</td>
-                          <td>{line.unitPriceNet != null ? formatDecimal(line.unitPriceNet, 2) : '—'}</td>
-                          <td>{line.unitPriceGross != null ? formatDecimal(line.unitPriceGross, 2) : '—'}</td>
-                          <td>{line.amountNet != null ? formatMoney(line.amountNet, invoice.currency) : '—'}</td>
-                          <td>{line.amountVat != null ? formatMoney(line.amountVat, invoice.currency) : '—'}</td>
-                          <td>{line.amountGross != null ? formatMoney(line.amountGross, invoice.currency) : '—'}</td>
-                          <td>{line.vatRate ? vatRateLabel(line.vatRate) : '—'}</td>
+                    {invoice.lines.map((line) => (
+                      <tbody key={line.lineNumber}>
+                        <tr>
+                          <th colSpan={4} scope="rowgroup">
+                            {line.name ?? '—'}
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
+                        <tr>
+                          <td>
+                            {line.quantity != null ? formatDecimal(line.quantity, 0) : '—'}
+                            {line.unit ? ` ${line.unit}` : ''}
+                          </td>
+                          <td>{line.unitPriceNet != null ? formatDecimal(line.unitPriceNet, 2) : '—'}</td>
+                          <td>{line.vatRate ? vatRateLabel(line.vatRate) : '—'}</td>
+                          <td>{line.amountGross != null ? formatMoney(line.amountGross, invoice.currency) : '—'}</td>
+                        </tr>
+                      </tbody>
+                    ))}
                   </table>
-                </div>
-              </div>
-            )}
+                ) : (
+                  <p className="pay-state" data-testid="invoice-lines-empty">
+                    Brak pozycji w pobranych danych.
+                  </p>
+                )}
+              </section>
 
-            <div className="payment-actions" data-testid="payment-actions">
-              <button
-                className={`ui-button ${invoice.isPaid ? 'ui-button--secondary' : 'ui-button--primary'} mark-paid-btn`}
-                data-testid="toggle-paid-btn"
-                disabled={paidMutation.isPending}
-                onClick={() => paidMutation.mutate(!invoice.isPaid)}
-              >
-                {paidMutation.isPending
-                  ? 'Zapisywanie...'
-                  : invoice.isPaid
-                    ? 'Cofnij oznaczenie'
-                    : 'Oznacz jako opłaconą'}
-              </button>
-              {paidMutation.isError && (
-                <span className="payment-actions-error">Nie udało się zmienić statusu płatności.</span>
-              )}
+              <section className="card" aria-labelledby="data-title" data-testid="invoice-details-card">
+                <h2 id="data-title">Dane faktury</h2>
+                <dl className="kv">
+                  <dt>Sprzedawca</dt>
+                  <dd data-testid="invoice-detail-vendor-name">{invoice.vendorName}</dd>
+                  <dt>NIP sprzedawcy</dt>
+                  <dd className="mono" data-testid="invoice-detail-vendor-nip">
+                    {invoice.vendorNip}
+                  </dd>
+                  {invoice.buyerName ? (
+                    <>
+                      <dt>Nabywca</dt>
+                      <dd data-testid="invoice-detail-buyer-name">{invoice.buyerName}</dd>
+                    </>
+                  ) : null}
+                  {invoice.buyerNip ? (
+                    <>
+                      <dt>NIP nabywcy</dt>
+                      <dd className="mono" data-testid="invoice-detail-buyer-nip">
+                        {invoice.buyerNip}
+                      </dd>
+                    </>
+                  ) : null}
+                  {invoice.invoiceNumber ? (
+                    <>
+                      <dt>Numer faktury</dt>
+                      <dd data-testid="invoice-detail-invoice-number">{invoice.invoiceNumber}</dd>
+                    </>
+                  ) : null}
+                  {invoice.invoiceType ? (
+                    <>
+                      <dt>Typ faktury</dt>
+                      <dd data-testid="invoice-detail-invoice-type">{invoice.invoiceType.toUpperCase()}</dd>
+                    </>
+                  ) : null}
+                  <dt>Data wystawienia</dt>
+                  <dd data-testid="invoice-detail-issue-date">{formatDate(invoice.issueDate)}</dd>
+                  {invoice.acquisitionDate ? (
+                    <>
+                      <dt>Data przyjęcia w KSeF</dt>
+                      <dd data-testid="invoice-detail-acquisition-date">{formatDate(invoice.acquisitionDate)}</dd>
+                    </>
+                  ) : null}
+                  <dt>Netto</dt>
+                  <dd data-testid="invoice-detail-amount-net">{formatMoney(invoice.amountNet, invoice.currency)}</dd>
+                  <dt>VAT</dt>
+                  <dd data-testid="invoice-detail-amount-vat">{formatMoney(invoice.amountVat, invoice.currency)}</dd>
+                  <dt>Brutto</dt>
+                  <dd data-testid="invoice-detail-amount">{formatMoney(invoice.amountGross, invoice.currency)}</dd>
+                  <dt>Numer KSeF</dt>
+                  <dd className="mono" data-testid="invoice-detail-ksef-number">
+                    {invoice.ksefInvoiceNumber}
+                  </dd>
+                </dl>
+              </section>
             </div>
-
-            <div className="transfer-details-card" data-testid="transfer-details">
-              <h2 className="transfer-details-title">Dane do przelewu</h2>
-              {transferQuery.isLoading ? (
-                <p className="text-muted">Ładowanie danych przelewu...</p>
-              ) : transfer ? (
-                <>
-                  <div className="invoice-detail-row">
-                    <span className="invoice-detail-label">Odbiorca</span>
-                    <span className="invoice-detail-value" data-testid="transfer-recipient">
-                      {transfer.recipientName}
-                    </span>
-                  </div>
-                  <div className="invoice-detail-row">
-                    <span className="invoice-detail-label">NIP</span>
-                    <span className="invoice-detail-value" data-testid="transfer-nip" style={{ fontFamily: 'ui-monospace, monospace' }}>
-                      {transfer.recipientNip}
-                    </span>
-                  </div>
-                  <div className="invoice-detail-row">
-                    <span className="invoice-detail-label">Nr rachunku</span>
-                    <span className="invoice-detail-value" data-testid="transfer-account" style={{ fontFamily: 'ui-monospace, monospace' }}>
-                      {transfer.recipientAccount ? formatNrb(transfer.recipientAccount) : 'brak'}
-                    </span>
-                  </div>
-                  <div className="invoice-detail-row">
-                    <span className="invoice-detail-label">Kwota</span>
-                    <span className="invoice-detail-value invoice-detail-value--amount" data-testid="transfer-amount">
-                      {formatMoney(transfer.amount, transfer.currency)}
-                    </span>
-                  </div>
-                  <div className="invoice-detail-row">
-                    <span className="invoice-detail-label">Tytuł przelewu</span>
-                    <span className="invoice-detail-value" data-testid="transfer-title">
-                      {transfer.title}
-                    </span>
-                  </div>
-
-                  <div className="transfer-copy-section">
-                    <button
-                      className="ui-button ui-button--secondary"
-                      data-testid="copy-transfer-btn"
-                      onClick={handleCopyTransferText}
-                    >
-                      {copySuccess ? 'Skopiowano!' : 'Kopiuj dane przelewu'}
-                    </button>
-                  </div>
-
-                  <div className="qr-code-section" data-testid="qr-code-section">
-                    <h3 className="qr-code-title">Kod QR do przelewu</h3>
-                    {transfer.qrCodeBase64 && (
-                      <img
-                        src={transfer.qrCodeBase64}
-                        alt="Kod QR do przelewu"
-                        className="qr-code-image"
-                        data-testid="qr-code-image"
-                      />
-                    )}
-                    {transfer.qrMessage && <p data-testid="qr-message">{transfer.qrMessage}</p>}
-                  </div>
-                </>
-              ) : transferQuery.isError ? (
-                <p className="text-error">Nie udało się załadować danych przelewu.</p>
-              ) : null}
-            </div>
-          </>
+          </div>
         ) : null}
       </AsyncStateView>
     </section>

@@ -328,7 +328,7 @@ describe('InvoiceListPage', () => {
 
       expect(router.state.location.pathname).toBe('/invoices/KSEF-001')
       expect(router.state.location.search).toBe('?tenantId=tenant-1')
-      expect(router.state.location.state).toEqual({ listSearch: '?tenantId=tenant-1&q=abc&page=2' })
+      expect(router.state.location.state).toEqual({ listSearch: '?tenantId=tenant-1&q=abc&page=2', siblings: ['KSEF-001'] })
     })
 
     it('navigates once on a click on the link and keeps its URL and state', async () => {
@@ -344,7 +344,31 @@ describe('InvoiceListPage', () => {
 
       expect(keys.size).toBe(1)
       expect(router.state.location.pathname).toBe('/invoices/KSEF-001')
-      expect(router.state.location.state).toEqual({ listSearch: '?tenantId=tenant-1&q=abc' })
+      expect(router.state.location.state).toEqual({ listSearch: '?tenantId=tenant-1&q=abc', siblings: ['KSEF-001'] })
+    })
+
+    it('passes the numbers of the current page, in row order, to details', async () => {
+      vi.mocked(listInvoices).mockResolvedValue({
+        items: [
+          invoice({ id: 'inv-3', ksefInvoiceNumber: 'KSEF-003' }),
+          invoice({ id: 'inv-1', ksefInvoiceNumber: 'KSEF-001' }),
+          invoice({ id: 'inv-2', ksefInvoiceNumber: 'KSEF-002' }),
+        ],
+        page: 1,
+        pageSize: 25,
+        totalCount: 3,
+        totalPages: 1,
+      })
+      const router = await render('/invoices?tenantId=tenant-1')
+
+      await act(async () => container.querySelectorAll<HTMLElement>('[data-testid="invoice-view-details"]')[1].click())
+      await settle()
+
+      expect(router.state.location.pathname).toBe('/invoices/KSEF-001')
+      expect(router.state.location.state).toEqual({
+        listSearch: '?tenantId=tenant-1',
+        siblings: ['KSEF-003', 'KSEF-001', 'KSEF-002'],
+      })
     })
 
     it('ctrl-click on the link leaves this tab', async () => {
