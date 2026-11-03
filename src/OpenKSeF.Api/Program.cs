@@ -306,6 +306,14 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// Before migrations and adoption, because a refused rotation must write nothing.
+if (args.Contains("rotate-encryption-key"))
+{
+    using var scope = app.Services.CreateScope();
+    return await EncryptionKeyMigration.RunRotateCommandAsync(
+        scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(), app.Configuration, Console.Out);
+}
+
 // Apply pending migrations on startup
 using (var scope = app.Services.CreateScope())
 {
@@ -315,13 +323,6 @@ using (var scope = app.Services.CreateScope())
         .CreateLogger("OpenKSeF.Api.Migrations");
     await MigrationHelper.ApplyMigrationsIdempotentlyAsync(db, startupLogger);
     await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, app.Configuration, startupLogger);
-}
-
-if (args.Contains("rotate-encryption-key"))
-{
-    using var scope = app.Services.CreateScope();
-    return await EncryptionKeyMigration.RunRotateCommandAsync(
-        scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(), app.Configuration, Console.Out);
 }
 
 // Load system config cache

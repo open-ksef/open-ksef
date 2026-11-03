@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using OpenKSeF.Domain.Data;
 
 namespace OpenKSeF.Domain.Services;
@@ -10,6 +11,8 @@ namespace OpenKSeF.Domain.Services;
 public static class EncryptionKeyMigration
 {
     private const string NewKeyEnvVar = "ENCRYPTION_KEY_NEW";
+    private const int HostConnectionChecks = 6;
+    private static readonly TimeSpan HostConnectionCheckDelay = TimeSpan.FromMilliseconds(500);
     private const string FixHint =
         "Set ENCRYPTION_KEY or ENCRYPTION_KEY_FILE to a key from 'openssl rand -base64 32' and restart.";
 
@@ -28,23 +31,34 @@ public static class EncryptionKeyMigration
                 return;
             }
 
-            var configuredKey = TryReadConfiguredKey(configuration);
+            var configuredKey = TryReadConfiguredKey(configuration, out var reason);
             if (configuredKey is null)
             {
                 logger.LogError(
-                    "The encryption key is still stored in the database, and the configured key is missing or invalid. {FixHint}",
-                    FixHint);
+                    "The encryption key is still stored in the database, and the configured key cannot be used: {Reason} {FixHint}",
+                    reason, FixHint);
                 return;
             }
 
-            var count = await ReEncryptTrackedAsync(db, EncryptionServiceExtensions.DecodeKey(row.Value), configuredKey, ct);
+            var rowKey = EncryptionServiceExtensions.DecodeKey(row.Value);
+            var count = await ReEncryptTrackedAsync(db, rowKey, configuredKey, ct);
             db.SystemConfigs.Remove(row);
-            await db.SaveChangesAsync(ct);
-            logger.LogInformation("Encryption key moved out of the database, {Count} credentials re-encrypted", count);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            logger.LogInformation("Encryption key was moved out of the database by another host");
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("Encryption key moved out of the database, {Count} credentials re-encrypted", count);
+                if (configuredKey.SequenceEqual(rowKey))
+                    logger.LogWarning(
+                        "The configured encryption key is the one that was stored in the database, so every older database dump holds it. " +
+                        "Replace it with the rotate-encryption-key command.");
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (await db.SystemConfigs.AsNoTracking().AnyAsync(c => c.Key == SystemConfigKeys.EncryptionKey, ct))
+                    logger.LogWarning("A credential changed while the encryption key was being moved, nothing changed. Moving it retries at the next start.");
+                else
+                    logger.LogInformation("Encryption key was moved out of the database by another host");
+            }
         }
         catch (Exception ex)
         {
@@ -103,6 +117,20 @@ public static class EncryptionKeyMigration
             return 1;
         }
 
+        var otherConnections = await CountHostConnectionsAsync(db, ct);
+        if (otherConnections > 0)
+        {
+            await output.WriteLineAsync(
+                $"Refused: {otherConnections} other connections to this database. Stop the API and Worker, close other clients that set no application name, and retry.");
+            return 1;
+        }
+
+        if ((await db.Database.GetPendingMigrationsAsync(ct)).Any())
+        {
+            await output.WriteLineAsync("Refused: the database is not on this version. Start the app once, stop it, and retry.");
+            return 1;
+        }
+
         if (await db.SystemConfigs.AnyAsync(c => c.Key == SystemConfigKeys.EncryptionKey, ct))
         {
             await output.WriteLineAsync("Refused: the key is still in the database. Start the app once to adopt it.");
@@ -122,6 +150,34 @@ public static class EncryptionKeyMigration
         }
     }
 
+    private static async Task<int> CountHostConnectionsAsync(ApplicationDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsNpgsql())
+            return 0;
+
+        NpgsqlConnection.ClearPool((NpgsqlConnection)db.Database.GetDbConnection());
+
+        // API and Worker set no application name, while psql, pg_dump and admin tools do, and autovacuum is not a client backend.
+        // Retries because a backend closed by ClearPool stays listed for a moment.
+        var count = 0;
+        for (var attempt = 0; attempt < HostConnectionChecks; attempt++)
+        {
+            if (attempt > 0)
+                await Task.Delay(HostConnectionCheckDelay, ct);
+
+            count = await db.Database.SqlQueryRaw<int>(
+                """
+                SELECT count(*)::int AS "Value" FROM pg_stat_activity
+                WHERE datname = current_database() AND pid <> pg_backend_pid()
+                  AND backend_type = 'client backend' AND application_name = ''
+                """).SingleAsync(ct);
+            if (count == 0)
+                return 0;
+        }
+
+        return count;
+    }
+
     private static async Task CheckConfiguredKeyAsync(
         ApplicationDbContext db,
         IConfiguration configuration,
@@ -138,12 +194,12 @@ public static class EncryptionKeyMigration
             return;
         }
 
-        var configuredKey = TryReadConfiguredKey(configuration);
+        var configuredKey = TryReadConfiguredKey(configuration, out var reason);
         if (configuredKey is null)
         {
             logger.LogCritical(
-                "The configured encryption key is missing or invalid. Adding credentials, sync and send fail. {FixHint}",
-                FixHint);
+                "The configured encryption key cannot be used: {Reason} Adding credentials, sync and send fail. {FixHint}",
+                reason, FixHint);
             return;
         }
 
@@ -159,14 +215,16 @@ public static class EncryptionKeyMigration
                 failedIds.Count, failedIds);
     }
 
-    private static byte[]? TryReadConfiguredKey(IConfiguration configuration)
+    private static byte[]? TryReadConfiguredKey(IConfiguration configuration, out string reason)
     {
+        reason = "It is not set.";
         try
         {
             return EncryptionServiceExtensions.ReadConfiguredKey(configuration);
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException ex)
         {
+            reason = ex.Message;
             return null;
         }
     }

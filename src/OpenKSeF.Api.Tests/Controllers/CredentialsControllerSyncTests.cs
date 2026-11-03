@@ -33,7 +33,7 @@ public class CredentialsControllerSyncTests : IDisposable
     }
 
     private CredentialsController CreateController() =>
-        new(_db, _currentUser, _encryption, _tenantSyncService, _logger);
+        new(_db, _currentUser, _encryption, _tenantSyncService, Substitute.For<ISystemConfigService>(), _logger);
 
     [Fact]
     public async Task SyncNow_ReturnsNotFound_WhenTenantNotFound()

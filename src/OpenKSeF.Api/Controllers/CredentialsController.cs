@@ -63,6 +63,7 @@ public class CredentialsController : ControllerBase
     private readonly ICurrentUserService _currentUser;
     private readonly IEncryptionService _encryption;
     private readonly ITenantSyncService _tenantSyncService;
+    private readonly ISystemConfigService _systemConfig;
     private readonly ILogger<CredentialsController> _logger;
 
     public CredentialsController(
@@ -70,12 +71,14 @@ public class CredentialsController : ControllerBase
         ICurrentUserService currentUser,
         IEncryptionService encryption,
         ITenantSyncService tenantSyncService,
+        ISystemConfigService systemConfig,
         ILogger<CredentialsController> logger)
     {
         _db = db;
         _currentUser = currentUser;
         _encryption = encryption;
         _tenantSyncService = tenantSyncService;
+        _systemConfig = systemConfig;
         _logger = logger;
     }
 
@@ -83,10 +86,19 @@ public class CredentialsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> AddOrUpdate(Guid tenantId, [FromBody] AddCredentialRequest request)
     {
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
+
+        if (_systemConfig.GetValue(SystemConfigKeys.EncryptionKey) is not null
+            && !await _db.SystemConfigs.AnyAsync(c => c.Key == SystemConfigKeys.EncryptionKey))
+        {
+            await _systemConfig.RefreshCacheAsync();
+            _logger.LogCritical("This host still held the encryption key from the database after it moved out, credential not saved for tenant {TenantId}", tenantId);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Encryption key changed. Try again." });
+        }
 
         var now = DateTime.UtcNow;
 

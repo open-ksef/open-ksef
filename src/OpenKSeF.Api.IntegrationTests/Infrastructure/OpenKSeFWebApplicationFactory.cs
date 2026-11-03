@@ -8,7 +8,7 @@ namespace OpenKSeF.Api.IntegrationTests.Infrastructure;
 
 public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Program>
 {
-    public const string TestEncryptionKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+    private const string TestEncryptionKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
     private readonly TestcontainersFixture _fixture;
     private readonly TimeProvider? _timeProvider;

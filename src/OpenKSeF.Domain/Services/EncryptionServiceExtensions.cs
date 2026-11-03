@@ -12,7 +12,7 @@ public static class EncryptionServiceExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddSingleton<IEncryptionService>(sp =>
+        services.AddScoped<IEncryptionService>(sp =>
         {
             var rowKey = sp.GetService<ISystemConfigService>()?.GetValue(SystemConfigKeys.EncryptionKey);
 
