@@ -135,6 +135,7 @@ public class InvoiceListFiltersApiTests : IDisposable
     [InlineData("abc", "ABC")]
     [InlineData("  aBc  ", "ABC")]
     [InlineData("łódź", "LODZ")]
+    [InlineData("ŁÓDŹ", "LODZ")]
     [InlineData("456789", "NIP")]
     [InlineData("%", null)]
     [InlineData("nothing-matches", null)]

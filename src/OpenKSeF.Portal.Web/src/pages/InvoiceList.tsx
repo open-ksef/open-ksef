@@ -19,7 +19,8 @@ import { formatDate, formatDateTime, formatMoney } from '@/invoicing/format'
 
 const PAGE_SIZE = 25
 const SEARCH_DELAY_MS = 300
-const FETCH_OUTCOME_UNKNOWN = 'Nie mamy potwierdzenia pobrania z KSeF. Faktury mogły się pobrać, sprawdź listę za kilka minut.'
+const FETCH_OUTCOME_UNKNOWN = 'Nie mamy potwierdzenia pobrania z KSeF. Część faktur mogła się pobrać. Sprawdź listę i w razie potrzeby spróbuj ponownie.'
+const FETCH_FAILED = 'Pobieranie z KSeF nie powiodło się. Spróbuj ponownie później. Jeśli błąd wraca, sprawdź token KSeF.'
 
 function parsePage(value: string | null): number {
   const parsed = Number.parseInt(value ?? '', 10)
@@ -27,7 +28,7 @@ function parsePage(value: string | null): number {
 }
 
 function vendorFilter(term: string): string {
-  return /^[\d\s-]+$/.test(term) ? term.replace(/[\s-]/g, '') : term
+  return /^(pl)?[\d\s-]+$/i.test(term) ? term.replace(/^pl|[\s-]/gi, '') : term
 }
 
 function withFilters(current: URLSearchParams, filters: Record<string, string>): URLSearchParams {
@@ -40,13 +41,46 @@ function withFilters(current: URLSearchParams, filters: Record<string, string>):
   return next
 }
 
+function isMissingToken(error: Error | null): boolean {
+  return error instanceof ApiError && error.status === 409
+}
+
 function fetchErrorMessage(error: Error): string {
-  const fromApi =
+  const syncFailed =
     error instanceof ApiError &&
-    (error.status === 409 || error.status === 502) &&
+    error.status === 502 &&
     error.originalError instanceof Response &&
     error.originalError.headers.get('Content-Type')?.includes('json')
-  return fromApi ? error.message : FETCH_OUTCOME_UNKNOWN
+  return syncFailed ? FETCH_FAILED : FETCH_OUTCOME_UNKNOWN
+}
+
+function DateFilter({ id, label, value, onCommit }: { id: string; label: string; value: string; onCommit: (value: string) => void }): ReactElement {
+  const [draft, setDraft] = useState(value)
+  const [seen, setSeen] = useState(value)
+  if (value !== seen) {
+    setSeen(value)
+    setDraft(value)
+  }
+
+  return (
+    <>
+      <label htmlFor={id} className="visually-hidden">
+        {label}
+      </label>
+      <input
+        id={id}
+        data-testid={id}
+        type="date"
+        value={draft}
+        onChange={(event) => {
+          const next = event.target.value
+          setDraft(next)
+          // Typing a year passes through 0002, 0020, 0202. The router commits after the event, so a URL-controlled value would reset the field mid-typing.
+          if (!next || next >= '1000') onCommit(next)
+        }}
+      />
+    </>
+  )
 }
 
 function PaidStatus({ row, testId }: { row: InvoiceResponse; testId: string }): ReactElement {
@@ -109,7 +143,9 @@ export function InvoiceListPage(): ReactElement {
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       void queryClient.invalidateQueries({ queryKey: ['invoices'] })
     },
-    onError: (error) => toast.error(fetchErrorMessage(error)),
+    onError: (error) => {
+      if (!isMissingToken(error)) toast.error(fetchErrorMessage(error))
+    },
   })
 
   const rows = invoicesQuery.data?.items ?? []
@@ -119,6 +155,7 @@ export function InvoiceListPage(): ReactElement {
 
   const summary = dashboardQuery.data?.find((row) => row.tenantId === tenantId)
   const fetched = fetchMutation.data?.tenantId === tenantId ? fetchMutation.data : null
+  const missingToken = isMissingToken(fetchMutation.error) && fetchMutation.variables === tenantId
 
   const detailsPath = (row: InvoiceResponse): string =>
     `/invoices/${encodeURIComponent(row.ksefInvoiceNumber)}?tenantId=${encodeURIComponent(tenantId)}`
@@ -211,8 +248,14 @@ export function InvoiceListPage(): ReactElement {
               </span>
             )
           ) : null}
-          <span role="status" data-testid="invoice-fetch-note">
-            {fetched ? `Pobrane: ${fetched.fetchedInvoices}, nowe: ${fetched.newInvoices}.` : null}
+          <span role="status" data-testid="invoice-fetch-note" className={missingToken ? 'received-sync--stale' : undefined}>
+            {missingToken ? (
+              <>
+                Ta firma nie ma tokenu KSeF. <Link to="/credentials">Dodaj token KSeF</Link>
+              </>
+            ) : fetched ? (
+              `Pobrane: ${fetched.fetchedInvoices}, nowe: ${fetched.newInvoices}.`
+            ) : null}
           </span>
         </div>
         <Button
@@ -237,25 +280,17 @@ export function InvoiceListPage(): ReactElement {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
         />
-        <label htmlFor="invoice-date-from" className="visually-hidden">
-          Data wystawienia od
-        </label>
-        <input
+        <DateFilter
           id="invoice-date-from"
-          data-testid="invoice-date-from"
-          type="date"
+          label="Data wystawienia od"
           value={dateFrom}
-          onChange={(event) => setSearchParams(withFilters(searchParams, { dateFrom: event.target.value }))}
+          onCommit={(value) => setSearchParams(withFilters(searchParams, { dateFrom: value }), { replace: true })}
         />
-        <label htmlFor="invoice-date-to" className="visually-hidden">
-          Data wystawienia do
-        </label>
-        <input
+        <DateFilter
           id="invoice-date-to"
-          data-testid="invoice-date-to"
-          type="date"
+          label="Data wystawienia do"
           value={dateTo}
-          onChange={(event) => setSearchParams(withFilters(searchParams, { dateTo: event.target.value }))}
+          onCommit={(value) => setSearchParams(withFilters(searchParams, { dateTo: value }), { replace: true })}
         />
       </div>
 

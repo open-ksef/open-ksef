@@ -216,7 +216,7 @@ describe('InvoiceListPage', () => {
     expect(router.state.location.search).toContain('q=xyz')
   })
 
-  it.each(['123-456-78-90', '123 456 78 90'])('sends the pasted NIP %s without separators', async (term) => {
+  it.each(['123-456-78-90', '123 456 78 90', 'PL1234567890', 'pl 123-456-78-90'])('sends the pasted NIP %s without separators', async (term) => {
     await render('/invoices?tenantId=tenant-1')
 
     await type('invoice-search', term)
@@ -228,7 +228,7 @@ describe('InvoiceListPage', () => {
   it.each([
     ['invoice-date-from', 'dateFrom'],
     ['invoice-date-to', 'dateTo'],
-  ])('%s applies at once, pushes history, resets page to 1 and keeps the rest', async (id, param) => {
+  ])('%s applies at once, replaces history, resets page to 1 and keeps the rest', async (id, param) => {
     const router = await render('/invoices?tenantId=tenant-1&q=abc&page=3')
 
     await type(id, '2026-01-15')
@@ -239,9 +239,30 @@ describe('InvoiceListPage', () => {
     expect(search.get('q')).toBe('abc')
     expect(search.get('tenantId')).toBe('tenant-1')
     expect(search.has('page')).toBe(false)
-    expect(router.state.historyAction).toBe('PUSH')
+    expect(router.state.historyAction).toBe('REPLACE')
     expect(lastListCall()?.[1]).toMatchObject({ [param]: '2026-01-15', page: 1 })
     expect(input(id).value).toBe('2026-01-15')
+  })
+
+  it('does not apply a year still being typed', async () => {
+    const router = await render('/invoices?tenantId=tenant-1&page=3')
+
+    await type('invoice-date-from', '0002-01-15')
+    await settle()
+
+    expect(router.state.location.search).toBe('?tenantId=tenant-1&page=3')
+    expect(input('invoice-date-from').value).toBe('0002-01-15')
+  })
+
+  it('date field follows the URL when it changes from outside', async () => {
+    const router = await render('/invoices?tenantId=tenant-1&dateFrom=2026-01-15')
+
+    await act(async () => {
+      await router.navigate('/invoices?tenantId=tenant-1')
+    })
+    await settle()
+
+    expect(input('invoice-date-from').value).toBe('')
   })
 
   it('does not add the company to the URL when filtering', async () => {
@@ -394,17 +415,52 @@ describe('InvoiceListPage', () => {
       expect(byTestId('invoice-fetch-note')?.textContent).toBe('')
     })
 
-    it.each([
-      ['409 from the API', new ApiError('Brak tokenu', 409, Response.json({ error: 'Brak tokenu' }, { status: 409 })), 'Brak tokenu'],
-      ['502 from the API', new ApiError('KSeF odrzucił', 502, Response.json({ error: 'KSeF odrzucił' }, { status: 502 })), 'KSeF odrzucił'],
-    ])('shows the API message on %s', async (_, error, message) => {
-      vi.mocked(forceCredentialSync).mockRejectedValue(error)
+    const serverText = 'No credential configured for this tenant.'
+
+    it('on a 409 says in Polish that the token is missing and links to it, without the server text', async () => {
+      vi.mocked(forceCredentialSync).mockRejectedValue(
+        new ApiError(serverText, 409, Response.json({ error: serverText }, { status: 409 })),
+      )
       await render('/invoices?tenantId=tenant-1')
 
       await act(async () => fetchButton().click())
       await settle()
 
-      expect(toast.error).toHaveBeenCalledWith(message)
+      const note = byTestId('invoice-fetch-note')
+      expect(note?.textContent).toBe('Ta firma nie ma tokenu KSeF. Dodaj token KSeF')
+      expect(note?.querySelector('a')?.getAttribute('href')).toBe('/credentials')
+      expect(container.textContent).not.toContain(serverText)
+      expect(toast.error).not.toHaveBeenCalled()
+      expect(fetchButton().disabled).toBe(false)
+    })
+
+    it('does not carry the missing token message over to another company', async () => {
+      vi.mocked(forceCredentialSync).mockRejectedValue(new ApiError(serverText, 409))
+      const router = await render('/invoices?tenantId=tenant-1')
+      await act(async () => fetchButton().click())
+      await settle()
+      expect(byTestId('invoice-fetch-note')?.textContent).not.toBe('')
+
+      await act(async () => {
+        await router.navigate('/invoices?tenantId=tenant-2')
+      })
+      await settle()
+
+      expect(byTestId('invoice-fetch-note')?.textContent).toBe('')
+    })
+
+    it('on a JSON 502 shows a fixed Polish message, not the raw server text', async () => {
+      const raw = 'Response status code does not indicate success: 500'
+      vi.mocked(forceCredentialSync).mockRejectedValue(new ApiError(raw, 502, Response.json({ error: raw }, { status: 502 })))
+      await render('/invoices?tenantId=tenant-1')
+
+      await act(async () => fetchButton().click())
+      await settle()
+
+      expect(toast.error).toHaveBeenCalledTimes(1)
+      expect(toast.error).toHaveBeenCalledWith(
+        'Pobieranie z KSeF nie powiodło się. Spróbuj ponownie później. Jeśli błąd wraca, sprawdź token KSeF.',
+      )
       expect(fetchButton().disabled).toBe(false)
     })
 
@@ -420,7 +476,7 @@ describe('InvoiceListPage', () => {
       await settle()
 
       expect(toast.error).toHaveBeenCalledWith(
-        'Nie mamy potwierdzenia pobrania z KSeF. Faktury mogły się pobrać, sprawdź listę za kilka minut.',
+        'Nie mamy potwierdzenia pobrania z KSeF. Część faktur mogła się pobrać. Sprawdź listę i w razie potrzeby spróbuj ponownie.',
       )
     })
   })
