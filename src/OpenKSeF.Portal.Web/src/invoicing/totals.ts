@@ -67,5 +67,5 @@ export function computeTotals(lines: readonly TotalsLineInput[]): InvoiceTotals 
 }
 
 export function vatRateLabel(code: string): string {
-  return VAT_RATES.find((rate) => rate.code === code)?.label ?? code
+  return VAT_RATES.find((rate) => rate.code === code)?.label ?? (/^\d+$/.test(code) ? `${code}%` : code)
 }

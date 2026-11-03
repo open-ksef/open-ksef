@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { Route, RouterProvider, Routes, createMemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getDashboardOverview } from '@/api/endpoints/dashboard'
 import { getInvoiceByKSeFNumber, listInvoices } from '@/api/endpoints/invoices'
 import { getIssuedInvoice, listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
@@ -23,6 +24,8 @@ vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/invoices', () => ({ listInvoices: vi.fn(), getInvoiceByKSeFNumber: vi.fn() }))
 vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedInvoices: vi.fn(), getIssuedInvoice: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn() }))
+vi.mock('@/api/endpoints/dashboard', () => ({ getDashboardOverview: vi.fn() }))
+vi.mock('@/api/endpoints/credentials', () => ({ forceCredentialSync: vi.fn() }))
 
 const STORAGE_KEY = 'openksef.company'
 const tenant = (id: string, displayName: string | null, nip: string) => ({
@@ -65,6 +68,7 @@ describe('CompanyProvider', () => {
       tenant('c', null, '3333333333'),
     ])
     vi.mocked(getSellerProfile).mockResolvedValue({ ksefEnvironment: 'test' } as SellerProfileResponse)
+    vi.mocked(getDashboardOverview).mockResolvedValue([])
     vi.mocked(listInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 })
     vi.mocked(listIssuedInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 })
     vi.mocked(getInvoiceByKSeFNumber).mockReturnValue(new Promise(() => {}))
@@ -188,6 +192,17 @@ describe('CompanyProvider', () => {
     expect(listInvoices).toHaveBeenCalledWith('b', expect.objectContaining({ page: 1 }))
     expect(listInvoices).not.toHaveBeenCalledWith('b', expect.objectContaining({ page: 3 }))
     expect(probe().textContent).toBe('/invoices?pageSize=10')
+  })
+
+  it('a switch on the received list keeps the search, drops the page and queries the new company', async () => {
+    localStorage.setItem(STORAGE_KEY, 'a')
+    await render('/invoices?q=abc&page=3', <InvoiceListPage />)
+
+    await chooseCompany('b')
+
+    expect(listInvoices).toHaveBeenLastCalledWith('b', expect.objectContaining({ filterByVendor: 'abc', page: 1 }))
+    expect(probe().textContent).toBe('/invoices?q=abc')
+    expect(byTestId('invoice-search')).toHaveProperty('value', 'abc')
   })
 
   it.each([

@@ -55,21 +55,29 @@ public class InvoicesController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(filterByVendor))
         {
+            var term = filterByVendor.Trim().ToLower();
             query = query.Where(i =>
-                i.VendorName.Contains(filterByVendor) ||
-                i.VendorNip.Contains(filterByVendor));
+                i.VendorName.ToLower().Contains(term) ||
+                i.VendorNip.Contains(term));
         }
 
         if (dateFrom.HasValue)
-            query = query.Where(i => i.IssueDate >= dateFrom.Value);
+        {
+            var from = DateTime.SpecifyKind(dateFrom.Value.Date, DateTimeKind.Utc);
+            query = query.Where(i => i.IssueDate >= from);
+        }
 
         if (dateTo.HasValue)
-            query = query.Where(i => i.IssueDate <= dateTo.Value);
+        {
+            var to = DateTime.SpecifyKind(dateTo.Value.Date.AddTicks(TimeSpan.TicksPerDay - 1), DateTimeKind.Utc);
+            query = query.Where(i => i.IssueDate <= to);
+        }
 
         var totalCount = await query.CountAsync();
 
         var items = await query
             .OrderByDescending(i => i.IssueDate)
+            .ThenBy(i => i.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(i => new InvoiceResponse(

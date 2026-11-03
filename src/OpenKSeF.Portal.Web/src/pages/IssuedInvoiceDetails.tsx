@@ -17,7 +17,7 @@ import { KsefStatusPanel } from '@/components/invoicing/KsefStatusPanel'
 import { VatSummary } from '@/components/invoicing/VatSummary'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
-import { formatDate, formatMoney, formatNrb } from '@/invoicing/format'
+import { formatDate, formatDecimal, formatMoney, formatNrb } from '@/invoicing/format'
 import { downloadFile, fileStem, isReissueBlocked, ksefPollInterval, renderInvoicePdf } from '@/invoicing/status'
 import { vatRateLabel } from '@/invoicing/totals'
 
@@ -201,7 +201,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
                       <td>{line.lineNo}</td>
                       <td>{line.name}</td>
                       <td>{line.unit}</td>
-                      <td className="num">{line.quantity.toLocaleString('pl-PL', { maximumFractionDigits: 6 })}</td>
+                      <td className="num">{formatDecimal(line.quantity, 0)}</td>
                       <td className="num">{formatMoney(line.unitNetPrice, invoice.currency)}</td>
                       <td>{vatRateLabel(line.vatRate)}</td>
                       <td className="num">{formatMoney(line.netAmount, invoice.currency)}</td>

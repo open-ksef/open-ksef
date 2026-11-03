@@ -1,7 +1,11 @@
-const moneyFormat = new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const moneyFormat = new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })
 
 export function formatMoney(amount: number, currency = 'PLN'): string {
   return `${moneyFormat.format(amount)} ${currency}`
+}
+
+export function formatDecimal(value: number, minimumFractionDigits: number): string {
+  return value.toLocaleString('pl-PL', { minimumFractionDigits, maximumFractionDigits: 6, useGrouping: 'always' })
 }
 
 export function formatDate(isoDate: string | null | undefined): string {
@@ -11,7 +15,8 @@ export function formatDate(isoDate: string | null | undefined): string {
 
 export function formatNrb(digits: string | null | undefined): string {
   if (!digits) return '—'
-  return digits.length === 26 ? `${digits.slice(0, 2)} ${digits.slice(2).replace(/(\d{4})(?=\d)/g, '$1 ')}` : digits
+  const nrb = digits.replace(/[\s-]/g, '').replace(/^PL/i, '')
+  return /^\d{26}$/.test(nrb) ? `${nrb.slice(0, 2)} ${nrb.slice(2).replace(/(\d{4})(?=\d)/g, '$1 ')}` : digits
 }
 
 export function todayIso(now = new Date()): string {
@@ -25,7 +30,13 @@ export function addDaysIso(isoDate: string, days: number): string {
   return date.toISOString().slice(0, 10)
 }
 
-const dateTimeFormat = new Intl.DateTimeFormat('pl-PL', { dateStyle: 'short', timeStyle: 'short' })
+const dateTimeFormat = new Intl.DateTimeFormat('pl-PL', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+})
 
 export function formatDateTime(iso: string | null | undefined): string {
   return iso ? dateTimeFormat.format(new Date(iso)) : '—'
