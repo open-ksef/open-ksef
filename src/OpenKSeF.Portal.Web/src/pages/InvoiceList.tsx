@@ -11,6 +11,7 @@ import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
+import { PaidStatus } from '@/components/PaidStatus'
 import '@/components/invoicing/invoicing.css'
 import { Table, type TableColumn } from '@/components/Table'
 import { useDashboard } from '@/hooks/useDashboard'
@@ -83,15 +84,6 @@ function DateFilter({ id, label, value, onCommit }: { id: string; label: string;
   )
 }
 
-function PaidStatus({ row, testId }: { row: InvoiceResponse; testId: string }): ReactElement {
-  return (
-    <span data-testid={testId} className={row.isPaid ? 'received-paid' : 'received-paid received-paid--unpaid'}>
-      <Icon name={row.isPaid ? 'circle-check' : 'circle-dashed'} size={14} />
-      {row.isPaid ? 'Opłacona' : 'Nieopłacona'}
-    </span>
-  )
-}
-
 export function InvoiceListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
@@ -159,7 +151,7 @@ export function InvoiceListPage(): ReactElement {
 
   const detailsPath = (row: InvoiceResponse): string =>
     `/invoices/${encodeURIComponent(row.ksefInvoiceNumber)}?tenantId=${encodeURIComponent(tenantId)}`
-  const detailsState = { listSearch: location.search }
+  const detailsState = { listSearch: location.search, siblings: rows.map((row) => row.ksefInvoiceNumber) }
 
   const onChangePage = (nextPage: number): void => {
     const next = new URLSearchParams(searchParams)

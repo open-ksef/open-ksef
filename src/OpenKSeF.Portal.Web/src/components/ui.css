@@ -1550,197 +1550,267 @@ label {
   min-height: unset;
 }
 
-/* ─── Invoice details / dl ───────────────────────────────────────────────── */
-.invoice-detail-card {
-  background: var(--ui-surface);
-  border-radius: var(--ui-radius-lg);
-  box-shadow: var(--ui-shadow-card);
-  overflow: hidden;
-  margin-top: 12px;
+/* ─── Received invoice details ───────────────────────────────────────────── */
+.invoice-details-head {
+  flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
-.invoice-detail-row {
+.invoice-details-head h1 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.invoice-walk {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.invoice-details .two {
   display: grid;
-  grid-template-columns: 180px 1fr;
-  align-items: center;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--ui-border);
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
 }
 
-.invoice-detail-row:last-child {
-  border-bottom: none;
+.invoice-details .col {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
 }
 
-.invoice-detail-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.invoice-details .card {
+  min-width: 0;
+  padding: 16px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+}
+
+.invoice-details .card h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
+.invoice-details .kv {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 8px 0 0;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 13px;
+}
+
+.invoice-details .kv dt {
+  display: block;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--ui-muted);
 }
 
-.invoice-detail-value {
-  font-size: 14px;
-  color: var(--ui-text);
-  font-weight: 500;
-}
-
-.invoice-detail-value--mono {
-  font-family: var(--ui-font-mono);
+.invoice-details .kv dd {
+  display: block;
   font-size: 13px;
-  color: var(--ui-primary);
+  font-weight: 400;
+  overflow-wrap: anywhere;
 }
 
-.invoice-detail-value--amount {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--ui-text);
-  letter-spacing: -0.02em;
+.invoice-details .mono,
+.pay-nrb {
+  font-family: var(--ui-font-mono);
 }
 
-/* ─── Payment status badge ────────────────────────────────────────────────── */
-.payment-status-badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 999px;
+.pay-grid {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 12px 20px;
+}
+
+.pay-grid--one {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pay-full {
+  grid-column: 1 / -1;
+}
+
+.pay-qr img {
+  display: block;
+  width: 200px;
+  height: 200px;
+  background: #fff;
+  border-radius: var(--ui-radius-md);
+}
+
+.pay-caption {
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.payment-status-badge--paid {
-  background: var(--ui-success-bg);
-  color: var(--ui-success);
-}
-
-.payment-status-badge--unpaid {
-  background: var(--ui-neutral-bg);
-  color: var(--ui-neutral);
-}
-
-.payment-status-date {
-  margin-left: 8px;
-  font-size: 12px;
   color: var(--ui-muted);
 }
 
-/* ─── Invoice lines card ──────────────────────────────────────────────────── */
-.invoice-lines-card {
-  background: var(--ui-surface);
-  border-radius: var(--ui-radius-lg);
-  box-shadow: var(--ui-shadow-card);
-  overflow: hidden;
-  margin-top: 12px;
-  padding: 20px;
-}
-
-.invoice-lines-title {
-  font-size: 16px;
+.pay-amount {
+  font-size: 28px;
+  line-height: 34px;
   font-weight: 700;
-  color: var(--ui-text);
-  margin: 0 0 16px;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
 }
 
-.invoice-lines-table-wrapper {
-  overflow-x: auto;
+.pay-nrb {
+  font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
-.invoice-lines-table {
+.invoice-details .pay-notice {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.pay-notice .ui-icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+.pay-notice a {
+  color: inherit;
+  font-weight: 600;
+}
+
+.pay-help {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ui-muted);
+}
+
+.pay-state {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ui-muted);
+}
+
+.pay-state--error {
+  color: var(--ui-error);
+}
+
+.pay-paid-note {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--ui-muted);
+}
+
+.pay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pay-actions .ui-button {
+  flex: 1;
+}
+
+.pay-details {
+  margin-top: 12px;
+}
+
+.pay-details summary {
+  min-height: 24px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.invoice-details .lines {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
 }
 
-.invoice-lines-table th {
-  padding: 8px 10px;
-  text-align: left;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ui-muted);
-  border-bottom: 2px solid var(--ui-border);
-  white-space: nowrap;
-}
-
-.invoice-lines-table td {
-  padding: 10px 10px;
-  border-bottom: 1px solid var(--ui-border);
-  color: var(--ui-text);
-  vertical-align: top;
-}
-
-.invoice-lines-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.invoice-lines-table tbody tr:hover td {
-  background: var(--ui-surface-2);
-}
-
-/* ─── Payment actions ─────────────────────────────────────────────────────── */
-.payment-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 16px;
-  margin-bottom: 24px;
-}
-
-.mark-paid-btn {
-  min-width: 220px;
-}
-
-.payment-actions-error {
-  font-size: 13px;
-  color: var(--ui-error);
-}
-
-/* ─── Transfer details card ───────────────────────────────────────────────── */
-.transfer-details-card {
-  background: var(--ui-surface);
-  border-radius: var(--ui-radius-lg);
-  padding: 24px;
-  box-shadow: var(--ui-shadow-card);
-  margin-top: 8px;
-}
-
-.transfer-details-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--ui-text);
-  margin: 0 0 16px;
-}
-
-.transfer-copy-section {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--ui-border);
-}
-
-/* ─── QR code section ─────────────────────────────────────────────────────── */
-.qr-code-section {
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid var(--ui-border);
-  text-align: center;
-}
-
-.qr-code-title {
-  font-size: 14px;
+.lines thead th {
+  padding: 4px 8px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--ui-muted);
-  margin: 0 0 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--ui-border);
 }
 
-.qr-code-image {
-  max-width: 200px;
-  height: auto;
-  background: #ffffff;
-  border-radius: var(--ui-radius-md);
+.lines tbody th {
+  padding: 8px 8px 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ui-text);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.lines td {
+  padding: 0 8px 8px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--ui-border);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 1800px) {
+  .invoice-details .two {
+    grid-template-columns: minmax(0, 680px) minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .invoice-details .col {
+    display: contents;
+  }
+}
+
+@media (max-width: 1100px) {
+  .invoice-details .two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 820px) {
+  .invoice-details-head {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .invoice-walk .ui-button,
+  .pay-actions .ui-button {
+    min-height: 44px;
+  }
+
+  .pay-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pay-qr {
+    justify-self: center;
+  }
+
+  .lines thead th,
+  .lines td {
+    padding-right: 4px;
+    padding-left: 4px;
+  }
+
+  .lines td {
+    white-space: normal;
+  }
 }
 
 dl {

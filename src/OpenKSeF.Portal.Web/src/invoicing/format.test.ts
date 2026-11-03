@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDateTime, formatDecimal, formatMoney, formatNrb } from './format'
+import { formatDateTime, formatDecimal, formatMoney, formatNrb, formatWarsawDate } from './format'
 import { vatRateLabel } from './totals'
 
 const plain = (text: string): string => text.replace(/\s/g, ' ')
@@ -52,6 +52,20 @@ describe('formatDateTime', () => {
 
   it('shows a dash when empty', () => {
     expect(formatDateTime(null)).toBe('—')
+  })
+})
+
+describe('formatWarsawDate', () => {
+  it.each([
+    ['2026-11-02T23:30:00Z', '03.11.2026'],
+    ['2026-06-30T22:30:00Z', '01.07.2026'],
+    ['2026-11-02T22:59:59Z', '02.11.2026'],
+  ])('%s is %s in Warsaw', (iso, expected) => {
+    expect(formatWarsawDate(iso)).toBe(expected)
+  })
+
+  it('shows a dash when empty', () => {
+    expect(formatWarsawDate(null)).toBe('—')
   })
 })
 
