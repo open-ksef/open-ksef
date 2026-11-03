@@ -155,8 +155,9 @@ public class InvoicesController : ControllerBase
 
         var transferData = _transferDetails.BuildTransferData(invoice);
         var transferText = _transferDetails.BuildTransferText(invoice);
-        var qrBytes = _qrCode.GenerateTransferQr(transferData);
-        var qrBase64 = $"data:image/png;base64,{Convert.ToBase64String(qrBytes)}";
+        var qrBase64 = transferData.QrAvailable
+            ? $"data:image/png;base64,{Convert.ToBase64String(_qrCode.GenerateTransferQr(transferData))}"
+            : null;
 
         return Ok(new TransferDetailsResponse(
             transferData.RecipientName,
@@ -166,7 +167,8 @@ public class InvoicesController : ControllerBase
             transferData.Currency,
             transferData.Title,
             transferText,
-            qrBase64));
+            qrBase64,
+            transferData.QrMessage));
     }
 
     [HttpPatch("{id:guid}/paid")]
