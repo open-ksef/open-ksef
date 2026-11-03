@@ -2077,6 +2077,141 @@ input.nip-input {
   }
 }
 
+.phone-pair {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  font-size: 14px;
+}
+
+.phone-pair p {
+  margin: 0;
+}
+
+.phone-pair h3 {
+  margin: 12px 0 4px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.phone-pair__qr {
+  width: 220px;
+  height: 220px;
+  line-height: 0;
+  background: #ffffff;
+  border-radius: var(--ui-radius-md);
+}
+
+.phone-pair .phone-pair__server {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.phone-pair__server .mono {
+  font-family: var(--ui-font-mono);
+  overflow-wrap: anywhere;
+}
+
+.phone-pair__howto {
+  margin: 4px 0 0 18px;
+  padding: 0;
+  font-size: 13px;
+}
+
+.device-name {
+  display: block;
+  font-weight: 600;
+}
+
+.device-dates {
+  display: block;
+  font-size: 13px;
+  color: var(--ui-muted);
+}
+
+.device-actions__row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.settings-kv {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.settings-kv dt {
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.settings-kv dd {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-login {
+  max-width: 480px;
+}
+
+.settings-error {
+  margin-bottom: 16px;
+}
+
+.settings-foot {
+  margin-top: 16px;
+}
+
+.settings-h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ui-card .ui-table-wrap {
+  margin-top: 0;
+  box-shadow: none;
+}
+
+@media (max-width: 820px) {
+  .phone-pair {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+
+  .phone-pair > div:last-child {
+    justify-self: stretch;
+  }
+
+  .device-company {
+    display: none;
+  }
+
+  .device-actions__row .ui-button,
+  .settings-actions .ui-button,
+  .danger-list .ui-button {
+    min-height: 44px;
+  }
+
+  .ui-tabs a {
+    min-height: 44px;
+  }
+}
+
 /* ─── Toasts ─────────────────────────────────────────────────────────────── */
 @media (max-width: 820px) {
   .app-toaster {
@@ -2605,6 +2740,137 @@ input.nip-input {
 }
 
 /* ─── Onboarding Wizard ─────────────────────────────────────────────────── */
+.wiz {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 24px 16px;
+  background: var(--ui-bg);
+}
+
+.wiz__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: var(--ui-accent);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.wiz__brand span {
+  color: var(--ui-text);
+}
+
+.wiz__card {
+  width: min(600px, 100%);
+  padding: 24px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+}
+
+.wiz__card h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 700;
+}
+
+.wiz__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--ui-muted);
+  list-style: none;
+}
+
+.wiz__step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wiz__n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 50%;
+  font-weight: 600;
+}
+
+.wiz__step--current {
+  color: var(--ui-text);
+  font-weight: 600;
+}
+
+.wiz__step--current .wiz__n {
+  background: var(--ui-primary);
+  border-color: var(--ui-primary);
+  color: var(--ui-on-primary);
+}
+
+.wiz__lead {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--ui-muted);
+}
+
+.wiz__lead .mono,
+.wiz__card input.mono {
+  font-family: var(--ui-font-mono);
+}
+
+.wiz__sync {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+.wiz__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.wiz__actions .ui-button {
+  min-height: 40px;
+}
+
+button.wiz__skip {
+  min-height: 40px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--ui-link);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+button.wiz__skip:hover {
+  background: none;
+}
+
+@media (max-width: 820px) {
+  .wiz__actions .ui-button,
+  button.wiz__skip {
+    min-height: 44px;
+  }
+}
+
 .onboarding-card {
   background: var(--ui-surface);
   border: 1px solid var(--ui-border);
@@ -2720,43 +2986,6 @@ input.nip-input {
   text-decoration: underline;
 }
 
-.onboarding-credential-type {
-  display: flex;
-  gap: 0;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-md);
-  overflow: hidden;
-}
-
-.onboarding-credential-type__option {
-  flex: 1;
-  padding: 10px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  border: none;
-  background: var(--ui-surface);
-  color: var(--ui-muted);
-  cursor: pointer;
-  transition: all var(--ui-transition);
-  min-height: unset;
-}
-
-.onboarding-credential-type__option:hover {
-  background: var(--ui-bg);
-  transform: none;
-  box-shadow: none;
-}
-
-.onboarding-credential-type__option--active {
-  background: var(--ui-primary);
-  color: var(--ui-on-primary);
-}
-
-.onboarding-credential-type__option--active:hover {
-  background: var(--ui-primary);
-  color: var(--ui-on-primary);
-}
-
 
 .credential-type-badge {
   display: inline-flex;
@@ -2839,24 +3068,3 @@ input.nip-input {
   line-height: 1.5;
 }
 
-.onboarding-success__sync {
-  background: var(--ui-success-bg);
-  border: 1px solid var(--ui-success);
-  border-radius: var(--ui-radius-md);
-  padding: 12px 16px;
-  font-size: 13px;
-  color: var(--ui-success);
-  font-weight: 500;
-  width: 100%;
-}
-
-.onboarding-success__warning {
-  background: var(--ui-warning-bg);
-  border: 1px solid var(--ui-warning);
-  border-radius: var(--ui-radius-md);
-  padding: 12px 16px;
-  font-size: 13px;
-  color: var(--ui-warning);
-  font-weight: 500;
-  width: 100%;
-}
