@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.Json;
 using KSeF.Client.DI;
 using Microsoft.EntityFrameworkCore;
@@ -104,6 +103,10 @@ public sealed class SystemSetupService : ISystemSetupService
     {
         try
         {
+            if (EncryptionServiceExtensions.ReadConfiguredKey(_configuration) is null)
+                return new SetupApplyResponse(false, null,
+                    "ENCRYPTION_KEY is not set. Generate one with: openssl rand -base64 32, set it on the API and Worker, and restart.");
+
             var client = _httpClientFactory.CreateClient("keycloak");
             var kcBase = KeycloakInternalBaseUrl;
 
@@ -113,11 +116,6 @@ public sealed class SystemSetupService : ISystemSetupService
 
             await EnsureClientsExistAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Keycloak clients verified/created");
-
-            // 2. Generate encryption key
-            var encryptionKeyBytes = RandomNumberGenerator.GetBytes(32);
-            var encryptionKey = Convert.ToBase64String(encryptionKeyBytes);
-            _logger.LogInformation("Generated encryption key");
 
             // 3. Fetch openksef-api client secret
             var apiClientSecret = await FetchApiClientSecretAsync(client, kcBase, adminToken, ct);
@@ -166,7 +164,6 @@ public sealed class SystemSetupService : ISystemSetupService
             };
             var configValues = new Dictionary<string, string>
             {
-                [SystemConfigKeys.EncryptionKey] = encryptionKey,
                 [SystemConfigKeys.ApiClientSecret] = apiClientSecret,
                 [SystemConfigKeys.ExternalBaseUrl] = request.ExternalBaseUrl.TrimEnd('/'),
                 [SystemConfigKeys.KSeFEnvironment] = ksefEnv,
@@ -214,12 +211,12 @@ public sealed class SystemSetupService : ISystemSetupService
 
             _logger.LogInformation("System setup completed successfully");
 
-            return new SetupApplyResponse(true, encryptionKey, apiClientSecret, null);
+            return new SetupApplyResponse(true, apiClientSecret, null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "System setup failed");
-            return new SetupApplyResponse(false, null, null, ex.Message);
+            return new SetupApplyResponse(false, null, ex.Message);
         }
     }
 

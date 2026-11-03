@@ -13,6 +13,9 @@ import { Button } from '@/components/Button'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
 
+const ENCRYPTION_KEY_ERROR =
+  'Brak prawidłowego klucza szyfrowania. Wygeneruj klucz poleceniem openssl rand -base64 32, ustaw go w zmiennej ENCRYPTION_KEY usług API i Worker, zachowaj kopię poza bazą danych i uruchom te usługi ponownie. Następnie kliknij „Dalej” i przejdź kreator jeszcze raz. Wprowadzone dane zostały zachowane.'
+
 function StepIndicator({ current }: { current: Step }) {
   const steps = [1, 2, 3, 4, 5, 6] as const
   const labels = ['Logowanie', 'Konto i firma', 'Autoryzacja', 'Bezpieczeństwo', 'Integracje', 'Podsumowanie']
@@ -102,8 +105,7 @@ export function AdminSetupPage(): ReactElement {
   const [smtpUser, setSmtpUser] = useState('')
   const [smtpPassword, setSmtpPassword] = useState('')
 
-  // Step 4 (auto-generated, shown after apply)
-  const [encryptionKey, setEncryptionKey] = useState<string | null>(null)
+  // Step 4 (shown after apply)
   const [apiClientSecret, setApiClientSecret] = useState<string | null>(null)
 
   // Step 5
@@ -113,6 +115,8 @@ export function AdminSetupPage(): ReactElement {
   const [pushRelayUrl, setPushRelayUrl] = useState('https://push.open-ksef.pl')
   const [pushRelayApiKey, setPushRelayApiKey] = useState('')
   const [firebaseJson, setFirebaseJson] = useState('')
+
+  const [setupDone, setSetupDone] = useState(false)
 
   const passwordPolicyValue = (() => {
     switch (passwordPolicyPreset) {
@@ -174,6 +178,17 @@ export function AdminSetupPage(): ReactElement {
     setStep(6)
   }
 
+  const failApply = (message: string) => {
+    // shortcut: matches the API's English text, use an error code if more cases need mapping
+    if (/encryption[_ ]key/i.test(message)) {
+      setError(ENCRYPTION_KEY_ERROR)
+      // The API burns the setup session on apply and restarting it drops all sessions, so a retry must log in again.
+      setStep(1)
+      return
+    }
+    setError(message)
+  }
+
   const handleApply = async () => {
     if (!setupToken) { setError('Sesja wygasła. Zaloguj się ponownie.'); return }
     setError(null)
@@ -220,15 +235,15 @@ export function AdminSetupPage(): ReactElement {
     try {
       const result = await applySetup(setupToken, request)
       if (!result.success) {
-        setError(result.error ?? 'Konfiguracja nie powiodła się')
+        failApply(result.error ?? 'Konfiguracja nie powiodła się')
         return
       }
-      setEncryptionKey(result.encryptionKey ?? null)
       setApiClientSecret(result.apiClientSecret ?? null)
+      setSetupDone(true)
       queryClient.setQueryData(['setup-status'], { isInitialized: true })
       toast.success('System skonfigurowany pomyślnie!')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Konfiguracja nie powiodła się')
+      failApply(err instanceof Error ? err.message : 'Konfiguracja nie powiodła się')
     } finally {
       setLoading(false)
     }
@@ -467,26 +482,20 @@ export function AdminSetupPage(): ReactElement {
           </>
         )}
 
-        {/* Step 4: Security (auto-generated) */}
+        {/* Step 4: Security */}
         {step === 4 && (
           <>
             <h1 className="onboarding-title">Bezpieczeństwo</h1>
             <p className="onboarding-subtitle">
-              Klucze zostaną wygenerowane automatycznie podczas konfiguracji.
-              Zostaną zapisane bezpiecznie i udostępnione między usługami.
+              Klucz szyfrowania ustawiasz poza aplikacją. Sekret klienta API
+              zostanie pobrany automatycznie podczas konfiguracji.
             </p>
             <div className="onboarding-form">
               <div className="onboarding-instruction">
-                Klucz szyfrowania AES-256 oraz sekret klienta API zostaną wygenerowane
-                automatycznie po kliknięciu „Zastosuj" na ostatnim kroku.
-                Nie musisz ich kopiować ani konfigurować ręcznie.
+                Klucz szyfrowania AES-256 pochodzi ze zmiennej ENCRYPTION_KEY usług API i Worker
+                i nie jest zapisywany w bazie danych. Przechowuj jego kopię poza bazą i jej kopiami
+                zapasowymi: bez klucza zapisane tokeny KSeF będą nie do odczytania.
               </div>
-              {encryptionKey && (
-                <div className="ui-form-group">
-                  <label>Klucz szyfrowania (wygenerowany)</label>
-                  <input type="text" readOnly value={encryptionKey} data-testid="setup-encryption-key" style={{ fontFamily: 'monospace', fontSize: '12px' }} />
-                </div>
-              )}
               {apiClientSecret && (
                 <div className="ui-form-group">
                   <label>Sekret klienta API (z Keycloak)</label>
@@ -620,7 +629,7 @@ export function AdminSetupPage(): ReactElement {
         )}
 
         {/* Step 6: Summary + Apply */}
-        {step === 6 && !encryptionKey && (
+        {step === 6 && !setupDone && (
           <>
             <h1 className="onboarding-title">Podsumowanie</h1>
             <p className="onboarding-subtitle">Sprawdź konfigurację i zastosuj.</p>
@@ -654,7 +663,7 @@ export function AdminSetupPage(): ReactElement {
         )}
 
         {/* Step 6: Success */}
-        {step === 6 && encryptionKey && (
+        {step === 6 && setupDone && (
           <div className="onboarding-success" data-testid="setup-success">
             <div className="onboarding-success__icon">✓</div>
             <h1 className="onboarding-success__title">System skonfigurowany!</h1>

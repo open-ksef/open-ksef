@@ -54,7 +54,6 @@ export interface SetupApplyRequest {
 
 export interface SetupApplyResponse {
   success: boolean
-  encryptionKey?: string
   apiClientSecret?: string
   error?: string
 }

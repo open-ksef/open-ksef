@@ -32,7 +32,8 @@ This policy applies to the OpenKSeF codebase and its official Docker images. It 
 ## Security Best Practices for Deployers
 
 - **Never** use default passwords (`openksef_dev_password`, `admin`) in production
-- Set a strong `ENCRYPTION_KEY` (generate with `openssl rand -base64 32`)
+- Set a strong `ENCRYPTION_KEY` (generate with `openssl rand -base64 32`) and back it up outside the database; `ENCRYPTION_KEY_FILE` works with your own compose file, the shipped one does not forward it
+- Once the key is adopted, database dumps do not contain it. Confirm with `SELECT count(*) FROM "SystemConfigs" WHERE "Key"='encryption_key'`, which must return 0. Dumps taken earlier still hold it; see [docs/admin-setup.md](docs/admin-setup.md)
 - Use HTTPS in production (configure via reverse proxy)
 - Restrict Keycloak admin access to trusted networks
 - Rotate KSeF API tokens periodically

@@ -63,11 +63,9 @@ If you enable email verification or password reset, SMTP is required. The wizard
 
 ### Step 4: Security
 
-The wizard auto-generates:
-- **AES-256 encryption key** for encrypting KSeF tokens in the database
-- **API client secret** fetched from the Keycloak `openksef-api` client
+The wizard fetches the **API client secret** from the Keycloak `openksef-api` client and stores it in the database.
 
-These are stored securely in the database and shared between services automatically. No manual copying required.
+The **AES-256 encryption key** is not part of the wizard. Set `ENCRYPTION_KEY` (or `ENCRYPTION_KEY_FILE`) on the API and Worker before you start the stack, and back it up outside the database. The wizard refuses to apply without it. Shipped `docker-compose.yml` forwards only `ENCRYPTION_KEY` and refuses to start without it, so `ENCRYPTION_KEY_FILE` needs your own compose file. An override file alone is not enough, because the check in the base file still runs. See [Encryption key](#encryption-key) for the upgrade and rotation steps.
 
 ### Step 5: Optional Integrations
 
@@ -84,15 +82,85 @@ SignalR local push is always active regardless of which mode you choose. The mod
 ### Step 6: Summary & Apply
 
 Review all settings and click "Apply". The wizard:
-1. Generates the encryption key
-2. Fetches the Keycloak API client secret
-3. Enables token-exchange for the service account
-4. Updates client redirect URIs with the external URL
-5. Configures the Keycloak realm (login policy, password policy, SMTP)
-6. Creates the admin user in Keycloak
-7. Configures Google IdP (if provided)
-8. Stores all configuration in the database
-9. Redirects to the login page
+1. Fetches the Keycloak API client secret
+2. Enables token-exchange for the service account
+3. Updates client redirect URIs with the external URL
+4. Configures the Keycloak realm (login policy, password policy, SMTP)
+5. Creates the admin user in Keycloak
+6. Configures Google IdP (if provided)
+7. Stores all configuration in the database
+8. Redirects to the login page
+
+## Encryption key
+
+The key encrypts stored KSeF tokens and certificates. Losing it loses them: tenants must enter them again.
+
+### Upgrade from v0.0.7 or earlier
+
+Up to v0.0.7 the key lives in the database next to the ciphertext, so every database dump can decrypt the tokens. The first start with a valid configured key re-encrypts all credentials and deletes the database row, in one transaction ("adoption").
+
+If you pull the new images and set no key, nothing changes: the app keeps the database key and logs an Error at each start.
+
+Run steps 1 and 2 with the compose file you already use. The new `docker-compose.yml` arrives at step 5.
+
+1. Stop both hosts: `docker compose stop api worker`. Stop both, because compose starts them in no fixed order. An old API that still serves during adoption writes under the old key, and that credential is lost.
+2. Back up: `docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc openksef' > before-key-move.dump`. This dump holds the old key and the ciphertext together, so protect it. Verify it: `docker compose exec -T postgres pg_restore -l < before-key-move.dump > /dev/null` must exit 0.
+3. Generate the key: `openssl rand -base64 32`. It must have 44 characters. **Store it in a password manager before the next step**, outside the database and its backups. Do not reuse an older `ENCRYPTION_KEY` value.
+4. Set `ENCRYPTION_KEY` to the new value in `.env` or the stack environment.
+5. Replace `docker-compose.yml` with the new file. Start the new images: `docker compose pull api worker portal-web`, then `docker compose up -d`.
+6. Verify:
+   - One host logs `Encryption key moved out of the database`. The other logs nothing about it. Neither logs Critical.
+   - `SELECT count(*) FROM "SystemConfigs" WHERE "Key"='encryption_key'` returns 0.
+   - One manual sync succeeds.
+
+A Critical log that names a credential means it could not be decrypted, and nothing changed. Delete or re-enter that credential in the portal and restart.
+
+**Rollback**
+
+| Situation | Result |
+|---|---|
+| Row still present, back to the previous image | Works, nothing changed |
+| Row gone, previous image, `ENCRYPTION_KEY` kept | Works: the previous image reads the key from the environment when no row exists |
+| Row gone, previous image, key only in `ENCRYPTION_KEY_FILE` | Credential use fails: the previous image does not read that file. Set `ENCRYPTION_KEY` to the same value |
+| Row gone, previous image, `ENCRYPTION_KEY` reverted or emptied | Hosts run, credential use fails with logs, no data changes. Restore the new key. **Do not revert the key** |
+| New key lost | Current ciphertext cannot be recovered. Tenants re-enter tokens, or restore the dump from step 2 and lose later changes |
+| Dump from step 2 restored | Row and old ciphertext return. The next start adopts again |
+
+To restore a dump, stop both hosts first, then run `docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d openksef --clean --if-exists' < before-key-move.dump`.
+
+Dumps taken before adoption can decrypt the tokens in them until you delete those dumps.
+
+### Rotate the key
+
+Run this on a stack that already runs the current images and has adopted: the row count query above returns 0.
+
+1. Generate the new key: `openssl rand -base64 32`. **Store it in a password manager before you run anything.** Keep the old key until step 6 succeeds.
+2. Stop both hosts: `docker compose stop api worker`.
+3. Back up and verify the dump, as in the upgrade.
+4. Re-encrypt, with `ENCRYPTION_KEY` still on the old key. The new key is read from the environment and is never an argument:
+   ```
+   read -s ENCRYPTION_KEY_NEW && export ENCRYPTION_KEY_NEW
+   docker compose run --rm -e ENCRYPTION_KEY_NEW api rotate-encryption-key
+   unset ENCRYPTION_KEY_NEW
+   ```
+   It prints `Re-encrypted N credentials.` and exits 0. A re-run is safe and reports 0.
+5. Set `ENCRYPTION_KEY` to the new value in `.env` or the stack environment, then `docker compose up -d`.
+6. Verify: no Critical in the logs and one manual sync succeeds. Only then discard the old key.
+
+The command exits 1 and writes nothing when:
+
+- `ENCRYPTION_KEY_NEW` is missing, malformed or equal to the current key, or the current key is missing or malformed.
+- Other clients with no application name are connected to the database. This catches a running Worker and a busy API. An API idle for several minutes holds no connection and is not caught, so always do step 2. Tools that set a name (`psql`, `pg_dump`, pgAdmin) and autovacuum do not count. Close any other client the message counts. To find them: `SELECT pid, usename, client_addr, backend_start FROM pg_stat_activity WHERE datname = current_database() AND backend_type = 'client backend' AND application_name = ''`.
+- The database is not on this image's version, or the key is still in the database. Start the app once, stop it and retry.
+- A credential cannot be decrypted. The message names it.
+
+**Rollback**
+
+| Situation | Action |
+|---|---|
+| Command refused | Nothing changed. Fix the reason and retry |
+| After step 4, problem before step 6 | Rotate back with `ENCRYPTION_KEY` set to the new key and `ENCRYPTION_KEY_NEW` to the old key, or restore the dump from step 3 and keep the old key |
+| New key lost after step 4 | Restore the dump from step 3 with the old key, and lose later changes. Without the old key, tenants re-enter tokens |
 
 ## Architecture
 

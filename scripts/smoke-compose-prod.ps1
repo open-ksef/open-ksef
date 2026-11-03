@@ -7,7 +7,7 @@
     2. Stops the dev stack if running (no -v, dev volumes kept); fixed container names would clash
     3. Starts docker-compose.yml as project openksef-smoke on clean volumes, api/worker/portal-web on :dev-local
     4. Checks: API health, ASPNETCORE_ENVIRONMENT=Production, Swagger 404, setup wizard via API,
-       password grant on openksef-portal-web, GET /api/tenants 200, worker started, no IDX/HTTPS-scheme errors in API log
+       encryption_key row absent, password grant on openksef-portal-web, GET /api/tenants 200, worker started, no IDX/HTTPS-scheme errors in API log
     5. Removes the smoke stack with its volumes and restores the dev stack if it was running
 .PARAMETER SkipBuild
     Reuse existing :dev-local images.
@@ -111,7 +111,10 @@ services:
 "@ | Set-Content -Path $override -Encoding ASCII
 # --env-file keeps the repo .env (dev ENCRYPTION_KEY etc.) out, so this is a true fresh install.
 $envFile = Join-Path $tmpDir 'smoke.env'
+$smokeKeyBytes = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($smokeKeyBytes)
 @"
+ENCRYPTION_KEY=$([Convert]::ToBase64String($smokeKeyBytes))
 POSTGRES_USER=openksef
 POSTGRES_PASSWORD=smoke_pg_password
 KEYCLOAK_ADMIN=$kcAdmin
@@ -146,6 +149,9 @@ try {
             } | ConvertTo-Json)
         $setupOk = [bool]$apply.success
         Add-Result 'setup wizard apply' $setupOk ''
+        $keyRows = ("SELECT count(*) FROM ""SystemConfigs"" WHERE ""Key""='encryption_key'" |
+            & docker exec -i openksef-postgres psql -U openksef -d openksef -tA) -join ''
+        Add-Result 'encryption_key row absent after wizard' ($keyRows.Trim() -eq '0') "count $keyRows"
     } catch {
         Add-Result 'setup wizard apply' $false $_.Exception.Message
     }
