@@ -108,6 +108,34 @@ describe('AdminSetupPage', () => {
     expect(container.textContent).toContain('ENCRYPTION_KEY')
   })
 
+  it('leaves an untyped SMTP password out of the request', async () => {
+    vi.mocked(applySetup).mockResolvedValue({ success: true })
+    type('setup-kc-pass', 'kc-password')
+    await click('setup-next')
+    await waitFor(() => Boolean(byTestId('setup-admin-email')))
+    type('setup-admin-email', 'jan@firma.pl')
+    type('setup-admin-pass', 'Haslo1234')
+    type('setup-tenant-nip', '5260250274')
+    await click('setup-next')
+
+    const check = (label: string) =>
+      act(async () => [...container.querySelectorAll('label')].find((node) => node.textContent?.includes(label))!.querySelector('input')!.click())
+    await check('Skonfiguruj serwer SMTP')
+    type('setup-smtp-host', 'smtp.example')
+    type('setup-smtp-from', 'a@firma.pl')
+    await check('Uwierzytelnianie')
+    await click('setup-next')
+    await click('setup-next')
+    await click('setup-next')
+    await waitFor(() => Boolean(byTestId('setup-apply')))
+    await click('setup-apply')
+    await waitFor(() => Boolean(byTestId('setup-success')))
+
+    const sent = vi.mocked(applySetup).mock.lastCall![1]
+    expect(sent.smtp?.auth).toBe(true)
+    expect(JSON.parse(JSON.stringify(sent)).smtp).not.toHaveProperty('password')
+  })
+
   it('collapsibles are details and summary, closed at the start', async () => {
     const guide = container.querySelector('details')!
     expect(guide.open).toBe(false)

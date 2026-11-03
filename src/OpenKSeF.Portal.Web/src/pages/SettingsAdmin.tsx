@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useState, type ReactElement } from 'react'
+import { useRef, useState, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
 
@@ -125,6 +125,7 @@ export function SettingsAdminPage(): ReactElement {
 
   const [confirmWipeOpen, setConfirmWipeOpen] = useState(false)
   const [pendingRequest, setPendingRequest] = useState<SettingsUpdateRequest | null>(null)
+  const saveButton = useRef<HTMLElement | null>(null)
 
   const populateFromResponse = (resp: SettingsResponse) => {
     setSettings(resp)
@@ -224,6 +225,8 @@ export function SettingsAdminPage(): ReactElement {
   }
 
   const handleSave = async () => {
+    // The button is disabled while saving, so it has lost focus before the dialog opens.
+    saveButton.current = document.activeElement as HTMLElement | null
     setError(null)
     setSaving(true)
     try {
@@ -591,7 +594,7 @@ export function SettingsAdminPage(): ReactElement {
         confirmLabel="Usuń poświadczenia i zmień"
         variant="danger"
         onConfirm={() => void handleConfirmWipe()}
-        onCancel={() => { setConfirmWipeOpen(false); setPendingRequest(null) }}
+        onCancel={() => { setConfirmWipeOpen(false); setPendingRequest(null); saveButton.current?.focus() }}
       />
     </section>
   )

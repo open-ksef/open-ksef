@@ -199,7 +199,7 @@ export function AdminSetupPage(): ReactElement {
           ssl: smtpSsl,
           auth: smtpAuth,
           user: smtpAuth ? smtpUser : undefined,
-          password: smtpAuth ? smtpPassword : undefined,
+          password: smtpAuth ? smtpPassword || undefined : undefined,
         }
       : undefined
 

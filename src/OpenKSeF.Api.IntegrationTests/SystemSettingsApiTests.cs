@@ -187,7 +187,8 @@ public class SystemSettingsApiTests : IAsyncLifetime
     {
         var smtp = new ContainerBuilder()
             .WithImage("alpine:3.20")
-            .WithEntrypoint("sh", "-c", FakeSmtpServer)
+            // A Windows checkout gives this literal CRLF line ends, and the script then drops the connection after its banner.
+            .WithEntrypoint("sh", "-c", FakeSmtpServer.ReplaceLineEndings("\n"))
             .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("ready"))
             .Build();
         await smtp.StartAsync();
@@ -248,7 +249,15 @@ public class SystemSettingsApiTests : IAsyncLifetime
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await _fixture.GetAdminTokenAsync());
         var realm = $"{_fixture.Keycloak.GetBaseAddress().ToString().TrimEnd('/')}/admin/realms/openksef";
         var user = (await http.GetFromJsonAsync<JsonElement[]>($"{realm}/users?username=testuser&exact=true"))!.Single();
-        var response = await http.PutAsJsonAsync($"{realm}/users/{user.GetProperty("id").GetString()}/execute-actions-email", new[] { "UPDATE_PASSWORD" });
+        var url = $"{realm}/users/{user.GetProperty("id").GetString()}/execute-actions-email";
+        var response = await http.PutAsJsonAsync(url, new[] { "UPDATE_PASSWORD" });
+        // The fake server's nc is not listening yet at "ready", nor between connections.
+        for (var attempt = 0; !tolerateFailure && !response.IsSuccessStatusCode && attempt < 10; attempt++)
+        {
+            await Task.Delay(500);
+            response = await http.PutAsJsonAsync(url, new[] { "UPDATE_PASSWORD" });
+        }
+
         if (!tolerateFailure)
             Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
     }

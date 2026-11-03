@@ -175,6 +175,18 @@ describe('Ustawienia', () => {
       expect(lastRequest().confirmCredentialWipe).toBe(true)
     })
 
+    it('Esc in the wipe dialog returns focus to the save button', async () => {
+      vi.mocked(updateSettings).mockResolvedValueOnce({ success: false, error: 'x', requiresConfirmation: true })
+      by('settings-save')?.focus()
+      await save()
+      expect(document.body.textContent).toContain('Usuń poświadczenia i zmień')
+
+      await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
+
+      expect(document.body.textContent).not.toContain('Usuń poświadczenia i zmień')
+      expect(document.activeElement).toBe(by('settings-save'))
+    })
+
     it('shows an error with the old confirm wording as an error, no dialog', async () => {
       vi.mocked(updateSettings).mockResolvedValueOnce({ success: false, error: 'Potwierdź operację' })
       await save()

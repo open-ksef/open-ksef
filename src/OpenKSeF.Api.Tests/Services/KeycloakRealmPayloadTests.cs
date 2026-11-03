@@ -95,16 +95,18 @@ public class KeycloakRealmPayloadTests
         Assert.Equal(sent, _keycloak.Body(HttpMethod.Put, RealmUrl).GetProperty("smtpServer").GetProperty("password").GetString());
     }
 
-    [Fact]
-    public async Task ApplySetup_EmptySmtpPassword_SendsTheMask()
+    [Theory]
+    [InlineData(null, "**********")]
+    [InlineData("typed-password", "typed-password")]
+    public async Task ApplySetup_SmtpPassword_MaskUnlessTyped(string? password, string sent)
     {
         _keycloak.RealmJson = "{}";
 
         await CreateSetupService(Substitute.For<ISystemConfigService>(), ValidKey)
-            .ApplySetupAsync(NewSetupRequest() with { Smtp = Smtp(null) }, "token", "admin");
+            .ApplySetupAsync(NewSetupRequest() with { Smtp = Smtp(password) }, "token", "admin");
 
         var realm = _keycloak.Bodies(HttpMethod.Put, RealmUrl).Single(b => b.TryGetProperty("smtpServer", out _));
-        Assert.Equal("**********", realm.GetProperty("smtpServer").GetProperty("password").GetString());
+        Assert.Equal(sent, realm.GetProperty("smtpServer").GetProperty("password").GetString());
     }
 
     [Fact]
