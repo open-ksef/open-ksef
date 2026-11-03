@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getInvoiceByKSeFNumber } from '@/api/endpoints/invoices'
+import { getInvoiceByKSeFNumber, getTransferDetails } from '@/api/endpoints/invoices'
 import { listTenants } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
 import { InvoiceDetailsPage } from './InvoiceDetails'
@@ -151,5 +151,110 @@ describe('InvoiceDetailsPage', () => {
 
     expect(container.textContent).toContain('Nie znaleziono żądanej faktury.')
     expect(container.querySelector('[data-testid="invoice-details-back-link"]')).toBeTruthy()
+  })
+
+  describe('transfer card', () => {
+    const qrImage = 'data:image/png;base64,iVBORw0KGgo='
+    const transferText = 'Odbiorca: Vendor A\nKwota: 199,50 PLN'
+
+    function testId(id: string): HTMLElement | null {
+      return container.querySelector(`[data-testid="${id}"]`)
+    }
+
+    async function renderTransfer(qrCodeBase64: string | null, qrMessage: string | null): Promise<void> {
+      vi.mocked(listTenants).mockResolvedValue([])
+      vi.mocked(getInvoiceByKSeFNumber).mockResolvedValue({
+        id: 'inv-1',
+        ksefInvoiceNumber: 'KSEF-001',
+        ksefReferenceNumber: 'REF-001',
+        invoiceNumber: 'FV/2026/001',
+        vendorName: 'Vendor A',
+        vendorNip: '9876543210',
+        buyerName: null,
+        buyerNip: null,
+        amountNet: 162.2,
+        amountVat: 37.3,
+        amountGross: 199.5,
+        currency: 'PLN',
+        issueDate: '2026-02-01T00:00:00Z',
+        acquisitionDate: null,
+        invoiceType: 'Vat',
+        firstSeenAt: '2026-02-01T12:00:00Z',
+        isPaid: false,
+        paidAt: null,
+      })
+      vi.mocked(getTransferDetails).mockResolvedValue({
+        recipientName: 'Vendor A',
+        recipientAccount: null,
+        recipientNip: '9876543210',
+        amount: 199.5,
+        currency: 'PLN',
+        title: 'FV/2026/001',
+        transferText,
+        qrCodeBase64,
+        qrMessage,
+      })
+
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/invoices/:ksefInvoiceNumber',
+            element: (
+              <QueryClientProvider client={client}>
+                <InvoiceDetailsPage />
+              </QueryClientProvider>
+            ),
+          },
+        ],
+        { initialEntries: ['/invoices/KSEF-001?tenantId=tenant-1'] },
+      )
+
+      await act(async () => {
+        root.render(<RouterProvider router={router} />)
+        await flushPromises()
+      })
+
+      for (let i = 0; i < 10 && testId('copy-transfer-btn') === null; i++) {
+        await act(flushPromises)
+      }
+    }
+
+    it('shows only the image when there is a QR and no message', async () => {
+      await renderTransfer(qrImage, null)
+
+      expect(testId('qr-code-image')?.getAttribute('src')).toBe(qrImage)
+      expect(testId('qr-message')).toBeNull()
+    })
+
+    it('shows the message and no image when QR is null, and copy still works', async () => {
+      const message = 'Brak poprawnego numeru rachunku na fakturze.'
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+
+      await renderTransfer(null, message)
+
+      expect(testId('qr-code-section')?.querySelector('img')).toBeNull()
+      expect(testId('qr-message')?.textContent).toBe(message)
+
+      await act(async () => {
+        testId('copy-transfer-btn')?.click()
+        await flushPromises()
+      })
+
+      expect(writeText).toHaveBeenCalledWith(transferText)
+      expect(testId('copy-transfer-btn')?.textContent).toBe('Skopiowano!')
+
+      await act(async () => root.unmount())
+    })
+
+    it('shows both the image and the notice', async () => {
+      const notice = 'Sprawdź, czy faktura nie wymaga podzielonej płatności (MPP).'
+
+      await renderTransfer(qrImage, notice)
+
+      expect(testId('qr-code-image')?.getAttribute('src')).toBe(qrImage)
+      expect(testId('qr-message')?.textContent).toBe(notice)
+    })
   })
 })
