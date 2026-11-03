@@ -8,6 +8,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { listInvoices } from '@/api/endpoints/invoices'
 import { listTenants } from '@/api/endpoints/tenants'
 import { InvoiceListPage } from './InvoiceList'
+import { CompanyProvider } from '@/company/CompanyProvider'
+import { memoryStorage } from '@/company/memoryStorage'
 
 vi.mock('@/api/endpoints/tenants', () => ({
   listTenants: vi.fn(),
@@ -36,6 +38,7 @@ describe('InvoiceListPage', () => {
   let container: HTMLDivElement
 
   beforeEach(() => {
+    vi.stubGlobal('localStorage', memoryStorage())
     vi.clearAllMocks()
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     container = document.createElement('div')
@@ -90,7 +93,9 @@ describe('InvoiceListPage', () => {
           path: '/invoices',
           element: (
             <QueryClientProvider client={client}>
-              <InvoiceListPage />
+              <CompanyProvider>
+                <InvoiceListPage />
+              </CompanyProvider>
             </QueryClientProvider>
           ),
         },
@@ -108,7 +113,6 @@ describe('InvoiceListPage', () => {
       await waitFor(() => container.querySelector('[data-testid="invoice-table"]') !== null)
     })
 
-    expect(container.querySelector('[data-testid="invoice-tenant-filter"]')).toBeTruthy()
     expect(container.querySelector('[data-testid="invoice-date-from"]')).toBeTruthy()
     expect(container.querySelector('[data-testid="invoice-date-to"]')).toBeTruthy()
     expect(container.querySelector('[data-testid="invoice-page-size"]')).toBeTruthy()
@@ -150,7 +154,9 @@ describe('InvoiceListPage', () => {
           path: '/invoices',
           element: (
             <QueryClientProvider client={client}>
-              <InvoiceListPage />
+              <CompanyProvider>
+                <InvoiceListPage />
+              </CompanyProvider>
             </QueryClientProvider>
           ),
         },
@@ -197,7 +203,9 @@ describe('InvoiceListPage', () => {
           path: '/invoices',
           element: (
             <QueryClientProvider client={client}>
-              <InvoiceListPage />
+              <CompanyProvider>
+                <InvoiceListPage />
+              </CompanyProvider>
             </QueryClientProvider>
           ),
         },

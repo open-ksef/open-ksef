@@ -9,6 +9,8 @@ import { getInvoiceByKSeFNumber, getTransferDetails } from '@/api/endpoints/invo
 import { listTenants } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
 import { InvoiceDetailsPage } from './InvoiceDetails'
+import { CompanyProvider } from '@/company/CompanyProvider'
+import { memoryStorage } from '@/company/memoryStorage'
 
 vi.mock('@/api/endpoints/tenants', () => ({
   listTenants: vi.fn(),
@@ -39,6 +41,7 @@ describe('InvoiceDetailsPage', () => {
   let container: HTMLDivElement
 
   beforeEach(() => {
+    vi.stubGlobal('localStorage', memoryStorage())
     vi.clearAllMocks()
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     container = document.createElement('div')
@@ -85,7 +88,9 @@ describe('InvoiceDetailsPage', () => {
           path: '/invoices/:ksefInvoiceNumber',
           element: (
             <QueryClientProvider client={client}>
-              <InvoiceDetailsPage />
+              <CompanyProvider>
+                <InvoiceDetailsPage />
+              </CompanyProvider>
             </QueryClientProvider>
           ),
         },
@@ -131,7 +136,9 @@ describe('InvoiceDetailsPage', () => {
           path: '/invoices/:ksefInvoiceNumber',
           element: (
             <QueryClientProvider client={client}>
-              <InvoiceDetailsPage />
+              <CompanyProvider>
+                <InvoiceDetailsPage />
+              </CompanyProvider>
             </QueryClientProvider>
           ),
         },
@@ -162,7 +169,9 @@ describe('InvoiceDetailsPage', () => {
     }
 
     async function renderTransfer(qrCodeBase64: string | null, qrMessage: string | null): Promise<void> {
-      vi.mocked(listTenants).mockResolvedValue([])
+      vi.mocked(listTenants).mockResolvedValue([
+        { id: 'tenant-1', nip: '1234567890', displayName: 'Tenant A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      ])
       vi.mocked(getInvoiceByKSeFNumber).mockResolvedValue({
         id: 'inv-1',
         ksefInvoiceNumber: 'KSEF-001',
@@ -202,7 +211,9 @@ describe('InvoiceDetailsPage', () => {
             path: '/invoices/:ksefInvoiceNumber',
             element: (
               <QueryClientProvider client={client}>
-                <InvoiceDetailsPage />
+                <CompanyProvider>
+                  <InvoiceDetailsPage />
+                </CompanyProvider>
               </QueryClientProvider>
             ),
           },

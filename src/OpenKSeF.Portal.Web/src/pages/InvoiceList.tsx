@@ -3,11 +3,12 @@ import { useMemo, useState, type ChangeEvent, type ReactElement } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { listInvoices } from '@/api/endpoints/invoices'
-import { listTenants } from '@/api/endpoints/tenants'
 import type { InvoiceResponse } from '@/api/types'
+import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { FilterBar } from '@/components/FilterBar'
 import { Table, type TableColumn } from '@/components/Table'
+import { useTenants } from '@/hooks/useTenants'
 
 interface InvoiceListFilters {
   tenantId: string
@@ -26,23 +27,17 @@ function parseNumber(value: string | null, fallback: number): number {
 export function InvoiceListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const tenantIdFromUrl = searchParams.get('tenantId') ?? ''
   const dateFromFromUrl = searchParams.get('dateFrom') ?? ''
   const dateToFromUrl = searchParams.get('dateTo') ?? ''
   const pageFromUrl = parseNumber(searchParams.get('page'), 1)
   const pageSizeFromUrl = parseNumber(searchParams.get('pageSize'), 10)
 
-  const [draftTenantId, setDraftTenantId] = useState(tenantIdFromUrl)
   const [draftDateFrom, setDraftDateFrom] = useState(dateFromFromUrl)
   const [draftDateTo, setDraftDateTo] = useState(dateToFromUrl)
   const [draftPageSize, setDraftPageSize] = useState(pageSizeFromUrl)
 
-  const tenantsQuery = useQuery({
-    queryKey: ['tenants', 'invoice-filters'],
-    queryFn: () => listTenants(),
-  })
-
-  const effectiveTenantId = draftTenantId || tenantsQuery.data?.[0]?.id || ''
+  const tenantsQuery = useTenants()
+  const { tenantId: effectiveTenantId } = useCompany()
 
   const invoicesQuery = useQuery({
     queryKey: ['invoices', effectiveTenantId, dateFromFromUrl, dateToFromUrl, pageFromUrl, pageSizeFromUrl],
@@ -166,7 +161,7 @@ export function InvoiceListPage(): ReactElement {
 
   const onApplyFilters = () => {
     updateSearch({
-      tenantId: draftTenantId || effectiveTenantId,
+      tenantId: effectiveTenantId,
       dateFrom: draftDateFrom,
       dateTo: draftDateTo,
       page: 1,
@@ -188,16 +183,12 @@ export function InvoiceListPage(): ReactElement {
 
   const onChangePage = (nextPage: number): void => {
     updateSearch({
-      tenantId: tenantIdFromUrl || effectiveTenantId,
+      tenantId: effectiveTenantId,
       dateFrom: dateFromFromUrl,
       dateTo: dateToFromUrl,
       page: nextPage,
       pageSize: pageSizeFromUrl,
     })
-  }
-
-  const onChangeTenant = (event: ChangeEvent<HTMLSelectElement>): void => {
-    setDraftTenantId(event.target.value)
   }
 
   const onChangePageSize = (event: ChangeEvent<HTMLSelectElement>): void => {
@@ -226,24 +217,6 @@ export function InvoiceListPage(): ReactElement {
         onReset={onResetFilters}
         applyButtonTestId="invoice-apply-filters"
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label htmlFor="invoice-tenant-filter" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-muted)' }}>
-            Firma
-          </label>
-          <select
-            id="invoice-tenant-filter"
-            data-testid="invoice-tenant-filter"
-            value={draftTenantId || effectiveTenantId}
-            onChange={onChangeTenant}
-          >
-            {(tenantsQuery.data ?? []).map((tenant) => (
-              <option key={tenant.id} value={tenant.id}>
-                {tenant.displayName || tenant.nip}
-              </option>
-            ))}
-          </select>
-        </div>
-
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <label htmlFor="invoice-date-from" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-muted)' }}>
             Od

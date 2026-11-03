@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MobileSetupPage } from './MobileSetup'
@@ -23,7 +24,11 @@ describe('MobileSetupPage', () => {
     document.body.appendChild(container)
     root = createRoot(container)
     await act(async () => {
-      root.render(<MobileSetupPage />)
+      root.render(
+        <MemoryRouter>
+          <MobileSetupPage />
+        </MemoryRouter>,
+      )
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
   })
@@ -32,6 +37,10 @@ describe('MobileSetupPage', () => {
     act(() => root.unmount())
     container.remove()
     vi.unstubAllGlobals()
+  })
+
+  it('links to the device list', () => {
+    expect(container.querySelector('[data-testid="mobile-setup-devices-link"]')?.getAttribute('href')).toBe('/devices')
   })
 
   it('puts only type, version and serverUrl in the QR payload', () => {

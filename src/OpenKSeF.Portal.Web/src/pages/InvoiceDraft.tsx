@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent, type ReactElement } from 'react'
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react'
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import {
   createIssuedInvoice,
@@ -12,6 +12,7 @@ import {
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { ApiError, readValidationEnvelope } from '@/api/errors'
 import type { IssuedInvoiceResponse, IssuedInvoiceStatus, SellerProfileResponse, ValidationIssue } from '@/api/types'
+import { useCompany } from '@/company/useCompany'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Skeleton } from '@/components/Skeleton'
@@ -43,9 +44,8 @@ const EDITABLE: IssuedInvoiceStatus[] = ['Draft', 'Rejected']
 
 export function InvoiceDraftPage(): ReactElement {
   const { id } = useParams()
-  const [searchParams] = useSearchParams()
   const tenantsQuery = useTenants()
-  const tenantId = searchParams.get('tenantId') || tenantsQuery.data?.[0]?.id || ''
+  const { tenantId } = useCompany()
 
   const profileQuery = useQuery({
     queryKey: ['seller-profile', tenantId],
@@ -104,8 +104,11 @@ const failureText = (error: unknown, fallback: string): string =>
 
 function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement {
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
+  const { setSwitchGuard } = useCompany()
   const [form, setForm] = useState<DraftFormValue>(() => (invoice ? fromResponse(invoice) : emptyDraft()))
+  const baseline = useRef(JSON.stringify(form))
   const [errors, setErrors] = useState<ValidationIssue[]>([])
   const [warnings, setWarnings] = useState<ValidationIssue[]>(invoice?.warnings ?? [])
   const [failure, setFailure] = useState<string | null>(null)
@@ -121,15 +124,17 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   )
   const fieldErrors = toFieldErrors(errors)
 
-  async function saveDraft(): Promise<IssuedInvoiceResponse> {
+  async function saveDraft(stay = false): Promise<IssuedInvoiceResponse> {
+    const snapshot = JSON.stringify(form)
     const request = toDraftRequest(form)
     const saved = invoice ? await updateIssuedInvoice(tenantId, invoice.id, request) : await createIssuedInvoice(tenantId, request)
+    baseline.current = snapshot
     setErrors([])
     setFailure(null)
     setWarnings(saved.warnings)
     queryClient.setQueryData(['issued-invoice', tenantId, saved.id], saved)
     void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
-    if (!invoice) {
+    if (!invoice && !stay) {
       navigate(`/issued/${encodeURIComponent(saved.id)}/edit?tenantId=${encodeURIComponent(tenantId)}`, { replace: true })
     }
     return saved
@@ -167,7 +172,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   }
 
   const save = useMutation({
-    mutationFn: saveDraft,
+    mutationFn: (stay: boolean) => saveDraft(stay),
     onError: (saveError) => showFailure(saveError, 'Nie udało się zapisać szkicu'),
   })
 
@@ -182,7 +187,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   })
 
   const prepareIssue = useMutation({
-    mutationFn: saveDraft,
+    mutationFn: () => saveDraft(),
     onSuccess: (saved) => {
       if (saved.ksef.environment === 'test' || saved.ksef.environment === 'demo') {
         issue.mutate(saved)
@@ -209,10 +214,21 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
   const issuing = prepareIssue.isPending || issue.isPending
   const busy = save.isPending || issuing || remove.isPending
   const expectedNumber = form.issueDate.startsWith(profile.nextNumberPeriod) ? profile.nextNumberPreview : null
+  const companyNotice = (location.state as { companyNotice?: string } | null)?.companyNotice
+
+  useEffect(() => {
+    setSwitchGuard({
+      dirty: JSON.stringify(form) !== baseline.current,
+      busy,
+      environment: profile.ksefEnvironment,
+      save: () => save.mutateAsync(true),
+    })
+    return () => setSwitchGuard(null)
+  })
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    save.mutate()
+    save.mutate(false)
   }
 
   const profileHref = `/seller-profile?tenantId=${encodeURIComponent(tenantId)}`
@@ -295,6 +311,11 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
         <p className="inv-help">Korekt nie wystawisz jeszcze w OpenKSeF — użyj Aplikacji Podatnika KSeF.</p>
       </ConfirmDialog>
 
+      {companyNotice ? (
+        <div className="inv-alert inv-alert--info" role="status">
+          {companyNotice}
+        </div>
+      ) : null}
       {!profile.isComplete ? (
         <div className="inv-alert inv-alert--info" role="status">
           Uzupełnij dane firmy, aby wystawiać faktury. <Link to={profileHref}>Dane do faktur</Link>

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactElement } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import {
   copyIssuedInvoice,
@@ -9,6 +9,7 @@ import {
   getIssuedInvoiceXml,
 } from '@/api/endpoints/issuedInvoices'
 import type { IssuedInvoiceResponse } from '@/api/types'
+import { useCompany } from '@/company/useCompany'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Skeleton } from '@/components/Skeleton'
 import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
@@ -24,9 +25,8 @@ const paymentLabels = { Transfer: 'Przelew', Cash: 'Gotówka', Card: 'Karta' } a
 
 export function IssuedInvoiceDetailsPage(): ReactElement {
   const { id = '' } = useParams()
-  const [searchParams] = useSearchParams()
   const tenantsQuery = useTenants()
-  const tenantId = searchParams.get('tenantId') || tenantsQuery.data?.[0]?.id || ''
+  const { tenantId } = useCompany()
   const [openedAt] = useState(() => Date.now())
 
   const invoiceQuery = useQuery({

@@ -1,10 +1,12 @@
 import type { RouteObject } from 'react-router-dom'
 import { createBrowserRouter } from 'react-router-dom'
 
+import { CompanyProvider } from '@/company/CompanyProvider'
 import { Layout } from '@/components/Layout'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { AdminSetupPage } from '@/pages/AdminSetup'
 import { Callback } from '@/pages/Callback'
+import { CompanyHubPage } from '@/pages/CompanyHub'
 import { CredentialListPage } from '@/pages/CredentialList'
 import { DashboardPage } from '@/pages/Dashboard'
 import { DeviceListPage } from '@/pages/DeviceList'
@@ -27,7 +29,9 @@ export const appRoutes: RouteObject[] = [
     path: '/',
     element: (
       <ProtectedRoute>
-        <Layout />
+        <CompanyProvider>
+          <Layout />
+        </CompanyProvider>
       </ProtectedRoute>
     ),
     children: [
@@ -38,6 +42,7 @@ export const appRoutes: RouteObject[] = [
       { path: 'issued/new', element: <InvoiceDraftPage /> },
       { path: 'issued/:id', element: <IssuedInvoiceDetailsPage /> },
       { path: 'issued/:id/edit', element: <InvoiceDraftPage /> },
+      { path: 'company', element: <CompanyHubPage /> },
       { path: 'seller-profile', element: <SellerProfilePage /> },
       { path: 'tenants', element: <TenantListPage /> },
       { path: 'credentials', element: <CredentialListPage /> },

@@ -10,6 +10,9 @@ import { getSellerProfile, updateSellerProfile } from '@/api/endpoints/sellerPro
 import { listTenants } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
 import type { SellerProfileResponse } from '@/api/types'
+import { CompanyCard } from '@/company/CompanyCard'
+import { CompanyProvider } from '@/company/CompanyProvider'
+import { memoryStorage } from '@/company/memoryStorage'
 import { InvoiceDraftPage } from './InvoiceDraft'
 import { SellerProfilePage } from './SellerProfile'
 
@@ -63,6 +66,7 @@ describe('SellerProfilePage', () => {
   let container: HTMLDivElement
 
   beforeEach(() => {
+    vi.stubGlobal('localStorage', memoryStorage())
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -85,16 +89,46 @@ describe('SellerProfilePage', () => {
       root.render(
         <QueryClientProvider client={client}>
           <MemoryRouter initialEntries={[path]}>
-            <Routes>
-              <Route path="/seller-profile" element={<SellerProfilePage />} />
-              <Route path="/issued/new" element={<InvoiceDraftPage />} />
-            </Routes>
+            <CompanyProvider>
+              <CompanyCard />
+              <Routes>
+                <Route path="/seller-profile" element={<SellerProfilePage />} />
+                <Route path="/issued/new" element={<InvoiceDraftPage />} />
+              </Routes>
+            </CompanyProvider>
           </MemoryRouter>
         </QueryClientProvider>,
       ),
     )
     await waitFor(() => Boolean(container.querySelector('#legal-name')))
   }
+
+  it('edits either company after choosing it in the company card', async () => {
+    vi.mocked(listTenants).mockResolvedValue([
+      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-2', nip: '7740001454', displayName: 'B', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+    ])
+    vi.mocked(getSellerProfile).mockImplementation(async (id) => ({
+      ...empty,
+      legalName: id === 't-1' ? 'Sprzedawca A' : 'Sprzedawca B',
+      addressLine1: 'ul. Prosta 1',
+      addressLine2: '00-001 Warszawa',
+      bankAccount: '61109010140000071219812874',
+    }))
+    vi.mocked(updateSellerProfile).mockResolvedValue({ ...empty, isComplete: true })
+    await render('/seller-profile')
+    await waitFor(() => input(container, 'legal-name').value === 'Sprzedawca A')
+
+    await act(async () => container.querySelector<HTMLElement>('[data-testid="company-card"]')!.click())
+    await waitFor(() => Boolean(container.querySelector('[data-testid="company-option-t-2"]')))
+    await act(async () => container.querySelector<HTMLElement>('[data-testid="company-option-t-2"]')!.click())
+    await waitFor(() => input(container, 'legal-name')?.value === 'Sprzedawca B')
+
+    await act(async () => buttonByText(container, 'Zapisz dane').click())
+    await waitFor(() => vi.mocked(updateSellerProfile).mock.calls.length === 1)
+    expect(vi.mocked(updateSellerProfile).mock.calls[0][0]).toBe('t-2')
+    expect(container.querySelector('[data-testid="company-card"]')?.textContent).toContain('NIP 7740001454')
+  })
 
   it('new invoice with an incomplete profile lands here with the prompt', async () => {
     await render('/issued/new?tenantId=t-1')
