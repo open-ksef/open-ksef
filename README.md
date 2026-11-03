@@ -13,7 +13,9 @@ Mobile app: see [open-ksef-mobile](https://github.com/OpenKSeF/open-ksef-mobile)
 
 ## Quick start (Docker)
 
-1. Create env file:
+New installations only. On an existing installation do not run these steps: they can overwrite the only copy of the encryption key. Follow the [upgrade procedure](docs/admin-setup.md#upgrade-from-v007-or-earlier).
+
+1. Create env file, then set `ENCRYPTION_KEY` in it (`openssl rand -base64 32`):
 ```bash
 cp .env.example .env
 ```
@@ -138,7 +140,7 @@ Account creation:
 API/Worker minimum:
 - `ConnectionStrings__Db`
 - `Auth__Authority`
-- `ENCRYPTION_KEY` (required; `openssl rand -base64 32`, back it up outside the database), or `ENCRYPTION_KEY_FILE` with your own compose file (the shipped one does not forward it)
+- `ENCRYPTION_KEY` (required; `openssl rand -base64 32`, back it up outside the database), or `ENCRYPTION_KEY_FILE` with your own compose file (the shipped one does not forward it); existing installation: see the [upgrade procedure](docs/admin-setup.md#upgrade-from-v007-or-earlier)
 - `KSeF__BaseUrl`
 
 Portal Web minimum:

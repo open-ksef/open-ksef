@@ -7,6 +7,10 @@ public static class EncryptionServiceExtensions
 {
     private const string EncryptionKeyEnvVar = "ENCRYPTION_KEY";
     private const string EncryptionKeyFileEnvVar = "ENCRYPTION_KEY_FILE";
+    internal const string GenerateKeyHint = "Generate with: openssl rand -base64 32";
+    internal const string RestoreKeyHint =
+        $"Restore the key that encrypted the credentials, in '{EncryptionKeyEnvVar}' or '{EncryptionKeyFileEnvVar}', and restart. " +
+        "Generate a new one only if no copy remains.";
 
     public static IServiceCollection AddEncryptionService(
         this IServiceCollection services,
@@ -16,10 +20,8 @@ public static class EncryptionServiceExtensions
         {
             var rowKey = sp.GetService<ISystemConfigService>()?.GetValue(SystemConfigKeys.EncryptionKey);
 
-            var key = (rowKey is null ? ReadConfiguredKey(configuration) : DecodeKey(rowKey))
-                ?? throw new InvalidOperationException(
-                    $"Encryption key is not configured. Set '{EncryptionKeyEnvVar}' or '{EncryptionKeyFileEnvVar}'. " +
-                    "Generate one with: openssl rand -base64 32");
+            var key = (rowKey is null ? ReadConfiguredKey(configuration, RestoreKeyHint) : DecodeKey(rowKey))
+                ?? throw new InvalidOperationException($"Encryption key is not configured. {RestoreKeyHint}");
 
             return new AesGcmEncryptionService(key);
         });
@@ -27,7 +29,7 @@ public static class EncryptionServiceExtensions
         return services;
     }
 
-    public static byte[]? ReadConfiguredKey(IConfiguration configuration)
+    public static byte[]? ReadConfiguredKey(IConfiguration configuration, string fixHint = GenerateKeyHint)
     {
         var keyBase64 = configuration[EncryptionKeyEnvVar];
         if (string.IsNullOrWhiteSpace(keyBase64))
@@ -49,10 +51,10 @@ public static class EncryptionServiceExtensions
                 return null;
         }
 
-        return DecodeKey(keyBase64);
+        return DecodeKey(keyBase64, fixHint);
     }
 
-    public static byte[] DecodeKey(string keyBase64)
+    public static byte[] DecodeKey(string keyBase64, string fixHint = GenerateKeyHint)
     {
         byte[] key;
         try
@@ -61,14 +63,11 @@ public static class EncryptionServiceExtensions
         }
         catch (FormatException ex)
         {
-            throw new InvalidOperationException(
-                "Encryption key is not valid base64. Generate with: openssl rand -base64 32", ex);
+            throw new InvalidOperationException($"Encryption key is not valid base64. {fixHint}".TrimEnd(), ex);
         }
 
         if (key.Length != 32)
-            throw new InvalidOperationException(
-                $"Encryption key must decode to exactly 32 bytes (got {key.Length}). " +
-                "Generate with: openssl rand -base64 32");
+            throw new InvalidOperationException($"Encryption key must decode to exactly 32 bytes (got {key.Length}). {fixHint}".TrimEnd());
 
         return key;
     }

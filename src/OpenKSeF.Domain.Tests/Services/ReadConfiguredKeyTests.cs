@@ -64,6 +64,7 @@ public class ReadConfiguredKeyTests : IDisposable
         var ex = Assert.Throws<InvalidOperationException>(() => EncryptionServiceExtensions.ReadConfiguredKey(Config(key)));
 
         Assert.DoesNotContain(key, ex.ToString());
+        Assert.EndsWith("Generate with: openssl rand -base64 32", ex.Message);
     }
 
     [Fact]
