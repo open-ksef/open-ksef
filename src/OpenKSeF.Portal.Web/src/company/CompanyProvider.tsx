@@ -34,7 +34,7 @@ function pathAfterSwitch(pathname: string): string {
 
 interface PendingDialog {
   target: TenantResponse
-  environment: KsefEnvironment
+  environment: KsefEnvironment | null
   fromKey: string
 }
 

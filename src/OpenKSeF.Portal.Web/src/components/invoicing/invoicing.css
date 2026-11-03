@@ -169,6 +169,7 @@ fieldset.inv-card {
 .inv-alert--info { background: var(--ui-info-bg); color: var(--ui-info); }
 .inv-alert--warning { background: var(--ui-warning-bg); color: var(--ui-warning); }
 .inv-alert--error { background: var(--ui-error-bg); color: var(--ui-error); }
+.inv-alert--success { background: var(--ui-success-bg); color: var(--ui-success); }
 
 .inv-table-wrap {
   overflow-x: auto;

@@ -92,7 +92,7 @@ describe('SellerProfilePage', () => {
             <CompanyProvider>
               <CompanyCard />
               <Routes>
-                <Route path="/seller-profile" element={<SellerProfilePage />} />
+                <Route path="/company/invoice-data" element={<SellerProfilePage />} />
                 <Route path="/issued/new" element={<InvoiceDraftPage />} />
               </Routes>
             </CompanyProvider>
@@ -116,7 +116,7 @@ describe('SellerProfilePage', () => {
       bankAccount: '61109010140000071219812874',
     }))
     vi.mocked(updateSellerProfile).mockResolvedValue({ ...empty, isComplete: true })
-    await render('/seller-profile')
+    await render('/company/invoice-data')
     await waitFor(() => input(container, 'legal-name').value === 'Sprzedawca A')
 
     await act(async () => container.querySelector<HTMLElement>('[data-testid="company-card"]')!.click())
@@ -133,7 +133,6 @@ describe('SellerProfilePage', () => {
   it('new invoice with an incomplete profile lands here with the prompt', async () => {
     await render('/issued/new?tenantId=t-1')
 
-    expect(container.querySelector('h1')?.textContent).toBe('Dane do faktur')
     expect(container.textContent).toContain('Uzupełnij dane firmy, aby wystawiać faktury')
     expect(container.textContent).toContain('Następna faktura otrzyma numer FV/1/11/2026')
   })
@@ -148,7 +147,7 @@ describe('SellerProfilePage', () => {
       bankAccounts: ['61109010140000071219812874', '65114020040000330201234567'],
     })
     vi.mocked(updateSellerProfile).mockResolvedValue({ ...empty, isComplete: true })
-    await render('/seller-profile?tenantId=t-1')
+    await render('/company/invoice-data?tenantId=t-1')
 
     expect(input(container, 'seller-nip').readOnly).toBe(true)
     await act(async () => buttonByText(container, 'Pobierz z NIP').click())
@@ -174,7 +173,7 @@ describe('SellerProfilePage', () => {
     [503, 'Biała lista nie odpowiada'],
   ])('lookup %i shows a message and keeps manual entry', async (status, message) => {
     vi.mocked(lookupNip).mockRejectedValue(await apiError(status))
-    await render('/seller-profile?tenantId=t-1')
+    await render('/company/invoice-data?tenantId=t-1')
 
     await act(async () => buttonByText(container, 'Pobierz z NIP').click())
     await waitFor(() => container.textContent?.includes(message) ?? false)
@@ -188,7 +187,7 @@ describe('SellerProfilePage', () => {
     vi.mocked(updateSellerProfile).mockRejectedValue(
       await apiError(400, { errors: [{ code: 'SP-VAL-001', field: 'bankAccount', message: 'Niepoprawny numer rachunku (API)' }], warnings: [] }),
     )
-    await render('/seller-profile?tenantId=t-1')
+    await render('/company/invoice-data?tenantId=t-1')
     await act(async () => {
       typeInto(input(container, 'legal-name'), 'Firma')
       typeInto(input(container, 'address-line-1'), 'ul. Prosta 1')
@@ -210,7 +209,7 @@ describe('SellerProfilePage', () => {
     vi.mocked(updateSellerProfile).mockRejectedValue(
       await apiError(400, { errors: [{ code: 'SP-VAL-007', field: 'numberingPattern', message }], warnings: [] }),
     )
-    await render('/seller-profile?tenantId=t-1')
+    await render('/company/invoice-data?tenantId=t-1')
     await act(async () => {
       typeInto(input(container, 'legal-name'), 'Firma')
       typeInto(input(container, 'address-line-1'), 'ul. Prosta 1')
@@ -224,7 +223,7 @@ describe('SellerProfilePage', () => {
   })
 
   it('updates the number preview when the pattern changes', async () => {
-    await render('/seller-profile?tenantId=t-1')
+    await render('/company/invoice-data?tenantId=t-1')
     await act(async () => {
       typeInto(input(container, 'numbering-pattern'), 'FS/{RRRR}/')
       typeInto(input(container, 'next-number'), '7')

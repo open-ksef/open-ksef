@@ -107,7 +107,7 @@ export function CompanyCard(): ReactElement {
             </span>
           </button>
         ))}
-        <Link to="/tenants" className="company-add" data-testid="company-add" onClick={() => setOpen(false)}>
+        <Link to="/company/details?add=1" className="company-add" data-testid="company-add" onClick={() => setOpen(false)}>
           <Icon name="plus" /> Dodaj firmę
         </Link>
       </div>

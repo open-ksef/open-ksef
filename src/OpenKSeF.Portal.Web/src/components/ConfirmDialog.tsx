@@ -1,4 +1,4 @@
-import { useEffect, type ReactElement, type ReactNode } from 'react'
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactElement, type ReactNode } from 'react'
 
 import { Button } from '@/components/Button'
 
@@ -29,6 +29,15 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps): ReactElement | null {
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const opener = document.activeElement as HTMLElement | null
+    dialogRef.current?.querySelector<HTMLElement>('.ui-modal-footer button')?.focus()
+    return () => opener?.focus()
+  }, [open])
+
   useEffect(() => {
     if (!open) return
 
@@ -42,6 +51,16 @@ export function ConfirmDialog({
 
   if (!open) return null
 
+  function keepFocusInside(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (event.key !== 'Tab') return
+    const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]')]
+    const edge = event.shiftKey ? controls[0] : controls[controls.length - 1]
+    if (document.activeElement === edge) {
+      event.preventDefault()
+      ;(event.shiftKey ? controls[controls.length - 1] : controls[0])?.focus()
+    }
+  }
+
   return (
     <div
       className="ui-modal-backdrop"
@@ -50,12 +69,13 @@ export function ConfirmDialog({
       }}
     >
       <div
-        className="ui-modal"
+        ref={dialogRef}
+        className="ui-modal ui-modal--confirm"
+        onKeyDown={keepFocusInside}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-message"
-        style={{ maxWidth: 420 }}
       >
         <div className="ui-modal-header">
           <h2 className="ui-modal-title" id="confirm-dialog-title">

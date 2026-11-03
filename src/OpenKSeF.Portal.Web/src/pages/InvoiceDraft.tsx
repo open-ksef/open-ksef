@@ -74,7 +74,7 @@ export function InvoiceDraftPage(): ReactElement {
       ) : loading || !profileQuery.data ? (
         <Skeleton lines={8} />
       ) : !id && !profileQuery.data.isComplete ? (
-        <Navigate to={`/seller-profile?tenantId=${encodeURIComponent(tenantId)}&next=new`} replace />
+        <Navigate to={`/company/invoice-data?tenantId=${encodeURIComponent(tenantId)}&next=new`} replace />
       ) : invoiceQuery.data && (!EDITABLE.includes(invoiceQuery.data.status) || isReissueBlocked(invoiceQuery.data)) ? (
         <Navigate to={`/issued/${encodeURIComponent(invoiceQuery.data.id)}?tenantId=${encodeURIComponent(tenantId)}`} replace />
       ) : (
@@ -232,7 +232,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
     save.mutate(false)
   }
 
-  const profileHref = `/seller-profile?tenantId=${encodeURIComponent(tenantId)}`
+  const profileHref = `/company/invoice-data?tenantId=${encodeURIComponent(tenantId)}`
 
   return (
     <form onSubmit={onSubmit} noValidate className="inv-stack" aria-labelledby="draft-title">

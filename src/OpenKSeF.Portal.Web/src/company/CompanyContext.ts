@@ -5,7 +5,7 @@ import type { KsefEnvironment, TenantResponse } from '@/api/types'
 export interface CompanySwitchGuard {
   dirty: boolean
   busy: boolean
-  environment: KsefEnvironment
+  environment: KsefEnvironment | null
   save: () => Promise<unknown>
 }
 

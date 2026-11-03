@@ -342,7 +342,7 @@ describe('InvoiceDetailsPage', () => {
       await render('/invoices/KSEF-001?tenantId=tenant-1')
 
       expect(testId('pay-fetch-link')?.textContent).toBe('Przejdź do pobierania')
-      expect(testId('pay-fetch-link')?.getAttribute('href')).toBe('/credentials')
+      expect(testId('pay-fetch-link')?.getAttribute('href')).toBe('/company/token')
       expect(testId('qr-message')?.textContent).toBe(UNKNOWN_TYPE)
     })
 

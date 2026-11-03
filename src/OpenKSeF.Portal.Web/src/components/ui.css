@@ -445,39 +445,6 @@ summary.company-card:focus-visible {
   margin-top: 4px;
 }
 
-.company-hub {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-width: 480px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.company-hub__link {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 52px;
-  padding: 0 16px;
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-lg);
-  color: var(--ui-text);
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.company-hub__link span {
-  flex: 1;
-}
-
-.company-hub__link:hover {
-  background: var(--ui-surface-2);
-}
-
-/* ─── Content Area ───────────────────────────────────────────────────────── */
 .app-content {
   display: flex;
   flex-direction: column;
@@ -1728,6 +1695,207 @@ dd {
   font-weight: 500;
   display: flex;
   align-items: center;
+}
+
+/* ─── Cards, tabs, danger ──────────────────────────────────────────────────── */
+.ui-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+}
+
+.ui-card h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.ui-card form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ui-card form > .ui-form-group {
+  width: 100%;
+}
+
+.ui-card--danger {
+  border-color: var(--ui-error);
+}
+
+.danger-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.danger-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--ui-border);
+}
+
+.danger-list li:first-child {
+  border-top: 0;
+}
+
+.danger-list li > span {
+  flex: 1 1 240px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ui-muted);
+}
+
+.danger-list b {
+  display: block;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
+.ui-button--danger-outline {
+  background: var(--ui-surface);
+  border-color: var(--ui-error);
+  color: var(--ui-error);
+}
+
+.ui-button--danger-outline:hover {
+  background: var(--ui-error-bg);
+  color: var(--ui-error);
+}
+
+.ui-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.ui-tabs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  margin-bottom: -1px;
+  padding: 0 12px;
+  border-bottom: 2px solid transparent;
+  color: var(--ui-muted);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.ui-tabs a:hover {
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
+}
+
+.ui-tabs a[aria-current='page'] {
+  border-bottom-color: var(--ui-primary);
+  color: var(--ui-link);
+  font-weight: 600;
+}
+
+.company-head {
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.company-head h1 {
+  line-height: 30px;
+}
+
+.company-head__sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ui-muted);
+  overflow-wrap: anywhere;
+}
+
+.company-head__sub .mono,
+.nip-input,
+.company-tokbox .mono {
+  font-family: var(--ui-font-mono);
+}
+
+.company-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr));
+  gap: 16px;
+  align-items: start;
+  max-width: 1480px;
+}
+
+.company-grid-foot {
+  justify-content: flex-end;
+  max-width: 1480px;
+}
+
+.company-note {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  max-width: 1480px;
+}
+
+.company-note a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.company-tokbox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--ui-surface-2);
+  border-radius: var(--ui-radius-md);
+  font-size: 13px;
+}
+
+.company-muted {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ui-muted);
+}
+
+.company-notice {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+.company-fetch {
+  align-items: flex-start;
+}
+
+.company-fetch .received-sync {
+  text-align: left;
+}
+
+input.nip-input {
+  width: 144px;
+}
+
+.ui-modal--confirm {
+  max-width: 560px;
 }
 
 /* ─── Toasts ─────────────────────────────────────────────────────────────── */

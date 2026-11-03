@@ -14,22 +14,22 @@ function getErrorMessage(error: unknown): string | null {
 
 interface EntityInfo {
   name: string
-  gender: 'f' | 'n' | 'pl'
+  gender: 'f' | 'm' | 'n' | 'pl'
 }
 
 const entityPl: Record<string, EntityInfo> = {
   Tenant: { name: 'Firma', gender: 'f' },
-  Credential: { name: 'Dane logowania', gender: 'pl' },
+  Credential: { name: 'Token KSeF', gender: 'm' },
   Device: { name: 'Urządzenie', gender: 'n' },
 }
 
-const actionSuccessPl: Record<string, Record<'f' | 'n' | 'pl', string>> = {
-  created: { f: 'utworzona pomyślnie', n: 'utworzone pomyślnie', pl: 'utworzone pomyślnie' },
-  updated: { f: 'zaktualizowana pomyślnie', n: 'zaktualizowane pomyślnie', pl: 'zaktualizowane pomyślnie' },
-  deleted: { f: 'usunięta pomyślnie', n: 'usunięte pomyślnie', pl: 'usunięte pomyślnie' },
-  saved: { f: 'zapisana pomyślnie', n: 'zapisane pomyślnie', pl: 'zapisane pomyślnie' },
-  registered: { f: 'zarejestrowana pomyślnie', n: 'zarejestrowane pomyślnie', pl: 'zarejestrowane pomyślnie' },
-  unregistered: { f: 'wyrejestrowana pomyślnie', n: 'wyrejestrowane pomyślnie', pl: 'wyrejestrowane pomyślnie' },
+const actionSuccessPl: Record<string, Record<'f' | 'm' | 'n' | 'pl', string>> = {
+  created: { f: 'utworzona pomyślnie', m: 'utworzony pomyślnie', n: 'utworzone pomyślnie', pl: 'utworzone pomyślnie' },
+  updated: { f: 'zaktualizowana pomyślnie', m: 'zaktualizowany pomyślnie', n: 'zaktualizowane pomyślnie', pl: 'zaktualizowane pomyślnie' },
+  deleted: { f: 'usunięta pomyślnie', m: 'usunięty pomyślnie', n: 'usunięte pomyślnie', pl: 'usunięte pomyślnie' },
+  saved: { f: 'zapisana pomyślnie', m: 'zapisany pomyślnie', n: 'zapisane pomyślnie', pl: 'zapisane pomyślnie' },
+  registered: { f: 'zarejestrowana pomyślnie', m: 'zarejestrowany pomyślnie', n: 'zarejestrowane pomyślnie', pl: 'zarejestrowane pomyślnie' },
+  unregistered: { f: 'wyrejestrowana pomyślnie', m: 'wyrejestrowany pomyślnie', n: 'wyrejestrowane pomyślnie', pl: 'wyrejestrowane pomyślnie' },
 }
 
 const actionErrorPl: Record<string, string> = {

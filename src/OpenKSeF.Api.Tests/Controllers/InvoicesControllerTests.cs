@@ -194,7 +194,7 @@ public class InvoicesControllerTests : IDisposable
     [InlineData(null, "Vat", "Brak poprawnego numeru rachunku na fakturze.")]
     [InlineData("PL62 1090 1014 0000 0712 1981 2874", "Vat", "Brak poprawnego numeru rachunku na fakturze.")]
     [InlineData(ValidAccount, "Kor", "Faktura korygująca: kwota to różnica. Sprawdź, czy jest coś do zapłaty.")]
-    [InlineData(ValidAccount, null, "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Dane logowania).")]
+    [InlineData(ValidAccount, null, "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).")]
     public async Task GetTransferDetails_Blocked_NullQrWithMessageAndText(string? account, string? invoiceType, string message)
     {
         var invoice = MakeInvoice("KSEF-TR-002", DateTime.UtcNow.Date);

@@ -532,7 +532,7 @@ describe('InvoiceListPage', () => {
 
       const note = byTestId('invoice-fetch-note')
       expect(note?.textContent).toBe('Ta firma nie ma tokenu KSeF. Dodaj token KSeF')
-      expect(note?.querySelector('a')?.getAttribute('href')).toBe('/credentials')
+      expect(note?.querySelector('a')?.getAttribute('href')).toBe('/company/token')
       expect(container.textContent).not.toContain(serverText)
       expect(toast.error).not.toHaveBeenCalled()
       expect(fetchButton().disabled).toBe(false)
@@ -601,7 +601,7 @@ describe('InvoiceListPage', () => {
 
       expect(line()?.textContent).toContain('Nie pobieramy faktur od 01.11.2026, 06:00')
       expect(line()?.querySelector('a')?.textContent).toBe('Sprawdź token KSeF')
-      expect(line()?.querySelector('a')?.getAttribute('href')).toBe('/credentials')
+      expect(line()?.querySelector('a')?.getAttribute('href')).toBe('/company/token')
     })
 
     it('shows nothing before the first successful fetch', async () => {
@@ -643,7 +643,7 @@ describe('InvoiceListPage', () => {
       useEmpty({ lastSuccessfulSync: null }, { hasCredential: false })
       await render('/invoices?tenantId=tenant-1')
       expect(container.textContent).toContain('Ta firma nie ma tokenu KSeF')
-      expect(container.querySelector('.ui-empty-state a[href="/credentials"]')?.textContent).toContain('Dodaj token KSeF')
+      expect(container.querySelector('.ui-empty-state a[href="/company/token"]')?.textContent).toContain('Dodaj token KSeF')
       expect(fetchButtonNode().disabled).toBe(true)
       expect(byTestId('invoice-search')).toBeNull()
     })

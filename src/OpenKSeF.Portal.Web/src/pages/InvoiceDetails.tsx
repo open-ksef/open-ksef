@@ -108,7 +108,7 @@ function PaymentCard({
             {!hasQr && !invoice.invoiceType?.trim() ? (
               <>
                 {' '}
-                <Link to="/credentials" data-testid="pay-fetch-link">
+                <Link to="/company/token" data-testid="pay-fetch-link">
                   Przejdź do pobierania
                 </Link>
               </>
