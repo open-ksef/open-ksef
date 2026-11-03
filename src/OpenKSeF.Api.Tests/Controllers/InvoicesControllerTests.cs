@@ -257,6 +257,48 @@ public class InvoicesControllerTests : IDisposable
         Assert.IsType<NotFoundResult>(result);
     }
 
+    private async Task<InvoiceHeader> SeedOtherUsersInvoice()
+    {
+        var otherTenantId = Guid.NewGuid();
+        _db.Tenants.Add(new Tenant
+        {
+            Id = otherTenantId,
+            UserId = "user-2",
+            Nip = "1111111111",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+        var invoice = MakeInvoice("KSEF-OTHER", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        invoice.TenantId = otherTenantId;
+        invoice.InvoiceType = "Vat";
+        invoice.VendorBankAccount = ValidAccount;
+        _db.InvoiceHeaders.Add(invoice);
+        await _db.SaveChangesAsync();
+        return invoice;
+    }
+
+    [Fact]
+    public async Task GetTransferDetails_OtherUsersTenant_ReturnsForbid()
+    {
+        var invoice = await SeedOtherUsersInvoice();
+
+        var result = await CreateController().GetTransferDetails(invoice.TenantId, invoice.Id);
+
+        Assert.IsType<ForbidResult>(result);
+        _qrCode.DidNotReceive().GenerateTransferQr(Arg.Any<TransferData>());
+    }
+
+    [Fact]
+    public async Task GetTransferDetails_OtherTenantsInvoiceIdUnderOwnTenant_Returns404()
+    {
+        var invoice = await SeedOtherUsersInvoice();
+
+        var result = await CreateController().GetTransferDetails(_tenantId, invoice.Id);
+
+        Assert.IsType<NotFoundResult>(result);
+        _qrCode.DidNotReceive().GenerateTransferQr(Arg.Any<TransferData>());
+    }
+
     [Fact]
     public async Task SetPaid_MarksInvoiceAsPaid()
     {
