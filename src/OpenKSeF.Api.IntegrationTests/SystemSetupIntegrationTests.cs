@@ -96,10 +96,10 @@ public class SystemSetupIntegrationTests : IDisposable
         var applyResp = await _client.SendAsync(applyMsg);
         applyResp.EnsureSuccessStatusCode();
 
-        var applyResult = await applyResp.Content.ReadFromJsonAsync<SetupApplyResponse>();
-        Assert.NotNull(applyResult);
-        Assert.True(applyResult!.Success);
-        Assert.False(string.IsNullOrEmpty(applyResult.ApiClientSecret));
+        var applyJson = await applyResp.Content.ReadAsStringAsync();
+        Assert.True(System.Text.Json.JsonSerializer.Deserialize<SetupApplyResponse>(applyJson, System.Text.Json.JsonSerializerOptions.Web)!.Success);
+        Assert.DoesNotContain("secret", applyJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("encryptionKey", applyJson, StringComparison.OrdinalIgnoreCase);
 
         // 3. Verify setup-status now returns initialized
         var statusResp = await _client.GetAsync("/api/system/setup-status");

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import {
   authenticateAdmin,
   applySetup,
+  DEFAULT_RELAY_URL,
   type SetupApplyRequest,
   type SmtpConfig,
 } from '@/api/endpoints/system'
@@ -52,14 +53,11 @@ function StepIndicator({ current }: { current: Step }) {
 }
 
 function CollapsibleGuide({ title, children }: { title: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false)
   return (
-    <div className="onboarding-instruction" style={{ cursor: 'pointer' }}>
-      <div onClick={() => setOpen(!open)} style={{ fontWeight: 600, userSelect: 'none' }}>
-        {open ? '▾' : '▸'} {title}
-      </div>
-      {open && <div style={{ marginTop: '8px' }}>{children}</div>}
-    </div>
+    <details className="onboarding-instruction">
+      <summary style={{ fontWeight: 600, cursor: 'pointer' }}>{title}</summary>
+      <div style={{ marginTop: '8px' }}>{children}</div>
+    </details>
   )
 }
 
@@ -105,14 +103,11 @@ export function AdminSetupPage(): ReactElement {
   const [smtpUser, setSmtpUser] = useState('')
   const [smtpPassword, setSmtpPassword] = useState('')
 
-  // Step 4 (shown after apply)
-  const [apiClientSecret, setApiClientSecret] = useState<string | null>(null)
-
   // Step 5
   const [googleClientId, setGoogleClientId] = useState('')
   const [googleClientSecret, setGoogleClientSecret] = useState('')
   const [pushMode, setPushMode] = useState<'relay' | 'firebase' | 'local'>('relay')
-  const [pushRelayUrl, setPushRelayUrl] = useState('https://push.open-ksef.pl')
+  const [pushRelayUrl, setPushRelayUrl] = useState(DEFAULT_RELAY_URL)
   const [pushRelayApiKey, setPushRelayApiKey] = useState('')
   const [firebaseJson, setFirebaseJson] = useState('')
 
@@ -204,7 +199,7 @@ export function AdminSetupPage(): ReactElement {
           ssl: smtpSsl,
           auth: smtpAuth,
           user: smtpAuth ? smtpUser : undefined,
-          password: smtpAuth ? smtpPassword : undefined,
+          password: smtpAuth ? smtpPassword || undefined : undefined,
         }
       : undefined
 
@@ -226,7 +221,7 @@ export function AdminSetupPage(): ReactElement {
       googleClientId: googleClientId || undefined,
       googleClientSecret: googleClientSecret || undefined,
       pushRelayUrl: pushMode === 'relay' ? pushRelayUrl || undefined : undefined,
-      pushRelayApiKey: pushMode === 'relay' && pushRelayUrl !== 'https://push.open-ksef.pl'
+      pushRelayApiKey: pushMode === 'relay' && pushRelayUrl !== DEFAULT_RELAY_URL
         ? pushRelayApiKey || undefined : undefined,
       firebaseCredentialsJson: pushMode === 'firebase' ? firebaseJson || undefined : undefined,
       newKeycloakAdminPassword: newKcPassword || undefined,
@@ -238,7 +233,6 @@ export function AdminSetupPage(): ReactElement {
         failApply(result.error ?? 'Konfiguracja nie powiodła się')
         return
       }
-      setApiClientSecret(result.apiClientSecret ?? null)
       setSetupDone(true)
       queryClient.setQueryData(['setup-status'], { isInitialized: true })
       toast.success('System skonfigurowany pomyślnie!')
@@ -496,12 +490,6 @@ export function AdminSetupPage(): ReactElement {
                 i nie jest zapisywany w bazie danych. Przechowuj jego kopię poza bazą i jej kopiami
                 zapasowymi: bez klucza zapisane tokeny KSeF będą nie do odczytania.
               </div>
-              {apiClientSecret && (
-                <div className="ui-form-group">
-                  <label>Sekret klienta API (z Keycloak)</label>
-                  <input type="text" readOnly value={apiClientSecret} data-testid="setup-api-secret" style={{ fontFamily: 'monospace', fontSize: '12px' }} />
-                </div>
-              )}
             </div>
             <div className="onboarding-actions">
               <button type="button" className="onboarding-skip-link" onClick={() => setStep(3)}>Wstecz</button>
@@ -564,7 +552,7 @@ export function AdminSetupPage(): ReactElement {
                     <input id="setup-relay-url" data-testid="setup-relay-url" type="url"
                       value={pushRelayUrl} onInput={e => setPushRelayUrl((e.target as HTMLInputElement).value)} />
                   </div>
-                  {pushRelayUrl === 'https://push.open-ksef.pl' ? (
+                  {pushRelayUrl === DEFAULT_RELAY_URL ? (
                     <div className="onboarding-instruction">
                       System zostanie automatycznie zarejestrowany w serwisie relay.
                       Klucz API zostanie wygenerowany automatycznie podczas konfiguracji.

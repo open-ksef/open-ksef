@@ -223,7 +223,9 @@
 .sidebar-user__name {
   flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .sidebar-user__action {
@@ -2847,10 +2849,18 @@ button.wiz__skip:hover {
   padding: 0 24px;
 }
 
+@media (max-width: 480px) {
+  .onboarding-stepper {
+    padding: 0;
+  }
+}
+
 .onboarding-stepper__step {
   display: flex;
   align-items: center;
   gap: 0;
+  flex-shrink: 1;
+  min-width: 32px;
 }
 
 .onboarding-stepper__circle {
@@ -2883,6 +2893,7 @@ button.wiz__skip:hover {
 
 .onboarding-stepper__line {
   width: 48px;
+  flex-shrink: 1;
   height: 2px;
   background: var(--ui-border);
   transition: background var(--ui-transition);

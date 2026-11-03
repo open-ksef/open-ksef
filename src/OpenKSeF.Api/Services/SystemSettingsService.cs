@@ -96,7 +96,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
             GoogleClientId = _systemConfig.GetValue(SystemConfigKeys.GoogleClientId),
             GoogleConfigured = googleConfigured,
             PushRelayUrl = _systemConfig.GetValue(SystemConfigKeys.PushRelayUrl),
-            PushRelayApiKey = _systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey),
+            PushRelayApiKeyConfigured = !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey)),
             PushRelayInstanceId = _systemConfig.GetValue(SystemConfigKeys.PushRelayInstanceId),
             FirebaseConfigured = !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.FirebaseCredentialsJson)),
         };
@@ -127,7 +127,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
                     if (hasCredentials)
                     {
                         if (!request.ConfirmCredentialWipe)
-                            return new SettingsUpdateResponse(false, "Zmiana środowiska KSeF wymaga usunięcia wszystkich poświadczeń KSeF. Potwierdź operację.");
+                            return new SettingsUpdateResponse(false, "Zmiana środowiska KSeF wymaga usunięcia wszystkich poświadczeń KSeF.", RequiresConfirmation: true);
 
                         needsCredentialWipe = true;
                     }
@@ -327,7 +327,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
                 ["ssl"] = request.Smtp.Ssl.ToString().ToLowerInvariant(),
                 ["auth"] = request.Smtp.Auth.ToString().ToLowerInvariant(),
                 ["user"] = request.Smtp.User ?? "",
-                ["password"] = request.Smtp.Password ?? "",
+                ["password"] = SystemSetupService.KeycloakSmtpPassword(request.Smtp.Password),
             };
         }
         else if (request.ClearSmtp)

@@ -35,7 +35,7 @@ New users are created with `emailVerified=false`. With realm **Verify email** on
 1. Start the Docker stack: `./scripts/dev-env-up.ps1`
 2. Open Keycloak admin: http://localhost:8082/auth/admin (admin / admin)
 3. Go to **Clients > openksef-api > Credentials** tab
-4. Copy the **Client Secret** (regenerate if needed)
+4. Copy the **Client Secret**. Do not regenerate it on a wizard install: the API prefers the wizard's copy in `SystemConfigs` over `API_CLIENT_SECRET`, and setup-token exchange then fails.
 5. Set in `.env`:
 
 ```

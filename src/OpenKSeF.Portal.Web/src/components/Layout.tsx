@@ -52,7 +52,7 @@ export function Layout(): ReactElement {
         </nav>
 
         <div className="sidebar-user">
-          <span className="sidebar-user__name">{displayName}</span>
+          <span className="sidebar-user__name" title={displayName}>{displayName}</span>
           <Link
             to="/settings"
             className={onSettings ? 'sidebar-user__action active' : 'sidebar-user__action'}

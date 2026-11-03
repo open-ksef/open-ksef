@@ -62,7 +62,6 @@ public record SmtpConfig
 
 public record SetupApplyResponse(
     bool Success,
-    string? ApiClientSecret,
     string? Error);
 
 // --- Settings API (post-setup) ---
@@ -91,7 +90,7 @@ public record SettingsResponse
     public string? GoogleClientId { get; init; }
     public bool GoogleConfigured { get; init; }
     public string? PushRelayUrl { get; init; }
-    public string? PushRelayApiKey { get; init; }
+    public bool PushRelayApiKeyConfigured { get; init; }
     public string? PushRelayInstanceId { get; init; }
     public bool FirebaseConfigured { get; init; }
 }
@@ -119,4 +118,4 @@ public record SettingsUpdateRequest
     public bool ConfirmCredentialWipe { get; init; }
 }
 
-public record SettingsUpdateResponse(bool Success, string? Error);
+public record SettingsUpdateResponse(bool Success, string? Error, bool RequiresConfirmation = false);

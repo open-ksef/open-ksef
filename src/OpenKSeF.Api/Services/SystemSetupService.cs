@@ -42,6 +42,10 @@ public sealed class SystemSetupService : ISystemSetupService
         _logger = logger;
     }
 
+    /// <summary>Keycloak keeps the stored SMTP password when it receives this mask; omitting the key or sending "" replaces it.</summary>
+    internal static string KeycloakSmtpPassword(string? password) =>
+        string.IsNullOrEmpty(password) ? "**********" : password;
+
     internal static readonly IReadOnlyDictionary<string, object> BruteForceSettings = new Dictionary<string, object>
     {
         ["bruteForceProtected"] = true,
@@ -104,7 +108,7 @@ public sealed class SystemSetupService : ISystemSetupService
         try
         {
             if (EncryptionServiceExtensions.ReadConfiguredKey(_configuration) is null)
-                return new SetupApplyResponse(false, null,
+                return new SetupApplyResponse(false,
                     "ENCRYPTION_KEY is not set. Generate one with: openssl rand -base64 32, set it on the API and Worker, and restart.");
 
             var client = _httpClientFactory.CreateClient("keycloak");
@@ -211,12 +215,12 @@ public sealed class SystemSetupService : ISystemSetupService
 
             _logger.LogInformation("System setup completed successfully");
 
-            return new SetupApplyResponse(true, apiClientSecret, null);
+            return new SetupApplyResponse(true, null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "System setup failed");
-            return new SetupApplyResponse(false, null, ex.Message);
+            return new SetupApplyResponse(false, ex.Message);
         }
     }
 
@@ -473,7 +477,7 @@ public sealed class SystemSetupService : ISystemSetupService
                 ["ssl"] = request.Smtp.Ssl.ToString().ToLowerInvariant(),
                 ["auth"] = request.Smtp.Auth.ToString().ToLowerInvariant(),
                 ["user"] = request.Smtp.User ?? "",
-                ["password"] = request.Smtp.Password ?? "",
+                ["password"] = KeycloakSmtpPassword(request.Smtp.Password),
             };
         }
 
