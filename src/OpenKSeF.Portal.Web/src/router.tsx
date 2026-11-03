@@ -20,6 +20,7 @@ import { MobileSetupPage } from '@/pages/MobileSetup'
 import { NotFoundPage } from '@/pages/NotFound'
 import { SellerProfilePage } from '@/pages/SellerProfile'
 import { SettingsPage } from '@/pages/Settings'
+import { SettingsAdminPage } from '@/pages/SettingsAdmin'
 import { OnboardingPage } from '@/pages/Onboarding'
 import { SilentCallbackPage } from '@/pages/SilentCallback'
 import { StartPage } from '@/pages/Start'
@@ -58,6 +59,7 @@ export const appRoutes: RouteObject[] = [
       { path: 'devices', element: <Moved to="/mobile-setup" /> },
       { path: 'mobile-setup', element: <MobileSetupPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'settings/admin', element: <SettingsAdminPage /> },
     ],
   },
   {

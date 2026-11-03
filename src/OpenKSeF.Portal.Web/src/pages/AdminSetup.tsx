@@ -328,8 +328,8 @@ export function AdminSetupPage(): ReactElement {
                 <label htmlFor="setup-ksef-env">Środowisko KSeF</label>
                 <select id="setup-ksef-env" data-testid="setup-ksef-env"
                   value={ksefEnv} onChange={e => setKsefEnv(e.target.value)}>
-                  <option value="test">Test (ksef-test.mf.gov.pl)</option>
-                  <option value="production">Produkcja (ksef.podatki.gov.pl)</option>
+                  <option value="test">Test</option>
+                  <option value="production">Produkcja</option>
                 </select>
               </div>
 
