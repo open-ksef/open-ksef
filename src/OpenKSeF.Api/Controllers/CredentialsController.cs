@@ -65,6 +65,7 @@ public class CredentialsController : ControllerBase
     private readonly ITenantSyncService _tenantSyncService;
     private readonly ISystemConfigService _systemConfig;
     private readonly ILogger<CredentialsController> _logger;
+    private readonly bool _onRowKey;
 
     public CredentialsController(
         ApplicationDbContext db,
@@ -80,6 +81,8 @@ public class CredentialsController : ControllerBase
         _tenantSyncService = tenantSyncService;
         _systemConfig = systemConfig;
         _logger = logger;
+        // Read here, not in the action: binding awaits the request body after _encryption is resolved.
+        _onRowKey = systemConfig.GetValue(SystemConfigKeys.EncryptionKey) is not null;
     }
 
     [HttpPost]
@@ -89,8 +92,6 @@ public class CredentialsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> AddOrUpdate(Guid tenantId, [FromBody] AddCredentialRequest request)
     {
-        var onRowKey = _systemConfig.GetValue(SystemConfigKeys.EncryptionKey) is not null;
-
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
 
@@ -136,8 +137,8 @@ public class CredentialsController : ControllerBase
                 return BadRequest(new { error = $"Unknown credential type: {request.Type}" });
         }
 
-        await using var transaction = onRowKey && _db.Database.IsNpgsql() ? await _db.Database.BeginTransactionAsync() : null;
-        if (onRowKey && await EncryptionKeyMigration.ReadKeyRowLockedAsync(_db, forUpdate: false) is null)
+        await using var transaction = _onRowKey && _db.Database.IsNpgsql() ? await _db.Database.BeginTransactionAsync() : null;
+        if (_onRowKey && await EncryptionKeyMigration.ReadKeyRowLockedAsync(_db, forUpdate: false) is null)
         {
             await _systemConfig.RefreshCacheAsync();
             _logger.LogCritical("This host still held the encryption key from the database after it moved out, credential not saved for tenant {TenantId}", tenantId);

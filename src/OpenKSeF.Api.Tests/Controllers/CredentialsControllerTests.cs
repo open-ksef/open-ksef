@@ -164,6 +164,19 @@ public class CredentialsControllerCrudTests : IDisposable
     }
 
     [Fact]
+    public async Task AddOrUpdate_CacheRefreshedAfterControllerCreated_Returns503_SavesNothing()
+    {
+        _systemConfig.GetValue(SystemConfigKeys.EncryptionKey).Returns("cached-row-key");
+        var controller = CreateController();
+        _systemConfig.GetValue(SystemConfigKeys.EncryptionKey).Returns((string?)null);
+
+        var result = await controller.AddOrUpdate(_tenantId, new AddCredentialRequest(Type: CredentialType.Token, Token: "my-token"));
+
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.False(await _db.KSeFCredentials.AnyAsync());
+    }
+
+    [Fact]
     public async Task AddOrUpdate_CachedKeyRowStillInDb_Saves()
     {
         _systemConfig.GetValue(SystemConfigKeys.EncryptionKey).Returns("cached-row-key");
