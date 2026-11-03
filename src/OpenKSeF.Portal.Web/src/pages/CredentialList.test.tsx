@@ -2,10 +2,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { addOrUpdateCredential, deleteCredential, forceCredentialSync, listCredentials } from '@/api/endpoints/credentials'
 import { listTenants } from '@/api/endpoints/tenants'
+import { CompanyProvider } from '@/company/CompanyProvider'
+import { memoryStorage } from '@/company/memoryStorage'
+import { useCompany } from '@/company/useCompany'
 import { CredentialListPage } from './CredentialList'
 
 vi.mock('@/api/endpoints/credentials', () => ({
@@ -49,6 +53,7 @@ describe('CredentialListPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('localStorage', memoryStorage())
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
     vi.mocked(listTenants).mockResolvedValue([
@@ -91,7 +96,11 @@ describe('CredentialListPage', () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={client}>
-          <CredentialListPage />
+          <MemoryRouter>
+            <CompanyProvider>
+              <CredentialListPage />
+            </CompanyProvider>
+          </MemoryRouter>
         </QueryClientProvider>,
       )
       await flushPromises()
@@ -110,13 +119,49 @@ describe('CredentialListPage', () => {
     expect(container.querySelector('[data-testid="credential-delete-button"]')).toBeTruthy()
   })
 
+  it('preselects the current company when adding a credential', async () => {
+    vi.mocked(listTenants).mockResolvedValue([
+      { id: 'tenant-1', nip: '1234567890', displayName: 'Tenant A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 'tenant-2', nip: '2234567890', displayName: 'Tenant B', notificationEmail: null, createdAt: '2026-01-02T00:00:00Z' },
+    ])
+    localStorage.setItem('openksef.company', 'tenant-2')
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const CurrentCompany = () => <output data-testid="current">{useCompany().tenantId}</output>
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter>
+            <CompanyProvider>
+              <CurrentCompany />
+              <CredentialListPage />
+            </CompanyProvider>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      )
+      await flushPromises()
+    })
+    await act(async () => {
+      await waitFor(() => container.querySelector('[data-testid="current"]')?.textContent === 'tenant-2')
+    })
+    await act(async () => {
+      ;(container.querySelector('[data-testid="credential-add-button"]') as HTMLButtonElement).click()
+    })
+
+    expect((container.querySelector('[data-testid="credential-tenant-select"]') as HTMLSelectElement).value).toBe('tenant-2')
+  })
+
   it('submits add/update credential mutation', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
     await act(async () => {
       root.render(
         <QueryClientProvider client={client}>
-          <CredentialListPage />
+          <MemoryRouter>
+            <CompanyProvider>
+              <CredentialListPage />
+            </CompanyProvider>
+          </MemoryRouter>
         </QueryClientProvider>,
       )
       await flushPromises()
@@ -154,7 +199,11 @@ describe('CredentialListPage', () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={client}>
-          <CredentialListPage />
+          <MemoryRouter>
+            <CompanyProvider>
+              <CredentialListPage />
+            </CompanyProvider>
+          </MemoryRouter>
         </QueryClientProvider>,
       )
       await flushPromises()

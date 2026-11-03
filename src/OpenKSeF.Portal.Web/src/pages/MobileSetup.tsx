@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
+import { Link } from 'react-router-dom'
 
 function buildQrPayload(serverUrl: string): string {
   return JSON.stringify({
@@ -16,6 +17,9 @@ export function MobileSetupPage(): ReactElement {
     <section>
       <header className="page-header">
         <h1>Aplikacja mobilna</h1>
+        <Link to="/devices" data-testid="mobile-setup-devices-link">
+          Urządzenia
+        </Link>
       </header>
 
       <div className="mobile-setup-container">

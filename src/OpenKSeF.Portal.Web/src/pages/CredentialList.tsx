@@ -13,6 +13,7 @@ import {
 } from '@/api/endpoints/credentials'
 import { listTenants } from '@/api/endpoints/tenants'
 import type { CredentialType, TenantCredentialStatusResponse } from '@/api/types'
+import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -69,6 +70,8 @@ export function CredentialListPage(): ReactElement {
     queryKey: ['credentials'],
     queryFn: () => listCredentials(),
   })
+
+  const { tenantId: currentTenantId } = useCompany()
 
   const tenantsQuery = useQuery({
     queryKey: ['tenants', 'credential-form'],
@@ -303,7 +306,7 @@ export function CredentialListPage(): ReactElement {
             onClick={() => {
               setError(null)
               setMode('add')
-              setSelectedTenantId(tenantsQuery.data?.[0]?.id ?? '')
+              setSelectedTenantId(currentTenantId)
               setFormCredentialType('Token')
               resetForm()
             }}

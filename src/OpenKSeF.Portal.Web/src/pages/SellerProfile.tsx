@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { getSellerProfile, updateSellerProfile } from '@/api/endpoints/sellerProfile'
 import { readValidationEnvelope } from '@/api/errors'
 import type { NipLookupResponse, SellerProfileResponse } from '@/api/types'
+import { useCompany } from '@/company/useCompany'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Skeleton } from '@/components/Skeleton'
 import { EnvBadge } from '@/components/invoicing/KsefStatusBadge'
@@ -26,7 +27,7 @@ import {
 export function SellerProfilePage(): ReactElement {
   const [searchParams] = useSearchParams()
   const tenantsQuery = useTenants()
-  const tenantId = searchParams.get('tenantId') || tenantsQuery.data?.[0]?.id || ''
+  const { tenantId } = useCompany()
 
   const profileQuery = useQuery({
     queryKey: ['seller-profile', tenantId],

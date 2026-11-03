@@ -18,6 +18,8 @@ import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { listTenants } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
 import type { IssuedInvoiceResponse, SellerProfileResponse } from '@/api/types'
+import { CompanyProvider } from '@/company/CompanyProvider'
+import { memoryStorage } from '@/company/memoryStorage'
 import { ksefPollInterval } from '@/invoicing/status'
 import { generateInvoice } from '@/vendor/ksef-pdf-generator/ksef-fe-invoice-converter.js'
 import { InvoiceDraftPage } from './InvoiceDraft'
@@ -121,6 +123,7 @@ describe('issue and detail pages', () => {
   let container: HTMLDivElement
 
   beforeEach(() => {
+    vi.stubGlobal('localStorage', memoryStorage())
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -143,11 +146,13 @@ describe('issue and detail pages', () => {
       root.render(
         <QueryClientProvider client={client}>
           <MemoryRouter initialEntries={[path]}>
-            <Routes>
-              <Route path="/issued/new" element={<InvoiceDraftPage />} />
-              <Route path="/issued/:id/edit" element={<InvoiceDraftPage />} />
-              <Route path="/issued/:id" element={<IssuedInvoiceDetailsPage />} />
-            </Routes>
+            <CompanyProvider>
+              <Routes>
+                <Route path="/issued/new" element={<InvoiceDraftPage />} />
+                <Route path="/issued/:id/edit" element={<InvoiceDraftPage />} />
+                <Route path="/issued/:id" element={<IssuedInvoiceDetailsPage />} />
+              </Routes>
+            </CompanyProvider>
           </MemoryRouter>
         </QueryClientProvider>,
       ),

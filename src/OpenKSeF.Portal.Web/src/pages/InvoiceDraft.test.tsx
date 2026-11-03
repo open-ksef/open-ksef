@@ -2,13 +2,17 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { MemoryRouter, Route, Routes, useLocation, type InitialEntry } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createIssuedInvoice, getIssuedInvoice, listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { listTenants } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
+import { CompanyCard } from '@/company/CompanyCard'
+import { CompanyProvider } from '@/company/CompanyProvider'
+import { memoryStorage } from '@/company/memoryStorage'
 import type { IssuedInvoiceResponse, SellerProfileResponse } from '@/api/types'
 import { todayIso } from '@/invoicing/format'
 import { InvoiceDraftPage } from './InvoiceDraft'
@@ -23,6 +27,8 @@ vi.mock('@/api/endpoints/issuedInvoices', () => ({
   getIssuedInvoice: vi.fn(),
   listIssuedInvoices: vi.fn(),
 }))
+
+vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 
 const profile: SellerProfileResponse = {
   legalName: 'OpenKSeF Test A sp. z o.o.',
@@ -62,6 +68,7 @@ describe('issuing pages', () => {
   let container: HTMLDivElement
 
   beforeEach(() => {
+    vi.stubGlobal('localStorage', memoryStorage())
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -78,17 +85,31 @@ describe('issuing pages', () => {
     container.remove()
   })
 
-  async function render(path: string): Promise<void> {
+  const visited: string[] = []
+
+  function LocationProbe() {
+    const location = useLocation()
+    visited.push(location.pathname)
+    return <output data-testid="location">{location.pathname + location.search}</output>
+  }
+
+  async function render(path: InitialEntry, withCard = false, seed?: (client: QueryClient) => void): Promise<void> {
+    visited.length = 0
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    seed?.(client)
     await act(async () =>
       root.render(
         <QueryClientProvider client={client}>
           <MemoryRouter initialEntries={[path]}>
-            <Routes>
-              <Route path="/issued" element={<IssuedInvoiceListPage />} />
-              <Route path="/issued/new" element={<InvoiceDraftPage />} />
-              <Route path="/issued/:id/edit" element={<InvoiceDraftPage />} />
-            </Routes>
+            <CompanyProvider>
+              {withCard ? <CompanyCard /> : null}
+              {withCard ? <LocationProbe /> : null}
+              <Routes>
+                <Route path="/issued" element={<IssuedInvoiceListPage />} />
+                <Route path="/issued/new" element={<InvoiceDraftPage />} />
+                <Route path="/issued/:id/edit" element={<InvoiceDraftPage />} />
+              </Routes>
+            </CompanyProvider>
           </MemoryRouter>
         </QueryClientProvider>,
       ),
@@ -238,5 +259,178 @@ describe('issuing pages', () => {
     vi.mocked(listIssuedInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 })
     await render('/issued?tenantId=t-1')
     await waitFor(() => container.textContent?.includes('Nie wystawiono jeszcze faktur') ?? false)
+  })
+
+  describe('switching company on the form', () => {
+    const byTestId = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)!
+    const dialog = () => container.querySelector('[data-testid="company-switch-dialog"]')
+    const price = () => container.querySelector<HTMLInputElement>('#line-0-unitNetPrice')!
+    const seller = (name: string) => ({ ...profile, legalName: name })
+
+    beforeEach(() => {
+      vi.mocked(listTenants).mockResolvedValue([
+        { id: 't-1', nip: '5260250274', displayName: 'Firma A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+        { id: 't-2', nip: '7740001454', displayName: 'Firma B', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      ])
+      vi.mocked(getSellerProfile).mockImplementation(async (id) => seller(id === 't-1' ? 'Sprzedawca A' : 'Sprzedawca B'))
+    })
+
+    async function openNewForm(path = '/issued/new?tenantId=t-1'): Promise<void> {
+      await render(path, true)
+      await waitFor(() => Boolean(container.querySelector('#line-0-unitNetPrice')))
+    }
+
+    async function fill(): Promise<void> {
+      await act(async () => typeInto(price(), '100'))
+    }
+
+    async function chooseB(): Promise<void> {
+      await act(async () => byTestId('company-card').click())
+      await waitFor(() => Boolean(byTestId('company-option-t-2')))
+      await act(async () => byTestId('company-option-t-2').click())
+    }
+
+    it('switches a clean form without a dialog and names the new seller', async () => {
+      await openNewForm()
+      await chooseB()
+
+      expect(dialog()).toBeNull()
+      await waitFor(() => container.textContent?.includes('Sprzedawca B') ?? false)
+      expect(container.textContent).toContain('Nowy sprzedawca: Firma B')
+      expect(byTestId('location').textContent).toBe('/issued/new')
+    })
+
+    it('asks on a filled form and shows both sellers', async () => {
+      await openNewForm()
+      await fill()
+      await chooseB()
+
+      expect(dialog()?.textContent).toContain('Firma A')
+      expect(dialog()?.textContent).toContain('Firma B')
+      expect(dialog()?.textContent).toContain('NIP 7740001454')
+      expect(document.activeElement).toBe(byTestId('company-switch-save'))
+      expect(byTestId('company-card').textContent).toContain('Firma A')
+    })
+
+    it('clear does not carry content when the new company is already cached', async () => {
+      await render('/issued/new?tenantId=t-1', true, (client) =>
+        client.setQueryData(['seller-profile', 't-2'], seller('Sprzedawca B')),
+      )
+      await waitFor(() => Boolean(container.querySelector('#line-0-unitNetPrice')))
+      await act(async () => typeInto(container.querySelector<HTMLInputElement>('#buyer-name')!, 'Nabywca X'))
+      await fill()
+      await chooseB()
+      await act(async () => byTestId('company-switch-clear').click())
+
+      await waitFor(() => container.textContent?.includes('Sprzedawca B') ?? false)
+      expect(price().value).toBe('')
+      expect(container.querySelector<HTMLInputElement>('#buyer-name')?.value).toBe('')
+    })
+
+    it('hides a notice left in history for another company', async () => {
+      await render({ pathname: '/issued/new', search: '?tenantId=t-1', state: { companyNotice: 'Nowy sprzedawca: Firma B', companyId: 't-2' } }, true)
+      await waitFor(() => Boolean(container.querySelector('#line-0-unitNetPrice')))
+
+      expect(container.textContent).not.toContain('Nowy sprzedawca: Firma B')
+    })
+
+    it('stay keeps the company and the content', async () => {
+      await openNewForm()
+      await fill()
+      await chooseB()
+      await act(async () => byTestId('company-switch-stay').click())
+
+      expect(dialog()).toBeNull()
+      expect(price().value).toBe('100')
+      expect(byTestId('location').textContent).toBe('/issued/new?tenantId=t-1')
+      expect(createIssuedInvoice).not.toHaveBeenCalled()
+    })
+
+    it('Escape equals stay', async () => {
+      await openNewForm()
+      await fill()
+      await chooseB()
+      await act(async () => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
+
+      expect(dialog()).toBeNull()
+      expect(price().value).toBe('100')
+      expect(byTestId('company-card').textContent).toContain('Firma A')
+    })
+
+    it('clear empties buyer and lines and saves nothing', async () => {
+      await openNewForm()
+      await act(async () => typeInto(container.querySelector<HTMLInputElement>('#buyer-name')!, 'Nabywca X'))
+      await fill()
+      await chooseB()
+      await act(async () => byTestId('company-switch-clear').click())
+
+      await waitFor(() => container.textContent?.includes('Sprzedawca B') ?? false)
+      await waitFor(() => Boolean(container.querySelector('#line-0-unitNetPrice')))
+      expect(price().value).toBe('')
+      expect(container.querySelector<HTMLInputElement>('#buyer-name')?.value).toBe('')
+      expect(container.textContent).toContain('Formularz wyczyszczony. Nowy sprzedawca: Firma B')
+      expect(createIssuedInvoice).not.toHaveBeenCalled()
+      expect(byTestId('location').textContent).toBe('/issued/new')
+    })
+
+    it('save on a new form stores it in A and ends on an empty form of B, not on the edit URL of A', async () => {
+      vi.mocked(createIssuedInvoice).mockResolvedValue({ id: 'i-a', warnings: [] } as unknown as IssuedInvoiceResponse)
+      await openNewForm()
+      await fill()
+      await chooseB()
+      await act(async () => byTestId('company-switch-save').click())
+
+      await waitFor(() => container.textContent?.includes('Sprzedawca B') ?? false)
+      await waitFor(() => Boolean(container.querySelector('#line-0-unitNetPrice')))
+      expect(createIssuedInvoice).toHaveBeenCalledWith('t-1', expect.anything())
+      expect(visited).not.toContain('/issued/i-a/edit')
+      expect(byTestId('location').textContent).toBe('/issued/new')
+      expect(byTestId('company-card').textContent).toContain('Firma B')
+      expect(price().value).toBe('')
+      expect(container.textContent).toContain('Szkic zapisany w firmie Firma A. Nowy sprzedawca: Firma B')
+      expect(localStorage.getItem('openksef.company')).toBe('t-2')
+    })
+
+    it('a failed save keeps the dialog, the company and the content', async () => {
+      vi.mocked(createIssuedInvoice).mockRejectedValue(new Error('boom'))
+      await openNewForm()
+      await fill()
+      await chooseB()
+      await act(async () => byTestId('company-switch-save').click())
+
+      await waitFor(() => (dialog()?.textContent ?? '').includes('Nie udało się zapisać szkicu'))
+      expect(byTestId('company-card').textContent).toContain('Firma A')
+      expect(byTestId('location').textContent).toBe('/issued/new?tenantId=t-1')
+      expect(price().value).toBe('100')
+      expect(localStorage.getItem('openksef.company')).toBe('t-1')
+    })
+
+    it('a save in progress blocks the switch with a toast only', async () => {
+      vi.mocked(createIssuedInvoice).mockReturnValue(new Promise(() => {}))
+      await openNewForm()
+      await fill()
+      await act(async () => buttonByText(container, 'Zapisz szkic').click())
+      await waitFor(() => container.textContent?.includes('Zapisywanie…') ?? false)
+      await chooseB()
+
+      expect(dialog()).toBeNull()
+      expect(toast.error).toHaveBeenCalled()
+      expect(byTestId('company-card').textContent).toContain('Firma A')
+      expect(price().value).toBe('100')
+    })
+
+    it('a form saved in place is clean again', async () => {
+      const saved = { id: 'i-a', status: 'Draft', warnings: [], updatedAt: '2026-11-03T10:00:00Z' } as unknown as IssuedInvoiceResponse
+      vi.mocked(createIssuedInvoice).mockResolvedValue(saved)
+      vi.mocked(getIssuedInvoice).mockResolvedValue(saved)
+      await openNewForm()
+      await fill()
+      await act(async () => buttonByText(container, 'Zapisz szkic').click())
+      await waitFor(() => byTestId('location').textContent === '/issued/i-a/edit?tenantId=t-1')
+      await chooseB()
+
+      expect(dialog()).toBeNull()
+      expect(byTestId('location').textContent).toBe('/issued/new')
+    })
   })
 })

@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import type { IssuedInvoiceListItemResponse, IssuedInvoiceStatus } from '@/api/types'
+import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
 import '@/components/invoicing/invoicing.css'
@@ -25,7 +26,7 @@ const tabs: { status: IssuedInvoiceStatus | ''; label: string }[] = [
 export function IssuedInvoiceListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams()
   const tenantsQuery = useTenants()
-  const tenantId = searchParams.get('tenantId') || tenantsQuery.data?.[0]?.id || ''
+  const { tenantId } = useCompany()
   const status = (searchParams.get('status') ?? '') as IssuedInvoiceStatus | ''
   const month = searchParams.get('month') ?? ''
   const q = searchParams.get('q') ?? ''
@@ -49,7 +50,7 @@ export function IssuedInvoiceListPage(): ReactElement {
     enabled: Boolean(tenantId),
   })
 
-  const update = (next: { tenantId?: string; status?: string; month?: string; q?: string; page?: number }): void => {
+  const update = (next: { status?: string; month?: string; q?: string; page?: number }): void => {
     const params = new URLSearchParams()
     const values = { tenantId, status, month, q, page, ...next }
     if (values.tenantId) params.set('tenantId', values.tenantId)
@@ -132,20 +133,6 @@ export function IssuedInvoiceListPage(): ReactElement {
       <header className="inv-header">
         <h1>Wystawione faktury</h1>
         {profileQuery.data ? <EnvBadge environment={profileQuery.data.ksefEnvironment} /> : null}
-        {(tenantsQuery.data?.length ?? 0) > 1 ? (
-          <div className="ui-form-group">
-            <label htmlFor="issued-tenant" className="visually-hidden">
-              Firma
-            </label>
-            <select id="issued-tenant" value={tenantId} onChange={(event) => update({ tenantId: event.target.value, page: 1 })}>
-              {tenantsQuery.data?.map((tenant) => (
-                <option key={tenant.id} value={tenant.id}>
-                  {tenant.displayName || tenant.nip}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
         <div className="inv-header__actions">
           <Link to={`/issued/new?${tenantQuery}`} className="ui-button ui-button--primary ui-button--md">
             + Nowa faktura

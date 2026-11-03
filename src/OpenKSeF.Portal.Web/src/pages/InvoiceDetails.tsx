@@ -3,9 +3,10 @@ import { useState, type ReactElement } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { getInvoiceByKSeFNumber, getTransferDetails, setInvoicePaid } from '@/api/endpoints/invoices'
-import { listTenants } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
+import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
+import { useTenants } from '@/hooks/useTenants'
 
 export function InvoiceDetailsPage(): ReactElement {
   const { ksefInvoiceNumber = '' } = useParams()
@@ -15,12 +16,8 @@ export function InvoiceDetailsPage(): ReactElement {
 
   const tenantIdFromUrl = searchParams.get('tenantId') ?? ''
 
-  const tenantsQuery = useQuery({
-    queryKey: ['tenants', 'invoice-details'],
-    queryFn: () => listTenants(),
-  })
-
-  const effectiveTenantId = tenantIdFromUrl || tenantsQuery.data?.[0]?.id || ''
+  const tenantsQuery = useTenants()
+  const { tenantId: effectiveTenantId } = useCompany()
 
   const invoiceQuery = useQuery({
     queryKey: ['invoice-details', effectiveTenantId, ksefInvoiceNumber],
