@@ -37,7 +37,6 @@
   --ui-text: #111827;
   --ui-muted: #5b6474;
 
-  /* Type */
   --ui-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
 
   /* Borders & Shadows */
@@ -362,6 +361,7 @@
 
 .ui-button--primary:hover {
   background: var(--ui-primary-hover);
+  color: var(--ui-on-primary);
 }
 
 .ui-button--secondary {
@@ -372,6 +372,7 @@
 
 .ui-button--secondary:hover {
   background: var(--ui-primary-subtle);
+  color: var(--ui-primary);
 }
 
 .ui-button--outline {
@@ -382,6 +383,7 @@
 
 .ui-button--outline:hover {
   background: var(--ui-surface-2);
+  color: var(--ui-text);
 }
 
 .ui-button--danger {
@@ -391,6 +393,7 @@
 
 .ui-button--danger:hover {
   filter: brightness(0.92);
+  color: var(--ui-on-error);
 }
 
 .ui-button--ghost {
@@ -400,10 +403,11 @@
 
 .ui-button--ghost:hover {
   background: var(--ui-primary-subtle);
+  color: var(--ui-primary);
 }
 
 /* Legacy button class (used directly in pages without ui-button) */
-button:not(.ui-button):not(.sidebar-logout):not(.mobile-nav-toggle) {
+button:where(:not(.ui-button):not(.sidebar-logout):not(.mobile-nav-toggle)) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -423,12 +427,12 @@ button:not(.ui-button):not(.sidebar-logout):not(.mobile-nav-toggle) {
     transform var(--ui-transition);
 }
 
-button:not(.ui-button):not(.sidebar-logout):not(.mobile-nav-toggle):hover {
+button:where(:not(.ui-button):not(.sidebar-logout):not(.mobile-nav-toggle):hover) {
   background: var(--ui-surface-2);
   transform: translateY(-1px);
 }
 
-button:not(.ui-button):not(.sidebar-logout):not(.mobile-nav-toggle):disabled {
+button:where(:not(.ui-button):not(.sidebar-logout):not(.mobile-nav-toggle):disabled) {
   opacity: 0.45;
   cursor: not-allowed;
   transform: none;
@@ -965,7 +969,9 @@ label {
   font-weight: 600;
   padding: 5px 10px;
   border-radius: var(--ui-radius-sm);
-  border: 1px solid transparent;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-border-strong);
   cursor: pointer;
   transition: background var(--ui-transition), color var(--ui-transition), border-color var(--ui-transition);
   min-height: unset;
@@ -973,6 +979,7 @@ label {
 }
 
 .btn-action:hover {
+  background: var(--ui-surface-2);
   transform: none;
   box-shadow: none;
 }
@@ -1426,8 +1433,9 @@ dd {
 
 .auth-card {
   background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-xl);
-  box-shadow: var(--ui-shadow-lg);
+  box-shadow: none;
   padding: 48px 40px 40px;
   width: 100%;
   max-width: 400px;
@@ -1636,8 +1644,9 @@ dd {
 /* ─── Onboarding Wizard ─────────────────────────────────────────────────── */
 .onboarding-card {
   background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-xl);
-  box-shadow: var(--ui-shadow-lg);
+  box-shadow: none;
   padding: 40px 36px 36px;
   width: 100%;
   max-width: 520px;

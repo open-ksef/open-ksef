@@ -103,7 +103,7 @@ export function MobileSetupPage(): ReactElement {
                 value={qrValue}
                 size={280}
                 level="M"
-                marginSize={2}
+                marginSize={4}
                 style={isExpired ? { opacity: 0.3, filter: 'grayscale(1)' } : undefined}
               />
             )}

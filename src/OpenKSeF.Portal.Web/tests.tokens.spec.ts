@@ -46,6 +46,27 @@ describe('design tokens', () => {
     expect(contrast(set['--ui-on-primary'], set['--ui-primary-hover'])).toBeGreaterThanOrEqual(4.5)
   })
 
+  it.each([
+    ['primary', '--ui-on-primary'],
+    ['secondary', '--ui-primary'],
+    ['outline', '--ui-text'],
+    ['danger', '--ui-on-error'],
+    ['ghost', '--ui-primary'],
+  ])('keeps the %s button label colour on hover, also on a link', (variant, token) => {
+    const rule = ui.match(new RegExp(`\\.ui-button--${variant}:hover \\{([^}]*)\\}`))
+    expect(rule?.[1]).toContain(`color: var(${token});`)
+  })
+
+  it('does not let the plain button rule outrank component buttons', () => {
+    expect(ui).not.toMatch(/^button:not\(/m)
+  })
+
+  it('shows the selected choice on the invoice form', () => {
+    const invoicing = readFileSync(resolve(src, 'components/invoicing/invoicing.css'), 'utf8')
+    const rule = invoicing.match(/\.inv-segmented button\[aria-pressed='true'\] \{([^}]*)\}/)
+    expect(rule?.[1]).toContain('background: var(--ui-primary-subtle);')
+  })
+
   it('has no scoped token block in invoicing.css', () => {
     expect(readFileSync(resolve(src, 'components/invoicing/invoicing.css'), 'utf8')).not.toMatch(/--ui-[a-z0-9-]+:/)
   })
