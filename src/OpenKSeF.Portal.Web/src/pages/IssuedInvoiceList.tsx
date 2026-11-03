@@ -1,22 +1,25 @@
 import { useQuery } from '@tanstack/react-query'
-import type { FormEvent, ReactElement } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useState, type ReactElement } from 'react'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 
 import { listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import type { IssuedInvoiceListItemResponse, IssuedInvoiceStatus } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
+import { Button } from '@/components/Button'
 import { EmptyState } from '@/components/EmptyState'
 import { Icon } from '@/components/Icon'
 import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
 import '@/components/invoicing/invoicing.css'
 import { Table, type TableColumn } from '@/components/Table'
 import { useCredentials } from '@/hooks/useCredentials'
+import { useRowOpen } from '@/hooks/useRowOpen'
 import { useTenants } from '@/hooks/useTenants'
 import { formatDate, formatMoney } from '@/invoicing/format'
 
 const PAGE_SIZE = 20
+const SEARCH_DELAY_MS = 300
 
 const tabs: { status: IssuedInvoiceStatus | ''; label: string }[] = [
   { status: '', label: 'Wszystkie' },
@@ -25,6 +28,13 @@ const tabs: { status: IssuedInvoiceStatus | ''; label: string }[] = [
   { status: 'Accepted', label: 'Przyjęte' },
   { status: 'Rejected', label: 'Odrzucone' },
 ]
+
+function lastPageSearch(current: URLSearchParams, lastPage: number): string {
+  const next = new URLSearchParams(current)
+  if (lastPage > 1) next.set('page', String(lastPage))
+  else next.delete('page')
+  return next.toString()
+}
 
 export function IssuedInvoiceListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -64,10 +74,19 @@ export function IssuedInvoiceListPage(): ReactElement {
     setSearchParams(params)
   }
 
-  const onSearch = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault()
-    update({ q: String(new FormData(event.currentTarget).get('q') ?? '').trim(), page: 1 })
+  const [draft, setDraft] = useState(q)
+  const [urlTerm, setUrlTerm] = useState(q)
+  if (q !== urlTerm) {
+    setUrlTerm(q)
+    if (q !== draft.trim()) setDraft(q)
   }
+
+  useEffect(() => {
+    const term = draft.trim()
+    if (term === q) return
+    const timer = setTimeout(() => update({ q: term, page: 1 }), SEARCH_DELAY_MS)
+    return () => clearTimeout(timer)
+  })
 
   const credentialsQuery = useCredentials()
   const tenantQuery = `tenantId=${encodeURIComponent(tenantId)}`
@@ -76,110 +95,107 @@ export function IssuedInvoiceListPage(): ReactElement {
   const unfilteredEmpty = listQuery.isSuccess && rows.length === 0 && !status && !month && !q && page === 1
   const hasCredential = credentialsQuery.data?.find((row) => row.tenantId === tenantId)?.hasCredential
   const stateCard = unfilteredEmpty && credentialsQuery.isSuccess
+  const totalCount = listQuery.data?.totalCount ?? 0
+  const firstRow = (page - 1) * PAGE_SIZE + 1
+  const pastLastPage = listQuery.isSuccess && rows.length === 0 && totalCount > 0 && page > totalPages
+  const detailsPath = (row: IssuedInvoiceListItemResponse): string => `/issued/${encodeURIComponent(row.id)}?${tenantQuery}`
+  const onRowClick = useRowOpen(detailsPath)
 
   const columns: TableColumn<IssuedInvoiceListItemResponse>[] = [
     {
-      key: 'number',
-      label: 'Numer',
-      render: (row) => <span className="mono">{row.number ?? '— (szkic)'}</span>,
-    },
-    {
       key: 'buyerName',
-      label: 'Nabywca',
-      render: (row) => (
-        <>
-          {row.buyerName ?? '—'}
-          {row.buyerNip ? <div className="inv-help mono">{row.buyerNip}</div> : null}
-        </>
-      ),
+      label: 'Nabywca i numer',
+      render: (row) => {
+        const number = row.number ?? '— (szkic)'
+        return (
+          <>
+            <Link
+              to={detailsPath(row)}
+              className="rowlink"
+              title={row.buyerName ?? undefined}
+              aria-label={`${row.buyerName ?? 'Bez nabywcy'}, ${number}`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {row.buyerName ?? '—'}
+            </Link>
+            <span className="received-sub" title={number}>
+              {number} · {formatDate(row.issueDate)}
+            </span>
+          </>
+        )
+      },
     },
-    { key: 'issueDate', label: 'Wystawiona', render: (row) => formatDate(row.issueDate) },
-    { key: 'dueDate', label: 'Termin', render: (row) => formatDate(row.dueDate) },
+    { key: 'dueDate', label: 'Termin płatności', className: 'issued-due', render: (row) => formatDate(row.dueDate) },
     {
       key: 'totalNet',
       label: 'Netto',
-      render: (row) => <span className="num">{row.totalNet === undefined ? '—' : formatMoney(row.totalNet, row.currency)}</span>,
+      className: 'received-net received-num',
+      render: (row) => formatMoney(row.totalNet, row.currency),
     },
-    { key: 'totalGross', label: 'Brutto', render: (row) => <span className="num">{formatMoney(row.totalGross, row.currency)}</span> },
+    {
+      key: 'totalGross',
+      label: 'Brutto',
+      className: 'received-gross received-num',
+      render: (row) => (
+        <>
+          <span className="received-amount" title={formatMoney(row.totalGross, row.currency)}>
+            {formatMoney(row.totalGross, row.currency)}
+          </span>
+          <span className="received-status-mobile">
+            <KsefStatusBadge status={row.status} />
+          </span>
+        </>
+      ),
+    },
     {
       key: 'status',
       label: 'Status',
+      className: 'issued-status',
       render: (row) => (
         <>
           <KsefStatusBadge status={row.status} />
-          {row.needsAttention ? (
-            <div>
-              <span className="inv-badge inv-badge--warning">Wymaga uwagi</span>
-            </div>
-          ) : null}
+          {row.needsAttention ? <span className="issued-attention">Wymaga uwagi</span> : null}
         </>
       ),
     },
     {
       key: 'ksefNumber',
       label: 'Numer KSeF',
-      render: (row) => <span className="mono inv-help">{row.ksefNumber ?? '—'}</span>,
-    },
-    {
-      key: 'id',
-      label: '',
-      render: (row) => (
-        <Link
-          to={`/issued/${encodeURIComponent(row.id)}${row.status === 'Draft' ? '/edit' : ''}?${tenantQuery}`}
-          className="btn-action btn-action--edit"
-          aria-label={`Otwórz ${row.number ?? 'szkic'}`}
-        >
-          Otwórz →
-        </Link>
-      ),
+      className: 'received-ksef',
+      render: (row) => <span>{row.ksefNumber ?? '—'}</span>,
     },
   ]
 
   return (
     <div className="invoicing">
-      <header className="inv-header">
+      <header className="page-header received-head">
         <h1>Wystawione faktury</h1>
         {profileQuery.data ? <EnvBadge environment={profileQuery.data.ksefEnvironment} /> : null}
-        <div className="inv-header__actions">
-          <Link to={`/issued/new?${tenantQuery}`} className="ui-button ui-button--primary ui-button--md">
-            + Nowa faktura
-          </Link>
-        </div>
+        <Link to={`/issued/new?${tenantQuery}`} className="ui-button ui-button--primary ui-button--md">
+          <Icon name="plus" /> Nowa faktura
+        </Link>
       </header>
 
+      {pastLastPage ? <Navigate to={{ search: lastPageSearch(searchParams, totalPages) }} replace /> : null}
+
       {stateCard ? null : (
-        <>
-          <div className="inv-tabs" role="group" aria-label="Filtr statusu">
+        <div className="received-tools">
+          <div className="inv-chips" role="group" aria-label="Status">
             {tabs.map((tab) => (
-              <button
-                key={tab.label}
-                type="button"
-                aria-pressed={status === tab.status}
-                onClick={() => update({ status: tab.status, page: 1 })}
-              >
+              <button key={tab.label} type="button" aria-pressed={status === tab.status} onClick={() => update({ status: tab.status, page: 1 })}>
                 {tab.label}
               </button>
             ))}
           </div>
-
-          <div className="inv-header">
-            <form className="inv-input-group" role="search" onSubmit={onSearch}>
-              <label htmlFor="issued-q" className="visually-hidden">
-                Szukaj po numerze, nabywcy lub NIP
-              </label>
-              <input id="issued-q" name="q" type="search" key={q} defaultValue={q} placeholder="Numer, nabywca, NIP" />
-              <button type="submit" className="ui-button ui-button--secondary ui-button--md">
-                Szukaj
-              </button>
-            </form>
-            <div className="ui-form-group">
-              <label htmlFor="issued-month" className="visually-hidden">
-                Miesiąc wystawienia
-              </label>
-              <input id="issued-month" type="month" value={month} onChange={(event) => update({ month: event.target.value, page: 1 })} />
-            </div>
-          </div>
-        </>
+          <label htmlFor="issued-q" className="visually-hidden">
+            Szukaj: numer, nabywca, NIP
+          </label>
+          <input id="issued-q" type="search" placeholder="Numer, nabywca, NIP" value={draft} onChange={(event) => setDraft(event.target.value)} />
+          <label htmlFor="issued-month" className="visually-hidden">
+            Miesiąc wystawienia
+          </label>
+          <input id="issued-month" type="month" value={month} onChange={(event) => update({ month: event.target.value, page: 1 })} />
+        </div>
       )}
 
       {stateCard ? (
@@ -201,7 +217,7 @@ export function IssuedInvoiceListPage(): ReactElement {
         />
       ) : (
         <AsyncStateView
-          isLoading={tenantsQuery.isLoading || listQuery.isLoading || (unfilteredEmpty && credentialsQuery.isLoading)}
+          isLoading={tenantsQuery.isLoading || listQuery.isLoading || pastLastPage || (unfilteredEmpty && credentialsQuery.isLoading)}
           error={tenantsQuery.error ?? listQuery.error ?? (unfilteredEmpty ? credentialsQuery.error : null)}
           isEmpty={rows.length === 0}
           emptyTitle="Brak faktur spełniających kryteria"
@@ -211,20 +227,22 @@ export function IssuedInvoiceListPage(): ReactElement {
             void credentialsQuery.refetch()
           }}
         >
-          <Table testId="issued-invoice-table" columns={columns} data={rows} />
-          <nav className="ui-pagination" aria-label="Paginacja wystawionych faktur">
-            <span className="ui-pagination-info">
-              Strona {page} z {totalPages} · {listQuery.data?.totalCount ?? 0} łącznie
-            </span>
-            <div className="ui-pagination-controls">
-              <button type="button" disabled={page <= 1} onClick={() => update({ page: page - 1 })}>
-                ← Poprzednia
-              </button>
-              <button type="button" disabled={page >= totalPages} onClick={() => update({ page: page + 1 })}>
-                Następna →
-              </button>
-            </div>
-          </nav>
+          <section className="received-list" aria-label="Lista faktur">
+            <Table testId="issued-invoice-table" columns={columns} data={rows} onRowClick={onRowClick} />
+            <nav className="ui-pagination" aria-label="Paginacja wystawionych faktur">
+              <span className="ui-pagination-info">
+                {firstRow}–{firstRow + rows.length - 1} z {totalCount} {totalCount === 1 ? 'faktury' : 'faktur'}
+              </span>
+              <div className="ui-pagination-controls">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => update({ page: page - 1 })}>
+                  Poprzednia
+                </Button>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => update({ page: page + 1 })}>
+                  Następna
+                </Button>
+              </div>
+            </nav>
+          </section>
         </AsyncStateView>
       )}
     </div>

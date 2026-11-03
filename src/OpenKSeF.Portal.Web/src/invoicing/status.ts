@@ -10,6 +10,20 @@ export function ksefPollInterval(status: IssuedInvoiceStatus | undefined, elapse
 export const isReissueBlocked = ({ status, ksef }: IssuedInvoiceResponse): boolean =>
   status === 'Rejected' && ksef.statusCode === 440
 
+// Stored by IssuedInvoiceSendProcessor. The API has no cause field, and only a new token fixes these.
+const TOKEN_REJECTIONS = [
+  'Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy.',
+  'KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.',
+  'Wysyłka faktur wymaga tokenu KSeF w ustawieniach firmy',
+]
+
+export type RejectionCause = 'token' | 'duplicate' | 'data'
+
+export function rejectionCause(invoice: IssuedInvoiceResponse): RejectionCause {
+  if (isReissueBlocked(invoice)) return 'duplicate'
+  return TOKEN_REJECTIONS.includes(invoice.ksef.statusMessage ?? '') ? 'token' : 'data'
+}
+
 export function downloadFile(content: BlobPart, fileName: string, type: string): void {
   const url = URL.createObjectURL(new Blob([content], { type }))
   const link = document.createElement('a')

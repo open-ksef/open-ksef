@@ -1,16 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { QRCodeSVG } from 'qrcode.react'
 import { useState, type ReactElement } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import {
   copyIssuedInvoice,
+  deleteIssuedInvoice,
   getIssuedInvoice,
   getIssuedInvoiceUpo,
   getIssuedInvoiceXml,
 } from '@/api/endpoints/issuedInvoices'
 import type { IssuedInvoiceResponse } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
+import { Icon } from '@/components/Icon'
 import { Skeleton } from '@/components/Skeleton'
 import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
 import { KsefStatusPanel } from '@/components/invoicing/KsefStatusPanel'
@@ -55,6 +59,7 @@ export function IssuedInvoiceDetailsPage(): ReactElement {
 
 function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: IssuedInvoiceResponse }): ReactElement {
   const [failure, setFailure] = useState<string | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const tenantQuery = `tenantId=${encodeURIComponent(tenantId)}`
@@ -94,132 +99,176 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
     onError: (error) => showFailure(error, 'Nie udało się wygenerować PDF'),
   })
 
+  const remove = useMutation({
+    mutationFn: () => deleteIssuedInvoice(tenantId, invoice.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
+      navigate(`/issued?${tenantQuery}`, { replace: true })
+      queryClient.removeQueries({ queryKey: ['issued-invoice', tenantId, invoice.id] })
+    },
+    onError: (error) => {
+      setDeleteOpen(false)
+      showFailure(error, 'Nie udało się usunąć szkicu')
+    },
+  })
+
   const copyButton = (
     <button
       type="button"
-      className="ui-button ui-button--ghost ui-button--md"
+      className={`ui-button ui-button--${isReissueBlocked(invoice) ? 'primary' : 'outline'} ui-button--md`}
       disabled={copy.isPending}
       onClick={() => copy.mutate()}
     >
-      {copy.isPending ? 'Kopiowanie…' : 'Kopiuj jako nową'}
+      <Icon name="copy" /> {copy.isPending ? 'Kopiowanie…' : 'Kopiuj jako nową'}
     </button>
   )
 
-  return (
+  const downloads = (
     <>
-      <header className="inv-header">
-        <Link to={`/issued?${tenantQuery}`} className="back-link">
-          ← Wystawione
-        </Link>
+      {ksefNumber && verificationUrl ? (
+        <button
+          type="button"
+          className="ui-button ui-button--primary ui-button--md"
+          disabled={pdf.isPending}
+          onClick={() => pdf.mutate([ksefNumber, verificationUrl])}
+        >
+          <Icon name="file-down" /> {pdf.isPending ? 'Generowanie…' : 'Pobierz PDF'}
+        </button>
+      ) : null}
+      <div className="status-panel__row">
+        <button
+          type="button"
+          className="ui-button ui-button--outline ui-button--md"
+          onClick={() => void download(() => getIssuedInvoiceXml(tenantId, invoice.id), `${stem}.xml`)}
+        >
+          Pobierz XML
+        </button>
+        <button
+          type="button"
+          className="ui-button ui-button--outline ui-button--md"
+          disabled={!invoice.ksef.hasUpo}
+          onClick={() => void download(() => getIssuedInvoiceUpo(tenantId, invoice.id), `${stem}_UPO.xml`)}
+        >
+          Pobierz UPO
+        </button>
+      </div>
+    </>
+  )
+
+  return (
+    <section className="invoice-details">
+      <Link to={`/issued?${tenantQuery}`} className="back-link">
+        <Icon name="arrow-left" size={14} /> Wystawione
+      </Link>
+      <header className="page-header invoice-details-head">
         <h1 className="mono">{invoice.number ?? 'Szkic'}</h1>
         <KsefStatusBadge status={invoice.status} />
         <EnvBadge environment={invoice.ksef.environment} />
-        <div className="inv-header__actions">
-          {invoice.status !== 'Sending' && !isReissueBlocked(invoice) ? copyButton : null}
-          {accepted ? (
-            <>
-              <button
-                type="button"
-                className="ui-button ui-button--outline ui-button--md"
-                onClick={() => void download(() => getIssuedInvoiceXml(tenantId, invoice.id), `${stem}.xml`)}
-              >
-                Pobierz XML
-              </button>
-              {invoice.ksef.hasUpo ? (
-                <button
-                  type="button"
-                  className="ui-button ui-button--outline ui-button--md"
-                  onClick={() => void download(() => getIssuedInvoiceUpo(tenantId, invoice.id), `${stem}_UPO.xml`)}
-                >
-                  Pobierz UPO
-                </button>
-              ) : null}
-              {ksefNumber && verificationUrl ? (
-                <button
-                  type="button"
-                  className="ui-button ui-button--primary ui-button--md"
-                  disabled={pdf.isPending}
-                  onClick={() => pdf.mutate([ksefNumber, verificationUrl])}
-                >
-                  {pdf.isPending ? 'Generowanie…' : 'Pobierz PDF'}
-                </button>
-              ) : null}
-            </>
-          ) : null}
-        </div>
       </header>
 
       {failure ? <ErrorBanner message={failure} /> : null}
 
-      <div className="inv-columns">
-        <div className="inv-columns__main">
-          <section className="inv-card" aria-labelledby="parties-title">
-            <h2 id="parties-title">Strony i daty</h2>
-            <div className="inv-grid">
-              <Party title="Sprzedawca" {...invoice.seller} />
-              <Party title="Nabywca" {...invoice.buyer} />
-              <dl className="inv-readonly">
-                <dt>Data wystawienia</dt>
-                <dd>{formatDate(invoice.issueDate)}</dd>
-                <dt>Data sprzedaży</dt>
-                <dd>{formatDate(invoice.saleDate)}</dd>
-                <dt>Termin płatności</dt>
-                <dd>{formatDate(invoice.dueDate)}</dd>
-                <dt>Płatność</dt>
-                <dd>
-                  {paymentLabels[invoice.paymentMethod]}
-                  {invoice.splitPayment ? ', mechanizm podzielonej płatności' : ''}
-                </dd>
-                {invoice.paymentMethod === 'Transfer' ? (
-                  <>
-                    <dt>Rachunek</dt>
-                    <dd className="mono">{formatNrb(invoice.seller.bankAccount)}</dd>
-                  </>
-                ) : null}
-              </dl>
-            </div>
-          </section>
+      <KsefStatusPanel
+        invoice={invoice}
+        tenantId={tenantId}
+        editHref={`/issued/${encodeURIComponent(invoice.id)}/edit?${tenantQuery}`}
+        copyAction={copyButton}
+        downloads={downloads}
+        deleteAction={
+          <button type="button" className="ui-button ui-button--danger-outline ui-button--md" onClick={() => setDeleteOpen(true)}>
+            <Icon name="trash-2" /> Usuń szkic
+          </button>
+        }
+      />
 
-          <section className="inv-card" aria-labelledby="lines-title">
+      {accepted && verificationUrl ? (
+        <section className="card kod-card" aria-labelledby="kod-title" data-testid="kod-card">
+          <div className="kod-card__qr">
+            <QRCodeSVG value={verificationUrl} size={200} level="M" marginSize={4} title="KOD I" />
+          </div>
+          <div>
+            <h2 id="kod-title">KOD I</h2>
+            <p className="inv-help">Kod jest na PDF. Nabywca bez KSeF sprawdzi nim fakturę.</p>
+            {ksefNumber ? <p className="mono kod-card__number">{ksefNumber}</p> : null}
+            <a href={verificationUrl} target="_blank" rel="noopener noreferrer">
+              Otwórz weryfikację
+            </a>
+          </div>
+        </section>
+      ) : null}
+
+      <div className="two">
+        <section className="card" aria-labelledby="parties-title">
+          <h2 id="parties-title">Strony i daty</h2>
+          <dl className="kv">
+            <dt>Sprzedawca</dt>
+            <dd>
+              <Party {...invoice.seller} />
+            </dd>
+            <dt>NIP sprzedawcy</dt>
+            <dd className="mono">{invoice.seller.nip}</dd>
+            <dt>Nabywca</dt>
+            <dd>
+              <Party {...invoice.buyer} />
+            </dd>
+            {invoice.buyer.nip ? (
+              <>
+                <dt>NIP nabywcy</dt>
+                <dd className="mono">{invoice.buyer.nip}</dd>
+              </>
+            ) : null}
+            <dt>Data wystawienia</dt>
+            <dd>{formatDate(invoice.issueDate)}</dd>
+            <dt>Data sprzedaży</dt>
+            <dd>{formatDate(invoice.saleDate)}</dd>
+            <dt>Termin płatności</dt>
+            <dd>{formatDate(invoice.dueDate)}</dd>
+            <dt>Płatność</dt>
+            <dd>
+              {paymentLabels[invoice.paymentMethod]}
+              {invoice.splitPayment ? ', mechanizm podzielonej płatności' : ''}
+            </dd>
+            {invoice.paymentMethod === 'Transfer' ? (
+              <>
+                <dt>Rachunek</dt>
+                <dd className="mono">{formatNrb(invoice.seller.bankAccount)}</dd>
+              </>
+            ) : null}
+          </dl>
+        </section>
+
+        <div className="col">
+          <section className="card" aria-labelledby="lines-title">
             <h2 id="lines-title">Pozycje</h2>
-            <div className="inv-table-wrap">
-              <table className="inv-table">
-                <thead>
+            <table className="lines">
+              <thead>
+                <tr>
+                  <th scope="col">Ilość</th>
+                  <th scope="col">Cena netto</th>
+                  <th scope="col">Stawka</th>
+                  <th scope="col">Netto</th>
+                </tr>
+              </thead>
+              {invoice.lines.map((line) => (
+                <tbody key={line.lineNo}>
                   <tr>
-                    <th scope="col">Lp</th>
-                    <th scope="col">Nazwa</th>
-                    <th scope="col">J.m.</th>
-                    <th scope="col" className="num">Ilość</th>
-                    <th scope="col" className="num">Cena netto</th>
-                    <th scope="col">VAT</th>
-                    <th scope="col" className="num">Netto</th>
+                    <th colSpan={4} scope="rowgroup">
+                      {line.name}
+                    </th>
                   </tr>
-                </thead>
-                <tbody>
-                  {invoice.lines.map((line) => (
-                    <tr key={line.lineNo}>
-                      <td>{line.lineNo}</td>
-                      <td>{line.name}</td>
-                      <td>{line.unit}</td>
-                      <td className="num">{formatDecimal(line.quantity, 0)}</td>
-                      <td className="num">{formatMoney(line.unitNetPrice, invoice.currency)}</td>
-                      <td>{vatRateLabel(line.vatRate)}</td>
-                      <td className="num">{formatMoney(line.netAmount, invoice.currency)}</td>
-                    </tr>
-                  ))}
+                  <tr>
+                    <td>
+                      {formatDecimal(line.quantity, 0)} {line.unit}
+                    </td>
+                    <td>{formatDecimal(line.unitNetPrice, 2)}</td>
+                    <td>{vatRateLabel(line.vatRate)}</td>
+                    <td>{formatMoney(line.netAmount, invoice.currency)}</td>
+                  </tr>
                 </tbody>
-              </table>
-            </div>
+              ))}
+            </table>
             {invoice.exemptionBasis ? <p className="inv-help">Podstawa zwolnienia: {invoice.exemptionBasis.text}</p> : null}
           </section>
-        </div>
-
-        <aside className="inv-columns__side" aria-label="Status i podsumowanie">
-          <KsefStatusPanel
-            invoice={invoice}
-            editHref={`/issued/${encodeURIComponent(invoice.id)}/edit?${tenantQuery}`}
-            copyAction={copyButton}
-          />
           <VatSummary
             rows={invoice.vatSummary}
             totalNet={invoice.totalNet}
@@ -227,34 +276,36 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
             totalGross={invoice.totalGross}
             currency={invoice.currency}
           />
-        </aside>
+        </div>
       </div>
-    </>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Usunąć szkic?"
+        message="Szkic zostanie trwale usunięty. Tej operacji nie można cofnąć."
+        confirmLabel="Usuń szkic"
+        cancelLabel="Anuluj"
+        variant="danger"
+        isPending={remove.isPending}
+        onConfirm={() => remove.mutate()}
+        onCancel={() => setDeleteOpen(false)}
+      />
+    </section>
   )
 }
 
 interface PartyProps {
-  title: string
-  nip: string | null
   name: string | null
   addressLine1: string | null
   addressLine2: string | null
 }
 
-function Party({ title, nip, name, addressLine1, addressLine2 }: PartyProps): ReactElement {
+function Party({ name, addressLine1, addressLine2 }: PartyProps): ReactElement {
   return (
-    <div>
-      <h3>{title}</h3>
-      <p>
-        {[name ?? '—', nip ? `NIP ${nip}` : null, addressLine1, addressLine2]
-          .filter(Boolean)
-          .map((line) => (
-            <span key={line}>
-              {line}
-              <br />
-            </span>
-          ))}
-      </p>
-    </div>
+    <span className="party">
+      {[name ?? '—', addressLine1, addressLine2].filter(Boolean).map((line) => (
+        <span key={line}>{line}</span>
+      ))}
+    </span>
   )
 }

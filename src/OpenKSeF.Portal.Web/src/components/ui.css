@@ -1350,7 +1350,9 @@ label {
     height: 60px;
   }
 
-  .received-status { display: none; }
+  .received-status,
+  .issued-due,
+  .issued-status { display: none; }
   .received-gross { width: 172px; }
 
   .received-status-mobile {
@@ -1697,6 +1699,172 @@ dd {
   align-items: center;
 }
 
+/* ─── Issued invoices ───────────────────────────────────────────────────────── */
+.received-tools input[type='month'] {
+  flex: 0 0 auto;
+}
+
+.issued-due { width: 136px; }
+.issued-status { width: 168px; }
+
+.issued-attention {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--ui-warning);
+}
+
+.status-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 8px 24px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  font-size: 14px;
+}
+
+.status-panel--rejected {
+  border-color: var(--ui-error);
+}
+
+.status-panel h2 {
+  margin: 4px 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+}
+
+.status-panel p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.status-panel__line {
+  margin-top: 6px !important;
+}
+
+.status-panel__code {
+  margin-top: 6px !important;
+  font-family: var(--ui-font-mono);
+  font-size: 13px;
+}
+
+.status-panel__next {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  padding-left: 24px;
+  border-left: 1px solid var(--ui-border);
+}
+
+.status-panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status-panel__row .ui-button {
+  flex: 1 1 auto;
+}
+
+.status-panel__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-link);
+  text-decoration: underline;
+  text-align: center;
+}
+
+.status-panel__details {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  color: var(--ui-muted);
+}
+
+.status-panel__details summary {
+  min-height: 24px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.status-panel__details p {
+  margin-top: 4px;
+  font-family: var(--ui-font-mono);
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.status-panel .kv {
+  margin-top: 8px;
+}
+
+.status-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.status-steps li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 13px;
+}
+
+.status-steps li[aria-current] {
+  font-weight: 600;
+}
+
+.status-steps__todo {
+  color: var(--ui-muted);
+}
+
+.kod-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.kod-card__qr {
+  flex: none;
+  line-height: 0;
+  background: #ffffff;
+  border-radius: var(--ui-radius-md);
+}
+
+.kod-card > div:last-child {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.kod-card__number {
+  margin: 4px 0;
+  font-family: var(--ui-font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.party {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 /* ─── Cards, tabs, danger ──────────────────────────────────────────────────── */
 .ui-card {
   display: flex;
@@ -1896,6 +2064,17 @@ input.nip-input {
 
 .ui-modal--confirm {
   max-width: 560px;
+}
+
+@media (max-width: 1100px) {
+  .status-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .status-panel__next {
+    padding-left: 0;
+    border-left: 0;
+  }
 }
 
 /* ─── Toasts ─────────────────────────────────────────────────────────────── */

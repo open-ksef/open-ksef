@@ -226,6 +226,22 @@ describe('issuing pages', () => {
     expect(container.textContent).toContain('Szkic faktury')
   })
 
+  it('list row opens its invoice on a click anywhere, and a page past the end goes back', async () => {
+    const rows = [{ id: 'i-2', status: 'Accepted', number: 'FV/1/11/2026', buyerName: 'Inny', buyerNip: null, issueDate: '2026-11-02', dueDate: '2026-11-16', totalNet: 1, totalGross: 2, currency: 'PLN', ksefNumber: null, needsAttention: true }] as never
+    vi.mocked(listIssuedInvoices).mockImplementation(async (_tenant, query) =>
+      (query?.page ?? 1) > 1
+        ? { items: [], page: query?.page ?? 1, pageSize: 20, totalCount: 1, totalPages: 1 }
+        : { items: rows, page: 1, pageSize: 20, totalCount: 1, totalPages: 1 },
+    )
+    await render('/issued?tenantId=t-1&page=9', true)
+    await waitFor(() => container.querySelectorAll('tbody tr').length === 1)
+    expect(container.textContent).toContain('Wymaga uwagi')
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/issued?tenantId=t-1')
+
+    await act(async () => container.querySelector<HTMLElement>('tbody tr .received-gross')!.click())
+    await waitFor(() => container.querySelector('[data-testid="location"]')?.textContent === '/issued/i-2?tenantId=t-1')
+  })
+
   it('list shows issued invoices and drafts', async () => {
     vi.mocked(listIssuedInvoices).mockResolvedValue({
       items: [

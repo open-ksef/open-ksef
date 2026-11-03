@@ -50,31 +50,6 @@
   gap: 8px;
 }
 
-.inv-columns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  align-items: flex-start;
-}
-
-.inv-columns__main {
-  flex: 999 1 640px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  min-width: 0;
-}
-
-.inv-columns__side {
-  flex: 1 1 380px;
-  max-width: 440px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  position: sticky;
-  top: 24px;
-}
-
 .inv-card {
   background: var(--ui-surface);
   border: 1px solid var(--ui-border);
@@ -699,42 +674,6 @@ fieldset.inv-card {
   accent-color: var(--ui-primary);
 }
 
-.inv-tabs {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--ui-border);
-}
-
-.inv-tabs button {
-  border: 0;
-  background: transparent;
-  padding: 8px 12px;
-  font-weight: 600;
-  color: var(--ui-muted);
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-}
-
-.inv-tabs button[aria-pressed='true'] {
-  color: var(--ui-primary);
-  border-bottom-color: var(--ui-primary);
-}
-
 .inv-check .inv-help {
   display: block;
-}
-
-.inv-steps {
-  margin: 0;
-  padding-left: 20px;
-  font-size: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.inv-steps [aria-current='step'] {
-  font-weight: 600;
-  color: var(--ui-info);
 }
