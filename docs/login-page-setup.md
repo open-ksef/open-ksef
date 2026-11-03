@@ -43,9 +43,9 @@ API_CLIENT_SECRET=<paste-secret-here>
 ```
 
 6. Ensure the service account has the roles:
-   - **Clients > openksef-api > Service Account Roles**
+   - **Clients > openksef-api > Service accounts roles**
    - Assign `realm-management` > `manage-users` and `view-realm`
-7. With realm **Verify email** on, set **Realm settings > General > Frontend URL** to the public URL, `https://<your-host>/auth`. Otherwise the confirmation link in the email is unreachable and the user cannot log in.
-8. Restart API: `docker compose -f docker-compose.dev.yml restart api`
+7. With realm **Verify email** on, set **Realm settings > General > Frontend URL** to the public URL, `https://<your-host>/auth`. Otherwise the confirmation link in the email is unreachable and the user cannot log in. The API container must be able to reach this URL, because Keycloak then publishes its signing keys there. If it cannot, every authenticated API call returns 401 from the next API start. Check before you restart, and remove the Frontend URL to recover.
+8. Restart API: `docker compose -f docker-compose.dev.yml up -d api`. `restart` does not reread `.env`.
 
 Without `API_CLIENT_SECRET` or these roles, registration returns `503 Service Unavailable`. Login and Google sign-in work independently.
