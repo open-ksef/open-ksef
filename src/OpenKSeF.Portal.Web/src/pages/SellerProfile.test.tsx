@@ -130,6 +130,22 @@ describe('SellerProfilePage', () => {
     expect(container.querySelector('[data-testid="company-card"]')?.textContent).toContain('NIP 7740001454')
   })
 
+  it.each([
+    [false, 'Wpisana nazwa'],
+    [true, 'Z białej listy'],
+  ])('NIP lookup over typed data asks first, confirmed %s', async (confirmed, expected) => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(confirmed)
+    vi.mocked(getSellerProfile).mockResolvedValue({ ...empty, legalName: 'Wpisana nazwa' })
+    vi.mocked(lookupNip).mockResolvedValue({ nip: '5260250274', name: 'Z białej listy', addressLine1: null, addressLine2: null, vatStatus: 'Czynny', bankAccounts: [] })
+    await render('/company/invoice-data?tenantId=t-1')
+    await waitFor(() => input(container, 'legal-name').value === 'Wpisana nazwa')
+
+    await act(async () => buttonByText(container, 'Pobierz z NIP').click())
+    await waitFor(() => confirm.mock.calls.length === 1)
+    await waitFor(() => input(container, 'legal-name').value === expected)
+    confirm.mockRestore()
+  })
+
   it('new invoice with an incomplete profile lands here with the prompt', async () => {
     await render('/issued/new?tenantId=t-1')
 

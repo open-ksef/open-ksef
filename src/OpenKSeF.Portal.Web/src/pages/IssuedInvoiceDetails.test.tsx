@@ -161,7 +161,11 @@ describe('issue and detail pages', () => {
   }
 
   it('PRODUKCJA asks for confirmation, then saves, issues and opens the detail page', async () => {
-    const draft = invoice({ number: null, ksef: { ...ksef, environment: 'production' } })
+    const draft = invoice({
+      number: null,
+      seller: { nip: '7740001454', name: 'Sprzedawca z zapisanej faktury', addressLine1: 'ul. A 1', addressLine2: '00-001 B', bankAccount: null, cashAccounting: false },
+      ksef: { ...ksef, environment: 'production' },
+    })
     vi.mocked(createIssuedInvoice).mockResolvedValue(draft)
     vi.mocked(getIssuedInvoice).mockResolvedValue(draft)
     vi.mocked(issueIssuedInvoice).mockImplementation(async () => {
@@ -177,8 +181,9 @@ describe('issue and detail pages', () => {
     expect(dialog).toContain('Środowisko PRODUKCJA')
     expect(dialog).toContain('PRODUKCJA')
     const seller = container.querySelector('[data-testid="confirm-seller"]')
-    expect(seller?.textContent).toContain('Sprzedawca')
-    expect(seller?.textContent).toContain('NIP 5260250274')
+    expect(seller?.textContent).toContain('Sprzedawca z zapisanej faktury')
+    expect(seller?.textContent).toContain('NIP 7740001454')
+    expect(seller?.textContent).toContain('ul. A 1, 00-001 B')
     expect(dialog?.indexOf('Sprzedawca')).toBeLessThan(dialog?.indexOf('Nabywca') ?? -1)
     expect(dialog).toContain('Nabywca')
     expect(container.querySelector('[data-testid="confirm-total"]')?.textContent?.replace(/\s/g, ' ')).toBe(

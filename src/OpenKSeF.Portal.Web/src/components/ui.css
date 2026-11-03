@@ -1046,97 +1046,10 @@ label {
   font-weight: 500;
 }
 
-/* Legacy form-actions (outside modal) */
-.ui-form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 4px;
-}
-
-/* ─── Table action buttons ───────────────────────────────────────────────── */
-.table-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.btn-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 5px 10px;
-  border-radius: var(--ui-radius-sm);
-  background: var(--ui-surface);
-  color: var(--ui-text);
-  border: 1px solid var(--ui-border-strong);
-  cursor: pointer;
-  transition: background var(--ui-transition), color var(--ui-transition), border-color var(--ui-transition);
-  min-height: unset;
-  white-space: nowrap;
-}
-
-.btn-action:hover {
-  background: var(--ui-surface-2);
-  transform: none;
-  box-shadow: none;
-}
-
-.btn-action--edit {
-  background: var(--ui-primary-subtle);
-  color: var(--ui-primary);
-  border-color: var(--ui-primary);
-}
-
-.btn-action--edit:hover {
-  background: var(--ui-surface-2);
-}
-
-.btn-action--danger {
-  background: var(--ui-error-bg);
-  color: var(--ui-error);
-  border-color: var(--ui-error);
-}
-
-.btn-action--danger:hover {
-  background: var(--ui-surface-2);
-}
-
 /* ─── Token / Code display ───────────────────────────────────────────────── */
-.token-display {
-  display: inline-flex;
-  align-items: center;
-  font-family: var(--ui-font-mono);
-  font-size: 12px;
-  background: var(--ui-surface-2);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-sm);
-  padding: 3px 8px;
-  color: var(--ui-muted);
-  letter-spacing: 0.02em;
-}
-
 /* ─── Platform badge ─────────────────────────────────────────────────────── */
-.platform-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
 .platform-badge--ios,
 .platform-badge--android,
-.platform-badge--web {
-  background: var(--ui-neutral-bg);
-  color: var(--ui-neutral);
-}
-
 /* ─── Received invoices list ─────────────────────────────────────────────── */
 .received-head {
   flex-wrap: wrap;
@@ -1859,6 +1772,17 @@ dd {
   overflow-wrap: anywhere;
 }
 
+.status-panel .inv-help a,
+.kod-card a,
+.inv-alert a {
+  color: var(--ui-link);
+  text-decoration: underline;
+}
+
+.inv-alert a {
+  color: inherit;
+}
+
 .party {
   display: flex;
   flex-direction: column;
@@ -2117,6 +2041,21 @@ input.nip-input {
   margin: 4px 0 0 18px;
   padding: 0;
   font-size: 13px;
+  list-style: decimal;
+}
+
+.ui-card .ui-table th {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.device-actions {
+  width: 208px;
+}
+
+.company-switch-seller__address {
+  display: block;
+  margin-top: 2px;
 }
 
 .device-name {

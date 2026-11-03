@@ -583,54 +583,7 @@ fieldset.inv-card {
 .inv-alert--error { background: var(--ui-error-bg); color: var(--ui-error); }
 .inv-alert--success { background: var(--ui-success-bg); color: var(--ui-success); }
 
-.inv-table-wrap {
-  overflow-x: auto;
-}
-
-.inv-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.inv-table caption {
-  text-align: left;
-  font-weight: 600;
-  padding-bottom: 8px;
-}
-
-.inv-table th {
-  background: var(--ui-surface-2);
-  color: var(--ui-muted);
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  text-align: left;
-  padding: 8px;
-  white-space: nowrap;
-}
-
-.inv-table td {
-  border-top: 1px solid var(--ui-border);
-  padding: 8px;
-  vertical-align: middle;
-}
-
-.inv-table tfoot td {
-  font-weight: 700;
-}
-
 .inv-table td input,
-.inv-table td select {
-  width: 100%;
-  min-width: 64px;
-}
-
-.inv-table .inv-col-name { min-width: 200px; }
-
-.inv-table .muted { color: var(--ui-muted); }
-
 .inv-input-group {
   display: flex;
   gap: 8px;
@@ -663,18 +616,31 @@ fieldset.inv-card {
 
 .inv-readonly {
   display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 4px 16px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
   margin: 0;
-  font-size: 14px;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 13px;
 }
 
 .inv-readonly dt {
+  display: block;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--ui-muted);
 }
 
 .inv-readonly dd {
+  display: block;
   margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  text-align: left;
 }
 
 .inv-check {

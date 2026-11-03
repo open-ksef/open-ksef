@@ -383,7 +383,7 @@ function DraftForm({ tenantId, profile, invoice }: DraftFormProps): ReactElement
               <b>{confirmFor.seller.name ?? '—'}</b>
               <span className="company-nip">NIP {confirmFor.seller.nip}</span> <EnvBadge environment={confirmFor.ksef.environment} />
               {confirmFor.seller.addressLine1 || confirmFor.seller.addressLine2 ? (
-                <span className="inv-help">{[confirmFor.seller.addressLine1, confirmFor.seller.addressLine2].filter(Boolean).join(', ')}</span>
+                <span className="inv-help company-switch-seller__address">{[confirmFor.seller.addressLine1, confirmFor.seller.addressLine2].filter(Boolean).join(', ')}</span>
               ) : null}
             </div>
             <dl className="inv-readonly">
