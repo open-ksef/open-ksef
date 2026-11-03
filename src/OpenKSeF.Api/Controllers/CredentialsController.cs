@@ -89,16 +89,10 @@ public class CredentialsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> AddOrUpdate(Guid tenantId, [FromBody] AddCredentialRequest request)
     {
+        var onRowKey = _systemConfig.GetValue(SystemConfigKeys.EncryptionKey) is not null;
+
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
-
-        if (_systemConfig.GetValue(SystemConfigKeys.EncryptionKey) is not null
-            && !await _db.SystemConfigs.AnyAsync(c => c.Key == SystemConfigKeys.EncryptionKey))
-        {
-            await _systemConfig.RefreshCacheAsync();
-            _logger.LogCritical("This host still held the encryption key from the database after it moved out, credential not saved for tenant {TenantId}", tenantId);
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Encryption key changed. Try again." });
-        }
 
         var now = DateTime.UtcNow;
 
@@ -142,6 +136,14 @@ public class CredentialsController : ControllerBase
                 return BadRequest(new { error = $"Unknown credential type: {request.Type}" });
         }
 
+        await using var transaction = onRowKey && _db.Database.IsNpgsql() ? await _db.Database.BeginTransactionAsync() : null;
+        if (onRowKey && await EncryptionKeyMigration.ReadKeyRowLockedAsync(_db, forUpdate: false) is null)
+        {
+            await _systemConfig.RefreshCacheAsync();
+            _logger.LogCritical("This host still held the encryption key from the database after it moved out, credential not saved for tenant {TenantId}", tenantId);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Encryption key changed. Try again." });
+        }
+
         var existing = await _db.KSeFCredentials
             .FirstOrDefaultAsync(c => c.TenantId == tenantId);
 
@@ -171,6 +173,8 @@ public class CredentialsController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
+        if (transaction is not null)
+            await transaction.CommitAsync();
         return Ok(new { message = "Credential saved." });
     }
 

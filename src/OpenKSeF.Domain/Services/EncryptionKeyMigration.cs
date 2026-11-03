@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Entities;
 
 namespace OpenKSeF.Domain.Services;
 
@@ -24,8 +25,7 @@ public static class EncryptionKeyMigration
     {
         try
         {
-            var row = await db.SystemConfigs.FirstOrDefaultAsync(c => c.Key == SystemConfigKeys.EncryptionKey, ct);
-            if (row is null)
+            if (!await db.SystemConfigs.AsNoTracking().AnyAsync(c => c.Key == SystemConfigKeys.EncryptionKey, ct))
             {
                 await CheckConfiguredKeyAsync(db, configuration, logger, ct);
                 return;
@@ -40,12 +40,24 @@ public static class EncryptionKeyMigration
                 return;
             }
 
+            await using var transaction = db.Database.IsNpgsql() ? await db.Database.BeginTransactionAsync(ct) : null;
+
+            // Lock before reading credentials, so a write that passed its check has committed and gets re-encrypted here.
+            var row = await ReadKeyRowLockedAsync(db, forUpdate: true, ct);
+            if (row is null)
+            {
+                await CheckConfiguredKeyAsync(db, configuration, logger, ct);
+                return;
+            }
+
             var rowKey = EncryptionServiceExtensions.DecodeKey(row.Value);
             var count = await ReEncryptTrackedAsync(db, rowKey, configuredKey, ct);
             db.SystemConfigs.Remove(row);
             try
             {
                 await db.SaveChangesAsync(ct);
+                if (transaction is not null)
+                    await transaction.CommitAsync(ct);
                 logger.LogInformation("Encryption key moved out of the database, {Count} credentials re-encrypted", count);
                 if (configuredKey.SequenceEqual(rowKey))
                     logger.LogWarning(
@@ -54,10 +66,9 @@ public static class EncryptionKeyMigration
             }
             catch (DbUpdateConcurrencyException)
             {
-                if (await db.SystemConfigs.AsNoTracking().AnyAsync(c => c.Key == SystemConfigKeys.EncryptionKey, ct))
-                    logger.LogWarning("A credential changed while the encryption key was being moved, nothing changed. Moving it retries at the next start.");
-                else
-                    logger.LogInformation("Encryption key was moved out of the database by another host");
+                if (transaction is not null)
+                    await transaction.RollbackAsync(ct);
+                logger.LogWarning("A credential changed while the encryption key was being moved, nothing changed. Moving it retries at the next start.");
             }
         }
         catch (Exception ex)
@@ -66,6 +77,17 @@ public static class EncryptionKeyMigration
                 "Moving the encryption key out of the database failed, nothing changed. " +
                 "If a credential is named here, delete or re-enter it in the portal, then restart.");
         }
+    }
+
+    public static async Task<SystemConfig?> ReadKeyRowLockedAsync(ApplicationDbContext db, bool forUpdate, CancellationToken ct = default)
+    {
+        if (!db.Database.IsNpgsql())
+            return await db.SystemConfigs.FirstOrDefaultAsync(c => c.Key == SystemConfigKeys.EncryptionKey, ct);
+
+        var rows = await db.SystemConfigs
+            .FromSqlRaw($$"""SELECT * FROM "SystemConfigs" WHERE "Key" = {0} FOR {{(forUpdate ? "UPDATE" : "SHARE")}}""", SystemConfigKeys.EncryptionKey)
+            .ToListAsync(ct);
+        return rows.SingleOrDefault();
     }
 
     public static async Task<int> RotateAsync(
@@ -285,7 +307,7 @@ public static class EncryptionKeyMigration
         }
         catch (CryptographicException)
         {
-            // Already under the new key: a re-run after a partial rotation, or a host that lost the adoption race.
+            // Already under the new key: a re-run after a partial rotation.
             if (CanDecrypt(next, ciphertext))
                 return ciphertext;
 

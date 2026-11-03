@@ -143,9 +143,24 @@ public class CredentialsControllerCrudTests : IDisposable
 
         Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(result).StatusCode);
         await _systemConfig.Received(1).RefreshCacheAsync(Arg.Any<CancellationToken>());
-        _encryption.DidNotReceive().Encrypt(Arg.Any<string>());
         Assert.False(await _db.KSeFCredentials.AnyAsync());
         Assert.Single(_logger.ReceivedCalls(), c => c.GetMethodInfo().Name == "Log" && (LogLevel)c.GetArguments()[0]! == LogLevel.Critical);
+    }
+
+    [Fact]
+    public async Task AddOrUpdate_CacheRefreshedWhileEncrypting_Returns503_SavesNothing()
+    {
+        _systemConfig.GetValue(SystemConfigKeys.EncryptionKey).Returns("cached-row-key");
+        _encryption.Encrypt(Arg.Any<string>()).Returns(_ =>
+        {
+            _systemConfig.GetValue(SystemConfigKeys.EncryptionKey).Returns((string?)null);
+            return "encrypted-under-row-key";
+        });
+
+        var result = await CreateController().AddOrUpdate(_tenantId, new AddCredentialRequest(Type: CredentialType.Token, Token: "my-token"));
+
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.False(await _db.KSeFCredentials.AnyAsync());
     }
 
     [Fact]

@@ -101,13 +101,15 @@ Up to v0.0.7 the key lives in the database next to the ciphertext, so every data
 
 If you pull the new images and set no key, nothing changes: the app keeps the database key and logs an Error at each start.
 
+Run steps 1 and 2 with the compose file you already use. The new `docker-compose.yml` arrives at step 5.
+
 1. Stop both hosts: `docker compose stop api worker`. Stop both, because compose starts them in no fixed order. An old API that still serves during adoption writes under the old key, and that credential is lost.
-2. Back up: `docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc openksef' > before-key-move.dump`. This dump holds the old key and the ciphertext together, so protect it.
+2. Back up: `docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc openksef' > before-key-move.dump`. This dump holds the old key and the ciphertext together, so protect it. Verify it: `docker compose exec -T postgres pg_restore -l < before-key-move.dump > /dev/null` must exit 0.
 3. Generate the key: `openssl rand -base64 32`. It must have 44 characters. **Store it in a password manager before the next step**, outside the database and its backups. Do not reuse an older `ENCRYPTION_KEY` value.
 4. Set `ENCRYPTION_KEY` to the new value in `.env` or the stack environment.
-5. Start the new images: `docker compose pull api worker portal-web`, then `docker compose up -d`.
+5. Replace `docker-compose.yml` with the new file. Start the new images: `docker compose pull api worker portal-web`, then `docker compose up -d`.
 6. Verify:
-   - One host logs `Encryption key moved out of the database`. The other may log `moved out of the database by another host`. Neither logs Critical.
+   - One host logs `Encryption key moved out of the database`. The other logs nothing about it. Neither logs Critical.
    - `SELECT count(*) FROM "SystemConfigs" WHERE "Key"='encryption_key'` returns 0.
    - One manual sync succeeds.
 
@@ -124,6 +126,8 @@ A Critical log that names a credential means it could not be decrypted, and noth
 | New key lost | Current ciphertext cannot be recovered. Tenants re-enter tokens, or restore the dump from step 2 and lose later changes |
 | Dump from step 2 restored | Row and old ciphertext return. The next start adopts again |
 
+To restore a dump, stop both hosts first, then run `docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d openksef --clean --if-exists' < before-key-move.dump`.
+
 Dumps taken before adoption can decrypt the tokens in them until you delete those dumps.
 
 ### Rotate the key
@@ -132,7 +136,7 @@ Run this on a stack that already runs the current images and has adopted: the ro
 
 1. Generate the new key: `openssl rand -base64 32`. **Store it in a password manager before you run anything.** Keep the old key until step 6 succeeds.
 2. Stop both hosts: `docker compose stop api worker`.
-3. Back up, as in the upgrade.
+3. Back up and verify the dump, as in the upgrade.
 4. Re-encrypt, with `ENCRYPTION_KEY` still on the old key. The new key is read from the environment and is never an argument:
    ```
    read -s ENCRYPTION_KEY_NEW && export ENCRYPTION_KEY_NEW
@@ -146,7 +150,7 @@ Run this on a stack that already runs the current images and has adopted: the ro
 The command exits 1 and writes nothing when:
 
 - `ENCRYPTION_KEY_NEW` is missing, malformed or equal to the current key, or the current key is missing or malformed.
-- Other clients with no application name are connected to the database. This catches a running Worker and a busy API. An API idle for several minutes holds no connection and is not caught, so always do step 2. Tools that set a name (`psql`, `pg_dump`, pgAdmin) and autovacuum do not count. Close any other client the message counts.
+- Other clients with no application name are connected to the database. This catches a running Worker and a busy API. An API idle for several minutes holds no connection and is not caught, so always do step 2. Tools that set a name (`psql`, `pg_dump`, pgAdmin) and autovacuum do not count. Close any other client the message counts. To find them: `SELECT pid, usename, client_addr, backend_start FROM pg_stat_activity WHERE datname = current_database() AND backend_type = 'client backend' AND application_name = ''`.
 - The database is not on this image's version, or the key is still in the database. Start the app once, stop it and retry.
 - A credential cannot be decrypted. The message names it.
 

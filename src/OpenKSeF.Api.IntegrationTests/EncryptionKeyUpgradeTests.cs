@@ -125,17 +125,42 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         return tenantId;
     }
 
-    private static async Task<IActionResult> PostTokenAsync(ServiceProvider host, Guid tenantId, string token)
+    private static async Task<IActionResult> PostTokenAsync(ServiceProvider host, Guid tenantId, string token, ApplicationDbContext? db = null)
     {
         using var scope = host.CreateScope();
         var controller = new CredentialsController(
-            scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
+            db ?? scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
             new TestUser(),
             scope.ServiceProvider.GetRequiredService<IEncryptionService>(),
             null!,
             scope.ServiceProvider.GetRequiredService<ISystemConfigService>(),
             NullLogger<CredentialsController>.Instance);
         return await controller.AddOrUpdate(tenantId, new AddCredentialRequest(Type: CredentialType.Token, Token: token));
+    }
+
+    private async Task<Guid> TenantOfTokenCredentialAsync()
+    {
+        await using var db = NewContext();
+        db.KSeFCredentials.Remove(await db.KSeFCredentials.SingleAsync(c => c.Id == _certificateCredentialId));
+        await db.SaveChangesAsync();
+        return (await db.KSeFCredentials.SingleAsync(c => c.Id == _tokenCredentialId)).TenantId;
+    }
+
+    private async Task WaitUntilBlockedOrDoneAsync(Task other)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!other.IsCompleted && DateTime.UtcNow < deadline)
+        {
+            await using var db = NewContext();
+            var blocked = await db.Database.SqlQueryRaw<int>(
+                """
+                SELECT count(*)::int AS "Value" FROM pg_stat_activity
+                WHERE datname = current_database() AND wait_event_type = 'Lock'
+                """).SingleAsync();
+            if (blocked > 0)
+                return;
+            await Task.Delay(50);
+        }
     }
 
     private static bool CanDecrypt(byte[] key, string ciphertext)
@@ -284,73 +309,70 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
             }
 
             var logs = new ListLogger();
-            var bothRead = new Barrier(2);
             await Task.WhenAll(
-                Task.Run(() => AdoptAfterBarrierAsync(bothRead, logs)),
-                Task.Run(() => AdoptAfterBarrierAsync(bothRead, logs)));
+                Task.Run(() => AdoptWithSlowSaveAsync(logs)),
+                Task.Run(() => AdoptWithSlowSaveAsync(logs)));
 
             Assert.False(await RowExistsAsync());
             await AssertAllDecryptAsync(_newKey);
             Assert.DoesNotContain(logs.Entries, e => e.Level >= LogLevel.Warning);
             Assert.Single(logs.Entries, e => e.Text.Contains("re-encrypted"));
-            Assert.Single(logs.Entries, e => e.Text.Contains("by another host"));
         }
     }
 
-    private async Task AdoptAfterBarrierAsync(Barrier bothRead, ILogger logger)
+    private async Task AdoptWithSlowSaveAsync(ILogger logger)
     {
-        await using var db = NewContext(new BeforeSave(() =>
-        {
-            bothRead.SignalAndWait();
-            return Task.CompletedTask;
-        }));
+        await using var db = NewContext(new BeforeSave(() => Task.Delay(50)));
         await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), logger);
     }
 
     [Fact]
-    public async Task TwoHostsWithDifferentKeys_LoserBlocksOnWinner_AndRollsBack()
+    public async Task TwoHostsWithDifferentKeys_LoserWaitsAtLock_AndWritesNothing()
     {
         await SeedAsync(_oldKey, withRow: true);
         var otherKey = RandomNumberGenerator.GetBytes(32);
-        var bothRead = new Barrier(2);
-        var loserWrites = new TaskCompletionSource();
         var winnerLogs = new ListLogger();
         var loserLogs = new ListLogger();
+        Task? loser = null;
 
-        await Task.WhenAll(
-            Task.Run(async () =>
+        await using (var db = NewContext(new BeforeSave(async () =>
+        {
+            loser = Task.Run(async () =>
             {
-                await using var db = NewContext(
-                    new BeforeSave(() =>
-                    {
-                        bothRead.SignalAndWait();
-                        return Task.CompletedTask;
-                    }),
-                    new BeforeCommit(async () =>
-                    {
-                        await loserWrites.Task;
-                        await Task.Delay(1000);
-                    }));
-                await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), winnerLogs);
-            }),
-            Task.Run(async () =>
-            {
-                await using var db = NewContext(
-                    new BeforeSave(async () =>
-                    {
-                        bothRead.SignalAndWait();
-                        await Task.Delay(300);
-                    }),
-                    new OnWrite(() => loserWrites.TrySetResult()));
-                await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(Convert.ToBase64String(otherKey)), loserLogs);
-            }));
+                await using var loserDb = NewContext();
+                await EncryptionKeyMigration.AdoptConfiguredKeyAsync(loserDb, Config(Convert.ToBase64String(otherKey)), loserLogs);
+            });
+            await WaitUntilBlockedOrDoneAsync(loser);
+        })))
+            await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), winnerLogs);
+        await loser!;
 
         Assert.False(await RowExistsAsync());
         await AssertAllDecryptAsync(_newKey);
         var (token, _) = await CiphertextAsync();
         Assert.False(CanDecrypt(otherKey, token));
         Assert.Contains(winnerLogs.Entries, e => e.Text.Contains("re-encrypted"));
-        Assert.Contains(loserLogs.Entries, e => e.Text.Contains("by another host"));
+        Assert.DoesNotContain(loserLogs.Entries, e => e.Text.Contains("re-encrypted"));
+        Assert.Contains(_tokenCredentialId.ToString(), Assert.Single(loserLogs.Entries, e => e.Level == LogLevel.Critical).Text);
+    }
+
+    [Fact]
+    public async Task HeldKeyRowLock_AdoptionTimesOut_LogsCritical_ChangesNothing()
+    {
+        await SeedAsync(_oldKey, withRow: true);
+        var before = await CiphertextAsync();
+        await using var holder = NewContext();
+        await using var held = await holder.Database.BeginTransactionAsync();
+        await EncryptionKeyMigration.ReadKeyRowLockedAsync(holder, forUpdate: true);
+
+        await using (var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(_postgres.GetConnectionString(), o => o.CommandTimeout(2)).Options))
+            await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), _logs);
+
+        await held.RollbackAsync();
+        Assert.True(await RowExistsAsync());
+        Assert.Equal(before, await CiphertextAsync());
+        Assert.Single(_logs.Entries, e => e.Level == LogLevel.Critical);
     }
 
     [Fact]
@@ -390,44 +412,83 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         Assert.Equal(Token, nextScope.ServiceProvider.GetRequiredService<IEncryptionService>().Decrypt(tokenAfter));
     }
 
-    // Accepted residual race: the row stays visible until the adopter commits, so the host's check passes. These pin the size of the gap.
-    [Fact]
-    public async Task RowKeyInsert_BetweenAdoptionReadAndCommit_IsStranded_AcceptedResidual()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RowKeyWrite_WhileAdoptionHoldsLock_Gets503_AndSavesNothing(bool update)
     {
         await SeedAsync(_oldKey, withRow: true);
-        var tenantId = await AddTenantWithoutCredentialAsync();
+        var tenantId = update ? await TenantOfTokenCredentialAsync() : await AddTenantWithoutCredentialAsync();
         await using var staleHost = await StartHostAsync(NewKey);
+        Task<IActionResult>? write = null;
 
-        await using (var db = NewContext(new BeforeSave(() => PostTokenAsync(staleHost, tenantId, "user-new-token"))))
+        await using (var db = NewContext(new BeforeSave(async () =>
+        {
+            write = Task.Run(() => PostTokenAsync(staleHost, tenantId, "user-new-token"));
+            await WaitUntilBlockedOrDoneAsync(write);
+        })))
             await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), _logs);
+
+        var result = await write!;
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.False(await RowExistsAsync());
+        await using var check = NewContext();
+        var saved = await check.KSeFCredentials.Where(c => c.TenantId == tenantId).ToListAsync();
+        Assert.Equal(update ? 1 : 0, saved.Count);
+        if (update)
+            Assert.Equal(Token, new AesGcmEncryptionService(_newKey).Decrypt(saved[0].EncryptedToken!));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RowKeyWrite_HoldingLock_AdopterWaits_AndReEncryptsTheWrite(bool update)
+    {
+        await SeedAsync(_oldKey, withRow: true);
+        var tenantId = update ? await TenantOfTokenCredentialAsync() : await AddTenantWithoutCredentialAsync();
+        await using var staleHost = await StartHostAsync(NewKey);
+        Task? adoption = null;
+
+        await using var writerDb = NewContext(new BeforeSave(async () =>
+        {
+            adoption = Task.Run(() => AdoptAsync(NewKey));
+            await WaitUntilBlockedOrDoneAsync(adoption);
+        }));
+        Assert.IsType<OkObjectResult>(await PostTokenAsync(staleHost, tenantId, "user-new-token", writerDb));
+        await adoption!;
 
         Assert.False(await RowExistsAsync());
         await using var check = NewContext();
-        var stranded = await check.KSeFCredentials.SingleAsync(c => c.TenantId == tenantId);
-        Assert.False(CanDecrypt(_newKey, stranded.EncryptedToken!));
-        Assert.True(CanDecrypt(_oldKey, stranded.EncryptedToken!));
+        var saved = await check.KSeFCredentials.SingleAsync(c => c.TenantId == tenantId);
+        Assert.Equal("user-new-token", new AesGcmEncryptionService(_newKey).Decrypt(saved.EncryptedToken!));
     }
 
     [Fact]
-    public async Task RowKeyUpdate_BetweenAdoptionReadAndCommit_IsOverwritten_AcceptedResidual()
+    public async Task LegacyWrite_NoAdopter_SavesUnderRowKey()
     {
         await SeedAsync(_oldKey, withRow: true);
-        await using var staleHost = await StartHostAsync(NewKey);
-        Guid tenantId;
-        await using (var lookup = NewContext())
-        {
-            tenantId = (await lookup.KSeFCredentials.SingleAsync(c => c.Id == _tokenCredentialId)).TenantId;
-            lookup.KSeFCredentials.Remove(await lookup.KSeFCredentials.SingleAsync(c => c.Id == _certificateCredentialId));
-            await lookup.SaveChangesAsync();
-        }
+        var tenantId = await AddTenantWithoutCredentialAsync();
+        await using var legacyHost = await StartHostAsync(null);
 
-        await using (var db = NewContext(new BeforeSave(() => PostTokenAsync(staleHost, tenantId, "user-new-token"))))
-            await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), _logs);
+        Assert.IsType<OkObjectResult>(await PostTokenAsync(legacyHost, tenantId, "user-new-token"));
 
-        Assert.False(await RowExistsAsync());
         await using var check = NewContext();
-        var overwritten = await check.KSeFCredentials.SingleAsync(c => c.Id == _tokenCredentialId);
-        Assert.Equal(Token, new AesGcmEncryptionService(_newKey).Decrypt(overwritten.EncryptedToken!));
+        var saved = await check.KSeFCredentials.SingleAsync(c => c.TenantId == tenantId);
+        Assert.Equal("user-new-token", new AesGcmEncryptionService(_oldKey).Decrypt(saved.EncryptedToken!));
+    }
+
+    [Fact]
+    public async Task WriteAfterAdoption_OpensNoTransaction()
+    {
+        await SeedAsync(_oldKey, withRow: false);
+        var tenantId = await AddTenantWithoutCredentialAsync();
+        await using var host = await StartHostAsync(OldKey);
+        var transactions = 0;
+        await using var db = NewContext(new OnTransactionStart(() => transactions++));
+
+        Assert.IsType<OkObjectResult>(await PostTokenAsync(host, tenantId, "user-new-token", db));
+
+        Assert.Equal(0, transactions);
     }
 
     [Fact]
@@ -445,7 +506,6 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
 
         Assert.True(await RowExistsAsync());
         Assert.Contains(_logs.Entries, e => e.Level == LogLevel.Warning && e.Text.Contains("next start"));
-        Assert.DoesNotContain(_logs.Entries, e => e.Text.Contains("by another host"));
 
         await AdoptAsync(NewKey);
 
@@ -778,28 +838,11 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         }
     }
 
-    private sealed class BeforeCommit(Func<Task> before) : DbTransactionInterceptor
+    private sealed class OnTransactionStart(Action onStart) : DbTransactionInterceptor
     {
-        public override async ValueTask<InterceptionResult> TransactionCommittingAsync(DbTransaction transaction, TransactionEventData eventData, InterceptionResult result, CancellationToken cancellationToken = default)
+        public override ValueTask<InterceptionResult<DbTransaction>> TransactionStartingAsync(DbConnection connection, TransactionStartingEventData eventData, InterceptionResult<DbTransaction> result, CancellationToken cancellationToken = default)
         {
-            await before();
-            return result;
-        }
-    }
-
-    private sealed class OnWrite(Action onWrite) : DbCommandInterceptor
-    {
-        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
-        {
-            if (!command.CommandText.TrimStart().StartsWith("SELECT", StringComparison.Ordinal))
-                onWrite();
-            return ValueTask.FromResult(result);
-        }
-
-        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
-        {
-            if (!command.CommandText.TrimStart().StartsWith("SELECT", StringComparison.Ordinal))
-                onWrite();
+            onStart();
             return ValueTask.FromResult(result);
         }
     }
