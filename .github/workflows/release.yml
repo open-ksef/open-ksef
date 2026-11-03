@@ -56,6 +56,8 @@ jobs:
 
             ### Docker (self-hosting)
 
+            Existing installation: check `ENCRYPTION_KEY` and follow the [upgrade procedure](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/docs/admin-setup.md#upgrade-from-v007-or-earlier) before you run anything. New installation: set `ENCRYPTION_KEY` in `.env` first.
+
             Download `docker-compose.yml` attached below and run:
 
             ```bash

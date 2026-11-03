@@ -216,12 +216,12 @@ public static class EncryptionKeyMigration
             return;
         }
 
-        var configuredKey = TryReadConfiguredKey(configuration, out var reason);
+        var configuredKey = TryReadConfiguredKey(configuration, out var reason, fixHint: "");
         if (configuredKey is null)
         {
             logger.LogCritical(
                 "The configured encryption key cannot be used: {Reason} Adding credentials, sync and send fail. {FixHint}",
-                reason, FixHint);
+                reason, EncryptionServiceExtensions.RestoreKeyHint);
             return;
         }
 
@@ -237,12 +237,15 @@ public static class EncryptionKeyMigration
                 failedIds.Count, failedIds);
     }
 
-    private static byte[]? TryReadConfiguredKey(IConfiguration configuration, out string reason)
+    private static byte[]? TryReadConfiguredKey(
+        IConfiguration configuration,
+        out string reason,
+        string fixHint = EncryptionServiceExtensions.GenerateKeyHint)
     {
         reason = "It is not set.";
         try
         {
-            return EncryptionServiceExtensions.ReadConfiguredKey(configuration);
+            return EncryptionServiceExtensions.ReadConfiguredKey(configuration, fixHint);
         }
         catch (InvalidOperationException ex)
         {

@@ -216,6 +216,20 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         AssertNoSecretsLogged();
     }
 
+    [Theory]
+    [InlineData(null, "It is not set. Set ENCRYPTION_KEY or ENCRYPTION_KEY_FILE to a key from 'openssl rand -base64 32' and restart.")]
+    [InlineData(MalformedKey, "Encryption key is not valid base64. Generate with: openssl rand -base64 32 Set ENCRYPTION_KEY or ENCRYPTION_KEY_FILE to a key from 'openssl rand -base64 32' and restart.")]
+    public async Task RowPresent_NoOrMalformedKey_LegacyLogTextIsUnchanged(string? configuredKey, string expectedEnd)
+    {
+        await SeedAsync(_oldKey, withRow: true);
+
+        await AdoptAsync(configuredKey);
+
+        Assert.Equal(
+            $"The encryption key is still stored in the database, and the configured key cannot be used: {expectedEnd}",
+            Assert.Single(_logs.Entries, e => e.Level == LogLevel.Error).Text);
+    }
+
     [Fact]
     public async Task ConfiguredKeyFileUnreadable_AndMalformedKey_LogDifferentReasons_WithoutKeyMaterial()
     {
@@ -260,7 +274,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
 
         Assert.True(await RowExistsAsync());
         Assert.Equal(before, await CiphertextAsync());
-        Assert.Contains(_logs.Entries, e => e.Level == LogLevel.Error);
+        Assert.Contains("'openssl rand -base64 32' and restart.", Assert.Single(_logs.Entries, e => e.Level == LogLevel.Error).Text);
         var encryption = await ResolveAsHostAsync(configuredKey);
         Assert.Equal(Token, encryption.Decrypt(before.Token));
         AssertNoSecretsLogged();
@@ -576,7 +590,10 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
 
         await AdoptAsync(configuredKey);
 
-        Assert.Single(_logs.Entries, e => e.Level == LogLevel.Critical);
+        var critical = Assert.Single(_logs.Entries, e => e.Level == LogLevel.Critical).Text;
+        Assert.Contains("Restore the key that encrypted the credentials", critical);
+        Assert.Contains("only if no copy remains", critical);
+        Assert.DoesNotContain("openssl rand", critical);
         AssertNoSecretsLogged();
     }
 
