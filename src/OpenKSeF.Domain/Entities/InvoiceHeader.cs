@@ -31,6 +31,7 @@ public class InvoiceHeader
     public bool IsPaid { get; set; }
     public DateTime? PaidAt { get; set; }
     public DateTime? XmlFetchedAt { get; set; }
+    public DateTime? XmlAttemptedAt { get; set; }
 
     public Tenant Tenant { get; set; } = null!;
     public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();

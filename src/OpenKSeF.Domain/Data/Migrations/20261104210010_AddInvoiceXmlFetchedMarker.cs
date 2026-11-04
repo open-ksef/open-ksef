@@ -18,6 +18,12 @@ namespace OpenKSeF.Domain.Data.Migrations
                 nullable: true);
 
             migrationBuilder.AddColumn<DateTime>(
+                name: "XmlAttemptedAt",
+                table: "InvoiceHeaders",
+                type: "timestamp with time zone",
+                nullable: true);
+
+            migrationBuilder.AddColumn<DateTime>(
                 name: "XmlFetchedAt",
                 table: "InvoiceHeaders",
                 type: "timestamp with time zone",
@@ -30,6 +36,10 @@ namespace OpenKSeF.Domain.Data.Migrations
             migrationBuilder.DropColumn(
                 name: "ReceivedContinuationAt",
                 table: "SyncStates");
+
+            migrationBuilder.DropColumn(
+                name: "XmlAttemptedAt",
+                table: "InvoiceHeaders");
 
             migrationBuilder.DropColumn(
                 name: "XmlFetchedAt",

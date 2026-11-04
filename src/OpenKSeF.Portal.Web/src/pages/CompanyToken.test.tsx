@@ -179,6 +179,8 @@ describe('Firma, Token KSeF i pobieranie', () => {
     const dialog = container.querySelector('[role="alertdialog"]')!
     expect(dialog.textContent).toContain('Firma A')
     expect(dialog.textContent).toContain('NIP 1111111111')
+    expect(dialog.textContent).toContain('Niczego nie usuwa')
+    expect(container.querySelector('.danger-list')?.textContent).toContain('Niczego nie usuwa')
     expect(dialog.querySelector('.ui-button--danger')?.textContent).toBe('Wykonaj pełną resynchronizację')
     await act(async () => buttonByText(dialog, 'Wykonaj pełną resynchronizację')!.click())
     await settle()
@@ -196,6 +198,7 @@ describe('Firma, Token KSeF i pobieranie', () => {
 
     expect(toast.success).not.toHaveBeenCalled()
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('(liczba: 2)'))
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('opłacone przy kolejnej pełnej resynchronizacji'))
   })
 
   it('a company without a token has no danger card and no fetch', async () => {

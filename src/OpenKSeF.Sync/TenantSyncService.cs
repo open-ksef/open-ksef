@@ -123,7 +123,7 @@ public sealed class TenantSyncService : ITenantSyncService
                 return result;
 
             var failedDownloads = await DownloadQueuedXmlAsync(
-                [tenant], sessions, runStartedAt, budget: null, TimeSpan.Zero, forceFullResync, cancellationToken);
+                [tenant], sessions, runStartedAt, _syncOptions.XmlDownloadsPerManualRun, TimeSpan.Zero, forceFullResync, cancellationToken);
             return result with { FailedDownloads = failedDownloads };
         }
         finally
@@ -253,38 +253,44 @@ public sealed class TenantSyncService : ITenantSyncService
         return syncState.ReceivedContinuationAt < overlap ? syncState.ReceivedContinuationAt : overlap;
     }
 
-    /// <returns>Queued invoices that did not get their XML in this run.</returns>
+    /// <returns>Waiting invoices that did not get their XML in this run, including those over the budget.</returns>
     private async Task<int> DownloadQueuedXmlAsync(
         IReadOnlyList<Tenant> tenants,
         Dictionary<Guid, KSeFSession?> sessions,
         DateTime runStartedAt,
-        int? budget,
+        int budget,
         TimeSpan spacing,
         bool fullResync,
         CancellationToken cancellationToken)
     {
         var nip = tenants[0].Nip;
         var tenantIds = tenants.Select(t => t.Id).ToList();
-        var query = _db.InvoiceHeaders.AsNoTracking()
+        var waiting = _db.InvoiceHeaders.AsNoTracking()
             .Where(h => tenantIds.Contains(h.TenantId)
                 && h.XmlFetchedAt == null
                 && (!h.Lines.Any()
-                    || (h.Direction == InvoiceDirection.Received && h.DueDate == null && (!h.IsPaid || fullResync))))
+                    || (h.Direction == InvoiceDirection.Received && h.DueDate == null && (!h.IsPaid || fullResync))));
+        var waitingCount = await waiting.CountAsync(cancellationToken);
+        if (waitingCount == 0)
+            return 0;
+
+        var queue = await waiting
             .OrderBy(h => h.Direction == InvoiceDirection.Received && h.FirstSeenAt >= runStartedAt ? 0
                 : h.Direction == InvoiceDirection.Received && !h.IsPaid && h.DueDate == null ? 1
                 : h.Direction == InvoiceDirection.Issued ? 2
                 : 3)
+            .ThenBy(h => h.XmlAttemptedAt == null ? 0 : 1)
+            .ThenBy(h => h.XmlAttemptedAt)
             .ThenByDescending(h => h.IssueDate)
             .ThenBy(h => h.Id)
-            .Select(h => new { h.Id, h.TenantId, h.KSeFInvoiceNumber });
-        var queue = await (budget is { } limit ? query.Take(limit) : query).ToListAsync(cancellationToken);
-        if (queue.Count == 0)
-            return 0;
+            .Select(h => new { h.Id, h.TenantId, h.KSeFInvoiceNumber })
+            .Take(budget)
+            .ToListAsync(cancellationToken);
 
         if (_xmlBlocks.IsBlocked(nip))
         {
             _logger.LogInformation("Invoice XML downloads for NIP {Nip} wait for KSeF Retry-After", nip);
-            return queue.Count;
+            return waitingCount;
         }
 
         var completed = 0;
@@ -303,7 +309,10 @@ public sealed class TenantSyncService : ITenantSyncService
 
                 var (bankAccount, lines, dueDate) = _xmlParser.ExtractInvoiceDetails(xml);
                 if (lines is null)
+                {
+                    await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, cancellationToken);
                     continue;
+                }
 
                 await _invoiceService.ApplyInvoiceXmlAsync(row.Id, bankAccount, lines, dueDate, cancellationToken);
                 completed++;
@@ -319,13 +328,14 @@ public sealed class TenantSyncService : ITenantSyncService
             {
                 _logger.LogWarning(ex, "Failed to store invoice XML details: {KSeFNumber}", row.KSeFInvoiceNumber);
                 DetachPendingChanges();
+                await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, cancellationToken);
                 if (++failuresInARow >= MaxConsecutiveDownloadFailures)
                     break;
             }
         }
 
         _logger.LogInformation("Invoice XML queue for NIP {Nip}: {Completed} of {Queued} done", nip, completed, queue.Count);
-        return queue.Count - completed;
+        return waitingCount - completed;
     }
 
     private async Task<KSeFSession?> CurrentSessionAsync(

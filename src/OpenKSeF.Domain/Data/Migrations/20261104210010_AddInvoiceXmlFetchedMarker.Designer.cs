@@ -166,6 +166,9 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<DateTime?>("XmlAttemptedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("XmlFetchedAt")
                         .HasColumnType("timestamp with time zone");
 

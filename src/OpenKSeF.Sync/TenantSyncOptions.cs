@@ -18,6 +18,11 @@ public class TenantSyncOptions
     public int XmlDownloadsPerCycle { get; set; } = 60;
 
     /// <summary>
+    /// Invoice XML downloads per manual sync, sent without pauses, so below the KSeF limit of 16 per minute. The rest waits for the Worker.
+    /// </summary>
+    public int XmlDownloadsPerManualRun { get; set; } = 15;
+
+    /// <summary>
     /// Pause between Worker XML downloads. KSeF allows 16 per minute per NIP and IP.
     /// </summary>
     public TimeSpan XmlDownloadSpacing { get; set; } = TimeSpan.FromSeconds(4);

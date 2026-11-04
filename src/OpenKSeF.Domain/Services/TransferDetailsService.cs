@@ -64,6 +64,8 @@ public class TransferDetailsService : ITransferDetailsService
             return "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).";
         if (invoice.AmountGross <= 0m)
             return "Brak kwoty do zapłaty.";
+        if (string.IsNullOrWhiteSpace(invoice.VendorBankAccount) && invoice.XmlFetchedAt is null && invoice.DueDate is null)
+            return "Numer rachunku pobieramy jeszcze z KSeF. Sprawdź ponownie za kilka minut.";
         if (QrCodeService.SanitizeAccount(invoice.VendorBankAccount).Length == 0)
             return "Brak poprawnego numeru rachunku na fakturze.";
         if (string.IsNullOrWhiteSpace(QrCodeService.Sanitize(invoice.VendorName, QrCodeService.MaxNameLength))

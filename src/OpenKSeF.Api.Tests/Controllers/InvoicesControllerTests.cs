@@ -200,6 +200,7 @@ public class InvoicesControllerTests : IDisposable
         var invoice = MakeInvoice("KSEF-TR-002", DateTime.UtcNow.Date);
         invoice.VendorBankAccount = account;
         invoice.InvoiceType = invoiceType;
+        invoice.XmlFetchedAt = DateTime.UtcNow;
         _db.InvoiceHeaders.Add(invoice);
         await _db.SaveChangesAsync();
 

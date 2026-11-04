@@ -23,6 +23,7 @@ export interface TokenReturnState {
 }
 
 const TOKEN_HELP = 'Token z uprawnieniem odczytu i zapisu, z Aplikacji Podatnika KSeF. Bez zapisu nie wystawisz faktur.'
+const FULL_RESYNC_TEXT = 'Pobiera brakujące pozycje, numer rachunku i termin. Niczego nie usuwa, oznaczenia opłacenia zostają. KSeF pozwala na około 16 plików na minutę, dlatego przy większej liczbie faktur uruchom ją ponownie później.'
 
 export function CompanyTokenPage(): ReactElement {
   const { company } = useCompany()
@@ -76,7 +77,7 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
     mutationFn: () => forceFullResync(tenantId),
     onSuccess: async (result) => {
       if (result.failedDownloads) {
-        toast.error(`Pełna resynchronizacja niepełna. Pobrane: ${result.fetchedInvoices}, nowe: ${result.newInvoices}. Bez szczegółów z KSeF (liczba: ${result.failedDownloads}), uzupełnimy je przy kolejnych synchronizacjach.`)
+        toast.error(`Pełna resynchronizacja niepełna. Pobrane: ${result.fetchedInvoices}, nowe: ${result.newInvoices}. Bez szczegółów z KSeF (liczba: ${result.failedDownloads}). Nieopłacone uzupełnimy automatycznie, opłacone przy kolejnej pełnej resynchronizacji.`)
       } else {
         toast.success(`Pełna resynchronizacja zakończona. Pobrane: ${result.fetchedInvoices}, nowe: ${result.newInvoices}.`)
       }
@@ -194,7 +195,7 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
               <li>
                 <span>
                   <b>Pełna resynchronizacja</b>
-                  <span>Usuwa pozycje pobranych faktur i pobiera je ponownie z KSeF. Oznaczenia opłacenia zostają.</span>
+                  <span>{FULL_RESYNC_TEXT}</span>
                 </span>
                 <button
                   type="button"
@@ -241,7 +242,7 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
       <ConfirmDialog
         open={pending === 'resync'}
         title="Wykonać pełną resynchronizację?"
-        message="Wszystkie pozycje pobranych faktur zostaną usunięte i pobrane ponownie z KSeF. Oznaczenia opłacenia zostają. Synchronizacja może potrwać dłużej niż zwykle."
+        message={FULL_RESYNC_TEXT}
         confirmLabel="Wykonaj pełną resynchronizację"
         pendingLabel="Trwa resynchronizacja…"
         variant="danger"

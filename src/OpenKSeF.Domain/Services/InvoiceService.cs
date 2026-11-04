@@ -154,6 +154,16 @@ public class InvoiceService : IInvoiceService
         await _db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task RecordFailedInvoiceXmlAsync(Guid invoiceId, CancellationToken cancellationToken = default)
+    {
+        var invoice = await _db.InvoiceHeaders.FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
+        if (invoice is null)
+            return;
+
+        invoice.XmlAttemptedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
     private static InvoiceLine MapLine(InvoiceLineDto dto, Guid invoiceHeaderId) => new()
     {
         Id = Guid.NewGuid(),

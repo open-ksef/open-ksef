@@ -73,13 +73,13 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     private ApplicationDbContext NewContext() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(_postgres.GetConnectionString()).Options);
 
-    private TenantSyncService SyncService(ApplicationDbContext db, TimeSpan? spacing = null) => new(
+    private TenantSyncService SyncService(ApplicationDbContext db, TimeSpan? spacing = null, int budget = 60) => new(
         db,
         _gateway,
         Substitute.For<IEncryptionService>(),
         new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
-        Options.Create(new TenantSyncOptions { XmlDownloadSpacing = spacing ?? TimeSpan.Zero }),
+        Options.Create(new TenantSyncOptions { XmlDownloadSpacing = spacing ?? TimeSpan.Zero, XmlDownloadsPerCycle = budget }),
         _blocks,
         NullLogger<TenantSyncService>.Instance);
 
@@ -89,10 +89,10 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         await db.Database.MigrateAsync();
     }
 
-    private async Task<IReadOnlyList<TenantSyncResult>> WorkerCycleAsync(TimeSpan? spacing = null)
+    private async Task<IReadOnlyList<TenantSyncResult>> WorkerCycleAsync(TimeSpan? spacing = null, int budget = 60)
     {
         await using var db = NewContext();
-        return await SyncService(db, spacing).SyncAllTenantsAsync();
+        return await SyncService(db, spacing, budget).SyncAllTenantsAsync();
     }
 
     private async Task<TenantSyncResult> ManualSyncAsync(bool fullResync = false)
@@ -189,6 +189,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         Assert.True(options.XmlDownloadsPerCycle <= 64);
         Assert.True(TimeSpan.FromMinutes(1) / options.XmlDownloadSpacing <= 16);
+        Assert.True(options.XmlDownloadsPerManualRun < 16);
     }
 
     [Fact]
@@ -498,16 +499,22 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ManualSync_IsNotLimitedByBudget_ButStopsOn429_WithRowsReportedFailed()
+    public async Task ManualSync_Downloads15_LeavesTheRestToTheWorker_ReportsThem_AndStopsOn429()
     {
-        for (var n = 0; n < 70; n++)
+        for (var n = 0; n < 20; n++)
             await InsertAsync($"U-{n:00}");
         await MigrateAsync();
 
-        var all = await ManualSyncAsync();
+        var manual = await ManualSyncAsync();
 
-        Assert.Equal(70, _downloads.Count);
-        Assert.Equal(0, all.FailedDownloads);
+        Assert.Equal(15, _downloads.Count);
+        Assert.Equal(5, manual.FailedDownloads);
+        Assert.Equal(TenantSyncOutcome.Success, manual.Outcome);
+
+        _downloads.Clear();
+        await WorkerCycleAsync();
+
+        Assert.Equal(5, _downloads.Count);
 
         for (var n = 0; n < 5; n++)
             await InsertAsync($"V-{n}");
@@ -519,6 +526,62 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         Assert.Single(_downloads);
         Assert.Equal(5, stopped.FailedDownloads);
         Assert.Equal(TenantSyncOutcome.Success, stopped.Outcome);
+    }
+
+    [Fact]
+    public async Task RowsThatAlwaysFail_MoveBehindOthers_AndCannotEatTheBudget()
+    {
+        await InsertAsync("BAD-PARSE-1", daysAgo: 1);
+        await InsertAsync("BAD-PARSE-2", daysAgo: 2);
+        await InsertAsync("GOOD", daysAgo: 3);
+        await MigrateAsync();
+        var before = await SnapshotAsync();
+        _xml = number => number.StartsWith("BAD", StringComparison.Ordinal) ? Encoding.UTF8.GetBytes("<not-xml") : Xml("2026-11-20");
+
+        await WorkerCycleAsync(budget: 2);
+
+        Assert.Equal(["BAD-PARSE-1", "BAD-PARSE-2"], _downloads);
+        Assert.Equal(before, await SnapshotAsync());
+        Assert.NotNull((await RowAsync("BAD-PARSE-1")).XmlAttemptedAt);
+        Assert.Null((await RowAsync("BAD-PARSE-1")).XmlFetchedAt);
+
+        _downloads.Clear();
+        await WorkerCycleAsync(budget: 2);
+
+        Assert.Equal(["GOOD", "BAD-PARSE-1"], _downloads);
+        Assert.Equal(new DateOnly(2026, 11, 20), (await RowAsync("GOOD")).DueDate);
+    }
+
+    [Fact]
+    public async Task ThreeRowsThatAlwaysFailToDownload_DoNotStarveOlderRows()
+    {
+        for (var n = 1; n <= 3; n++)
+            await InsertAsync($"BAD-{n}", daysAgo: n);
+        await InsertAsync("GOOD", daysAgo: 10);
+        await MigrateAsync();
+        _xml = number => number.StartsWith("BAD", StringComparison.Ordinal) ? throw new HttpRequestException("500") : Xml("2026-11-20");
+
+        await WorkerCycleAsync();
+
+        Assert.Equal(["BAD-1", "BAD-2", "BAD-3"], _downloads);
+
+        _downloads.Clear();
+        await WorkerCycleAsync();
+
+        Assert.Equal("GOOD", _downloads[0]);
+        Assert.NotNull((await RowAsync("GOOD")).XmlFetchedAt);
+    }
+
+    [Fact]
+    public async Task Fake429_DoesNotCountAsAFailedAttempt()
+    {
+        await InsertAsync("U-1");
+        await MigrateAsync();
+        _xml = _ => throw RateLimited(0);
+
+        await WorkerCycleAsync();
+
+        Assert.Null((await RowAsync("U-1")).XmlAttemptedAt);
     }
 
     [Fact]
@@ -574,6 +637,30 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         Assert.Equal(LastSync.AddHours(-1), from[0]!.Value, TimeSpan.FromSeconds(1));
         Assert.Equal(hwm, from[1]!.Value, TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
+    public async Task ReceivedStream_RecentHwm_KeepsTheOneHourOverlap()
+    {
+        await MigrateAsync();
+        var from = new List<DateTime?>();
+        _received = c =>
+        {
+            from.Add(c.DateFrom);
+            return Page([], DateTime.UtcNow.AddMinutes(-1));
+        };
+
+        await ManualSyncAsync();
+        var lastSuccessful = await LastSuccessfulSyncAsync();
+        await ManualSyncAsync();
+
+        Assert.Equal(lastSuccessful.AddHours(-1), from[1]!.Value, TimeSpan.FromMilliseconds(1));
+    }
+
+    private async Task<DateTime> LastSuccessfulSyncAsync()
+    {
+        await using var db = NewContext();
+        return (await db.SyncStates.SingleAsync()).LastSuccessfulSync!.Value;
     }
 
     [Fact]

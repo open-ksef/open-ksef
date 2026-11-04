@@ -9,4 +9,6 @@ public interface IInvoiceService
 
     Task ApplyInvoiceXmlAsync(
         Guid invoiceId, string? bankAccount, IReadOnlyList<InvoiceLineDto> lines, DateOnly? dueDate, CancellationToken cancellationToken = default);
+
+    Task RecordFailedInvoiceXmlAsync(Guid invoiceId, CancellationToken cancellationToken = default);
 }
