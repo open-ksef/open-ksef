@@ -114,7 +114,7 @@ describe('Firma, Dane firmy', () => {
     expect(dialog.textContent).toContain('Firma A')
     expect(dialog.textContent).toContain('NIP 1111111111')
     expect(by('tenant-delete-invoices')?.textContent).toBe(
-      'Usuniemy też wystawione faktury i szkice tej firmy (liczba: 7). Nie będzie można ich przywrócić. Firmy nie usuniemy, jeśli jej faktury są w trakcie wysyłki do KSeF lub zostały przyjęte przez produkcyjny KSeF.',
+      'Usuniemy też wystawione faktury i szkice tej firmy (liczba: 7). Nie będzie można ich przywrócić. Firmy nie usuniemy, jeśli faktury wystawione w OpenKSeF są w trakcie wysyłki do KSeF lub zostały przyjęte przez produkcyjny KSeF. Faktury spoza OpenKSeF usuniemy tylko z tej aplikacji: w KSeF zostają.',
     )
     expect(dialog.textContent).toContain('numeracja zacznie się od 1')
     expect(deleteTenant).not.toHaveBeenCalled()

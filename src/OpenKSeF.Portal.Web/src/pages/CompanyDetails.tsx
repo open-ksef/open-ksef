@@ -24,7 +24,7 @@ function issuedInvoicesNotice(count: number | undefined, countFailed: boolean): 
     return 'Firma nie ma wystawionych faktur ani szkiców.'
   }
 
-  const refusal = 'Firmy nie usuniemy, jeśli jej faktury są w trakcie wysyłki do KSeF lub zostały przyjęte przez produkcyjny KSeF.'
+  const refusal = 'Firmy nie usuniemy, jeśli faktury wystawione w OpenKSeF są w trakcie wysyłki do KSeF lub zostały przyjęte przez produkcyjny KSeF. Faktury spoza OpenKSeF usuniemy tylko z tej aplikacji: w KSeF zostają.'
   if (count !== undefined) {
     return `Usuniemy też wystawione faktury i szkice tej firmy (liczba: ${count}). Nie będzie można ich przywrócić. ${refusal}`
   }
