@@ -75,7 +75,11 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
   const fullResync = useMutation({
     mutationFn: () => forceFullResync(tenantId),
     onSuccess: async (result) => {
-      toast.success(`Pełna resynchronizacja zakończona. Pobrane: ${result.fetchedInvoices}, nowe: ${result.newInvoices}.`)
+      if (result.failedDownloads) {
+        toast.error(`Pełna resynchronizacja niepełna. Pobrane: ${result.fetchedInvoices}, nowe: ${result.newInvoices}. Bez szczegółów z KSeF (liczba: ${result.failedDownloads}), uzupełnimy je przy kolejnych synchronizacjach.`)
+      } else {
+        toast.success(`Pełna resynchronizacja zakończona. Pobrane: ${result.fetchedInvoices}, nowe: ${result.newInvoices}.`)
+      }
       await refreshCredentials()
       await queryClient.invalidateQueries({ queryKey: ['invoices'] })
     },

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, type ReactElement } from 'react'
+import toast from 'react-hot-toast'
 import { createRoot, type Root } from 'react-dom/client'
 import { RouterProvider, createMemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -182,6 +183,19 @@ describe('Firma, Token KSeF i pobieranie', () => {
     await act(async () => buttonByText(dialog, 'Wykonaj pełną resynchronizację')!.click())
     await settle()
     expect(forceFullResync).toHaveBeenCalledExactlyOnceWith('a')
+  })
+
+  it('full resync with failed downloads reports the count, not success', async () => {
+    vi.mocked(forceFullResync).mockResolvedValue({ fetchedInvoices: 5, newInvoices: 0, failedDownloads: 2 } as never)
+    await render()
+
+    await act(async () => by('credential-full-resync-button')?.click())
+    const dialog = container.querySelector('[role="alertdialog"]')!
+    await act(async () => buttonByText(dialog, 'Wykonaj pełną resynchronizację')!.click())
+    await settle()
+
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('(liczba: 2)'))
   })
 
   it('a company without a token has no danger card and no fetch', async () => {

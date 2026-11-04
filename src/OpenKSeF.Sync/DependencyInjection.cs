@@ -30,6 +30,7 @@ public static class DependencyInjection
         services.Configure<TenantSyncOptions>(
             configuration.GetSection(TenantSyncOptions.SectionName));
 
+        services.AddSingleton<XmlDownloadBlocks>();
         services.AddScoped<ITenantSyncService, TenantSyncService>();
 
         return services;

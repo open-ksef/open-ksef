@@ -130,6 +130,23 @@ public class KSeFInvoiceXmlParserTests
         Assert.Null(_sut.ExtractInvoiceDetails(Encoding.UTF8.GetBytes("<not-xml")).DueDate);
     }
 
+    [Theory]
+    [InlineData("<not-xml")]
+    [InlineData("<Other>no namespace</Other>")]
+    [InlineData("<Faktura xmlns=\"http://crd.gov.pl/wzor/2025/06/25/13775/\"/>")]
+    public void ExtractInvoiceDetails_NotAnInvoice_ReturnsNullLines(string xml)
+    {
+        Assert.Null(_sut.ExtractInvoiceDetails(Encoding.UTF8.GetBytes(xml)).Lines);
+    }
+
+    [Fact]
+    public void ExtractInvoiceDetails_InvoiceWithoutLines_ReturnsEmptyLines()
+    {
+        var xml = "<Faktura xmlns=\"http://crd.gov.pl/wzor/2025/06/25/13775/\"><Fa/></Faktura>";
+
+        Assert.Empty(_sut.ExtractInvoiceDetails(Encoding.UTF8.GetBytes(xml)).Lines!);
+    }
+
     private static string BuildInvoiceXmlNoPlatnosc(string ns) =>
         $"""
         <?xml version="1.0" encoding="UTF-8"?>

@@ -8,4 +8,5 @@ public sealed record TenantSyncResult(
     int NewInvoices = 0,
     DateTime? SyncedAtUtc = null,
     string? ErrorMessage = null,
-    int? ErrorStatusCode = null);
+    int? ErrorStatusCode = null,
+    int FailedDownloads = 0);

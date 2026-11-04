@@ -72,7 +72,8 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         Substitute.For<IEncryptionService>(),
         new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
-        Options.Create(new TenantSyncOptions()),
+        Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero }),
+        new XmlDownloadBlocks(),
         NullLogger<TenantSyncService>.Instance);
 
     private static KSeFInvoiceQueryResult Page(IReadOnlyList<KSeFInvoiceHeader> invoices, DateTime? continuationAt = null, bool truncated = false) =>
@@ -140,7 +141,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
             .ToListAsync();
 
     [Fact]
-    public async Task FirstIssuedRun_KeepsExistingRowsIdentical_Covers12Months_StoresSales_NoNotificationsOrDownloads()
+    public async Task FirstIssuedRun_KeepsExistingRowsIdentical_Covers12Months_StoresSales_NoNotifications()
     {
         await MigrateAndSeedExistingTenantAsync();
 
@@ -183,7 +184,6 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         Assert.InRange(first.DateFrom!.Value, DateTime.UtcNow.AddMonths(-12).AddMinutes(-5), DateTime.UtcNow.AddMonths(-12).AddMinutes(5));
         Assert.InRange(_issuedQueries.Count, 4, 5);
         await _notifications.DidNotReceive().NotifyNewInvoiceAsync(Arg.Any<NewInvoiceDetectedEvent>());
-        await _gateway.DidNotReceive().DownloadInvoiceAsync(Arg.Any<KSeFSession>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

@@ -70,7 +70,8 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
         Substitute.For<IEncryptionService>(),
         new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
-        Options.Create(new TenantSyncOptions()),
+        Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero }),
+        new XmlDownloadBlocks(),
         NullLogger<TenantSyncService>.Instance);
 
     private static byte[] XmlWithDueDate(string date) => Encoding.UTF8.GetBytes(
@@ -80,7 +81,7 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
         number, number, "FV 1/2026", "5261040828", "Dostawca", null, null, 100m, 23m, 123m, "PLN", Issued, Issued, "Vat");
 
     [Fact]
-    public async Task ExistingRows_StayUndatedUntilFullResync_WhichFillsDatesAndKeepsPaidMarks()
+    public async Task FullResync_FillsDatesOfPaidAndUnpaidRows_KeepsPaidMarks_ReportsFailedDownload()
     {
         await using (var db = NewContext())
         {
@@ -109,6 +110,7 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
         {
             var result = await SyncService(db).SyncTenantAsync(_tenantId, UserId, forceFullResync: true);
             Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
+            Assert.Equal(1, result.FailedDownloads);
         }
 
         await using (var db = NewContext())
@@ -145,7 +147,7 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
         await using (var db = NewContext())
             await SyncService(db).SyncTenantAsync(_tenantId, UserId);
 
-        await _gateway.DidNotReceive().DownloadInvoiceAsync(Arg.Any<KSeFSession>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _gateway.DidNotReceive().DownloadInvoiceAsync(Arg.Any<KSeFSession>(), UnpaidNumber, Arg.Any<CancellationToken>());
         await using (var db = NewContext())
             Assert.Equal(new DateOnly(2026, 11, 20), (await db.InvoiceHeaders.SingleAsync(r => r.KSeFInvoiceNumber == UnpaidNumber)).DueDate);
     }

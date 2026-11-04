@@ -163,6 +163,9 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<DateTime?>("XmlFetchedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("Id");
 
                     b.HasIndex("IssueDate");
@@ -278,6 +281,9 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ReceivedContinuationAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("TenantId")
