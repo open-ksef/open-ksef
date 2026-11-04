@@ -3,7 +3,7 @@ import { useEffect, useState, type FormEvent, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import { listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
+import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import { createTenant, deleteTenant, updateTenant } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
 import type { TenantResponse } from '@/api/types'
@@ -62,7 +62,7 @@ function DetailsTab({ company }: { company: TenantResponse }): ReactElement {
 
   const countQuery = useQuery({
     queryKey: ['tenant-delete-count', company.id],
-    queryFn: () => listIssuedInvoices(company.id, { pageSize: 1 }),
+    queryFn: () => listIssuedFeed(company.id, { pageSize: 1 }),
     enabled: deleteOpen,
     retry: false,
     gcTime: 0,

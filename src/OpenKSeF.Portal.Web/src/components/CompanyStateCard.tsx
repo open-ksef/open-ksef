@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 
-import { listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
+import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import type { TenantCredentialStatusResponse, TenantDashboardSummaryResponse } from '@/api/types'
 import { companyName } from '@/company/CompanyContext'
 import { useCompany } from '@/company/useCompany'
@@ -36,7 +36,7 @@ export function CompanyStateCard({ state, place, summary, credential, attentionC
   const nip = summary?.nip ?? company?.nip ?? ''
   const issuedQuery = useQuery({
     queryKey: ['issued-invoices', tenantId, 'any'],
-    queryFn: () => listIssuedInvoices(tenantId, { page: 1, pageSize: 1 }),
+    queryFn: () => listIssuedFeed(tenantId, { page: 1, pageSize: 1 }),
     enabled: state === 'zero' && Boolean(tenantId),
   })
   const hasIssued = (issuedQuery.data?.totalCount ?? 0) > 0

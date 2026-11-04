@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { forceCredentialSync, listCredentials } from '@/api/endpoints/credentials'
 import { getDashboardOverview } from '@/api/endpoints/dashboard'
 import { listInvoices } from '@/api/endpoints/invoices'
-import { listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
+import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import { listTenants } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
 import type { InvoiceResponse, TenantCredentialStatusResponse, TenantDashboardSummaryResponse } from '@/api/types'
@@ -21,7 +21,7 @@ vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/invoices', () => ({ listInvoices: vi.fn() }))
 vi.mock('@/api/endpoints/dashboard', () => ({ getDashboardOverview: vi.fn() }))
 vi.mock('@/api/endpoints/credentials', () => ({ forceCredentialSync: vi.fn(), listCredentials: vi.fn() }))
-vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedInvoices: vi.fn() }))
+vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedFeed: vi.fn() }))
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 
 const SEARCH_WAIT_MS = 340
@@ -136,7 +136,7 @@ describe('InvoiceListPage', () => {
     vi.mocked(listInvoices).mockResolvedValue({ items: [invoice()], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 })
     vi.mocked(getDashboardOverview).mockResolvedValue([summary({})])
     vi.mocked(listCredentials).mockResolvedValue([credential()])
-    vi.mocked(listIssuedInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 0, totalPages: 0 })
+    vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 0, totalPages: 0 })
     vi.mocked(forceCredentialSync).mockResolvedValue({
       tenantId: 'tenant-1',
       fetchedInvoices: 3,
