@@ -169,6 +169,11 @@ builder.Services.AddHttpClient<WhiteListClient>(client =>
     client.BaseAddress = WhiteListClient.BaseAddress;
     client.Timeout = TimeSpan.FromSeconds(10);
 });
+builder.Services.AddHttpClient<IExchangeRateSource, NbpExchangeRateSource>(client =>
+{
+    client.BaseAddress = NbpExchangeRateSource.BaseAddress;
+    client.Timeout = TimeSpan.FromSeconds(3);
+});
 
 // Email
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));

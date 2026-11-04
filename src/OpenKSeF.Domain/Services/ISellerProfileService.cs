@@ -10,7 +10,12 @@ public record SellerProfileInput(
     bool CashAccounting,
     string? NumberingPattern,
     int? NextNumber,
-    string? NextNumberPeriod);
+    string? NextNumberPeriod,
+    string? BankSwift = null,
+    string? BankName = null,
+    string? ForeignBankAccount = null,
+    string? ForeignBankSwift = null,
+    string? ForeignBankName = null);
 
 public record SellerProfileView(SellerProfile Profile, string Nip, int NextNumber, string NextNumberPeriod, string NextNumberPreview);
 

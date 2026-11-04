@@ -5,7 +5,10 @@ public record IssuedInvoiceBuyerModel(
     string? Nip,
     string? Name,
     string? AddressLine1,
-    string? AddressLine2);
+    string? AddressLine2,
+    string? CountryCode = null,
+    string? IdType = null,
+    string? ForeignId = null);
 
 public record ExemptionBasisModel(string Kind, string? Text);
 
@@ -24,7 +27,10 @@ public record IssuedInvoiceDraftRequest(
     string? PaymentMethod,
     bool SplitPayment,
     ExemptionBasisModel? ExemptionBasis,
-    IReadOnlyList<IssuedInvoiceLineRequest>? Lines);
+    IReadOnlyList<IssuedInvoiceLineRequest>? Lines,
+    string? Currency = null,
+    decimal? ExchangeRate = null,
+    DateOnly? ExchangeRateDate = null);
 
 public record IssuedInvoiceSellerResponse(
     string Nip,
@@ -32,7 +38,10 @@ public record IssuedInvoiceSellerResponse(
     string? AddressLine1,
     string? AddressLine2,
     string? BankAccount,
-    bool CashAccounting);
+    bool CashAccounting,
+    string? Iban = null,
+    string? Swift = null,
+    string? BankName = null);
 
 public record IssuedInvoiceLineResponse(
     int LineNo,
@@ -80,7 +89,11 @@ public record IssuedInvoiceResponse(
     IReadOnlyList<ValidationIssue> Warnings,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    DateTime? IssuedAt);
+    DateTime? IssuedAt,
+    decimal? ExchangeRate = null,
+    DateOnly? ExchangeRateDate = null);
+
+public record ExchangeRateProposalResponse(string Currency, decimal? Rate, DateOnly? TableDate);
 
 public record IssuedInvoiceListItemResponse(
     Guid Id,
@@ -94,7 +107,10 @@ public record IssuedInvoiceListItemResponse(
     decimal TotalGross,
     string Currency,
     string? KsefNumber,
-    bool NeedsAttention);
+    bool NeedsAttention,
+    string? BuyerCountryCode = null,
+    string? BuyerIdType = null,
+    string? BuyerForeignId = null);
 
 public record IssuedFeedItemResponse(
     Guid Id,
@@ -105,6 +121,7 @@ public record IssuedFeedItemResponse(
     string? BuyerNip,
     string? BuyerIdType,
     string? BuyerForeignId,
+    string? BuyerCountryCode,
     DateOnly IssueDate,
     DateOnly? DueDate,
     decimal TotalNet,

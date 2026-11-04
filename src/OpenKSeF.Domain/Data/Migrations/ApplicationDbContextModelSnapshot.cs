@@ -386,6 +386,18 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
 
+                    b.Property<string>("BuyerCountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("BuyerForeignId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("BuyerIdType")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<string>("BuyerKind")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -402,11 +414,25 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasDefaultValue("PLN");
+
                     b.Property<DateOnly>("DueDate")
                         .HasColumnType("date");
 
                     b.Property<DateTime?>("EscalatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("ExchangeRate")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<DateOnly?>("ExchangeRateDate")
+                        .HasColumnType("date");
 
                     b.Property<string>("ExemptionBasisKind")
                         .HasMaxLength(16)
@@ -483,8 +509,20 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasMaxLength(26)
                         .HasColumnType("character varying(26)");
 
+                    b.Property<string>("SellerBankName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("SellerBankSwift")
+                        .HasMaxLength(11)
+                        .HasColumnType("character varying(11)");
+
                     b.Property<bool>("SellerCashAccounting")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("SellerIban")
+                        .HasMaxLength(34)
+                        .HasColumnType("character varying(34)");
 
                     b.Property<string>("SellerName")
                         .HasMaxLength(512)
@@ -624,8 +662,28 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasMaxLength(26)
                         .HasColumnType("character varying(26)");
 
+                    b.Property<string>("BankName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("BankSwift")
+                        .HasMaxLength(11)
+                        .HasColumnType("character varying(11)");
+
                     b.Property<bool>("CashAccounting")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("ForeignBankAccount")
+                        .HasMaxLength(34)
+                        .HasColumnType("character varying(34)");
+
+                    b.Property<string>("ForeignBankName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ForeignBankSwift")
+                        .HasMaxLength(11)
+                        .HasColumnType("character varying(11)");
 
                     b.Property<string>("LegalName")
                         .HasMaxLength(512)

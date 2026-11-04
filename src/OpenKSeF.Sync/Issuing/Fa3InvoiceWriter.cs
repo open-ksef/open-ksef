@@ -36,28 +36,43 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
             new XElement(Ns + "DataWytworzeniaFa", generatedAtUtc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", Inv)),
             new XElement(Ns + "SystemInfo", "OpenKSeF")),
         new XElement(Ns + "Podmiot1",
+            invoice.Lines.Any(l => l.VatRate == VatRate.NotTaxableArt100) ? new XElement(Ns + "PrefiksPodatnika", "PL") : null,
             new XElement(Ns + "DaneIdentyfikacyjne",
                 new XElement(Ns + "NIP", invoice.SellerNip),
                 new XElement(Ns + "Nazwa", invoice.SellerName)),
             Address(invoice.SellerAddressLine1, invoice.SellerAddressLine2)),
         new XElement(Ns + "Podmiot2",
             new XElement(Ns + "DaneIdentyfikacyjne",
-                invoice.BuyerKind == BuyerKind.Company
-                    ? new XElement(Ns + "NIP", invoice.BuyerNip)
-                    : new XElement(Ns + "BrakID", 1),
+                BuyerId(invoice),
                 new XElement(Ns + "Nazwa", invoice.BuyerName)),
-            invoice.BuyerAddressLine1 is null ? null : Address(invoice.BuyerAddressLine1, invoice.BuyerAddressLine2),
+            invoice.BuyerAddressLine1 is null ? null : Address(invoice.BuyerAddressLine1, invoice.BuyerAddressLine2, invoice.BuyerCountryCode ?? "PL"),
             new XElement(Ns + "JST", 2),
             new XElement(Ns + "GV", 2)),
         Fa(invoice));
 
-    private static XElement Address(string? line1, string? line2) => new(Ns + "Adres",
-        new XElement(Ns + "KodKraju", "PL"),
+    private static XElement[] BuyerId(IssuedInvoice invoice) => (invoice.BuyerKind, invoice.BuyerIdType) switch
+    {
+        (BuyerKind.Company, _) => [new XElement(Ns + "NIP", invoice.BuyerNip)],
+        (BuyerKind.Foreign, IssuedInvoice.BuyerIdVatUe) =>
+        [
+            new XElement(Ns + "KodUE", EuCountries.VatPrefix(invoice.BuyerCountryCode!)),
+            new XElement(Ns + "NrVatUE", invoice.BuyerForeignId)
+        ],
+        (BuyerKind.Foreign, IssuedInvoice.BuyerIdOther) =>
+        [
+            new XElement(Ns + "KodKraju", invoice.BuyerCountryCode),
+            new XElement(Ns + "NrID", invoice.BuyerForeignId)
+        ],
+        _ => [new XElement(Ns + "BrakID", 1)]
+    };
+
+    private static XElement Address(string? line1, string? line2, string country = "PL") => new(Ns + "Adres",
+        new XElement(Ns + "KodKraju", country),
         new XElement(Ns + "AdresL1", line1),
         line2 is null ? null : new XElement(Ns + "AdresL2", line2));
 
     private static XElement Fa(IssuedInvoice invoice) => new(Ns + "Fa",
-        new XElement(Ns + "KodWaluty", IssuedInvoice.Currency),
+        new XElement(Ns + "KodWaluty", invoice.Currency),
         new XElement(Ns + "P_1", Date(invoice.IssueDate)),
         new XElement(Ns + "P_2", invoice.Number),
         invoice.SaleDate == invoice.IssueDate ? null : new XElement(Ns + "P_6", Date(invoice.SaleDate)),
@@ -65,7 +80,7 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
         new XElement(Ns + "P_15", Money(invoice.TotalGross)),
         Adnotacje(invoice),
         new XElement(Ns + "RodzajFaktury", "VAT"),
-        invoice.Lines.Select(Line),
+        invoice.Lines.Select(l => Line(l, invoice.Currency == IssuedInvoice.DefaultCurrency ? null : invoice.ExchangeRate)),
         Platnosc(invoice));
 
     private static IEnumerable<XElement> Buckets(IssuedInvoice invoice)
@@ -87,7 +102,7 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
     private static XElement Adnotacje(IssuedInvoice invoice) => new(Ns + "Adnotacje",
         new XElement(Ns + "P_16", invoice.SellerCashAccounting ? 1 : 2),
         new XElement(Ns + "P_17", 2),
-        new XElement(Ns + "P_18", 2),
+        new XElement(Ns + "P_18", invoice.BuyerKind == BuyerKind.Foreign ? 1 : 2),
         new XElement(Ns + "P_18A", invoice.SplitPayment ? 1 : 2),
         new XElement(Ns + "Zwolnienie", invoice.Lines.Any(l => l.VatRate == VatRate.Exempt)
             ? new object[] { new XElement(Ns + "P_19", 1), new XElement(Ns + ExemptionElement(invoice.ExemptionBasisKind), invoice.ExemptionBasisText) }
@@ -103,14 +118,15 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
         _ => "P_19C"
     };
 
-    private static XElement Line(IssuedInvoiceLine line) => new(Ns + "FaWiersz",
+    private static XElement Line(IssuedInvoiceLine line, decimal? exchangeRate) => new(Ns + "FaWiersz",
         new XElement(Ns + "NrWierszaFa", line.LineNo),
         new XElement(Ns + "P_7", line.Name),
         new XElement(Ns + "P_8A", line.Unit),
         new XElement(Ns + "P_8B", line.Quantity.ToString("0.######", Inv)),
         new XElement(Ns + "P_9A", Money(line.UnitNetPrice)),
         new XElement(Ns + "P_11", Money(line.NetAmount)),
-        new XElement(Ns + "P_12", line.VatRate.Code()));
+        new XElement(Ns + "P_12", line.VatRate.Code()),
+        exchangeRate is null ? null : new XElement(Ns + "KursWaluty", exchangeRate.Value.ToString("0.######", Inv)));
 
     private static XElement Platnosc(IssuedInvoice invoice) => new(Ns + "Platnosc",
         new XElement(Ns + "TerminPlatnosci", new XElement(Ns + "Termin", Date(invoice.DueDate))),
@@ -120,7 +136,10 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
             PaymentMethod.Card => 2,
             _ => 6
         }),
-        invoice.SellerBankAccount is null ? null : new XElement(Ns + "RachunekBankowy", new XElement(Ns + "NrRB", invoice.SellerBankAccount)));
+        (invoice.SellerIban ?? invoice.SellerBankAccount) is not { } account ? null : new XElement(Ns + "RachunekBankowy",
+            new XElement(Ns + "NrRB", account),
+            invoice.SellerBankSwift is null ? null : new XElement(Ns + "SWIFT", invoice.SellerBankSwift),
+            invoice.SellerBankName is null ? null : new XElement(Ns + "NazwaBanku", invoice.SellerBankName)));
 
     private static string Money(decimal value) => value.ToString("0.00", Inv);
 

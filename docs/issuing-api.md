@@ -14,11 +14,12 @@ PUT  /api/tenants/{tenantId}/seller-profile                 SellerProfileRequest
 GET  /api/nip-lookup/{nip}                                  -> 200 NipLookupResponse | 400 | 404 | 503
 GET  /api/tenants/{tenantId}/issued-invoices?page=&pageSize=&status=&month=&q=   -> 200 PagedResult<IssuedInvoiceListItemResponse> | 400 ValidationEnvelope
 POST /api/tenants/{tenantId}/issued-invoices                IssuedInvoiceDraftRequest -> 201 IssuedInvoiceResponse | 400 ValidationEnvelope
+GET  /api/tenants/{tenantId}/issued-invoices/exchange-rate?currency=&issueDate=&saleDate=   -> 200 ExchangeRateProposalResponse | 400 ValidationEnvelope (INV-VAL-090)
 GET  /api/tenants/{tenantId}/issued-invoices/{id}           -> 200 IssuedInvoiceResponse
 PUT  /api/tenants/{tenantId}/issued-invoices/{id}           IssuedInvoiceDraftRequest -> 200 | 400 ValidationEnvelope | 422 ValidationEnvelope (INV-VAL-022) | 409 (not Draft/Rejected)
 DELETE /api/tenants/{tenantId}/issued-invoices/{id}         -> 204 | 409 (not Draft)
 POST /api/tenants/{tenantId}/issued-invoices/{id}/issue     -> 202 IssuedInvoiceResponse (status Sending) | 200 if already Sending/Accepted | 422 ValidationEnvelope | 409 (number already used, concurrent change)
-POST /api/tenants/{tenantId}/issued-invoices/{id}/copy      -> 201 IssuedInvoiceResponse (new Draft, same buyer+lines, dates = today, no number) | 409 (source Sending)
+POST /api/tenants/{tenantId}/issued-invoices/{id}/copy      -> 201 IssuedInvoiceResponse (new Draft, same buyer+lines+currency, dates = today, no number, rate proposed again) | 409 (source Sending)
 GET  /api/tenants/{tenantId}/issued-invoices/{id}/xml       -> 200 application/xml (stored bytes) | 409 unless Accepted
 GET  /api/tenants/{tenantId}/issued-invoices/{id}/upo       -> 200 application/xml | 409 unless Accepted with UPO
 DELETE /api/tenants/{id}                                    -> 204 | 409 (invoice Queued or Sending, or Accepted on production) | 404
@@ -29,7 +30,7 @@ Cross-tenant on any route returns 404. A 409 without a `ValidationEnvelope` has 
 List filters:
 - `status`: `Draft`, `Sending` (internal Queued + Sending), `Accepted`, `Rejected`.
 - `month`: `yyyy-MM`, by `issueDate`.
-- `q`: case-insensitive substring of buyer name, buyer NIP or invoice number.
+- `q`: case-insensitive substring of buyer name, buyer NIP, foreign buyer id or invoice number.
 - Order: `issueDate` descending, then `createdAt` descending. `pageSize` is capped at 100.
 
 The `ksef` block:
@@ -62,13 +63,40 @@ An issue date after today in Europe/Warsaw blocks issuing with `INV-VAL-020` bef
 
 Tenant delete returns 409 while any invoice of the tenant is Queued or Sending, on any environment, or Accepted on production. `KsefEnvironment` stored on the invoice decides, not the current instance setting, and an Accepted invoice without one counts as production. Otherwise the delete removes the tenant and all its issued invoices in one transaction, and they cannot be restored. The delete also removes the seller profile with its bank account and number counter, and the paid marks on purchase invoices. The KSeF copy of an accepted invoice stays in KSeF. A tenant added again with the same NIP numbers from 1, so on the same KSeF environment a number already held there returns 440 and the invoice ends Rejected; set `nextNumber` in the seller profile above the last number used before issuing. To show the count before confirming, read `totalCount` from `GET /api/tenants/{tenantId}/issued-invoices?pageSize=1`; it includes drafts. The delete locks the tenant and invoice rows, so it waits for a concurrent issue or status change and decides on the committed status. An issue that waits for a delete that commits returns 404. Deleting the last invoices on the instance releases the KSeF environment lock. Deleting one Rejected invoice stays forbidden.
 
+### Foreign buyers (REQ-0046)
+
+Buyer `kind` `Foreign` is a business outside Poland, for services only. Domain rules and field map: `production/kb/domain/foreign-sales.md`.
+
+- `buyer.countryCode` is required at issue and is not `PL`. It is written to `Adres/KodKraju`. Greece is `GR`; `EL` is accepted on input.
+- `buyer.foreignId` is the buyer tax id. The server derives `buyer.idType`, which is ignored on input:
+  - country in the EU with an id: `VatUe`, written as `KodUE` + `NrVatUE`, entered with or without the prefix. It is required (`INV-VAL-032`).
+  - other country with an id: `Other`, written as `KodKraju` + `NrID`.
+  - other country without an id: `None`, written as `BrakID = 1`.
+- `XI` (Northern Ireland) counts as a third country, because this feature covers services only.
+- `buyer.nip` stays a Polish NIP only, and is null on kind `Foreign` (`INV-VAL-031`).
+- `lines[].vatRate`: only `np I` outside the EU and `np II` in the EU. Other kinds cannot use them (`INV-VAL-060`).
+- `currency`: kind `Foreign` can use PLN or a code valid in the FA(3) XSD. Other kinds stay PLN (`INV-VAL-091`). An unknown code passes the draft and fails at issue with `INV-XSD`.
+- `exchangeRate`, up to 6 dp, required at issue for non-PLN (`INV-VAL-092`), written as `KursWaluty` on every line. `exchangeRateDate` is the NBP table date; null means the user typed the rate.
+- `P_18 = 1` is set by the server, `P_18A = 2` always, `splitPayment` is ignored on kind `Foreign`, and `INV-W-MPP` does not apply.
+
+Rate source: the user decides. On create, update and copy, the server proposes a rate only when a non-PLN `Foreign` draft has none: the NBP table A mid of the last working day before min(`issueDate`, `saleDate`). A given rate is stored as sent. A date change does not replace a stored rate, so a client that wants a fresh proposal calls `exchange-rate` and sends the result. A currency change without a rate drops the stored rate. If NBP fails or has no such currency, the rate stays null and the draft saves; `exchange-rate` then returns `rate: null`, `tableDate: null`. NBP timeout: 3 s.
+
+Optional request fields: absent or null keeps the stored value (`buyer.countryCode`, `buyer.foreignId`, `currency`, `exchangeRate`, seller profile bank fields). An empty string clears `buyer.countryCode`, `buyer.foreignId` and the seller profile bank fields. A request with kind `Company` or `Person` drops the foreign buyer fields.
+
+Account on kind `Foreign`, stored in the snapshot at issue:
+- with `foreignBankAccount` in the profile: `seller.iban` = that IBAN, with `foreignBankSwift` and `foreignBankName`; `seller.bankAccount` is null.
+- otherwise: `seller.iban` = `PL` + `bankAccount`, with `bankSwift` and `bankName`.
+
+Other kinds keep `bankAccount` only, and their XML has no `SWIFT` or `NazwaBanku`.
+
 Numbering patterns must contain `{RRRR}` (`SP-VAL-007`), because the counter resets every year and a number without the year would repeat. A profile stored before this rule keeps working: GET returns its pattern and issuing uses it, and a repeated number returns 409. Its next PUT must supply a pattern with `{RRRR}`.
 
 ```jsonc
 // SellerProfileRequest
 { "legalName": "OpenKSeF Test A sp. z o.o.", "addressLine1": "ul. Prosta 1", "addressLine2": "00-001 Warszawa",
   "bankAccount": "61109010140000071219812874", "cashAccounting": false,
-  "numberingPattern": "FV/{nr}/{MM}/{RRRR}", "nextNumber": 57, "nextNumberPeriod": "2026-11" }   // last two optional
+  "numberingPattern": "FV/{nr}/{MM}/{RRRR}", "nextNumber": 57, "nextNumberPeriod": "2026-11",     // these two optional
+  "bankSwift": "TESTPLPW", "bankName": "...", "foreignBankAccount": "GB82WEST12345698765432", "foreignBankSwift": "TESTGB2L", "foreignBankName": "..." }  // optional: null keeps, "" clears
 // SellerProfileResponse = request fields +
 { "nip": "1234567890", "isComplete": true, "nextNumberPreview": "FV/57/11/2026", "ksefEnvironment": "test" }  // test|demo|production
 
@@ -77,16 +105,18 @@ Numbering patterns must contain `{RRRR}` (`SP-VAL-007`), because the counter res
   "vatStatus": "Czynny", "bankAccounts": ["61109010140000071219812874"] }                          // Czynny|Zwolniony|Niezarejestrowany
 
 // IssuedInvoiceDraftRequest (no seller fields; unknown fields ignored)
-{ "buyer": { "kind": "Company", "nip": "1234567890", "name": "...", "addressLine1": "...", "addressLine2": "..." },  // kind Company|Person; Person: nip null
+{ "buyer": { "kind": "Company", "nip": "1234567890", "name": "...", "addressLine1": "...", "addressLine2": "...",  // kind Company|Person|Foreign; Person, Foreign: nip null
+             "countryCode": "GB", "foreignId": "..." },                                           // optional, Foreign only: null keeps, "" clears
   "issueDate": "2026-11-03", "saleDate": "2026-11-03", "dueDate": "2026-11-17",
   "paymentMethod": "Transfer", "splitPayment": false,                                             // Transfer|Cash|Card
   "exemptionBasis": { "kind": "Act", "text": "art. 113 ust. 1 ustawy o VAT" },                     // Act|Directive|Other; null if no zw line
-  "lines": [ { "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100.00, "vatRate": "23" } ] }  // 23|8|5|0 KR|zw
+  "lines": [ { "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100.00, "vatRate": "23" } ],  // 23|8|5|0 KR|zw; Foreign: np I|np II
+  "currency": "GBP", "exchangeRate": 5.2133, "exchangeRateDate": "2026-11-05" }                   // optional: null keeps
 
 // IssuedInvoiceResponse
 { "id": "guid", "status": "Draft", "number": null,                                              // Draft|Sending|Accepted|Rejected
-  "seller": { "nip": "...", "name": "...", "addressLine1": "...", "addressLine2": "...", "bankAccount": "...", "cashAccounting": false },
-  "buyer": { "kind": "Company", "nip": "...", "name": "...", "addressLine1": "...", "addressLine2": "..." },
+  "seller": { "nip": "...", "name": "...", "addressLine1": "...", "addressLine2": "...", "bankAccount": "...", "cashAccounting": false, "iban": null, "swift": null, "bankName": null },
+  "buyer": { "kind": "Company", "nip": "...", "name": "...", "addressLine1": "...", "addressLine2": "...", "countryCode": null, "idType": null, "foreignId": null },  // idType VatUe|Other|None, Foreign only
   "issueDate": "2026-11-03", "saleDate": "2026-11-03", "dueDate": "2026-11-17",
   "paymentMethod": "Transfer", "splitPayment": false, "exemptionBasis": null,
   "lines": [ { "lineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100.00, "vatRate": "23", "netAmount": 100.00, "vatAmount": 23.00 } ],
@@ -95,11 +125,15 @@ Numbering patterns must contain `{RRRR}` (`SP-VAL-007`), because the counter res
   "ksef": { "environment": "test", "ksefNumber": null, "acceptedAt": null, "statusCode": null, "statusMessage": null, "statusDetails": null,
             "lastError": null, "verificationUrl": null, "hasUpo": false, "duplicateKsefNumber": null },
   "warnings": [ { "code": "INV-W-MPP", "field": "splitPayment", "message": "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)" } ],
-  "createdAt": "2026-11-03T10:00:00Z", "updatedAt": "2026-11-03T10:00:00Z", "issuedAt": null }
+  "createdAt": "2026-11-03T10:00:00Z", "updatedAt": "2026-11-03T10:00:00Z", "issuedAt": null, "exchangeRate": null, "exchangeRateDate": null }
 
 // IssuedInvoiceListItemResponse
 { "id": "guid", "status": "Accepted", "number": "FV/1/11/2026", "buyerName": "...", "buyerNip": "...",
-  "issueDate": "2026-11-03", "dueDate": "2026-11-17", "totalNet": 100.00, "totalGross": 123.00, "currency": "PLN", "ksefNumber": "...", "needsAttention": false }
+  "issueDate": "2026-11-03", "dueDate": "2026-11-17", "totalNet": 100.00, "totalGross": 123.00, "currency": "PLN", "ksefNumber": "...", "needsAttention": false,
+  "buyerCountryCode": null, "buyerIdType": null, "buyerForeignId": null }
+
+// ExchangeRateProposalResponse
+{ "currency": "GBP", "rate": 5.2133, "tableDate": "2026-11-05" }                                  // rate, tableDate null when NBP fails or has no such currency
 
 // ValidationEnvelope (400/422)
 { "errors": [ { "code": "INV-VAL-013", "field": "buyer.nip", "message": "Dla nabywcy firmy wymagany jest poprawny NIP" } ], "warnings": [] }
@@ -131,6 +165,9 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | INV-VAL-021 | `dueDate` | Termin płatności jest wcześniejszy niż data wystawienia |
 | INV-VAL-022 | `issueDate` | Numer X należy do okresu 11/2026. Zostaw datę wystawienia w tym okresie albo użyj „Kopiuj jako nową”. Nowa faktura dostanie nowy numer, a ten pozostanie niewykorzystany. (rejected invoice PUT 422) |
 | INV-VAL-023 | `number` | Numer X jest już w KSeF, więc nie można go wysłać ponownie. Numer KSeF: Y. Sprawdź tę fakturę w KSeF. Jeśli to ta sama sprzedaż, nie wystawiaj jej ponownie. (issue 422; the KSeF number sentence only when known) |
+| INV-VAL-030 | `buyer.countryCode` | Podaj kraj nabywcy inny niż Polska |
+| INV-VAL-031 | `buyer.nip` | Nabywca z polskim NIP to firma, nie firma zagraniczna |
+| INV-VAL-032 | `buyer.vatUe` | Dla nabywcy z UE podaj numer VAT UE: do 12 liter lub cyfr, bez kodu kraju |
 | INV-VAL-050 | `lines[i].name` | Każda pozycja musi mieć nazwę |
 | INV-VAL-051 | `lines[i].quantity` | Ilość na pozycji musi być większa od zera |
 | INV-VAL-052 | `lines[i].unitNetPrice` | Cena netto nie może być ujemna |
@@ -138,12 +175,19 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | INV-VAL-054 | `lines[i].unitNetPrice` | Cena lub wartość pozycji poza zakresem, lub ponad 2 miejsca po przecinku (draft 400) |
 | INV-VAL-060 | `lines[i].vatRate` | Dozwolone stawki VAT: 23, 8, 5, 0 KR, zw |
 | INV-VAL-061 | `exemptionBasis` | Podaj podstawę zwolnienia z VAT |
-| INV-VAL-070 | `buyer.kind` | Rodzaj nabywcy: Company lub Person (draft 400) |
+| INV-VAL-062 | `lines[i].vatRate` | Dla firmy zagranicznej dozwolone stawki to np I i np II |
+| INV-VAL-063 | `lines[i].vatRate` | Stawka np I dotyczy nabywcy spoza UE. Dla nabywcy z UE wybierz np II |
+| INV-VAL-064 | `lines[i].vatRate` | Stawka np II dotyczy nabywcy z UE. Dla nabywcy spoza UE wybierz np I |
+| INV-VAL-070 | `buyer.kind` | Rodzaj nabywcy: Company, Person lub Foreign (draft 400) |
 | INV-VAL-071 | `paymentMethod` | Forma płatności: Transfer, Cash lub Card (draft 400) |
 | INV-VAL-072 | `exemptionBasis.kind` | Podstawa zwolnienia: Act, Directive lub Other (draft 400) |
-| INV-VAL-073 | text fields | Pole może mieć najwyżej N znaków (draft 400; names and addresses 512, unit and exemption text 256) |
+| INV-VAL-073 | text fields | Pole może mieć najwyżej N znaków (draft 400; names and addresses 512, unit and exemption text 256, `buyer.foreignId` 50) |
 | INV-VAL-080 | `status` | Dozwolone statusy: Draft, Sending, Accepted, Rejected (list 400) |
 | INV-VAL-081 | `month` | Miesiąc musi mieć format RRRR-MM (list 400) |
+| INV-VAL-090 | `currency` | Waluta musi być trzyliterowym kodem ISO 4217 (draft and exchange-rate 400) |
+| INV-VAL-091 | `currency` | Waluta inna niż PLN jest dostępna tylko dla firmy zagranicznej |
+| INV-VAL-092 | `exchangeRate` | Podaj kurs waluty większy od zera |
+| INV-VAL-093 | `exchangeRate` | Kurs waluty poza zakresem lub ponad 6 miejsc po przecinku (draft 400) |
 | INV-XSD | null | Faktura nie spełnia schematu FA(3): ... (issue 422, one per schema error) |
 | INV-W-NIP | `buyer.nip` | NIP nabywcy ma niepoprawną sumę kontrolną (warning) |
 | INV-W-MPP | `splitPayment` | Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15) (warning, gross > 15 000,00) |
@@ -151,9 +195,11 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | SP-VAL-002 | `numberingPattern` | Wzorzec numeracji musi zawierać {nr} |
 | SP-VAL-003 | `nextNumber` | Następny numer musi być większy od zera |
 | SP-VAL-004 | `nextNumberPeriod` | Okres numeracji musi mieć format RRRR-MM (wzorzec z {MM}) lub RRRR |
-| SP-VAL-005 | `legalName`, `addressLine1`, `addressLine2`, `numberingPattern` | Field too long (512; pattern 100) |
+| SP-VAL-005 | `legalName`, `addressLine1`, `addressLine2`, `numberingPattern`, `bankName`, `foreignBankName` | Field too long (512; pattern 100; bank names 256) |
 | SP-VAL-006 | `nextNumber` | Numer N jest już użyty. Ostatni numer w tym okresie to M, podaj co najmniej M+1. (seller profile PUT 409) |
 | SP-VAL-007 | `numberingPattern` | Wzorzec numeracji musi zawierać {RRRR}, inaczej numery powtórzą się w kolejnym roku (seller profile PUT 400) |
+| SP-VAL-008 | `foreignBankAccount` | Niepoprawny numer IBAN rachunku zagranicznego (seller profile PUT 400) |
+| SP-VAL-009 | `bankSwift`, `foreignBankSwift` | Kod SWIFT musi mieć 8 lub 11 znaków (seller profile PUT 400) |
 | NIP-INVALID | `nip` | Niepoprawny NIP (nip-lookup 400) |
 | NIP-NOT-FOUND | `nip` | Brak podmiotu w wykazie podatników VAT, wpisz dane ręcznie (nip-lookup 404) |
 | NIP-LOOKUP-UNAVAILABLE | `nip` | Wyszukiwarka MF niedostępna, wpisz dane ręcznie (nip-lookup 503) |

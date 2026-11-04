@@ -100,7 +100,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
     private async Task DeleteTenantAsync(Guid tenantId)
     {
         await using var db = NewContext();
-        var service = new IssuedInvoiceService(db, null!, null!, null!, _time);
+        var service = new IssuedInvoiceService(db, null!, null!, null!, null!, _time);
         Assert.True(await service.DeleteTenantAsync(tenantId));
     }
 

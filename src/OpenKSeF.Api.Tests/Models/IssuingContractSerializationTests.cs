@@ -22,7 +22,8 @@ public class IssuingContractSerializationTests
             { "legalName": "OpenKSeF Test A sp. z o.o.", "addressLine1": "ul. Prosta 1", "addressLine2": "00-001 Warszawa",
               "bankAccount": "61109010140000071219812874", "cashAccounting": false,
               "numberingPattern": "FV/{nr}/{MM}/{RRRR}", "nextNumber": 57, "nextNumberPeriod": "2026-11",
-              "nip": "1234567890", "isComplete": true, "nextNumberPreview": "FV/57/11/2026", "ksefEnvironment": "test" }
+              "nip": "1234567890", "isComplete": true, "nextNumberPreview": "FV/57/11/2026", "ksefEnvironment": "test",
+              "bankSwift": null, "bankName": null, "foreignBankAccount": null, "foreignBankSwift": null, "foreignBankName": null }
             """);
     }
 
@@ -70,6 +71,10 @@ public class IssuingContractSerializationTests
         var line = Assert.Single(request.Lines!);
         Assert.Equal(1.5m, line.Quantity);
         Assert.Equal("0 KR", line.VatRate);
+        Assert.Null(request.Currency);
+        Assert.Null(request.ExchangeRate);
+        Assert.Null(request.Buyer.CountryCode);
+        Assert.Null(request.Buyer.ForeignId);
     }
 
     [Fact]
@@ -91,8 +96,8 @@ public class IssuingContractSerializationTests
 
         AssertJson(response, """
             { "id": "8f1c2a8e-6a5d-4c55-9c7a-1b2c3d4e5f60", "status": "Draft", "number": null,
-              "seller": { "nip": "1234567890", "name": "S", "addressLine1": "SL1", "addressLine2": "SL2", "bankAccount": "61109010140000071219812874", "cashAccounting": false },
-              "buyer": { "kind": "Company", "nip": "1234567890", "name": "B", "addressLine1": "BL1", "addressLine2": "BL2" },
+              "seller": { "nip": "1234567890", "name": "S", "addressLine1": "SL1", "addressLine2": "SL2", "bankAccount": "61109010140000071219812874", "cashAccounting": false, "iban": null, "swift": null, "bankName": null },
+              "buyer": { "kind": "Company", "nip": "1234567890", "name": "B", "addressLine1": "BL1", "addressLine2": "BL2", "countryCode": null, "idType": null, "foreignId": null },
               "issueDate": "2026-11-03", "saleDate": "2026-11-03", "dueDate": "2026-11-17",
               "paymentMethod": "Transfer", "splitPayment": false, "exemptionBasis": null,
               "lines": [ { "lineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100.00, "vatRate": "23", "netAmount": 100.00, "vatAmount": 23.00 } ],
@@ -101,7 +106,7 @@ public class IssuingContractSerializationTests
               "ksef": { "environment": "test", "ksefNumber": null, "acceptedAt": null, "statusCode": null, "statusMessage": null, "statusDetails": null,
                         "lastError": null, "verificationUrl": null, "hasUpo": false, "duplicateKsefNumber": null },
               "warnings": [ { "code": "INV-W-MPP", "field": "splitPayment", "message": "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)" } ],
-              "createdAt": "2026-11-03T10:00:00Z", "updatedAt": "2026-11-03T10:00:00Z", "issuedAt": null }
+              "createdAt": "2026-11-03T10:00:00Z", "updatedAt": "2026-11-03T10:00:00Z", "issuedAt": null, "exchangeRate": null, "exchangeRateDate": null }
             """);
     }
 
@@ -114,7 +119,8 @@ public class IssuingContractSerializationTests
 
         AssertJson(response, """
             { "id": "8f1c2a8e-6a5d-4c55-9c7a-1b2c3d4e5f60", "status": "Accepted", "number": "FV/1/11/2026", "buyerName": "B", "buyerNip": "1234567890",
-              "issueDate": "2026-11-03", "dueDate": "2026-11-17", "totalNet": 100.00, "totalGross": 123.00, "currency": "PLN", "ksefNumber": "1234567890-20261103-0100A0B0C0D0-E1", "needsAttention": true }
+              "issueDate": "2026-11-03", "dueDate": "2026-11-17", "totalNet": 100.00, "totalGross": 123.00, "currency": "PLN", "ksefNumber": "1234567890-20261103-0100A0B0C0D0-E1", "needsAttention": true,
+              "buyerCountryCode": null, "buyerIdType": null, "buyerForeignId": null }
             """);
     }
 

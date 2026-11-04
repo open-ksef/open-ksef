@@ -51,9 +51,12 @@ public class IssuedInvoicesController(
                     i.DueDate,
                     i.TotalNet,
                     i.TotalGross,
-                    IssuedInvoice.Currency,
+                    i.Currency,
                     i.KsefNumber,
-                    i.EscalatedAt != null))
+                    i.EscalatedAt != null,
+                    i.BuyerCountryCode,
+                    i.BuyerIdType,
+                    i.BuyerForeignId))
                 .ToListAsync(ct);
 
             return Ok(new PagedResult<IssuedInvoiceListItemResponse> { Items = items, Page = page, PageSize = pageSize, TotalCount = totalCount });
@@ -86,6 +89,7 @@ public class IssuedInvoicesController(
                 r.BuyerNip,
                 r.BuyerIdType,
                 r.BuyerForeignId,
+                r.BuyerCountryCode,
                 r.IssueDate,
                 r.DueDate,
                 r.TotalNet,
@@ -95,6 +99,22 @@ public class IssuedInvoicesController(
                 r.NeedsAttention)).ToList();
 
             return Ok(new PagedResult<IssuedFeedItemResponse> { Items = items, Page = page, PageSize = pageSize, TotalCount = totalCount });
+        });
+
+    [HttpGet("exchange-rate")]
+    [ProducesResponseType(typeof(ExchangeRateProposalResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public Task<IActionResult> ProposeExchangeRate(
+        Guid tenantId,
+        [FromQuery] string? currency,
+        [FromQuery] DateOnly? issueDate = null,
+        [FromQuery] DateOnly? saleDate = null,
+        CancellationToken ct = default) =>
+        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        {
+            var quote = await issuedInvoices.ProposeExchangeRateAsync(currency, issueDate, saleDate, ct);
+            return Ok(new ExchangeRateProposalResponse(currency!.Trim().ToUpperInvariant(), quote?.Rate, quote?.TableDate));
         });
 
     [HttpGet("{id:guid}")]
@@ -219,7 +239,7 @@ public class IssuedInvoicesController(
         status is IssuedInvoiceStatus.Queued or IssuedInvoiceStatus.Sending ? "Sending" : status.ToString();
 
     private static IssuedInvoiceDraftInput ToInput(IssuedInvoiceDraftRequest request) => new(
-        request.Buyer is { } buyer ? new IssuedInvoiceBuyerInput(buyer.Kind, buyer.Nip, buyer.Name, buyer.AddressLine1, buyer.AddressLine2) : null,
+        request.Buyer is { } buyer ? new IssuedInvoiceBuyerInput(buyer.Kind, buyer.Nip, buyer.Name, buyer.AddressLine1, buyer.AddressLine2, buyer.CountryCode, buyer.ForeignId) : null,
         request.IssueDate,
         request.SaleDate,
         request.DueDate,
@@ -227,7 +247,10 @@ public class IssuedInvoicesController(
         request.SplitPayment,
         request.ExemptionBasis?.Kind,
         request.ExemptionBasis?.Text,
-        request.Lines?.Select(l => new IssuedInvoiceLineInput(l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)).ToList());
+        request.Lines?.Select(l => new IssuedInvoiceLineInput(l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)).ToList(),
+        request.Currency,
+        request.ExchangeRate,
+        request.ExchangeRateDate);
 
     private static IssuedInvoiceResponse ToResponse(IssuedInvoiceView view)
     {
@@ -236,8 +259,10 @@ public class IssuedInvoicesController(
             invoice.Id,
             WireStatus(invoice.Status),
             invoice.Number,
-            new IssuedInvoiceSellerResponse(view.Seller.Nip, view.Seller.Name, view.Seller.AddressLine1, view.Seller.AddressLine2, view.Seller.BankAccount, view.Seller.CashAccounting),
-            new IssuedInvoiceBuyerModel(invoice.BuyerKind.ToString(), invoice.BuyerNip, invoice.BuyerName, invoice.BuyerAddressLine1, invoice.BuyerAddressLine2),
+            new IssuedInvoiceSellerResponse(view.Seller.Nip, view.Seller.Name, view.Seller.AddressLine1, view.Seller.AddressLine2, view.Seller.BankAccount, view.Seller.CashAccounting,
+                view.Seller.Iban, view.Seller.Swift, view.Seller.BankName),
+            new IssuedInvoiceBuyerModel(invoice.BuyerKind.ToString(), invoice.BuyerNip, invoice.BuyerName, invoice.BuyerAddressLine1, invoice.BuyerAddressLine2,
+                invoice.BuyerCountryCode, invoice.BuyerIdType, invoice.BuyerForeignId),
             invoice.IssueDate,
             invoice.SaleDate,
             invoice.DueDate,
@@ -251,7 +276,7 @@ public class IssuedInvoicesController(
             invoice.TotalNet,
             invoice.TotalVat,
             invoice.TotalGross,
-            IssuedInvoice.Currency,
+            invoice.Currency,
             new IssuedInvoiceKsefResponse(
                 view.KsefEnvironment,
                 invoice.KsefNumber,
@@ -266,6 +291,8 @@ public class IssuedInvoicesController(
             view.Warnings.Select(w => new ValidationIssue(w.Code, w.Field, w.Message)).ToList(),
             invoice.CreatedAt,
             invoice.UpdatedAt,
-            invoice.IssuedAt);
+            invoice.IssuedAt,
+            invoice.ExchangeRate,
+            invoice.ExchangeRateDate);
     }
 }
