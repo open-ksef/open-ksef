@@ -320,6 +320,22 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ManualSync_Spaces_Downloads_By150Ms()
+    {
+        Assert.Equal(TimeSpan.FromMilliseconds(150), new TenantSyncOptions().XmlManualDownloadSpacing);
+        await InsertAsync("A");
+        await InsertAsync("B");
+        await InsertAsync("C");
+        await MigrateAsync();
+
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        await ManualSyncAsync();
+
+        Assert.Equal(3, _downloads.Count);
+        Assert.True(started.Elapsed >= TimeSpan.FromMilliseconds(290), started.Elapsed.ToString());
+    }
+
+    [Fact]
     public async Task NoTerminInXml_IsMarked_AndNotDownloadedAgainByWorkerManualOrFullResync()
     {
         await InsertAsync("NO-TERM", account: Account);

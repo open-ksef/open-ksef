@@ -123,7 +123,7 @@ public sealed class TenantSyncService : ITenantSyncService
                 return result;
 
             var failedDownloads = await DownloadQueuedXmlAsync(
-                [tenant], sessions, runStartedAt, _syncOptions.XmlDownloadsPerManualRun, TimeSpan.Zero, forceFullResync, cancellationToken);
+                [tenant], sessions, runStartedAt, _syncOptions.XmlDownloadsPerManualRun, _syncOptions.XmlManualDownloadSpacing, forceFullResync, cancellationToken);
             return result with { FailedDownloads = failedDownloads };
         }
         finally

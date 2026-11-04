@@ -139,7 +139,7 @@ The script copies `.env.test` to `.env` if missing. `.env.test` contains determi
 | First-sync lookback | `Sync__InitialSyncMonthsBack` = `SYNC_INITIAL_MONTHS_BACK` (dev default 12 months) |
 
 Both `E2E_TEST_NIP` and `E2E_TEST_KSEF_TOKEN` must be set, otherwise provisioning is skipped.
-Sync imports received (`Subject2`) metadata, then issued (`Subject1`) metadata: 12 months on the first run, no notifications for issued. XML comes last, from one queue per NIP: new received, undated unpaid received, issued without lines. Worker: 60 downloads per NIP per cycle, 4 s apart. Manual sync: 15 downloads per run, no pauses. A row that fails moves behind others in its tier. A 429 stops the NIP until Retry-After.
+Sync imports received (`Subject2`) metadata, then issued (`Subject1`) metadata: 12 months on the first run, no notifications for issued. XML comes last, from one queue per NIP: new received, undated unpaid received, issued without lines. Worker: 60 downloads per NIP per cycle, 4 s apart. Manual sync: 15 downloads per run, 150 ms apart. A row that fails moves behind others in its tier. A 429 stops the NIP until Retry-After.
 
 KSeF TEST rate limit: 20 `invoices/query/metadata` requests per hour per NIP. A first sync with a 12-month lookback uses 4+ of them (3-month windows plus paging), and every `dev-env-up` re-run restarts the worker, which syncs on startup. The script skips its own sync when the tenant synced successfully within the last hour. On 429 (`Przekroczono limit 20 żądań na godzinę`) the script prints `PARTIAL` and exits 1: wait for the window to reset, then run `powershell -File scripts/setup-test-data.ps1` once. Do not loop it.
 
