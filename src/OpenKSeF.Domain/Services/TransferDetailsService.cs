@@ -7,6 +7,7 @@ namespace OpenKSeF.Domain.Services;
 public class TransferDetailsService : ITransferDetailsService
 {
     private const decimal MppNoticeThreshold = 15000m;
+    private static readonly CultureInfo PolishCulture = CultureInfo.GetCultureInfo("pl-PL");
 
     public string BuildTransferText(InvoiceHeader invoice)
     {
@@ -21,7 +22,7 @@ public class TransferDetailsService : ITransferDetailsService
         if (!string.IsNullOrWhiteSpace(invoice.VendorBankAccount))
             lines.Add($"Nr rachunku: {invoice.VendorBankAccount}");
 
-        lines.Add($"Kwota: {invoice.AmountGross.ToString("N2", CultureInfo.InvariantCulture)} {invoice.Currency}");
+        lines.Add($"Kwota: {invoice.AmountGross.ToString("N2", PolishCulture)} {invoice.Currency}");
         lines.Add($"Tytul: {invoice.InvoiceNumber ?? invoice.KSeFInvoiceNumber}");
 
         return string.Join("\n", lines);

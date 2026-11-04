@@ -1,3 +1,4 @@
+using System.Globalization;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
 
@@ -72,6 +73,25 @@ public class TransferDetailsServiceTests
         Assert.Contains("Tytul: FV/2026/001", result);
     }
 
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("de-DE")]
+    [InlineData("pl-PL")]
+    public void BuildTransferText_Amount_PolishUnderAnyServerCulture(string culture)
+    {
+        var invoice = MakeInvoice(amountGross: 1234.56m);
+        var saved = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
+        try
+        {
+            Assert.Contains("\nKwota: 1\u00A0234,56 PLN\n", _sut.BuildTransferText(invoice));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
+    }
+
     [Fact]
     public void Qr_VatInvoice_PayloadMatchesReq0001Example()
     {
@@ -140,7 +160,7 @@ public class TransferDetailsServiceTests
 
         Assert.False(data.QrAvailable);
         Assert.Equal("Faktura w walucie EUR: kod QR obsługuje tylko przelew w PLN.", data.QrMessage);
-        Assert.Contains("Kwota: 123.45 EUR", text);
+        Assert.Contains("Kwota: 123,45 EUR", text);
         Assert.Contains("Nr rachunku: " + ValidAccount, text);
     }
 
@@ -211,7 +231,7 @@ public class TransferDetailsServiceTests
 
         Assert.False(data.QrAvailable);
         Assert.Equal(AccountMessage, data.QrMessage);
-        Assert.Contains("Kwota: 123.45 PLN", _sut.BuildTransferText(invoice));
+        Assert.Contains("Kwota: 123,45 PLN", _sut.BuildTransferText(invoice));
         if (!string.IsNullOrEmpty(account))
             Assert.Contains("Nr rachunku: " + account, _sut.BuildTransferText(invoice));
     }

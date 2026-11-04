@@ -66,7 +66,7 @@ function transferOf(overrides: Partial<TransferDetailsResponse> = {}): TransferD
     amount: 1476,
     currency: 'PLN',
     title: 'FV/2026/001',
-    transferText: 'Odbiorca: Vendor A\nKwota: 1,476.00 PLN',
+    transferText: 'Odbiorca: Vendor A\nKwota: 1\u00A0476,00 PLN',
     qrCodeBase64: QR_IMAGE,
     qrMessage: null,
     ...overrides,
@@ -410,7 +410,7 @@ describe('InvoiceDetailsPage', () => {
     })
 
     it('copies the server text unchanged', async () => {
-      const transferText = 'Odbiorca: Vendor A\nKwota: 1,476.00 PLN\nTytul: FV/2026/001'
+      const transferText = 'Odbiorca: Vendor A\nKwota: 1\u00A0476,00 PLN\nTytul: FV/2026/001'
       const writeText = vi.fn().mockResolvedValue(undefined)
       Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
       mockOne(invoiceOf(), transferOf({ transferText, qrCodeBase64: null, qrMessage: NO_ACCOUNT }))

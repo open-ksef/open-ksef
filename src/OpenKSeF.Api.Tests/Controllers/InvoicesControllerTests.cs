@@ -209,7 +209,7 @@ public class InvoicesControllerTests : IDisposable
         Assert.Null(response.QrCodeBase64);
         Assert.Equal(message, response.QrMessage);
         Assert.Equal(account, response.RecipientAccount);
-        Assert.Contains("Kwota: 100.00 PLN", response.TransferText);
+        Assert.Contains("Kwota: 100,00 PLN", response.TransferText);
         _qrCode.DidNotReceive().GenerateTransferQr(Arg.Any<TransferData>());
     }
 
