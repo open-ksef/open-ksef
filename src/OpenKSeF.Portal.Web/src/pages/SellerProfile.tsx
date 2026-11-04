@@ -232,6 +232,29 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
             <p className="inv-help" id="bank-help">
               Rachunek spoza białej listy to ryzyko podatkowe nabywcy przy płatnościach powyżej 15 000 zł.
             </p>
+            <div className="inv-grid">
+              <TextField id="bank-swift" label="SWIFT" value={form.bankSwift} error={errors.bankSwift} mono onChange={(bankSwift) => set({ bankSwift })} />
+              <TextField id="bank-name" label="Nazwa banku" value={form.bankName} error={errors.bankName} onChange={(bankName) => set({ bankName })} />
+            </div>
+          </fieldset>
+
+          <fieldset className="inv-card" aria-describedby="foreign-bank-help">
+            <legend>Rachunek do faktur zagranicznych</legend>
+            <TextField
+              id="foreign-bank-account"
+              label="Numer rachunku (IBAN)"
+              value={form.foreignBankAccount}
+              error={errors.foreignBankAccount}
+              mono
+              onChange={(foreignBankAccount) => set({ foreignBankAccount })}
+            />
+            <div className="inv-grid">
+              <TextField id="foreign-bank-swift" label="SWIFT" value={form.foreignBankSwift} error={errors.foreignBankSwift} mono onChange={(foreignBankSwift) => set({ foreignBankSwift })} />
+              <TextField id="foreign-bank-name" label="Nazwa banku" value={form.foreignBankName} error={errors.foreignBankName} onChange={(foreignBankName) => set({ foreignBankName })} />
+            </div>
+            <p className="inv-help" id="foreign-bank-help">
+              Opcjonalny. Bez niego faktura zagraniczna pokaże rachunek główny jako PL + NRB.
+            </p>
           </fieldset>
 
           <section className="inv-card" aria-labelledby="numbering-title">

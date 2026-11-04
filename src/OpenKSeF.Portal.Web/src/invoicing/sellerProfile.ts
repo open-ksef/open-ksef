@@ -12,6 +12,11 @@ export interface SellerProfileFormValue {
   cashAccounting: boolean
   numberingPattern: string
   nextNumber: string
+  bankSwift: string
+  bankName: string
+  foreignBankAccount: string
+  foreignBankSwift: string
+  foreignBankName: string
 }
 
 export const NUMBER_TOKENS = ['{nr}', '{MM}', '{RRRR}'] as const
@@ -37,6 +42,11 @@ export function fromProfile(profile: SellerProfileResponse): SellerProfileFormVa
     cashAccounting: profile.cashAccounting,
     numberingPattern: profile.numberingPattern,
     nextNumber: String(profile.nextNumber),
+    bankSwift: profile.bankSwift ?? '',
+    bankName: profile.bankName ?? '',
+    foreignBankAccount: profile.foreignBankAccount ?? '',
+    foreignBankSwift: profile.foreignBankSwift ?? '',
+    foreignBankName: profile.foreignBankName ?? '',
   }
 }
 
@@ -66,6 +76,11 @@ export function toSellerProfileRequest(
     bankAccount: text(digitsOnly(form.bankAccount)),
     cashAccounting: form.cashAccounting,
     numberingPattern: form.numberingPattern,
+    bankSwift: form.bankSwift.trim(),
+    bankName: form.bankName.trim(),
+    foreignBankAccount: form.foreignBankAccount.trim(),
+    foreignBankSwift: form.foreignBankSwift.trim(),
+    foreignBankName: form.foreignBankName.trim(),
     ...(numberChanged
       ? { nextNumber: Number(form.nextNumber), nextNumberPeriod: numberingPeriod(form.numberingPattern, today) }
       : {}),

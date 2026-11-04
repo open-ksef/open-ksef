@@ -10,6 +10,7 @@ interface VatRateSelectProps {
   label?: string
   disabled?: boolean
   describedBy?: string
+  rates?: typeof VAT_RATES
 }
 
 export function VatRateSelect({
@@ -19,6 +20,7 @@ export function VatRateSelect({
   label = 'Stawka VAT',
   disabled = false,
   describedBy,
+  rates = VAT_RATES,
 }: VatRateSelectProps): ReactElement {
   return (
     <select
@@ -29,7 +31,7 @@ export function VatRateSelect({
       disabled={disabled}
       onChange={(event) => onChange(event.target.value as VatRateCode)}
     >
-      {VAT_RATES.map((rate) => (
+      {rates.map((rate) => (
         <option key={rate.code} value={rate.code}>
           {rate.label}
         </option>

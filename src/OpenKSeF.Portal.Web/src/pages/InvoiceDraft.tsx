@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import {
@@ -18,6 +18,7 @@ import { ErrorBanner } from '@/components/ErrorBanner'
 import { Icon } from '@/components/Icon'
 import { Skeleton } from '@/components/Skeleton'
 import { BuyerSection } from '@/components/invoicing/BuyerSection'
+import { CurrencySection } from '@/components/invoicing/CurrencySection'
 import { DatesSection } from '@/components/invoicing/DatesSection'
 import { ExemptionBasisField } from '@/components/invoicing/ExemptionBasisField'
 import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
@@ -32,14 +33,18 @@ import {
   emptyDraft,
   fromResponse,
   hasExemptLine,
+  missingTaxIdError,
   parseDecimal,
+  rateToInput,
   toDraftRequest,
   toFieldErrors,
+  withBuyer,
   type DraftFormValue,
 } from '@/invoicing/form'
-import { formatDate, formatMoney } from '@/invoicing/format'
+import { countryName, foreignAccountOf, foreignRateFor } from '@/invoicing/foreign'
+import { formatDate, formatDecimal, formatMoney } from '@/invoicing/format'
 import { isReissueBlocked } from '@/invoicing/status'
-import { computeTotals } from '@/invoicing/totals'
+import { computeTotals, FOREIGN_VAT_RATES } from '@/invoicing/totals'
 
 const EDITABLE: IssuedInvoiceStatus[] = ['Draft', 'Rejected']
 
@@ -144,9 +149,15 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
 
   async function saveDraft(stay = false): Promise<IssuedInvoiceResponse> {
     const snapshot = JSON.stringify(form)
-    const request = toDraftRequest(form)
+    const request = toDraftRequest(form, invoice?.exchangeRate)
     const saved = invoice ? await updateIssuedInvoice(tenantId, invoice.id, request) : await createIssuedInvoice(tenantId, request)
-    baseline.current = snapshot
+    if (form.currency !== 'PLN' && !form.exchangeRate.trim() && saved.exchangeRate) {
+      const withServerRate = { ...form, exchangeRate: rateToInput(saved.exchangeRate), exchangeRateDate: saved.exchangeRateDate ?? null }
+      baseline.current = JSON.stringify(withServerRate)
+      setForm(withServerRate)
+    } else {
+      baseline.current = snapshot
+    }
     setErrors([])
     setFailure(null)
     setWarnings(saved.warnings)
@@ -235,7 +246,8 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   const expectedNumber = form.issueDate.startsWith(profile.nextNumberPeriod) ? profile.nextNumberPreview : null
   const noticeState = location.state as { companyNotice?: string; companyId?: string } | null
   const companyNotice = noticeState?.companyId === tenantId ? noticeState.companyNotice : undefined
-  const totalText = formatMoney(totals.totalGross)
+  const totalText = formatMoney(totals.totalGross, form.currency)
+  const isForeign = form.buyer.kind === 'Foreign'
   const title = invoice?.status === 'Rejected' ? `Popraw fakturę ${invoice.number ?? ''}`.trim() : invoice ? 'Szkic faktury' : 'Nowa faktura'
   const issueButton = (
     <button
@@ -244,6 +256,11 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
       disabled={busy || !profile.isComplete}
       onClick={(event) => {
         issueOpener.current = event.currentTarget
+        const missingTaxId = missingTaxIdError(form)
+        if (missingTaxId) {
+          setErrors([missingTaxId])
+          return
+        }
         prepareIssue.mutate()
       }}
     >
@@ -267,6 +284,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   }
 
   const profileHref = `/company/invoice-data?tenantId=${encodeURIComponent(tenantId)}`
+  const updateForm = useCallback((update: (current: DraftFormValue) => DraftFormValue) => setForm(update), [])
 
   return (
     <form onSubmit={onSubmit} noValidate className="inv-form" aria-labelledby="draft-title">
@@ -302,8 +320,16 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
         {failure ? <ErrorBanner message={failure} /> : null}
         <ValidationSummary errors={errors} warnings={warnings} />
 
-        <BuyerSection value={form.buyer} fieldErrors={fieldErrors} onChange={(buyer) => setForm({ ...form, buyer })} />
-        <LinesTable lines={form.lines} fieldErrors={fieldErrors} onChange={(lines) => setForm({ ...form, lines })}>
+        <BuyerSection value={form.buyer} fieldErrors={fieldErrors} onChange={(buyer) => setForm(withBuyer(form, buyer))} />
+        <LinesTable
+          lines={form.lines}
+          currency={form.currency}
+          rates={isForeign ? FOREIGN_VAT_RATES : undefined}
+          newLineRate={isForeign ? foreignRateFor(form.buyer.countryCode) : undefined}
+          fieldErrors={fieldErrors}
+          onChange={(lines) => setForm({ ...form, lines })}
+        >
+          {isForeign ? <p className="inv-help">np I: nabywca spoza UE. np II: nabywca z UE (art. 100 ust. 1 pkt 4).</p> : null}
           {hasExemptLine(form.lines) ? (
             <ExemptionBasisField
               choice={form.exemptionChoice}
@@ -322,10 +348,24 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
             fieldErrors={fieldErrors}
             onChange={(dates) => setForm({ ...form, ...dates })}
           />
+          {isForeign ? (
+            <CurrencySection
+              tenantId={tenantId}
+              currency={form.currency}
+              exchangeRate={form.exchangeRate}
+              exchangeRateDate={form.exchangeRateDate}
+              issueDate={form.issueDate}
+              saleDate={form.saleDate}
+              fieldErrors={fieldErrors}
+              onUpdate={updateForm}
+            />
+          ) : null}
           <PaymentSection
             paymentMethod={form.paymentMethod}
             splitPayment={form.splitPayment}
             bankAccount={profile.bankAccount}
+            foreignInvoice={isForeign}
+            foreignAccount={isForeign ? foreignAccountOf(profile) : null}
             totalGross={totals.totalGross}
             profileHref={profileHref}
             onChange={(payment) => setForm({ ...form, ...payment })}
@@ -359,7 +399,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
             </button>
           </div>
         </div>
-        <VatSummary sticky rows={totals.vatSummary} totalNet={totals.totalNet} totalVat={totals.totalVat} totalGross={totals.totalGross} />
+        <VatSummary sticky rows={totals.vatSummary} totalNet={totals.totalNet} totalVat={totals.totalVat} totalGross={totals.totalGross} currency={form.currency} />
       </aside>
 
       <div className="inv-dock">
@@ -417,6 +457,8 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
               <dd>
                 {confirmFor.buyer.name || '—'}
                 {confirmFor.buyer.kind === 'Company' && confirmFor.buyer.nip ? <span className="mono"> · NIP {confirmFor.buyer.nip}</span> : null}
+                {confirmFor.buyer.countryCode ? ` · ${countryName(confirmFor.buyer.countryCode)}` : null}
+                {confirmFor.buyer.foreignId ? <span className="mono"> · {confirmFor.buyer.foreignId}</span> : null}
               </dd>
               <dt>Data wystawienia</dt>
               <dd>{formatDate(confirmFor.issueDate)}</dd>
@@ -424,6 +466,14 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
               <dd className="num" data-testid="confirm-total">
                 <b>{formatMoney(confirmFor.totalGross, confirmFor.currency)}</b>
               </dd>
+              {confirmFor.exchangeRate ? (
+                <>
+                  <dt>Kurs</dt>
+                  <dd className="num">
+                    1 {confirmFor.currency} = {formatDecimal(confirmFor.exchangeRate, 2)} PLN
+                  </dd>
+                </>
+              ) : null}
             </dl>
           </>
         ) : null}

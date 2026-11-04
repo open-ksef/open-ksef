@@ -131,9 +131,11 @@ export interface TenantDashboardSummaryResponse {
 
 export type KsefEnvironment = 'test' | 'demo' | 'production'
 
-export type VatRateCode = '23' | '8' | '5' | '0 KR' | 'zw'
+export type VatRateCode = '23' | '8' | '5' | '0 KR' | 'zw' | 'np I' | 'np II'
 
-export type BuyerKind = 'Company' | 'Person'
+export type BuyerKind = 'Company' | 'Person' | 'Foreign'
+
+export type BuyerIdType = 'VatUe' | 'Other' | 'None'
 
 export type PaymentMethod = 'Transfer' | 'Cash' | 'Card'
 
@@ -161,6 +163,11 @@ export interface SellerProfileRequest {
   numberingPattern: string | null
   nextNumber?: number | null
   nextNumberPeriod?: string | null
+  bankSwift?: string | null
+  bankName?: string | null
+  foreignBankAccount?: string | null
+  foreignBankSwift?: string | null
+  foreignBankName?: string | null
 }
 
 export interface SellerProfileResponse {
@@ -176,6 +183,11 @@ export interface SellerProfileResponse {
   isComplete: boolean
   nextNumberPreview: string
   ksefEnvironment: KsefEnvironment
+  bankSwift?: string | null
+  bankName?: string | null
+  foreignBankAccount?: string | null
+  foreignBankSwift?: string | null
+  foreignBankName?: string | null
 }
 
 export interface NipLookupResponse {
@@ -193,6 +205,9 @@ export interface IssuedInvoiceBuyer {
   name: string | null
   addressLine1: string | null
   addressLine2: string | null
+  countryCode?: string | null
+  idType?: BuyerIdType | null
+  foreignId?: string | null
 }
 
 export interface ExemptionBasis {
@@ -217,6 +232,9 @@ export interface IssuedInvoiceDraftRequest {
   splitPayment: boolean
   exemptionBasis: ExemptionBasis | null
   lines: IssuedInvoiceLineRequest[] | null
+  currency?: string | null
+  exchangeRate?: number | null
+  exchangeRateDate?: string | null
 }
 
 export interface IssuedInvoiceSeller {
@@ -226,6 +244,9 @@ export interface IssuedInvoiceSeller {
   addressLine2: string | null
   bankAccount: string | null
   cashAccounting: boolean
+  iban?: string | null
+  swift?: string | null
+  bankName?: string | null
 }
 
 export interface IssuedInvoiceLineResponse {
@@ -281,6 +302,14 @@ export interface IssuedInvoiceResponse {
   createdAt: string
   updatedAt: string
   issuedAt: string | null
+  exchangeRate?: number | null
+  exchangeRateDate?: string | null
+}
+
+export interface ExchangeRateProposalResponse {
+  currency: string
+  rate: number | null
+  tableDate: string | null
 }
 
 export interface IssuedInvoiceListItemResponse {
@@ -296,11 +325,12 @@ export interface IssuedInvoiceListItemResponse {
   currency: string
   ksefNumber: string | null
   needsAttention: boolean
+  buyerCountryCode?: string | null
+  buyerIdType?: BuyerIdType | null
+  buyerForeignId?: string | null
 }
 
 export interface IssuedFeedItemResponse extends Omit<IssuedInvoiceListItemResponse, 'dueDate'> {
   source: 'OpenKSeF' | 'External'
   dueDate: string | null
-  buyerIdType: string | null
-  buyerForeignId: string | null
 }

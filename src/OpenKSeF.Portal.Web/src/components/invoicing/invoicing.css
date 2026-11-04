@@ -164,6 +164,10 @@
   flex: 0 0 auto;
 }
 
+.inv-rate > button {
+  align-self: flex-start;
+}
+
 .inv-days .inv-chips {
   flex-wrap: nowrap;
   gap: 4px;

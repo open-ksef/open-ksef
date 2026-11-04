@@ -2,12 +2,15 @@ import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 
 import type { PaymentMethod } from '@/api/types'
-import { formatNrb } from '@/invoicing/format'
+import type { ForeignAccount } from '@/invoicing/foreign'
+import { formatIban, formatNrb } from '@/invoicing/format'
 
 interface PaymentSectionProps {
   paymentMethod: PaymentMethod
   splitPayment: boolean
   bankAccount: string | null
+  foreignInvoice?: boolean
+  foreignAccount?: ForeignAccount | null
   totalGross: number
   profileHref: string
   onChange: (value: { paymentMethod: PaymentMethod; splitPayment: boolean }) => void
@@ -21,7 +24,7 @@ const methods: { method: PaymentMethod; label: string }[] = [
 
 const MPP_THRESHOLD = 15000
 
-export function PaymentSection({ paymentMethod, splitPayment, bankAccount, totalGross, profileHref, onChange }: PaymentSectionProps): ReactElement {
+export function PaymentSection({ paymentMethod, splitPayment, bankAccount, foreignInvoice = false, foreignAccount = null, totalGross, profileHref, onChange }: PaymentSectionProps): ReactElement {
   const current = { paymentMethod, splitPayment }
 
   return (
@@ -39,14 +42,16 @@ export function PaymentSection({ paymentMethod, splitPayment, bankAccount, total
             </button>
           ))}
         </div>
-        <label className="inv-check">
-          <input
-            type="checkbox"
-            checked={splitPayment}
-            onChange={(event) => onChange({ ...current, splitPayment: event.target.checked })}
-          />
-          Mechanizm podzielonej płatności
-        </label>
+        {foreignInvoice ? null : (
+          <label className="inv-check">
+            <input
+              type="checkbox"
+              checked={splitPayment}
+              onChange={(event) => onChange({ ...current, splitPayment: event.target.checked })}
+            />
+            Mechanizm podzielonej płatności
+          </label>
+        )}
       </div>
       {paymentMethod === 'Transfer' ? (
         <div className="inv-account">
@@ -54,12 +59,14 @@ export function PaymentSection({ paymentMethod, splitPayment, bankAccount, total
             Rachunek
           </span>
           <span className="mono" aria-labelledby="bank-account-label">
-            {formatNrb(bankAccount)}
+            {foreignInvoice ? (foreignAccount ? formatIban(foreignAccount.iban) : '—') : formatNrb(bankAccount)}
           </span>
+          {foreignAccount?.swift ? <span className="mono">SWIFT {foreignAccount.swift}</span> : null}
+          {foreignAccount?.bankName ? <span>{foreignAccount.bankName}</span> : null}
           <Link to={profileHref}>Zmień w Danych do faktur</Link>
         </div>
       ) : null}
-      {totalGross > MPP_THRESHOLD && !splitPayment ? (
+      {!foreignInvoice && totalGross > MPP_THRESHOLD && !splitPayment ? (
         <div className="inv-alert inv-alert--warning" role="status">
           Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15).
         </div>
