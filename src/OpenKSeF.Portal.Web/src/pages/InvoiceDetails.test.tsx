@@ -304,6 +304,94 @@ describe('InvoiceDetailsPage', () => {
     })
   })
 
+  describe('issued invoice', () => {
+    const issued = (overrides: Partial<InvoiceResponse> = {}) => invoiceOf({ direction: 'Issued', dueDate: null, lines: null, ...overrides })
+
+    it('has no payment, paid or due date, and never asks for the transfer', async () => {
+      mockOne(issued())
+
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      expect(testId('invoice-detail-direction')?.textContent).toBe('Wystawiona')
+      expect(testId('transfer-details')).toBeNull()
+      expect(testId('qr-code-section')).toBeNull()
+      expect(testId('toggle-paid-btn')).toBeNull()
+      expect(testId('invoice-detail-paid-status')).toBeNull()
+      expect(testId('invoice-detail-due-date')).toBeNull()
+      expect(getTransferDetails).not.toHaveBeenCalled()
+    })
+
+    it('back link returns to Wystawione, keeping the list search', async () => {
+      mockOne(issued())
+
+      await render({ pathname: '/invoices/KSEF-001', search: '?tenantId=tenant-1', state: { listSearch: '?tenantId=tenant-1&status=Accepted' } })
+
+      expect(testId('invoice-details-back-link')?.textContent).toBe('Wystawione')
+      expect(testId('invoice-details-back-link')?.getAttribute('href')).toBe('/issued?tenantId=tenant-1&status=Accepted')
+    })
+
+    it('back link keeps the company on a deep link', async () => {
+      mockOne(issued())
+
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      expect(testId('invoice-details-back-link')?.getAttribute('href')).toBe('/issued?tenantId=tenant-1')
+    })
+
+    it('says the lines are not downloaded yet', async () => {
+      mockOne(issued())
+
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      expect(testId('invoice-lines-empty')?.textContent).toBe('Pozycji tej faktury nie pobrano jeszcze z KSeF.')
+    })
+  })
+
+  describe('buyer id', () => {
+    it.each([
+      ['Nip', '5260250274', null, 'NIP nabywcy', '5260250274'],
+      [null, '5260250274', null, 'NIP nabywcy', '5260250274'],
+      ['VatUe', null, 'DE123456789', 'VAT UE', 'DE123456789'],
+      ['Other', null, 'GB-998877', 'Nr podatkowy', 'GB-998877'],
+    ])('type %s is labelled by its type', async (buyerIdType, buyerNip, buyerForeignId, label, value) => {
+      mockOne(invoiceOf({ direction: 'Issued', buyerIdType, buyerNip, buyerForeignId }))
+
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      expect(testId('invoice-detail-buyer-id-label')?.textContent).toBe(label)
+      expect(testId('invoice-detail-buyer-nip')?.textContent).toBe(value)
+    })
+
+    it('type None has no id row', async () => {
+      mockOne(invoiceOf({ direction: 'Issued', buyerIdType: 'None', buyerNip: null, buyerForeignId: null }))
+
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      expect(testId('invoice-detail-buyer-id-label')).toBeNull()
+    })
+  })
+
+  describe('VAT amount', () => {
+    it('is labelled PLN on a foreign currency invoice, also a received one', async () => {
+      mockOne(invoiceOf({ currency: 'EUR', amountNet: 100, amountVat: 98.4, amountGross: 123 }))
+
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      expect(testId('invoice-detail-vat-label')?.textContent).toBe('VAT w przeliczeniu na PLN')
+      expect(plain('invoice-detail-amount-vat')).toBe('98,40 PLN')
+      expect(plain('invoice-detail-amount-net')).toBe('100,00 EUR')
+    })
+
+    it('stays plain VAT on a PLN invoice', async () => {
+      mockOne()
+
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      expect(testId('invoice-detail-vat-label')?.textContent).toBe('VAT')
+      expect(plain('invoice-detail-amount-vat')).toBe('276,00 PLN')
+    })
+  })
+
   describe('payment card rules', () => {
     const NO_ACCOUNT = 'Brak poprawnego numeru rachunku na fakturze.'
     const CURRENCY = 'Faktura w walucie EUR: kod QR obsługuje tylko przelew w PLN.'

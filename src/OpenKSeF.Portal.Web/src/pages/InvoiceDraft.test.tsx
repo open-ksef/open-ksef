@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate, type InitialEntry, type NavigateFunction } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createIssuedInvoice, getIssuedInvoice, listIssuedInvoices, updateIssuedInvoice } from '@/api/endpoints/issuedInvoices'
+import { createIssuedInvoice, getIssuedInvoice, listIssuedFeed, updateIssuedInvoice } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { listTenants } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
@@ -27,7 +27,7 @@ vi.mock('@/api/endpoints/issuedInvoices', () => ({
   createIssuedInvoice: vi.fn(),
   updateIssuedInvoice: vi.fn(),
   getIssuedInvoice: vi.fn(),
-  listIssuedInvoices: vi.fn(),
+  listIssuedFeed: vi.fn(),
 }))
 
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
@@ -233,7 +233,7 @@ describe('issuing pages', () => {
 
   it('list row opens its invoice on a click anywhere, and a page past the end goes back', async () => {
     const rows = [{ id: 'i-2', status: 'Accepted', number: 'FV/1/11/2026', buyerName: 'Inny', buyerNip: null, issueDate: '2026-11-02', dueDate: '2026-11-16', totalNet: 1, totalGross: 2, currency: 'PLN', ksefNumber: null, needsAttention: true }] as never
-    vi.mocked(listIssuedInvoices).mockImplementation(async (_tenant, query) =>
+    vi.mocked(listIssuedFeed).mockImplementation(async (_tenant, query) =>
       (query?.page ?? 1) > 1
         ? { items: [], page: query?.page ?? 1, pageSize: 20, totalCount: 1, totalPages: 1 }
         : { items: rows, page: 1, pageSize: 20, totalCount: 1, totalPages: 1 },
@@ -249,7 +249,7 @@ describe('issuing pages', () => {
   })
 
   it('a double click on the buyer name stays on the list, a single click opens', async () => {
-    vi.mocked(listIssuedInvoices).mockResolvedValue({
+    vi.mocked(listIssuedFeed).mockResolvedValue({
       items: [{ id: 'i-2', status: 'Accepted', number: 'FV/1/11/2026', buyerName: 'Inny', buyerNip: null, issueDate: '2026-11-02', dueDate: '2026-11-16', totalNet: 1, totalGross: 2, currency: 'PLN', ksefNumber: null, needsAttention: false }] as never,
       page: 1,
       pageSize: 20,
@@ -444,10 +444,10 @@ describe('issuing pages', () => {
   })
 
   it('list shows issued invoices and drafts', async () => {
-    vi.mocked(listIssuedInvoices).mockResolvedValue({
+    vi.mocked(listIssuedFeed).mockResolvedValue({
       items: [
-        { id: 'i-1', status: 'Draft', number: null, buyerName: 'Nabywca', buyerNip: '5260250274', issueDate: '2026-11-01', dueDate: '2026-11-15', totalNet: 100, totalGross: 123, currency: 'PLN', ksefNumber: null, needsAttention: false },
-        { id: 'i-2', status: 'Accepted', number: 'FV/1/11/2026', buyerName: 'Inny', buyerNip: null, issueDate: '2026-11-02', dueDate: '2026-11-16', totalNet: 12327.64, totalGross: 15162, currency: 'PLN', ksefNumber: '5260250274-20261102-ABC', needsAttention: true },
+        { source: 'OpenKSeF', buyerIdType: null, buyerForeignId: null, id: 'i-1', status: 'Draft', number: null, buyerName: 'Nabywca', buyerNip: '5260250274', issueDate: '2026-11-01', dueDate: '2026-11-15', totalNet: 100, totalGross: 123, currency: 'PLN', ksefNumber: null, needsAttention: false },
+        { source: 'OpenKSeF', buyerIdType: null, buyerForeignId: null, id: 'i-2', status: 'Accepted', number: 'FV/1/11/2026', buyerName: 'Inny', buyerNip: null, issueDate: '2026-11-02', dueDate: '2026-11-16', totalNet: 12327.64, totalGross: 15162, currency: 'PLN', ksefNumber: '5260250274-20261102-ABC', needsAttention: true },
       ],
       page: 1,
       pageSize: 20,
@@ -471,14 +471,46 @@ describe('issuing pages', () => {
     expect(stuckRow.textContent).toContain('Wymaga uwagi')
 
     await act(async () => buttonByText(container, 'Szkice').click())
-    await waitFor(() => vi.mocked(listIssuedInvoices).mock.calls.some((call) => call[1]?.status === 'Draft'))
+    await waitFor(() => vi.mocked(listIssuedFeed).mock.calls.some((call) => call[1]?.status === 'Draft'))
+  })
+
+  it('marks a sale from another tool, opens it on the received details route, and sums nothing', async () => {
+    const row = { status: 'Accepted', buyerNip: null, buyerIdType: null, buyerForeignId: null, issueDate: '2026-11-02', needsAttention: false }
+    vi.mocked(listIssuedFeed).mockResolvedValue({
+      items: [
+        { ...row, id: 'x-1', source: 'External', number: 'EXT/1', buyerName: 'Foreign Ltd', dueDate: null, totalNet: 100, totalGross: 100, currency: 'GBP', ksefNumber: '1111111111-20261102-ABC/1' },
+        { ...row, id: 'i-1', source: 'OpenKSeF', number: 'FV/1', buyerName: 'Polska', dueDate: '2026-11-16', totalNet: 100, totalGross: 123, currency: 'PLN', ksefNumber: '1111111111-20261102-DEF' },
+      ] as never,
+      page: 1,
+      pageSize: 20,
+      totalCount: 2,
+      totalPages: 1,
+    })
+    await render('/issued?tenantId=t-1&q=a', true)
+    await waitFor(() => container.querySelectorAll('tbody tr').length === 2)
+
+    const [external, own] = container.querySelectorAll('tbody tr')
+    expect(external.querySelector('.issued-status')?.textContent).toContain('Spoza OpenKSeF')
+    expect(external.querySelector('.received-status-mobile')?.textContent).toContain('Spoza OpenKSeF')
+    expect(own.textContent).not.toContain('Spoza OpenKSeF')
+    expect(external.querySelectorAll('button')).toHaveLength(0)
+    expect(external.querySelector('.received-gross')?.textContent?.replace(/\s/g, ' ')).toContain('100,00 GBP')
+    expect(own.querySelector('.received-gross')?.textContent?.replace(/\s/g, ' ')).toContain('123,00 PLN')
+    expect(external.querySelector('.issued-due')?.textContent).toBe('—')
+    expect(container.querySelector('tfoot')).toBeNull()
+    expect(container.textContent).not.toContain('223')
+    expect(own.querySelector('a')?.getAttribute('href')).toBe('/issued/i-1?tenantId=t-1')
+
+    await act(async () => external.querySelector<HTMLElement>('.received-gross')!.click())
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 300)))
+    await waitFor(() => container.querySelector('[data-testid="location"]')?.textContent === '/invoices/1111111111-20261102-ABC%2F1?tenantId=t-1')
   })
 
   describe('list without invoices', () => {
     const credentialRow = (hasCredential: boolean) => ({ tenantId: 't-1', tenantDisplayName: 'A', hasCredential, credentialType: null, lastUpdatedAt: null })
 
     beforeEach(() => {
-      vi.mocked(listIssuedInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 })
+      vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 })
     })
 
     it('with a token says where invoices appear, and hides the filters', async () => {

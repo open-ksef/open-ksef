@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactElement } from 'react'
-import { Link, Navigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom'
 
-import { listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
+import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
-import type { IssuedInvoiceListItemResponse, IssuedInvoiceStatus } from '@/api/types'
+import type { IssuedFeedItemResponse, IssuedInvoiceStatus } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
@@ -36,8 +36,17 @@ function lastPageSearch(current: URLSearchParams, lastPage: number): string {
   return next.toString()
 }
 
+function ExternalMark({ row }: { row: IssuedFeedItemResponse }): ReactElement | null {
+  return row.source === 'External' ? (
+    <span className="received-sub" title="Faktura wystawiona w innym programie, tylko do odczytu">
+      Spoza OpenKSeF
+    </span>
+  ) : null
+}
+
 export function IssuedInvoiceListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
   const tenantsQuery = useTenants()
   const { tenantId } = useCompany()
   const status = (searchParams.get('status') ?? '') as IssuedInvoiceStatus | ''
@@ -53,7 +62,7 @@ export function IssuedInvoiceListPage(): ReactElement {
   const listQuery = useQuery({
     queryKey: ['issued-invoices', tenantId, status, month, q, page],
     queryFn: () =>
-      listIssuedInvoices(tenantId, {
+      listIssuedFeed(tenantId, {
         page,
         pageSize: PAGE_SIZE,
         status: status || undefined,
@@ -98,10 +107,13 @@ export function IssuedInvoiceListPage(): ReactElement {
   const totalCount = listQuery.data?.totalCount ?? 0
   const firstRow = (page - 1) * PAGE_SIZE + 1
   const pastLastPage = listQuery.isSuccess && rows.length === 0 && totalCount > 0 && page > totalPages
-  const detailsPath = (row: IssuedInvoiceListItemResponse): string => `/issued/${encodeURIComponent(row.id)}?${tenantQuery}`
-  const onRowClick = useRowOpen(detailsPath)
+  const detailsPath = (row: IssuedFeedItemResponse): string =>
+    row.source === 'External'
+      ? `/invoices/${encodeURIComponent(row.ksefNumber!)}?${tenantQuery}`
+      : `/issued/${encodeURIComponent(row.id)}?${tenantQuery}`
+  const onRowClick = useRowOpen(detailsPath, { listSearch: location.search })
 
-  const columns: TableColumn<IssuedInvoiceListItemResponse>[] = [
+  const columns: TableColumn<IssuedFeedItemResponse>[] = [
     {
       key: 'buyerName',
       label: 'Nabywca i numer',
@@ -144,6 +156,7 @@ export function IssuedInvoiceListPage(): ReactElement {
           </span>
           <span className="received-status-mobile">
             <KsefStatusBadge status={row.status} />
+            <ExternalMark row={row} />
           </span>
         </>
       ),
@@ -155,6 +168,7 @@ export function IssuedInvoiceListPage(): ReactElement {
       render: (row) => (
         <>
           <KsefStatusBadge status={row.status} />
+          <ExternalMark row={row} />
           {row.needsAttention ? <span className="issued-attention">Wymaga uwagi</span> : null}
         </>
       ),
@@ -206,7 +220,7 @@ export function IssuedInvoiceListPage(): ReactElement {
           message={
             hasCredential === false
               ? 'Możesz przygotować szkic. Do wysłania do KSeF potrzebny jest token z uprawnieniem zapisu.'
-              : 'Wystawiona faktura pojawi się tutaj razem ze statusem w KSeF.'
+              : 'Wystawiona faktura pojawi się tutaj razem ze statusem w KSeF. Sprzedaż z innych programów zobaczysz po pobraniu z KSeF.'
           }
           actions={
             <div className="ui-empty-state__actions">

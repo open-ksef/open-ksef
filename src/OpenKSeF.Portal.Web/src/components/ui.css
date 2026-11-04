@@ -1359,6 +1359,10 @@ label {
   min-width: 0;
 }
 
+.invoice-details .two > .col--flat {
+  display: contents;
+}
+
 .invoice-details .card {
   min-width: 0;
   padding: 16px;

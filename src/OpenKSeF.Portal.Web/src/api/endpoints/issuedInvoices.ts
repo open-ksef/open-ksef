@@ -1,5 +1,6 @@
 import { apiClient } from '../client'
 import type {
+  IssuedFeedItemResponse,
   IssuedInvoiceDraftRequest,
   IssuedInvoiceListItemResponse,
   IssuedInvoiceResponse,
@@ -23,6 +24,10 @@ export function listIssuedInvoices(
   params?: ListIssuedInvoicesParams,
 ): Promise<PagedResult<IssuedInvoiceListItemResponse>> {
   return apiClient.get<PagedResult<IssuedInvoiceListItemResponse>>(base(tenantId), { query: params })
+}
+
+export function listIssuedFeed(tenantId: string, params?: ListIssuedInvoicesParams): Promise<PagedResult<IssuedFeedItemResponse>> {
+  return apiClient.get<PagedResult<IssuedFeedItemResponse>>(`${base(tenantId)}/feed`, { query: params })
 }
 
 export function getIssuedInvoice(tenantId: string, id: string): Promise<IssuedInvoiceResponse> {
