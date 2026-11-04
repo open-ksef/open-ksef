@@ -5,6 +5,8 @@ public static class EuCountries
 {
     private const string Greece = "GR";
     private const string GreeceVatPrefix = "EL";
+    private const string France = "FR";
+    private const int FrenchVatLengthWithPrefix = 13;
 
     private static readonly HashSet<string> Codes =
     [
@@ -21,7 +23,10 @@ public static class EuCountries
     public static string VatNumberWithoutPrefix(string number, string countryCode)
     {
         var cleaned = new string(number.Where(c => !char.IsWhiteSpace(c) && c is not ('-' or '.')).ToArray()).ToUpperInvariant();
-        var prefix = VatPrefix(countryCode);
-        return cleaned.StartsWith(prefix, StringComparison.Ordinal) ? cleaned[prefix.Length..] : cleaned;
+        var hasPrefix = cleaned.StartsWith(VatPrefix(countryCode), StringComparison.Ordinal)
+            || (countryCode == Greece && cleaned.StartsWith(Greece, StringComparison.Ordinal));
+
+        // A French number has 11 characters and its key can be FR, so only a longer value carries a prefix. Saves and copies normalize a stored number again.
+        return hasPrefix && (countryCode != France || cleaned.Length == FrenchVatLengthWithPrefix) ? cleaned[2..] : cleaned;
     }
 }

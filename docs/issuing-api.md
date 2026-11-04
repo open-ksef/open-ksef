@@ -73,13 +73,13 @@ Buyer `kind` `Foreign` is a business outside Poland, for services only. Domain r
   - other country with an id: `Other`, written as `KodKraju` + `NrID`.
   - other country without an id: `None`, written as `BrakID = 1`.
 - `XI` (Northern Ireland) counts as a third country, because this feature covers services only.
-- `buyer.nip` stays a Polish NIP only, and is null on kind `Foreign` (`INV-VAL-031`).
+- `buyer.nip` stays a Polish NIP only, and is null on kind `Foreign` (`INV-VAL-031`). `PL` + a valid NIP in `buyer.foreignId` is blocked with the same code on that field. A bare 10-digit id with a valid NIP checksum only warns (`INV-W-FOREIGN-NIP`), because other countries use such numbers.
 - `lines[].vatRate`: only `np I` outside the EU and `np II` in the EU. Other kinds cannot use them (`INV-VAL-060`).
 - `currency`: kind `Foreign` can use PLN or a code valid in the FA(3) XSD. Other kinds stay PLN (`INV-VAL-091`). An unknown code passes the draft and fails at issue with `INV-XSD`.
 - `exchangeRate`, up to 6 dp, required at issue for non-PLN (`INV-VAL-092`), written as `KursWaluty` on every line. `exchangeRateDate` is the NBP table date; null means the user typed the rate.
-- `P_18 = 1` is set by the server, `P_18A = 2` always, `splitPayment` is ignored on kind `Foreign`, and `INV-W-MPP` does not apply.
+- `P_18 = 1` is set by the server, `P_18A = 2` always, `P_16 = 2` also for a cash-accounting seller, `splitPayment` is ignored on kind `Foreign`, and `INV-W-MPP` does not apply.
 
-Rate source: the user decides. On create, update and copy, the server proposes a rate only when a non-PLN `Foreign` draft has none: the NBP table A mid of the last working day before min(`issueDate`, `saleDate`). A given rate is stored as sent. A date change does not replace a stored rate, so a client that wants a fresh proposal calls `exchange-rate` and sends the result. A currency change without a rate drops the stored rate. If NBP fails or has no such currency, the rate stays null and the draft saves; `exchange-rate` then returns `rate: null`, `tableDate: null`. NBP timeout: 3 s.
+Rate source: the user decides. On create, update and copy, the server proposes a rate only when a non-PLN `Foreign` draft has none: the NBP table A mid of the last working day before min(`issueDate`, `saleDate`). A given rate is stored as sent. A date change does not replace a stored rate, so a client that wants a fresh proposal calls `exchange-rate` and sends the result. At issue, a rate with `exchangeRateDate` is checked: `INV-VAL-094` when the table date is not before min(`issueDate`, `saleDate`), or when NBP names another table. A typed rate is not checked, and an NBP failure does not block. A currency change without a rate drops the stored rate. If NBP fails or has no such currency, the rate stays null and the draft saves; `exchange-rate` then returns `rate: null`, `tableDate: null`. NBP timeout: 3 s.
 
 Optional request fields: absent or null keeps the stored value (`buyer.countryCode`, `buyer.foreignId`, `currency`, `exchangeRate`, seller profile bank fields). An empty string clears `buyer.countryCode`, `buyer.foreignId` and the seller profile bank fields. A request with kind `Company` or `Person` drops the foreign buyer fields.
 
@@ -166,7 +166,7 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | INV-VAL-022 | `issueDate` | Numer X należy do okresu 11/2026. Zostaw datę wystawienia w tym okresie albo użyj „Kopiuj jako nową”. Nowa faktura dostanie nowy numer, a ten pozostanie niewykorzystany. (rejected invoice PUT 422) |
 | INV-VAL-023 | `number` | Numer X jest już w KSeF, więc nie można go wysłać ponownie. Numer KSeF: Y. Sprawdź tę fakturę w KSeF. Jeśli to ta sama sprzedaż, nie wystawiaj jej ponownie. (issue 422; the KSeF number sentence only when known) |
 | INV-VAL-030 | `buyer.countryCode` | Podaj kraj nabywcy inny niż Polska |
-| INV-VAL-031 | `buyer.nip` | Nabywca z polskim NIP to firma, nie firma zagraniczna |
+| INV-VAL-031 | `buyer.nip`, `buyer.foreignId` | Nabywca z polskim NIP to firma, nie firma zagraniczna |
 | INV-VAL-032 | `buyer.vatUe` | Dla nabywcy z UE podaj numer VAT UE: do 12 liter lub cyfr, bez kodu kraju |
 | INV-VAL-050 | `lines[i].name` | Każda pozycja musi mieć nazwę |
 | INV-VAL-051 | `lines[i].quantity` | Ilość na pozycji musi być większa od zera |
@@ -188,9 +188,11 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | INV-VAL-091 | `currency` | Waluta inna niż PLN jest dostępna tylko dla firmy zagranicznej |
 | INV-VAL-092 | `exchangeRate` | Podaj kurs waluty większy od zera |
 | INV-VAL-093 | `exchangeRate` | Kurs waluty poza zakresem lub ponad 6 miejsc po przecinku (draft 400) |
+| INV-VAL-094 | `exchangeRate` | Kurs NBP z tabeli z RRRR-MM-DD nie pasuje do dat faktury. Pobierz kurs ponownie albo wpisz go ręcznie. (issue 422) |
 | INV-XSD | null | Faktura nie spełnia schematu FA(3): ... (issue 422, one per schema error) |
 | INV-W-NIP | `buyer.nip` | NIP nabywcy ma niepoprawną sumę kontrolną (warning) |
 | INV-W-MPP | `splitPayment` | Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15) (warning, gross > 15 000,00) |
+| INV-W-FOREIGN-NIP | `buyer.foreignId` | Numer nabywcy wygląda jak polski NIP. Nabywca z polskim NIP to firma, nie firma zagraniczna (warning) |
 | SP-VAL-001 | `bankAccount` | Niepoprawny numer rachunku (seller profile PUT) |
 | SP-VAL-002 | `numberingPattern` | Wzorzec numeracji musi zawierać {nr} |
 | SP-VAL-003 | `nextNumber` | Następny numer musi być większy od zera |

@@ -100,7 +100,7 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
     }
 
     private static XElement Adnotacje(IssuedInvoice invoice) => new(Ns + "Adnotacje",
-        new XElement(Ns + "P_16", invoice.SellerCashAccounting ? 1 : 2),
+        new XElement(Ns + "P_16", invoice.SellerCashAccounting && invoice.BuyerKind != BuyerKind.Foreign ? 1 : 2),
         new XElement(Ns + "P_17", 2),
         new XElement(Ns + "P_18", invoice.BuyerKind == BuyerKind.Foreign ? 1 : 2),
         new XElement(Ns + "P_18A", invoice.SplitPayment ? 1 : 2),

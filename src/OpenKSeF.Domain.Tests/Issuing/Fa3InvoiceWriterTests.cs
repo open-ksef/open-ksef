@@ -355,6 +355,28 @@ public class Fa3InvoiceWriterTests
     }
 
     [Fact]
+    public void Foreign_CashAccountingSeller_HasNoP16Annotation()
+    {
+        var invoice = Issued(i =>
+        {
+            i.SetBuyer(BuyerKind.Foreign, null, "Example Buyer Ltd", "1 Test Street", null);
+            i.SetForeignBuyer("GB", null);
+            i.AddLine("Consulting", "h", 1, 100m, VatRate.NotTaxable);
+        }, cashAccounting: true);
+
+        Assert.Equal("2", Adnotacja(WriteValid(invoice), "P_16"));
+    }
+
+    [Fact]
+    public void NpII_GreekPrefixGr_IsStrippedFromNrVatUe()
+    {
+        var root = WriteValid(ForeignInvoice("GR", "GR123456789", VatRate.NotTaxableArt100, "EUR", 4.2m));
+
+        Assert.Equal("EL", BuyerIds(root).Element(Ns + "KodUE")!.Value);
+        Assert.Equal("123456789", BuyerIds(root).Element(Ns + "NrVatUE")!.Value);
+    }
+
+    [Fact]
     public void Foreign_MainAccount_WrittenAsPlNrbWithSwiftAndBankName()
     {
         var root = WriteValid(ForeignInvoice("GB", null, VatRate.NotTaxable, configureProfile: p => p.SetBankDetails("TESTPLPW", "Bank Testowy S.A.", null, null, null)));

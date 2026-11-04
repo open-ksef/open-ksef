@@ -87,9 +87,14 @@ public static class IssueChecks
             warnings.Add(new("INV-W-NIP", "buyer.nip", "NIP nabywcy ma niepoprawną sumę kontrolną"));
         if (invoice.BuyerKind != BuyerKind.Foreign && invoice.TotalGross > SplitPaymentWarningThreshold && !invoice.SplitPayment)
             warnings.Add(new("INV-W-MPP", "splitPayment", "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)"));
+        if (invoice.BuyerKind == BuyerKind.Foreign && NipValidator.HasValidChecksum(ForeignIdLettersAndDigits(invoice)))
+            warnings.Add(new("INV-W-FOREIGN-NIP", "buyer.foreignId", "Numer nabywcy wygląda jak polski NIP. Nabywca z polskim NIP to firma, nie firma zagraniczna"));
 
         return warnings;
     }
+
+    private static string ForeignIdLettersAndDigits(IssuedInvoice invoice) =>
+        new string((invoice.BuyerForeignId ?? "").Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
 
     private static void AddForeignBuyerErrors(IssuedInvoice invoice, List<InvoiceCheck> errors)
     {
@@ -97,6 +102,8 @@ public static class IssueChecks
             errors.Add(new("INV-VAL-030", "buyer.countryCode", "Podaj kraj nabywcy inny niż Polska"));
         if (invoice.BuyerNip is not null)
             errors.Add(new("INV-VAL-031", "buyer.nip", "Nabywca z polskim NIP to firma, nie firma zagraniczna"));
+        if (ForeignIdLettersAndDigits(invoice) is ['P', 'L', .. var nip] && NipValidator.HasValidChecksum(nip))
+            errors.Add(new("INV-VAL-031", "buyer.foreignId", "Nabywca z polskim NIP to firma, nie firma zagraniczna"));
         if (EuCountries.Contains(invoice.BuyerCountryCode) && !VatUeNumber.IsMatch(invoice.BuyerForeignId ?? ""))
             errors.Add(new("INV-VAL-032", "buyer.vatUe", "Dla nabywcy z UE podaj numer VAT UE: do 12 liter lub cyfr, bez kodu kraju"));
     }

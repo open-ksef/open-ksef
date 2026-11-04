@@ -58,6 +58,31 @@ public class ForeignInvoiceTests
     }
 
     [Theory]
+    [InlineData("GB", "PL5261040828")]
+    [InlineData("GB", "pl 526-104-08-28")]
+    public void PolishNipInForeignId_IsBlockedOnForeignId(string country, string id) =>
+        AssertSingleError(Draft(country, id), "INV-VAL-031", "buyer.foreignId");
+
+    [Fact]
+    public void PolishNipAsEuVatNumber_IsBlockedOnForeignId() =>
+        AssertSingleError(Draft("DE", "PL5261040828", "EUR", 4.2m, VatRate.NotTaxableArt100), "INV-VAL-031", "buyer.foreignId");
+
+    [Theory]
+    [InlineData("GB", "5261040828", VatRate.NotTaxable)]
+    [InlineData("BE", "5261040828", VatRate.NotTaxableArt100)]
+    public void BareTenDigitsWithNipChecksum_OnlyWarns(string country, string id, VatRate rate)
+    {
+        var invoice = Draft(country, id, "EUR", 4.2m, rate);
+
+        Assert.Empty(Errors(invoice));
+        Assert.Contains(IssueChecks.Warnings(invoice), w => w is { Code: "INV-W-FOREIGN-NIP", Field: "buyer.foreignId" });
+    }
+
+    [Fact]
+    public void OrdinaryForeignId_HasNoNipWarning() =>
+        Assert.Empty(IssueChecks.Warnings(Draft("GB", "GB-TEST-000111")));
+
+    [Theory]
     [InlineData(null)]
     [InlineData("TOO-LONG-VAT-NUMBER-123")]
     public void EuBuyerWithoutUsableVatNumber_IsBlockedOnVatUe(string? vatNumber) =>
@@ -178,6 +203,11 @@ public class ForeignInvoiceTests
     [InlineData("DE", "de 123-456.789", "DE", "123456789")]
     [InlineData("AT", "ATU12345678", "AT", "U12345678")]
     [InlineData("EL", "EL123456789", "GR", "123456789")]
+    [InlineData("GR", "GR123456789", "GR", "123456789")]
+    [InlineData("FR", "FR12123456789", "FR", "12123456789")]
+    [InlineData("FR", "12123456789", "FR", "12123456789")]
+    [InlineData("FR", "FRFR123456789", "FR", "FR123456789")]
+    [InlineData("FR", "FR123456789", "FR", "FR123456789")]
     public void SetForeignBuyer_NormalizesEuVatNumber(string country, string entered, string storedCountry, string stored)
     {
         var invoice = Draft(country, entered, "EUR", 4.2m, VatRate.NotTaxableArt100);
@@ -185,6 +215,18 @@ public class ForeignInvoiceTests
         Assert.Equal(storedCountry, invoice.BuyerCountryCode);
         Assert.Equal(stored, invoice.BuyerForeignId);
         Assert.Equal(IssuedInvoice.BuyerIdVatUe, invoice.BuyerIdType);
+    }
+
+    [Fact]
+    public void FrenchKeyFr_SurvivesRepeatedSaves()
+    {
+        var invoice = Draft("FR", "FRFR123456789", "EUR", 4.2m, VatRate.NotTaxableArt100);
+
+        invoice.SetForeignBuyer(null, null);
+        Assert.Equal("FR123456789", invoice.BuyerForeignId);
+
+        invoice.SetForeignBuyer("FR", invoice.BuyerForeignId);
+        Assert.Equal("FR123456789", invoice.BuyerForeignId);
     }
 
     [Fact]

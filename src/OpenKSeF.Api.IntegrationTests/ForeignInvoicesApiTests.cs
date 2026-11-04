@@ -104,6 +104,13 @@ public class ForeignInvoicesApiTests : IDisposable
         return Encoding.UTF8.GetString(stored.SentXml!);
     }
 
+    private async Task<string?> NumberAsync(Guid id)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        return (await db.IssuedInvoices.AsNoTracking().SingleAsync(i => i.Id == id)).Number;
+    }
+
     [Fact]
     public async Task ThirdCountryNpI_IssuesWithProposedRateAndFa3Fields()
     {
@@ -213,6 +220,59 @@ public class ForeignInvoicesApiTests : IDisposable
         var moved = await UpdateAsync(tenantId, draft.Id, ForeignDraft(exchangeRate: null, issueDate: "2026-11-02"));
 
         Assert.Equal(5.5m, moved.ExchangeRate);
+        Assert.Empty(_factory.ExchangeRates.Calls);
+    }
+
+    [Fact]
+    public async Task ProposedRate_AfterDateChange_BlocksIssue_UntilRefreshed()
+    {
+        var tenantId = await CreateTenantAsync();
+        _factory.ExchangeRates.Quote = Thursday;
+        var draft = await CreateAsync(tenantId, ForeignDraft());
+        var moved = await UpdateAsync(tenantId, draft.Id, ForeignDraft(exchangeRate: null, issueDate: "2026-11-10"));
+        Assert.Equal(Thursday.TableDate, moved.ExchangeRateDate);
+
+        var monday = new ExchangeRateQuote(5.3m, new DateOnly(2026, 11, 9));
+        _factory.ExchangeRates.Quote = monday;
+        var stale = await IssueRejectedAsync(tenantId, draft.Id);
+        Assert.Contains(stale.Errors, e => e is { Code: "INV-VAL-094", Field: "exchangeRate" });
+        Assert.Null(await NumberAsync(draft.Id));
+
+        await UpdateAsync(tenantId, draft.Id, ForeignDraft(exchangeRate: monday.Rate, exchangeRateDate: monday.TableDate, issueDate: "2026-11-10"));
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task ProposedRate_FromCutoffDayOrLater_BlocksIssue_EvenWhenNbpIsDown()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateAsync(tenantId, ForeignDraft(exchangeRate: 5.2m, exchangeRateDate: new DateOnly(2026, 11, 6)));
+        _factory.ExchangeRates.Quote = null;
+
+        var rejected = await IssueRejectedAsync(tenantId, draft.Id);
+
+        Assert.Contains(rejected.Errors, e => e.Code == "INV-VAL-094");
+    }
+
+    [Fact]
+    public async Task ProposedRate_WhenNbpIsDownAtIssue_Passes()
+    {
+        var tenantId = await CreateTenantAsync();
+        _factory.ExchangeRates.Quote = Thursday;
+        var draft = await CreateAsync(tenantId, ForeignDraft());
+        _factory.ExchangeRates.Quote = null;
+
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task TypedRate_IsNotCheckedAgainstNbpAtIssue()
+    {
+        var tenantId = await CreateTenantAsync();
+        _factory.ExchangeRates.Quote = Thursday;
+        var draft = await CreateAsync(tenantId, ForeignDraft(exchangeRate: 5.5m));
+
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null)).StatusCode);
         Assert.Empty(_factory.ExchangeRates.Calls);
     }
 

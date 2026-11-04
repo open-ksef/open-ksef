@@ -31,6 +31,11 @@ public class NbpExchangeRateSourceTests
         }
     }
 
+    private sealed class FixedTime : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(2026, 11, 20, 12, 0, 0, TimeSpan.Zero);
+    }
+
     private static HttpResponseMessage NbpRange(HttpRequestMessage request)
     {
         var range = Regex.Match(request.RequestUri!.AbsolutePath, @"/(\d{4}-\d{2}-\d{2})/(\d{4}-\d{2}-\d{2})/?$");
@@ -49,7 +54,7 @@ public class NbpExchangeRateSourceTests
     private static (NbpExchangeRateSource Source, StubHandler Handler) Create(Func<HttpRequestMessage, HttpResponseMessage> respond)
     {
         var handler = new StubHandler(respond);
-        return (new NbpExchangeRateSource(new HttpClient(handler) { BaseAddress = NbpExchangeRateSource.BaseAddress }, NullLogger<NbpExchangeRateSource>.Instance), handler);
+        return (new NbpExchangeRateSource(new HttpClient(handler) { BaseAddress = NbpExchangeRateSource.BaseAddress }, new FixedTime(), NullLogger<NbpExchangeRateSource>.Instance), handler);
     }
 
     [Theory]
@@ -115,6 +120,31 @@ public class NbpExchangeRateSourceTests
         var (source, _) = Create(_ => Json("<html>maintenance</html>"));
 
         Assert.Null(await source.LatestMidBeforeAsync("GBP", new DateOnly(2026, 11, 6)));
+    }
+
+    [Fact]
+    public async Task BadCharset_GivesNull()
+    {
+        var (source, _) = Create(_ =>
+        {
+            var response = Json("{}");
+            response.Content.Headers.ContentType!.CharSet = "not-a-charset";
+            return response;
+        });
+
+        Assert.Null(await source.LatestMidBeforeAsync("GBP", new DateOnly(2026, 11, 6)));
+    }
+
+    [Theory]
+    [InlineData("0001-01-01")]
+    [InlineData("2002-01-02")]
+    [InlineData("2026-11-22")]
+    public async Task DateOutsideNbpRange_GivesNullWithoutARequest(string date)
+    {
+        var (source, handler) = Create(NbpRange);
+
+        Assert.Null(await source.LatestMidBeforeAsync("GBP", DateOnly.Parse(date)));
+        Assert.Empty(handler.Requests);
     }
 
     [Fact]

@@ -260,6 +260,8 @@ public class IssuedInvoiceService(
         if (errors.Count > 0)
             throw new InvoiceValidationException(errors);
 
+        await EnsureProposedRateIsCurrentAsync(invoice, ct);
+
         var now = Now();
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         // Before the counter row: DeleteTenantAsync locks the tenant first, so the reverse order could deadlock.
@@ -430,6 +432,18 @@ public class IssuedInvoiceService(
         var quote = await exchangeRates.LatestMidBeforeAsync(invoice.Currency, Min(invoice.IssueDate, invoice.SaleDate), ct);
         if (quote is not null)
             invoice.SetCurrency(null, quote.Rate, quote.TableDate);
+    }
+
+    private async Task EnsureProposedRateIsCurrentAsync(IssuedInvoice invoice, CancellationToken ct)
+    {
+        if (invoice.Currency == IssuedInvoice.DefaultCurrency || invoice.ExchangeRateDate is not { } tableDate)
+            return;
+
+        var cutoff = Min(invoice.IssueDate, invoice.SaleDate);
+        var expected = await exchangeRates.LatestMidBeforeAsync(invoice.Currency, cutoff, ct);
+        if (tableDate >= cutoff || (expected is not null && expected.TableDate != tableDate))
+            throw new InvoiceValidationException([new("INV-VAL-094", "exchangeRate",
+                $"Kurs NBP z tabeli z {tableDate:yyyy-MM-dd} nie pasuje do dat faktury. Pobierz kurs ponownie albo wpisz go ręcznie.")]);
     }
 
     private static DateOnly Min(DateOnly a, DateOnly b) => a < b ? a : b;
