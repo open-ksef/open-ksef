@@ -38,7 +38,7 @@ jobs:
             > I have read the CLA Document and I hereby sign the CLA
 
             This is required to allow the project maintainers to offer OpenKSeF
-            under both the open-source [Elastic License 2.0](https://github.com/${{ github.repository }}/blob/main/LICENSE)
+            under both the [Elastic License 2.0](https://github.com/${{ github.repository }}/blob/main/LICENSE)
             and commercial licensing terms.
           custom-pr-sign-comment: "I have read the CLA Document and I hereby sign the CLA"
           custom-allsigned-prcomment: "All contributors have signed the CLA. Thank you!"

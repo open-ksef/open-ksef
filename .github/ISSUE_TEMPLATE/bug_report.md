@@ -26,7 +26,7 @@ What actually happened.
 ## Environment
 
 - OS: [e.g., Windows 11, Ubuntu 24.04, macOS 15]
-- .NET SDK: [e.g., 8.0.400]
+- .NET SDK: [e.g., 10.0.100]
 - Docker: [e.g., 27.x]
 - Browser (if portal): [e.g., Chrome 130]
 

@@ -5,7 +5,7 @@ Thank you for your interest in contributing to OpenKSeF! This guide will help yo
 ## Getting started
 
 1. **Fork** the repository and clone your fork
-2. Set up the dev environment (see [README.md](README.md#quick-start-docker))
+2. Set up the dev environment (see [Development setup](#development-setup))
 3. Create a feature branch from `main`
 4. Make your changes
 5. Run tests to verify nothing is broken
@@ -16,7 +16,7 @@ Thank you for your interest in contributing to OpenKSeF! This guide will help yo
 ### Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- [Node.js 20+](https://nodejs.org/)
+- [Node.js 22](https://nodejs.org/), the version CI uses
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
 ### CIRFMF NuGet feed (KSeF.Client dependency)
@@ -26,10 +26,7 @@ The .NET projects depend on `KSeF.Client` from the [CIRFMF](https://github.com/C
 To restore NuGet packages you need a **GitHub Personal Access Token (classic)** with the `read:packages` scope:
 
 1. Go to [github.com/settings/tokens](https://github.com/settings/tokens) and generate a classic token with `read:packages`
-2. Copy `.env.example` to `.env` and fill in:
-   ```
-   NUGET_CIRFMF_PAT=<your-pat>
-   ```
+2. For image builds, put the token in `.env.test` as `NUGET_CIRFMF_USER` and `NUGET_CIRFMF_PAT` (see Quick start)
 3. Register the feed in your user-level NuGet config. Run this from the repository root, not from `src/`. Never put credentials in `src/nuget.config`: it is tracked.
    ```bash
    dotnet nuget add source "https://nuget.pkg.github.com/CIRFMF/index.json" \
@@ -39,21 +36,15 @@ To restore NuGet packages you need a **GitHub Personal Access Token (classic)** 
      --store-password-in-clear-text
    ```
 
-> **Note:** We are considering publishing `KSeF.Client` to [nuget.org](https://nuget.org) to simplify contributor onboarding. Track progress in the issue tracker.
-
 ### Quick start
 
-```bash
-cp .env.example .env
-# Edit .env with your values (NuGet credentials, etc.)
-docker compose -f docker-compose.dev.yml up -d --build
-```
-
-Or use the bootstrap script (PowerShell):
+Bootstrap script (PowerShell):
 
 ```powershell
-./scripts/dev-env-up.ps1
+./scripts/dev-env-up.ps1 -SkipNgrok
 ```
+
+The first run creates `.env.test` from `.env.test.example`, generates `ENCRYPTION_KEY` and stops until you set `NUGET_CIRFMF_USER` and `NUGET_CIRFMF_PAT` in `.env.test`. Run it again: it builds and starts the stack, then stops at the setup wizard. Complete the wizard at <http://localhost:8080> with Keycloak admin `admin` / `admin`, choose **Tylko lokalne (SignalR)** in step 5, then run `./scripts/dev-env-up.ps1 -SkipBuild -SkipNgrok` to create the test user. Omit `-SkipNgrok` only for mobile OIDC testing: it opens a public tunnel to your stack.
 
 ### Running tests
 
@@ -118,7 +109,7 @@ You sign by replying to the comment with a specific phrase. Your signature is
 recorded in this repository.
 
 The CLA grants the copyright holder the right to dual-license your
-contributions (open source + commercial), while you retain full copyright
+contributions (Elastic License 2.0 and commercial), while you retain full copyright
 ownership of your work.
 
 ## License

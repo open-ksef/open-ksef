@@ -3,7 +3,7 @@
 .SYNOPSIS
     Brings up the full OpenKSeF dev environment with optional ngrok HTTPS tunnel.
 .DESCRIPTION
-    1. Copies .env.test -> .env if .env is missing
+    1. Creates .env.test from .env.test.example if missing, copies .env.test -> .env if .env is missing
     2. docker compose -f docker-compose.dev.yml up -d --build
     3. Waits for Keycloak, API, and Portal health endpoints
     4. Detects or starts ngrok tunnel for HTTPS access (needed by Android OIDC)
@@ -84,9 +84,13 @@ function Update-KeycloakClientRedirects {
 $envFile = Join-Path $root '.env'
 $envTestFile = Join-Path $root '.env.test'
 
-if (-not (Test-Path $envFile)) {
-    Write-Host "[env] .env not found, copying .env.test ..." -ForegroundColor Yellow
-    Copy-Item $envTestFile $envFile
+if (-not (Test-Path $envTestFile)) {
+    Write-Host "[env] .env.test not found, creating it from .env.test.example ..." -ForegroundColor Yellow
+    $keyBytes = New-Object byte[] 32
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
+    $key = [Convert]::ToBase64String($keyBytes)
+    (Get-Content (Join-Path $root '.env.test.example')) -replace '^ENCRYPTION_KEY=$', "ENCRYPTION_KEY=$key" |
+        Set-Content $envTestFile -Encoding ascii
 }
 
 $testEnv = @{}
@@ -94,6 +98,15 @@ Get-Content $envTestFile | ForEach-Object {
     if ($_ -match '^\s*([^#][^=]+?)\s*=\s*(.+?)\s*$') {
         $testEnv[$Matches[1]] = $Matches[2]
     }
+}
+
+if (-not $SkipBuild -and -not (Test-Path $envFile) -and -not $testEnv['NUGET_CIRFMF_PAT']) {
+    throw "Set NUGET_CIRFMF_USER and NUGET_CIRFMF_PAT in .env.test (GitHub PAT with read:packages, see CONTRIBUTING.md), then run this script again."
+}
+
+if (-not (Test-Path $envFile)) {
+    Write-Host "[env] .env not found, copying .env.test ..." -ForegroundColor Yellow
+    Copy-Item $envTestFile $envFile
 }
 
 # ── 2. Start Docker services ─────────────────────────────────────────

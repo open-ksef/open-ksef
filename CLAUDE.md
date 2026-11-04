@@ -48,7 +48,7 @@ The CIRFMF library handles API communication but does **not** parse FA(2)/FA(3) 
 
 ### KSeF documentation reference
 
-The `ksef-docs/` folder (sibling to `open-ksef/` in the workspace) is a clone of [CIRFMF/ksef-docs](https://github.com/CIRFMF/ksef-docs) and contains:
+`ksef-docs/` is not in this repo. Clone [CIRFMF/ksef-docs](https://github.com/CIRFMF/ksef-docs) as a sibling of `open-ksef/`, or read it with `gh api repos/CIRFMF/ksef-docs/contents/<path>`. It contains:
 
 - Official KSeF API integrator guide (Polish)
 - `faktury/schemy/FA/` — XSD schemas for FA(2) and FA(3) invoice XML structures
@@ -104,11 +104,13 @@ The project uses direct `ApplicationDbContext` injection -- there is no generic 
 One-command bootstrap:
 
 ```powershell
-./scripts/dev-env-up.ps1          # start Docker, configure Keycloak, create test user
+./scripts/dev-env-up.ps1 -SkipNgrok  # start Docker, configure Keycloak, create test user (without -SkipNgrok: public ngrok tunnel)
 ./scripts/dev-env-down.ps1        # stop all (add -RemoveVolumes for clean state)
 ```
 
-The script copies `.env.test` to `.env` if missing. `.env.test` contains deterministic dev credentials with placeholder values for secrets. Real credentials (CIRFMF NuGet PAT, KSeF tokens) must be set in `.env` -- see `.env.example` for the full list.
+`.env.test` is gitignored. On a fresh clone the script creates it from `.env.test.example`, generates `ENCRYPTION_KEY`, and stops until `NUGET_CIRFMF_USER` and `NUGET_CIRFMF_PAT` are set there. It then copies `.env.test` to `.env` if missing. `E2E_TEST_NIP` and `E2E_TEST_KSEF_TOKEN` are optional.
+
+A fresh stack has no `openksef` realm: the script stops and asks for the setup wizard. Complete it at http://localhost:8080 (Keycloak admin `admin` / `admin`), never in Relay mode (step 5: **Tylko lokalne (SignalR)**), because Relay registers the dev stack on the production relay. Then run `./scripts/dev-env-up.ps1 -SkipBuild -SkipNgrok`.
 
 ### URLs (after dev-env-up)
 
@@ -158,12 +160,12 @@ Portal `/login` uses ROPC grant (no Keycloak redirect), Google IdP brokering, an
 
 ## MCP servers for agent testing
 
-Configured in `.cursor/mcp.json` (project-level). All connect to the local Docker stack.
+Configured in `.cursor/mcp.json` (Cursor only, gitignored, not in the repo). Claude Code reads `.mcp.json`; none is committed in this repo. All connect to the local Docker stack.
 
 | Server | Package | Purpose |
 |--------|---------|---------|
 | **playwright** | `@playwright/mcp` | Browse portal UI, fill forms, verify pages via accessibility tree. Config: `.cursor/playwright-mcp.config.json` (headless chromium, 1280x720, saveTrace). |
-| **postgres** | `@modelcontextprotocol/server-postgres` | Read-only SQL queries on `openksef` database. Inspect `tenants`, `invoice_headers`, `ksef_credentials`, `sync_states`, `device_tokens`. |
+| **postgres** | `crystaldba/postgres-mcp` (restricted mode, Docker) | Read-only SQL queries on `openksef` database. Inspect `"Tenants"`, `"InvoiceHeaders"`, `"KSeFCredentials"`, `"SyncStates"`, `"DeviceTokens"` (PascalCase, quote them). |
 | **keycloak** | `keycloak-mcp` | Manage Keycloak users/realms/clients. Tools: `create-user`, `delete-user`, `list-users`, `list-clients`, `assign-client-role`, etc. |
 | **context7** | (global) | Look up library/framework documentation on demand. |
 
@@ -171,11 +173,10 @@ Configured in `.cursor/mcp.json` (project-level). All connect to the local Docke
 
 1. **Start environment**: run `./scripts/dev-env-up.ps1` via shell
 2. **Browse portal**: use Playwright MCP to navigate http://localhost:8080, log in as `testuser`, inspect pages
-3. **Query database**: use Postgres MCP to run SQL (e.g. `SELECT * FROM tenants`)
+3. **Query database**: use Postgres MCP to run SQL (e.g. `SELECT * FROM "Tenants"`)
 4. **Manage users**: use Keycloak MCP to create/delete test users dynamically
 5. **Run unit tests**: `./scripts/run-all-tests.ps1` or individual `dotnet test` / `npm test`
-6. **Run Portal E2E**: `./scripts/run-e2e-portal.ps1`
-7. **Check docs**: use Context7 MCP for up-to-date API references
+6. **Check docs**: use Context7 MCP for up-to-date API references
 
 ### Debugging playbook
 
