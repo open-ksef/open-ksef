@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 using System.Linq;
@@ -44,7 +45,7 @@ public class InvoicesSummaryController : ControllerBase
             return Forbid();
 
         var query = _db.InvoiceHeaders
-            .Where(i => userTenantIds.Contains(i.TenantId));
+            .Where(i => userTenantIds.Contains(i.TenantId) && i.Direction == InvoiceDirection.Received);
 
         if (tenantId.HasValue)
             query = query.Where(i => i.TenantId == tenantId.Value);
@@ -95,7 +96,7 @@ public class InvoicesSummaryController : ControllerBase
 
         var headerQuery = _db.InvoiceHeaders
             .Include(i => i.Lines)
-            .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber);
+            .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber && i.Direction == InvoiceDirection.Received);
 
         if (tenantId.HasValue)
             headerQuery = headerQuery.Where(i => i.TenantId == tenantId.Value);
@@ -137,7 +138,10 @@ public class InvoicesSummaryController : ControllerBase
             i.PaidAt,
             i.VendorBankAccount,
             null,
-            i.DueDate);
+            i.DueDate,
+            i.Direction.ToString(),
+            i.BuyerIdType,
+            i.BuyerForeignId);
 
     private static InvoiceResponse ToDetailResponse(InvoiceHeader i) => new(
         i.Id,
@@ -166,5 +170,8 @@ public class InvoicesSummaryController : ControllerBase
                 l.UnitPriceNet, l.UnitPriceGross,
                 l.AmountNet, l.AmountGross, l.AmountVat, l.VatRate))
             .ToList(),
-        DueDate: i.DueDate);
+        DueDate: i.DueDate,
+        Direction: i.Direction.ToString(),
+        BuyerIdType: i.BuyerIdType,
+        BuyerForeignId: i.BuyerForeignId);
 }

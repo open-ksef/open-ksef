@@ -59,6 +59,44 @@ public class IssuedInvoicesController(
             return Ok(new PagedResult<IssuedInvoiceListItemResponse> { Items = items, Page = page, PageSize = pageSize, TotalCount = totalCount });
         });
 
+    [HttpGet("feed")]
+    [ProducesResponseType(typeof(PagedResult<IssuedFeedItemResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public Task<IActionResult> Feed(
+        Guid tenantId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? status = null,
+        [FromQuery] string? month = null,
+        [FromQuery] string? q = null,
+        CancellationToken ct = default) =>
+        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        {
+            page = Math.Max(page, 1);
+            pageSize = pageSize < 1 ? 20 : Math.Min(pageSize, 100);
+
+            var (rows, totalCount) = await issuedInvoices.FeedAsync(tenantId, new IssuedInvoiceListFilter(status, month, q), page, pageSize, ct);
+            var items = rows.Select(r => new IssuedFeedItemResponse(
+                r.Id,
+                r.IsExternal ? "External" : "OpenKSeF",
+                WireStatus(r.Status),
+                r.Number,
+                r.BuyerName,
+                r.BuyerNip,
+                r.BuyerIdType,
+                r.BuyerForeignId,
+                r.IssueDate,
+                r.DueDate,
+                r.TotalNet,
+                r.TotalGross,
+                r.Currency,
+                r.KsefNumber,
+                r.NeedsAttention)).ToList();
+
+            return Ok(new PagedResult<IssuedFeedItemResponse> { Items = items, Page = page, PageSize = pageSize, TotalCount = totalCount });
+        });
+
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Invoicing;
 
 namespace OpenKSeF.Domain.Services;
@@ -72,6 +74,108 @@ public class IssuedInvoiceService(
                 i.BuyerName!.ToLower().Contains(term)
                 || i.BuyerNip!.Contains(term)
                 || i.Number!.ToLower().Contains(term));
+        }
+
+        return query;
+    }
+
+    public async Task<(IReadOnlyList<IssuedFeedRow> Items, int TotalCount)> FeedAsync(
+        Guid tenantId, IssuedInvoiceListFilter filter, int page, int pageSize, CancellationToken ct = default)
+    {
+        var own = Query(tenantId, filter);
+        var take = (int)Math.Min((long)page * pageSize, int.MaxValue);
+
+        var ownRows = await own
+            .OrderByDescending(i => i.IssueDate)
+            .ThenByDescending(i => i.CreatedAt)
+            .ThenBy(i => i.Id)
+            .Take(take)
+            .Select(i => new IssuedFeedRow(
+                i.Id,
+                false,
+                i.Status,
+                i.Number,
+                i.BuyerName,
+                i.BuyerNip,
+                null,
+                null,
+                i.IssueDate,
+                i.DueDate,
+                i.TotalNet,
+                i.TotalGross,
+                IssuedInvoice.Currency,
+                i.KsefNumber,
+                i.EscalatedAt != null,
+                i.IssueDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                i.CreatedAt))
+            .ToListAsync(ct);
+        var totalCount = await own.CountAsync(ct);
+
+        List<IssuedFeedRow> externalRows = [];
+        if (string.IsNullOrWhiteSpace(filter.Status) || filter.Status == "Accepted")
+        {
+            var external = ExternalIssued(tenantId, filter);
+            externalRows = await external
+                .OrderByDescending(i => i.IssueDate)
+                .ThenByDescending(i => i.FirstSeenAt)
+                .ThenBy(i => i.Id)
+                .Take(take)
+                .Select(i => new IssuedFeedRow(
+                    i.Id,
+                    true,
+                    IssuedInvoiceStatus.Accepted,
+                    i.InvoiceNumber,
+                    i.BuyerName,
+                    i.BuyerNip,
+                    i.BuyerIdType,
+                    i.BuyerForeignId,
+                    IssuedInvoice.PolandDate(i.IssueDate),
+                    i.DueDate,
+                    i.AmountNet,
+                    i.AmountGross,
+                    i.Currency,
+                    i.KSeFInvoiceNumber,
+                    false,
+                    i.IssueDate,
+                    i.FirstSeenAt))
+                .ToListAsync(ct);
+            totalCount += await external.CountAsync(ct);
+        }
+
+        // Stable sort without Id: it keeps each query's order, and C# and Postgres order a Guid differently.
+        var items = ownRows.Concat(externalRows)
+            .OrderByDescending(r => r.SortDate)
+            .ThenByDescending(r => r.SeenAt)
+            .Skip(take - pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return (items, totalCount);
+    }
+
+    private IQueryable<InvoiceHeader> ExternalIssued(Guid tenantId, IssuedInvoiceListFilter filter)
+    {
+        var query = db.InvoiceHeaders.Where(i =>
+            i.TenantId == tenantId
+            && i.Direction == InvoiceDirection.Issued
+            && !db.IssuedInvoices.Any(o => o.TenantId == tenantId && o.KsefNumber == i.KSeFInvoiceNumber));
+
+        if (!string.IsNullOrWhiteSpace(filter.Month))
+        {
+            var from = DateOnly.ParseExact(filter.Month, "yyyy-MM", CultureInfo.InvariantCulture).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            var to = from.AddMonths(1);
+            query = query.Where(i => i.IssueDate >= from && i.IssueDate < to);
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Query))
+        {
+            var term = filter.Query.Trim().ToLower();
+            query = query.Where(i =>
+                i.BuyerName!.ToLower().Contains(term)
+                || i.BuyerNip!.Contains(term)
+                || i.BuyerForeignId!.ToLower().Contains(term)
+                || i.InvoiceNumber!.ToLower().Contains(term)
+                || i.KSeFInvoiceNumber.ToLower().Contains(term));
         }
 
         return query;

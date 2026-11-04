@@ -54,6 +54,9 @@ public class InvoiceService : IInvoiceService
                     VendorNip = invoice.VendorNip,
                     BuyerName = invoice.BuyerName,
                     BuyerNip = invoice.BuyerNip,
+                    BuyerIdType = invoice.BuyerIdType,
+                    BuyerForeignId = invoice.BuyerForeignId,
+                    Direction = invoice.Direction,
                     AmountNet = invoice.AmountNet,
                     AmountVat = invoice.AmountVat,
                     AmountGross = invoice.AmountGross,
@@ -83,11 +86,16 @@ public class InvoiceService : IInvoiceService
             }
             else
             {
+                if (existing.Direction != invoice.Direction)
+                    continue;
+
                 existing.InvoiceNumber = invoice.InvoiceNumber;
                 existing.VendorName = invoice.VendorName;
                 existing.VendorNip = invoice.VendorNip;
                 existing.BuyerName = invoice.BuyerName;
                 existing.BuyerNip = invoice.BuyerNip;
+                existing.BuyerIdType = invoice.BuyerIdType;
+                existing.BuyerForeignId = invoice.BuyerForeignId;
                 existing.AmountNet = invoice.AmountNet;
                 existing.AmountVat = invoice.AmountVat;
                 existing.AmountGross = invoice.AmountGross;

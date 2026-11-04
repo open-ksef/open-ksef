@@ -7,12 +7,15 @@ using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.DTOs;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Sync;
 
 public sealed class TenantSyncService : ITenantSyncService
 {
+    private const int IssuedFirstRunMonthsBack = 12;
+
     private readonly ApplicationDbContext _db;
     private readonly IKSeFGateway _gateway;
     private readonly IEncryptionService _encryption;
@@ -85,7 +88,7 @@ public sealed class TenantSyncService : ITenantSyncService
         if (forceFullResync)
         {
             var earliestIssueDate = await _db.InvoiceHeaders
-                .Where(h => h.TenantId == tenantId)
+                .Where(h => h.TenantId == tenantId && h.Direction == InvoiceDirection.Received)
                 .MinAsync(h => (DateTime?)h.IssueDate, cancellationToken);
             fullResyncWindowStart = earliestIssueDate?.AddHours(-1)
                 ?? DateTime.UtcNow.AddMonths(-_syncOptions.InitialSyncMonthsBack);
@@ -183,24 +186,12 @@ public sealed class TenantSyncService : ITenantSyncService
                                 session, i.KSeFNumber, cancellationToken);
                         }
 
-                        invoiceDtos.Add(new InvoiceDto(
-                            Number: i.KSeFNumber,
-                            ReferenceNumber: i.ReferenceNumber,
-                            InvoiceNumber: i.InvoiceNumber,
-                            VendorName: i.VendorName,
-                            VendorNip: i.VendorNip,
-                            BuyerName: i.BuyerName,
-                            BuyerNip: i.BuyerNip,
-                            AmountNet: i.AmountNet,
-                            AmountVat: i.AmountVat,
-                            AmountGross: i.AmountGross,
-                            Currency: i.Currency,
-                            IssueDate: i.IssueDate,
-                            AcquisitionDate: i.AcquisitionDate,
-                            InvoiceType: i.InvoiceType,
-                            VendorBankAccount: bankAccount,
-                            Lines: lines,
-                            DueDate: dueDate));
+                        invoiceDtos.Add(ToDto(i, InvoiceDirection.Received) with
+                        {
+                            VendorBankAccount = bankAccount,
+                            Lines = lines,
+                            DueDate = dueDate
+                        });
                     }
 
                     var newIds = await _invoiceService.UpsertInvoicesAsync(tenant.Id, invoiceDtos, notify);
@@ -222,6 +213,8 @@ public sealed class TenantSyncService : ITenantSyncService
                 _db.SyncStates.Add(syncState);
 
             await _db.SaveChangesAsync(cancellationToken);
+
+            await SyncIssuedInvoicesAsync(tenant, session, syncState, now, cancellationToken);
 
             return new TenantSyncResult(
                 TenantId: tenant.Id,
@@ -258,6 +251,93 @@ public sealed class TenantSyncService : ITenantSyncService
             }
         }
     }
+
+    private async Task SyncIssuedInvoicesAsync(
+        Tenant tenant, KSeFSession session, SyncState syncState, DateTime now, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var windowStart = syncState.IssuedContinuationAt ?? now.AddMonths(-IssuedFirstRunMonthsBack);
+
+            while (windowStart < now)
+            {
+                var windowEnd = windowStart.AddMonths(3);
+                if (windowEnd > now)
+                    windowEnd = now;
+
+                var pageOffset = 0;
+                KSeFInvoiceQueryResult result;
+                while (true)
+                {
+                    result = await _gateway.QueryInvoicesAsync(session, new KSeFQueryCriteria(
+                        SubjectNip: tenant.Nip,
+                        DateFrom: windowStart,
+                        DateTo: windowEnd,
+                        PageSize: _syncOptions.BatchSize,
+                        PageOffset: pageOffset,
+                        Direction: InvoiceDirection.Issued), cancellationToken);
+
+                    var sales = result.Invoices
+                        .Where(i => !(i.BuyerIdType == nameof(KSeF.Client.Core.Models.Invoices.BuyerIdentifierType.Nip) && i.BuyerNip == tenant.Nip))
+                        .Select(i => ToDto(i, InvoiceDirection.Issued))
+                        .ToList();
+                    if (sales.Count > 0)
+                        await _invoiceService.UpsertInvoicesAsync(tenant.Id, sales, notify: false);
+
+                    if (result.IsTruncated || result.Invoices.Count < _syncOptions.BatchSize)
+                        break;
+
+                    pageOffset++;
+                }
+
+                if (result.ContinuationAt is not { } next || next <= windowStart)
+                {
+                    _logger.LogWarning(
+                        "Issued invoice continuation did not advance past {WindowStart} for tenant {TenantId}",
+                        windowStart, tenant.Id);
+                    return;
+                }
+
+                if (next > windowEnd)
+                    next = windowEnd;
+
+                syncState.IssuedContinuationAt = next;
+                await _db.SaveChangesAsync(cancellationToken);
+
+                if (windowEnd == now && !result.IsTruncated)
+                    return;
+
+                windowStart = next;
+            }
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Issued invoice sync failed for tenant {TenantId}", tenant.Id);
+
+            // One context serves all tenants: a failed batch would fail their saves. Clear() would untrack their SyncState.
+            foreach (var entry in _db.ChangeTracker.Entries().Where(e => e.State != EntityState.Unchanged).ToList())
+                entry.State = EntityState.Detached;
+        }
+    }
+
+    private static InvoiceDto ToDto(KSeFInvoiceHeader i, InvoiceDirection direction) => new(
+        Number: i.KSeFNumber,
+        ReferenceNumber: i.ReferenceNumber,
+        InvoiceNumber: i.InvoiceNumber,
+        VendorName: i.VendorName,
+        VendorNip: i.VendorNip,
+        BuyerName: i.BuyerName,
+        BuyerNip: i.BuyerNip,
+        AmountNet: i.AmountNet,
+        AmountVat: i.AmountVat,
+        AmountGross: i.AmountGross,
+        Currency: i.Currency,
+        IssueDate: i.IssueDate,
+        AcquisitionDate: i.AcquisitionDate,
+        InvoiceType: i.InvoiceType,
+        Direction: direction,
+        BuyerIdType: i.BuyerIdType,
+        BuyerForeignId: i.BuyerForeignId);
 
     private async Task<(string? BankAccount, IReadOnlyList<Domain.DTOs.InvoiceLineDto>? Lines, DateOnly? DueDate)> DownloadInvoiceDetailsAsync(
         KSeFSession session, string ksefNumber, CancellationToken ct)

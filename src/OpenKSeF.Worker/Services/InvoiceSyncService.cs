@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using OpenKSeF.Domain.Data;
 using OpenKSeF.Sync;
 
 namespace OpenKSeF.Worker.Services;
@@ -25,6 +26,8 @@ public sealed class InvoiceSyncService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("InvoiceSyncService started. Interval: {Hours}h", _syncOptions.IntervalHours);
+
+        await MigrationHelper.WaitForMigrationsAsync(_scopeFactory, _logger, stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
