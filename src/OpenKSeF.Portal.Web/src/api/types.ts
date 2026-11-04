@@ -53,6 +53,9 @@ export interface InvoiceResponse {
   lines?: InvoiceLineResponse[] | null
   dueDate?: string | null
   isOverdue?: boolean
+  direction?: 'Received' | 'Issued' | null
+  buyerIdType?: string | null
+  buyerForeignId?: string | null
 }
 
 export interface TransferDetailsResponse {
@@ -293,4 +296,11 @@ export interface IssuedInvoiceListItemResponse {
   currency: string
   ksefNumber: string | null
   needsAttention: boolean
+}
+
+export interface IssuedFeedItemResponse extends Omit<IssuedInvoiceListItemResponse, 'dueDate'> {
+  source: 'OpenKSeF' | 'External'
+  dueDate: string | null
+  buyerIdType: string | null
+  buyerForeignId: string | null
 }

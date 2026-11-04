@@ -28,6 +28,12 @@ function amountLabel(invoice: InvoiceResponse): string {
   return 'Do zapłaty'
 }
 
+function buyerId(invoice: InvoiceResponse): { label: string; value: string } | null {
+  const type = invoice.buyerIdType
+  if (!type || type === 'Nip') return invoice.buyerNip ? { label: 'NIP nabywcy', value: invoice.buyerNip } : null
+  return invoice.buyerForeignId ? { label: type === 'VatUe' ? 'VAT UE' : 'Nr podatkowy', value: invoice.buyerForeignId } : null
+}
+
 function PaymentCard({
   invoice,
   transfer,
@@ -220,11 +226,14 @@ export function InvoiceDetailsPage(): ReactElement {
   })
 
   const invoice = invoiceQuery.data
+  const isIssued = invoice?.direction === 'Issued'
+  const listPath = isIssued ? '/issued' : '/invoices'
+  const buyer = invoice ? buyerId(invoice) : null
 
   const transferQuery = useQuery({
     queryKey: ['transfer-details', effectiveTenantId, invoice?.id],
     queryFn: () => getTransferDetails(effectiveTenantId, invoice!.id),
-    enabled: Boolean(effectiveTenantId && invoice?.id),
+    enabled: Boolean(effectiveTenantId && invoice?.id && !isIssued),
   })
 
   const paidMutation = useMutation({
@@ -273,16 +282,22 @@ export function InvoiceDetailsPage(): ReactElement {
     <section className="invoice-details">
       <Link
         data-testid="invoice-details-back-link"
-        to={listSearch !== undefined ? `/invoices${listSearch}` : tenantIdFromUrl ? `/invoices?tenantId=${encodeURIComponent(tenantIdFromUrl)}` : '/invoices'}
+        to={listSearch !== undefined ? `${listPath}${listSearch}` : tenantIdFromUrl ? `${listPath}?tenantId=${encodeURIComponent(tenantIdFromUrl)}` : listPath}
         className="back-link"
       >
         <Icon name="arrow-left" size={14} />
-        Otrzymane
+        {isIssued ? 'Wystawione' : 'Otrzymane'}
       </Link>
 
       <header className="page-header invoice-details-head">
         <h1 data-testid="invoice-detail-title">{invoice?.invoiceNumber ?? ksefInvoiceNumber}</h1>
-        {invoice ? <PaidStatus row={invoice} testId="invoice-detail-paid-status" /> : null}
+        {isIssued ? (
+          <span className="inv-badge inv-badge--neutral" data-testid="invoice-detail-direction">
+            Wystawiona
+          </span>
+        ) : invoice ? (
+          <PaidStatus row={invoice} testId="invoice-detail-paid-status" />
+        ) : null}
         <div className="invoice-walk">
           {previous !== undefined ? (
             <Link
@@ -326,18 +341,20 @@ export function InvoiceDetailsPage(): ReactElement {
       >
         {invoice ? (
           <div className="two">
-            <PaymentCard
-              invoice={invoice}
-              transfer={transferQuery.data}
-              isLoading={transferQuery.isLoading}
-              isError={transferQuery.isError}
-              isSaving={savingIds.includes(invoice.id)}
-              onTogglePaid={() =>
-                paidMutation.mutate({ tenantId: effectiveTenantId, invoiceId: invoice.id, isPaid: !invoice.isPaid })
-              }
-            />
+            {isIssued ? null : (
+              <PaymentCard
+                invoice={invoice}
+                transfer={transferQuery.data}
+                isLoading={transferQuery.isLoading}
+                isError={transferQuery.isError}
+                isSaving={savingIds.includes(invoice.id)}
+                onTogglePaid={() =>
+                  paidMutation.mutate({ tenantId: effectiveTenantId, invoiceId: invoice.id, isPaid: !invoice.isPaid })
+                }
+              />
+            )}
 
-            <div className="col">
+            <div className={isIssued ? 'col col--flat' : 'col'}>
               <section className="card" aria-labelledby="lines-title" data-testid="invoice-lines">
                 <h2 id="lines-title">Pozycje</h2>
                 {invoice.lines?.length ? (
@@ -371,7 +388,7 @@ export function InvoiceDetailsPage(): ReactElement {
                   </table>
                 ) : (
                   <p className="pay-state" data-testid="invoice-lines-empty">
-                    Brak pozycji w pobranych danych.
+                    {isIssued ? 'Pozycji tej faktury nie pobrano jeszcze z KSeF.' : 'Brak pozycji w pobranych danych.'}
                   </p>
                 )}
               </section>
@@ -391,11 +408,11 @@ export function InvoiceDetailsPage(): ReactElement {
                       <dd data-testid="invoice-detail-buyer-name">{invoice.buyerName}</dd>
                     </>
                   ) : null}
-                  {invoice.buyerNip ? (
+                  {buyer ? (
                     <>
-                      <dt>NIP nabywcy</dt>
+                      <dt data-testid="invoice-detail-buyer-id-label">{buyer.label}</dt>
                       <dd className="mono" data-testid="invoice-detail-buyer-nip">
-                        {invoice.buyerNip}
+                        {buyer.value}
                       </dd>
                     </>
                   ) : null}
@@ -413,10 +430,14 @@ export function InvoiceDetailsPage(): ReactElement {
                   ) : null}
                   <dt>Data wystawienia</dt>
                   <dd data-testid="invoice-detail-issue-date">{formatDate(invoice.issueDate)}</dd>
-                  <dt>Termin płatności</dt>
-                  <dd>
-                    <DueDate row={invoice} testId="invoice-detail-due-date" />
-                  </dd>
+                  {isIssued ? null : (
+                    <>
+                      <dt>Termin płatności</dt>
+                      <dd>
+                        <DueDate row={invoice} testId="invoice-detail-due-date" />
+                      </dd>
+                    </>
+                  )}
                   {invoice.acquisitionDate ? (
                     <>
                       <dt>Data przyjęcia w KSeF</dt>
@@ -425,8 +446,8 @@ export function InvoiceDetailsPage(): ReactElement {
                   ) : null}
                   <dt>Netto</dt>
                   <dd data-testid="invoice-detail-amount-net">{formatMoney(invoice.amountNet, invoice.currency)}</dd>
-                  <dt>VAT</dt>
-                  <dd data-testid="invoice-detail-amount-vat">{formatMoney(invoice.amountVat, invoice.currency)}</dd>
+                  <dt data-testid="invoice-detail-vat-label">{invoice.currency === 'PLN' ? 'VAT' : 'VAT w przeliczeniu na PLN'}</dt>
+                  <dd data-testid="invoice-detail-amount-vat">{formatMoney(invoice.amountVat, 'PLN')}</dd>
                   <dt>Brutto</dt>
                   <dd data-testid="invoice-detail-amount">{formatMoney(invoice.amountGross, invoice.currency)}</dd>
                   <dt>Numer KSeF</dt>

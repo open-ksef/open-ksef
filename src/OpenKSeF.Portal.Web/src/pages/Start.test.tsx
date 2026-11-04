@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { forceCredentialSync, listCredentials } from '@/api/endpoints/credentials'
 import { getDashboardOverview } from '@/api/endpoints/dashboard'
 import { listInvoices } from '@/api/endpoints/invoices'
-import { listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
+import { listIssuedFeed, listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
 import { listTenants } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
 import type {
@@ -27,7 +27,7 @@ import { StartPage } from './Start'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/invoices', () => ({ listInvoices: vi.fn() }))
-vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedInvoices: vi.fn() }))
+vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedInvoices: vi.fn(), listIssuedFeed: vi.fn() }))
 vi.mock('@/api/endpoints/dashboard', () => ({ getDashboardOverview: vi.fn() }))
 vi.mock('@/api/endpoints/credentials', () => ({ forceCredentialSync: vi.fn(), listCredentials: vi.fn() }))
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
@@ -138,6 +138,9 @@ describe('StartPage', () => {
     vi.mocked(listIssuedInvoices).mockImplementation(async (_, params) =>
       params?.status === 'Rejected' ? paged(rejected, rejectedTotal) : paged(recent, recentTotal),
     )
+    vi.mocked(listIssuedFeed).mockResolvedValue(
+      paged(recent.map((row) => ({ ...row, source: 'OpenKSeF' as const, buyerIdType: null, buyerForeignId: null })), recentTotal),
+    )
   }
 
   async function render(path = '/', seed?: (client: QueryClient) => void) {
@@ -230,6 +233,19 @@ describe('StartPage', () => {
     it('scans the newest 100 issued invoices', async () => {
       await render()
       expect(vi.mocked(listIssuedInvoices)).toHaveBeenCalledWith('a', expect.objectContaining({ pageSize: 100 }))
+    })
+
+    it('lists a sale from another tool in the recent card, opening its details, with no attention item', async () => {
+      useData()
+      vi.mocked(listIssuedInvoices).mockImplementation(async () => paged([]))
+      vi.mocked(listIssuedFeed).mockResolvedValue(
+        paged([{ ...issued({ id: 'x-1', number: 'EXT/1', ksefNumber: '1111111111-20261102-ABC/1' }), source: 'External', dueDate: null, buyerIdType: null, buyerForeignId: null }]),
+      )
+      await render()
+      expect(text()).not.toContain('Nie masz jeszcze wystawionych faktur')
+      expect(linkTo('/invoices/1111111111-20261102-ABC%2F1?tenantId=a')?.textContent).toBe('EXT/1')
+      expect(vi.mocked(listIssuedFeed)).toHaveBeenCalledWith('a', { page: 1, pageSize: 100 })
+      expect(attention()?.textContent).toContain('Nic nie wymaga uwagi.')
     })
 
     it('states a stale fetch without any reason, with a link to the token', async () => {

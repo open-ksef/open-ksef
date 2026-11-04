@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getDashboardOverview } from '@/api/endpoints/dashboard'
 import { getInvoiceByKSeFNumber, listInvoices } from '@/api/endpoints/invoices'
-import { getIssuedInvoice, listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
+import { getIssuedInvoice, listIssuedFeed, listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { listTenants } from '@/api/endpoints/tenants'
 import type { SellerProfileResponse } from '@/api/types'
@@ -22,7 +22,7 @@ import { useCompany } from './useCompany'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/invoices', () => ({ listInvoices: vi.fn(), getInvoiceByKSeFNumber: vi.fn() }))
-vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedInvoices: vi.fn(), getIssuedInvoice: vi.fn() }))
+vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedInvoices: vi.fn(), listIssuedFeed: vi.fn(), getIssuedInvoice: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn() }))
 vi.mock('@/api/endpoints/dashboard', () => ({ getDashboardOverview: vi.fn() }))
 vi.mock('@/api/endpoints/credentials', () => ({ forceCredentialSync: vi.fn() }))
@@ -71,6 +71,7 @@ describe('CompanyProvider', () => {
     vi.mocked(getDashboardOverview).mockResolvedValue([])
     vi.mocked(listInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 })
     vi.mocked(listIssuedInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 })
+    vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 })
     vi.mocked(getInvoiceByKSeFNumber).mockReturnValue(new Promise(() => {}))
     vi.mocked(getIssuedInvoice).mockReturnValue(new Promise(() => {}))
   })
@@ -207,7 +208,7 @@ describe('CompanyProvider', () => {
 
   it.each([
     ['received', '/invoices', <InvoiceListPage />, listInvoices],
-    ['issued', '/issued', <IssuedInvoiceListPage />, listIssuedInvoices],
+    ['issued', '/issued', <IssuedInvoiceListPage />, listIssuedFeed],
   ])('a switch on the %s list with no page in the URL queries the new company', async (_, path, page, list) => {
     localStorage.setItem(STORAGE_KEY, 'a')
     await render(path, page)

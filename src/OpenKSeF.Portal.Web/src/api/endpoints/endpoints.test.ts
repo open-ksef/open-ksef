@@ -148,6 +148,7 @@ describe('issuing endpoints', () => {
     }
 
     await issued.listIssuedInvoices('t-1', { page: 1, pageSize: 20, status: 'Draft' })
+    await issued.listIssuedFeed('t-1', { page: 2, status: 'Accepted' })
     await issued.getIssuedInvoice('t-1', 'i-1')
     await issued.createIssuedInvoice('t-1', draft)
     await issued.updateIssuedInvoice('t-1', 'i-1', draft)
@@ -169,6 +170,7 @@ describe('issuing endpoints', () => {
 
     expect(apiClientMock.get.mock.calls).toEqual([
       ['/tenants/t-1/issued-invoices', { query: { page: 1, pageSize: 20, status: 'Draft' } }],
+      ['/tenants/t-1/issued-invoices/feed', { query: { page: 2, status: 'Accepted' } }],
       ['/tenants/t-1/issued-invoices/i-1'],
       ['/tenants/t-1/issued-invoices/i-1/xml'],
       ['/tenants/t-1/issued-invoices/i-1/upo'],

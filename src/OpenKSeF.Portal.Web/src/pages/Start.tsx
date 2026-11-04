@@ -3,8 +3,8 @@ import { useState, type ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 
 import { listInvoices } from '@/api/endpoints/invoices'
-import { listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
-import type { InvoiceResponse, IssuedInvoiceListItemResponse, TenantDashboardSummaryResponse } from '@/api/types'
+import { listIssuedFeed, listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
+import type { InvoiceResponse, IssuedFeedItemResponse, IssuedInvoiceListItemResponse, TenantDashboardSummaryResponse } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
@@ -40,8 +40,13 @@ const invoicesWord = (count: number): string => {
   return lastDigit >= 2 && lastDigit <= 4 && (lastTwo < 12 || lastTwo > 14) ? 'faktury' : 'faktur'
 }
 
-const issuedPath = (row: IssuedInvoiceListItemResponse, tenantId: string): string =>
+const issuedPath = (row: { id: string }, tenantId: string): string =>
   `/issued/${encodeURIComponent(row.id)}?tenantId=${encodeURIComponent(tenantId)}`
+
+const feedPath = (row: IssuedFeedItemResponse, tenantId: string): string =>
+  row.source === 'External'
+    ? `/invoices/${encodeURIComponent(row.ksefNumber!)}?tenantId=${encodeURIComponent(tenantId)}`
+    : issuedPath(row, tenantId)
 
 interface AttentionItem {
   key: string
@@ -223,6 +228,11 @@ export function StartPage(): ReactElement {
     queryFn: () => listIssuedInvoices(tenantId, { page: 1, pageSize: ISSUED_SCANNED }),
     enabled: hasTenant,
   })
+  const feedQuery = useQuery({
+    queryKey: ['issued-invoices', tenantId, 'start', 'feed'],
+    queryFn: () => listIssuedFeed(tenantId, { page: 1, pageSize: ISSUED_SCANNED }),
+    enabled: hasTenant,
+  })
   const receivedQuery = useQuery({
     queryKey: ['invoices', tenantId, 'start', rowCount],
     queryFn: () => listInvoices(tenantId, { page: 1, pageSize: rowCount }),
@@ -240,7 +250,7 @@ export function StartPage(): ReactElement {
   const issuedRows = issuedQuery.data?.items ?? []
   const received = receivedQuery.data?.items ?? []
   const siblings = received.map((row) => row.ksefInvoiceNumber)
-  const recentIssued = issuedRows.filter((row) => row.status !== 'Draft').slice(0, rowCount)
+  const recentIssued = (feedQuery.data?.items ?? []).filter((row) => row.status !== 'Draft').slice(0, rowCount)
 
   const attention = issuedAttentionItems(rejectedQuery.data?.items ?? [], issuedRows, tenantId)
   if (state === 'full' && credential && !credential.hasCredential) {
@@ -337,18 +347,18 @@ export function StartPage(): ReactElement {
             <section className="start-card start-card--issued" aria-labelledby="start-issued">
               <h2 id="start-issued">Ostatnio wystawione</h2>
               <AsyncStateView
-                isLoading={issuedQuery.isLoading}
-                error={issuedQuery.error}
+                isLoading={feedQuery.isLoading}
+                error={feedQuery.error}
                 isEmpty={recentIssued.length === 0}
                 emptyTitle="Nie masz jeszcze wystawionych faktur"
                 emptyMessage="Wystawiona faktura pojawi się tutaj razem ze statusem w KSeF."
-                onRetry={() => void issuedQuery.refetch()}
+                onRetry={() => void feedQuery.refetch()}
               >
                 <ul className="start-list">
                   {recentIssued.map((row) => (
                     <li key={row.id}>
                       <span className="start-row__main">
-                        <Link to={issuedPath(row, tenantId)}>{row.number ?? '—'}</Link>
+                        <Link to={feedPath(row, tenantId)}>{row.number ?? '—'}</Link>
                         <span className="start-row__sub">{row.buyerName ?? '—'}</span>
                       </span>
                       <span className="start-row__end">

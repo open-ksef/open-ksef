@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import { RouterProvider, createMemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
+import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import { createTenant, deleteTenant, listTenants, updateTenant } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
 import { CompanyCard } from '@/company/CompanyCard'
@@ -20,7 +20,7 @@ vi.mock('@/api/endpoints/tenants', () => ({
   updateTenant: vi.fn(),
   deleteTenant: vi.fn(),
 }))
-vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedInvoices: vi.fn() }))
+vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedFeed: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn().mockResolvedValue({ ksefEnvironment: 'test' }) }))
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 
@@ -83,7 +83,7 @@ describe('Firma, Dane firmy', () => {
     vi.stubGlobal('localStorage', memoryStorage())
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     vi.mocked(listTenants).mockResolvedValue([company('a', 'Firma A', '1111111111'), company('b', 'Firma B', '2222222222')])
-    vi.mocked(listIssuedInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 7, totalPages: 7 })
+    vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 7, totalPages: 7 })
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -114,7 +114,7 @@ describe('Firma, Dane firmy', () => {
     expect(dialog.textContent).toContain('Firma A')
     expect(dialog.textContent).toContain('NIP 1111111111')
     expect(by('tenant-delete-invoices')?.textContent).toBe(
-      'Usuniemy też wystawione faktury i szkice tej firmy (liczba: 7). Nie będzie można ich przywrócić. Firmy nie usuniemy, jeśli jej faktury są w trakcie wysyłki do KSeF lub zostały przyjęte przez produkcyjny KSeF.',
+      'Usuniemy też wystawione faktury i szkice tej firmy (liczba: 7). Nie będzie można ich przywrócić. Firmy nie usuniemy, jeśli faktury wystawione w OpenKSeF są w trakcie wysyłki do KSeF lub zostały przyjęte przez produkcyjny KSeF. Faktury spoza OpenKSeF usuniemy tylko z tej aplikacji: w KSeF zostają.',
     )
     expect(dialog.textContent).toContain('numeracja zacznie się od 1')
     expect(deleteTenant).not.toHaveBeenCalled()
@@ -127,18 +127,18 @@ describe('Firma, Dane firmy', () => {
   it('counts only the company being deleted', async () => {
     await render('/company/details?tenantId=b')
     await openDelete()
-    expect(listIssuedInvoices).toHaveBeenCalledExactlyOnceWith('b', { pageSize: 1 })
+    expect(listIssuedFeed).toHaveBeenCalledExactlyOnceWith('b', { pageSize: 1 })
   })
 
   it('says there is nothing to lose when the count is zero', async () => {
-    vi.mocked(listIssuedInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 0, totalPages: 0 })
+    vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 0, totalPages: 0 })
     await render()
     await openDelete()
     expect(by('tenant-delete-invoices')?.textContent).toBe('Firma nie ma wystawionych faktur ani szkiców.')
   })
 
   it('states the unknown count and still allows confirm when the count fails', async () => {
-    vi.mocked(listIssuedInvoices).mockRejectedValue(new Error('down'))
+    vi.mocked(listIssuedFeed).mockRejectedValue(new Error('down'))
     await render()
     const dialog = await openDelete()
     expect(by('tenant-delete-invoices')?.textContent).toContain('Nie udało się sprawdzić liczby')
