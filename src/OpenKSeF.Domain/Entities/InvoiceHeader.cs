@@ -1,3 +1,4 @@
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Invoicing;
 
 namespace OpenKSeF.Domain.Entities;
@@ -13,6 +14,9 @@ public class InvoiceHeader
     public required string VendorNip { get; set; }
     public string? BuyerName { get; set; }
     public string? BuyerNip { get; set; }
+    public string? BuyerIdType { get; set; }
+    public string? BuyerForeignId { get; set; }
+    public InvoiceDirection Direction { get; set; }
     public decimal AmountNet { get; set; }
     public decimal AmountVat { get; set; }
     public decimal AmountGross { get; set; }

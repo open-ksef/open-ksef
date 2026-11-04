@@ -1,3 +1,4 @@
+using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync.Issuing;
 
@@ -15,6 +16,8 @@ public sealed class IssuedInvoiceSendService(
         var interval = TimeSpan.FromSeconds(configuration.GetValue("Issuing:PollSeconds", 5));
         var stuckAfter = TimeSpan.FromHours(configuration.GetValue("Issuing:StuckAfterHours", 24));
         logger.LogInformation("IssuedInvoiceSendService started. Poll: {Seconds}s", interval.TotalSeconds);
+
+        await MigrationHelper.WaitForMigrationsAsync(scopeFactory, logger, stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {

@@ -80,6 +80,14 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<string>("BuyerForeignId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("BuyerIdType")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<string>("BuyerName")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -94,6 +102,13 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)")
                         .HasDefaultValue("PLN");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("Received");
 
                     b.Property<DateOnly?>("DueDate")
                         .HasColumnType("date");
@@ -255,6 +270,9 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("IssuedContinuationAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("LastSuccessfulSync")
                         .HasColumnType("timestamp with time zone");
@@ -530,6 +548,8 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.HasIndex("Status", "NextAttemptAt");
 
                     b.HasIndex("TenantId", "CreatedAt");
+
+                    b.HasIndex("TenantId", "KsefNumber");
 
                     b.HasIndex("TenantId", "Number")
                         .IsUnique()

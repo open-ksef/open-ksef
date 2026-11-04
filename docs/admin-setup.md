@@ -219,6 +219,26 @@ The command exits 1 and writes nothing when:
 
 `before-rotation.dump` is the dump that rolls back a rotation. Restore it with the same command as in the upgrade, after you stop both hosts. `before-key-move.dump` returns to the state before adoption and does not roll back a rotation.
 
+## Issued invoice sync: upgrade and rollback
+
+The release that adds the issued invoice feed has an additive migration: new columns on `InvoiceHeaders` and `SyncStates` and one index. Existing rows become `Received`. Paid flags, due dates and lines do not change. The first sync after the upgrade loads 12 months of issued invoices from KSeF and sends no notifications.
+
+Upgrade:
+
+1. Back up the database.
+2. Deploy the API, Worker and portal from one tag. The API applies the migration. The Worker waits until it is applied.
+
+Rollback: an older image has no direction filter and would list issued invoices as unpaid received invoices. Do not run the migration `Down`. Stop the new API and Worker, run this SQL, then start the previous tag:
+
+```sql
+BEGIN;
+DELETE FROM "InvoiceHeaders" WHERE "Direction" = 'Issued';
+UPDATE "SyncStates" SET "IssuedContinuationAt" = NULL;
+COMMIT;
+```
+
+The script removes only issued rows and their lines. They hold no user data, and sync loads them again after the next upgrade. The columns stay. Inserts from the older image get the database default, `Received`.
+
 ## Architecture
 
 ### Configuration Storage

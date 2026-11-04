@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Invoicing;
 
 namespace OpenKSeF.Domain.Data;
@@ -64,6 +65,12 @@ public class ApplicationDbContext : DbContext
             entity.Property(i => i.VendorNip).IsRequired().HasMaxLength(10);
             entity.Property(i => i.BuyerName).HasMaxLength(500);
             entity.Property(i => i.BuyerNip).HasMaxLength(10);
+            entity.Property(i => i.BuyerIdType).HasMaxLength(8);
+            entity.Property(i => i.BuyerForeignId).HasMaxLength(50);
+            entity.Property(i => i.Direction)
+                .HasDefaultValue(InvoiceDirection.Received)
+                .HasConversion<string>()
+                .HasMaxLength(16);
             entity.Property(i => i.AmountNet).HasPrecision(18, 2);
             entity.Property(i => i.AmountVat).HasPrecision(18, 2);
             entity.Property(i => i.AmountGross).HasPrecision(18, 2);
@@ -135,6 +142,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(i => new { i.TenantId, i.Number }).IsUnique().HasFilter("\"Number\" IS NOT NULL");
             entity.HasIndex(i => new { i.Status, i.NextAttemptAt });
             entity.HasIndex(i => new { i.TenantId, i.CreatedAt });
+            entity.HasIndex(i => new { i.TenantId, i.KsefNumber });
             entity.Property(i => i.Status).HasConversion<string>().HasMaxLength(16);
             entity.Property(i => i.Number).HasMaxLength(256);
             entity.Property(i => i.NumberPeriod).HasMaxLength(7);

@@ -19,6 +19,25 @@ public record IssuedInvoiceDraftInput(
 
 public record IssuedInvoiceListFilter(string? Status, string? Month, string? Query);
 
+public record IssuedFeedRow(
+    Guid Id,
+    bool IsExternal,
+    IssuedInvoiceStatus Status,
+    string? Number,
+    string? BuyerName,
+    string? BuyerNip,
+    string? BuyerIdType,
+    string? BuyerForeignId,
+    DateOnly IssueDate,
+    DateOnly? DueDate,
+    decimal TotalNet,
+    decimal TotalGross,
+    string Currency,
+    string? KsefNumber,
+    bool NeedsAttention,
+    DateTime SortDate,
+    DateTime SeenAt);
+
 public record IssuedInvoiceSeller(string Nip, string? Name, string? AddressLine1, string? AddressLine2, string? BankAccount, bool CashAccounting);
 
 public record IssuedInvoiceView(IssuedInvoice Invoice, IssuedInvoiceSeller Seller, string KsefEnvironment, IReadOnlyList<InvoiceCheck> Warnings);
@@ -27,6 +46,8 @@ public record IssuedInvoiceView(IssuedInvoice Invoice, IssuedInvoiceSeller Selle
 public interface IIssuedInvoiceService
 {
     IQueryable<IssuedInvoice> Query(Guid tenantId, IssuedInvoiceListFilter filter);
+
+    Task<(IReadOnlyList<IssuedFeedRow> Items, int TotalCount)> FeedAsync(Guid tenantId, IssuedInvoiceListFilter filter, int page, int pageSize, CancellationToken ct = default);
 
     Task<IssuedInvoiceView?> GetAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 

@@ -54,6 +54,35 @@ public class InvoiceServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpsertInvoicesAsync_OtherDirection_LeavesExistingRowUntouched()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var tenantId = Guid.NewGuid();
+        var received = CreateInvoice() with { DueDate = new DateOnly(2026, 11, 20), VendorBankAccount = "PL61109010140000071219812874" };
+        var ids = await sut.UpsertInvoicesAsync(tenantId, [received], notify: false);
+        var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
+        stored.IsPaid = true;
+        var updatedAt = stored.LastUpdatedAt;
+        await _db.SaveChangesAsync();
+
+        var newIds = await sut.UpsertInvoicesAsync(
+            tenantId,
+            [CreateInvoice() with { VendorName = "Nadpisane", AmountGross = 1m, Direction = InvoiceDirection.Issued, BuyerIdType = "Other", Lines = [] }],
+            notify: true);
+
+        Assert.Empty(newIds);
+        Assert.Equal(0, _notifications.Count);
+        Assert.Equal(InvoiceDirection.Received, stored.Direction);
+        Assert.Equal(received.VendorName, stored.VendorName);
+        Assert.Equal(received.AmountGross, stored.AmountGross);
+        Assert.Equal(received.DueDate, stored.DueDate);
+        Assert.Equal(received.VendorBankAccount, stored.VendorBankAccount);
+        Assert.Equal(updatedAt, stored.LastUpdatedAt);
+        Assert.Null(stored.BuyerIdType);
+        Assert.True(stored.IsPaid);
+    }
+
+    [Fact]
     public async Task UpsertInvoicesAsync_NewInvoice_StoresDueDate()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);

@@ -95,3 +95,20 @@ public record IssuedInvoiceListItemResponse(
     string Currency,
     string? KsefNumber,
     bool NeedsAttention);
+
+public record IssuedFeedItemResponse(
+    Guid Id,
+    string Source,
+    string Status,
+    string? Number,
+    string? BuyerName,
+    string? BuyerNip,
+    string? BuyerIdType,
+    string? BuyerForeignId,
+    DateOnly IssueDate,
+    DateOnly? DueDate,
+    decimal TotalNet,
+    decimal TotalGross,
+    string Currency,
+    string? KsefNumber,
+    bool NeedsAttention);

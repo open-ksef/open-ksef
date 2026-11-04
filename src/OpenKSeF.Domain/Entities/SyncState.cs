@@ -7,6 +7,7 @@ public class SyncState
     public DateTime? LastSyncedAt { get; set; }
     public string? Watermark { get; set; }
     public DateTime? LastSuccessfulSync { get; set; }
+    public DateTime? IssuedContinuationAt { get; set; }
 
     public Tenant Tenant { get; set; } = null!;
 }

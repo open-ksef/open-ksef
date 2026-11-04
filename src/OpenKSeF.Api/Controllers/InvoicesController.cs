@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 using System.Linq;
@@ -52,7 +53,7 @@ public class InvoicesController : ControllerBase
         if (pageSize > 100) pageSize = 100;
 
         var query = _db.InvoiceHeaders
-            .Where(i => i.TenantId == tenantId);
+            .Where(i => i.TenantId == tenantId && i.Direction == InvoiceDirection.Received);
 
         if (!string.IsNullOrWhiteSpace(filterByVendor))
         {
@@ -107,7 +108,10 @@ public class InvoicesController : ControllerBase
                 i.PaidAt,
                 i.VendorBankAccount,
                 null,
-                i.DueDate))
+                i.DueDate,
+                i.Direction.ToString(),
+                i.BuyerIdType,
+                i.BuyerForeignId))
             .ToListAsync();
 
         return Ok(new PagedResult<InvoiceResponse>
@@ -157,6 +161,7 @@ public class InvoicesController : ControllerBase
     [ProducesResponseType(typeof(TransferDetailsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> GetTransferDetails(Guid tenantId, Guid id)
     {
         if (!await VerifyTenantOwnership(tenantId))
@@ -167,6 +172,9 @@ public class InvoicesController : ControllerBase
 
         if (invoice is null)
             return NotFound();
+
+        if (invoice.Direction == InvoiceDirection.Issued)
+            return Conflict(new { message = "Przelew jest dostępny tylko dla faktur otrzymanych" });
 
         var transferData = _transferDetails.BuildTransferData(invoice);
         var transferText = _transferDetails.BuildTransferText(invoice);
@@ -190,6 +198,7 @@ public class InvoicesController : ControllerBase
     [ProducesResponseType(typeof(InvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> SetPaid(Guid tenantId, Guid id, [FromBody] SetInvoicePaidRequest request)
     {
         if (!await VerifyTenantOwnership(tenantId))
@@ -200,6 +209,9 @@ public class InvoicesController : ControllerBase
 
         if (invoice is null)
             return NotFound();
+
+        if (invoice.Direction == InvoiceDirection.Issued)
+            return Conflict(new { message = "Status zapłaty dotyczy tylko faktur otrzymanych" });
 
         invoice.IsPaid = request.IsPaid;
         invoice.PaidAt = request.IsPaid ? DateTime.UtcNow : null;
@@ -245,5 +257,8 @@ public class InvoicesController : ControllerBase
                 l.UnitPriceNet, l.UnitPriceGross,
                 l.AmountNet, l.AmountGross, l.AmountVat, l.VatRate))
             .ToList(),
-        DueDate: i.DueDate);
+        DueDate: i.DueDate,
+        Direction: i.Direction.ToString(),
+        BuyerIdType: i.BuyerIdType,
+        BuyerForeignId: i.BuyerForeignId);
 }
