@@ -348,7 +348,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
             fieldErrors={fieldErrors}
             onChange={(dates) => setForm({ ...form, ...dates })}
           />
-          {isForeign ? (
+          {isForeign || form.currency !== 'PLN' ? (
             <CurrencySection
               tenantId={tenantId}
               currency={form.currency}

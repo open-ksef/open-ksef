@@ -152,7 +152,7 @@ export function fromResponse(invoice: IssuedInvoiceResponse): DraftFormValue {
       addressLine2: invoice.buyer.addressLine2 ?? '',
       countryCode: invoice.buyer.countryCode ?? '',
       foreignId: invoice.buyer.foreignId ?? '',
-      noTaxId: Boolean(invoice.buyer.countryCode) && !isEuCountry(invoice.buyer.countryCode ?? '') && !invoice.buyer.foreignId,
+      noTaxId: false,
     },
     issueDate: invoice.issueDate ?? '',
     saleDate: invoice.saleDate ?? '',

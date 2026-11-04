@@ -114,6 +114,7 @@ function ForeignBuyerFields({ value, onChange, fieldErrors = {} }: BuyerSectionP
   return (
     <>
       <p className="inv-help">Nabywca nie dostanie faktury z KSeF. Wyślij mu PDF z kodem KOD I.</p>
+      <p className="inv-help">Dane nabywcy wpisz alfabetem łacińskim. Inne pismo nie wydrukuje się na PDF.</p>
       <div className="inv-fields">
         <div className="ui-form-group">
           <label htmlFor="buyer-countryCode">

@@ -362,6 +362,42 @@ describe('foreign invoices in the portal', () => {
       expect(createIssuedInvoice).not.toHaveBeenCalled()
     })
 
+    it('a reopened third-country draft without an id needs a new tick before issuing', async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(
+        invoice({ buyer: { kind: 'Foreign', nip: null, name: 'Example Ltd', addressLine1: '1 Sample Street', addressLine2: 'London', countryCode: 'GB', idType: 'None', foreignId: null } }),
+      )
+      await render('/issued/i-1/edit?tenantId=t-1')
+      await waitFor(() => Boolean(container.querySelector('#buyer-foreignId')))
+      expect(container.querySelector<HTMLInputElement>('.inv-check input[type="checkbox"]')?.checked).toBe(false)
+
+      await act(async () => byText('Wystaw i wyślij do KSeF')!.click())
+
+      expect(container.querySelector('#buyer-foreignId-error')?.textContent).toContain('Bez numeru podatkowego')
+      expect(updateIssuedInvoice).not.toHaveBeenCalled()
+      expect(issueIssuedInvoice).not.toHaveBeenCalled()
+    })
+
+    it('tells the user to enter buyer data in Latin script', async () => {
+      await openForeignForm()
+      expect(container.textContent).toContain('alfabetem łacińskim')
+    })
+
+    it('a non-PLN Person draft keeps the currency control, so INV-VAL-091 can be fixed', async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(
+        invoice({ buyer: { kind: 'Person', nip: null, name: 'Jan Kowalski', addressLine1: 'ul. A 1', addressLine2: null } }),
+      )
+      vi.mocked(updateIssuedInvoice).mockResolvedValue(invoice())
+      await render('/issued/i-1/edit?tenantId=t-1')
+      await waitFor(() => Boolean(container.querySelector('#invoice-currency')))
+
+      await act(async () => choose(select('invoice-currency'), 'PLN'))
+      expect(container.querySelector('#invoice-currency')).toBeNull()
+
+      await act(async () => byText('Zapisz szkic')!.click())
+      await waitFor(() => vi.mocked(updateIssuedInvoice).mock.calls.length === 1)
+      expect(vi.mocked(updateIssuedInvoice).mock.calls[0][2].currency).toBe('PLN')
+    })
+
     it.each([
       ['INV-VAL-030', 'buyer.countryCode', '#buyer-countryCode-error'],
       ['INV-VAL-031', 'buyer.foreignId', '#buyer-foreignId-error'],
