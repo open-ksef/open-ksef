@@ -151,11 +151,19 @@ public class ApplicationDbContext : DbContext
             entity.Property(i => i.SellerAddressLine1).HasMaxLength(512);
             entity.Property(i => i.SellerAddressLine2).HasMaxLength(512);
             entity.Property(i => i.SellerBankAccount).HasMaxLength(26);
+            entity.Property(i => i.SellerIban).HasMaxLength(34);
+            entity.Property(i => i.SellerBankSwift).HasMaxLength(11);
+            entity.Property(i => i.SellerBankName).HasMaxLength(256);
             entity.Property(i => i.BuyerKind).HasConversion<string>().HasMaxLength(16);
             entity.Property(i => i.BuyerNip).HasMaxLength(10);
             entity.Property(i => i.BuyerName).HasMaxLength(512);
             entity.Property(i => i.BuyerAddressLine1).HasMaxLength(512);
             entity.Property(i => i.BuyerAddressLine2).HasMaxLength(512);
+            entity.Property(i => i.BuyerCountryCode).HasMaxLength(2);
+            entity.Property(i => i.BuyerIdType).HasMaxLength(8);
+            entity.Property(i => i.BuyerForeignId).HasMaxLength(50);
+            entity.Property(i => i.Currency).IsRequired().HasMaxLength(3).HasDefaultValue(IssuedInvoice.DefaultCurrency);
+            entity.Property(i => i.ExchangeRate).HasPrecision(18, 6);
             entity.Property(i => i.PaymentMethod).HasConversion<string>().HasMaxLength(16);
             entity.Property(i => i.ExemptionBasisKind).HasConversion<string>().HasMaxLength(16);
             entity.Property(i => i.ExemptionBasisText).HasMaxLength(256);
@@ -205,6 +213,11 @@ public class ApplicationDbContext : DbContext
             entity.Property(p => p.AddressLine1).HasMaxLength(512);
             entity.Property(p => p.AddressLine2).HasMaxLength(512);
             entity.Property(p => p.BankAccount).HasMaxLength(26);
+            entity.Property(p => p.BankSwift).HasMaxLength(11);
+            entity.Property(p => p.BankName).HasMaxLength(256);
+            entity.Property(p => p.ForeignBankAccount).HasMaxLength(34);
+            entity.Property(p => p.ForeignBankSwift).HasMaxLength(11);
+            entity.Property(p => p.ForeignBankName).HasMaxLength(256);
             entity.Property(p => p.NumberingPattern).IsRequired().HasMaxLength(100);
             entity.HasOne<Tenant>()
                 .WithOne()

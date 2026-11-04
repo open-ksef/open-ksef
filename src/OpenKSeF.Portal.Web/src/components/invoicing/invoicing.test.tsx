@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { lookupNip } from '@/api/endpoints/nipLookup'
 import { ApiError } from '@/api/errors'
 import type { NipLookupResponse } from '@/api/types'
-import { emptyLine, type BuyerFormValue, type InvoiceLineFormValue } from '@/invoicing/form'
+import { emptyDraft, emptyLine, type BuyerFormValue, type InvoiceLineFormValue } from '@/invoicing/form'
 import { BuyerSection } from './BuyerSection'
 import { EnvBadge, KsefStatusBadge } from './KsefStatusBadge'
 import { LinesTable } from './LinesTable'
@@ -57,7 +57,7 @@ describe('issuing components', () => {
   it('LinesTable recomputes line amounts and adds/removes lines', async () => {
     function Harness(): ReactElement {
       const [lines, setLines] = useState<InvoiceLineFormValue[]>([emptyLine()])
-      return <LinesTable lines={lines} onChange={setLines} fieldErrors={{ 'lines[0].name': 'Podaj nazwę' }} />
+      return <LinesTable currency="PLN" lines={lines} onChange={setLines} fieldErrors={{ 'lines[0].name': 'Podaj nazwę' }} />
     }
     await render(<Harness />)
 
@@ -77,7 +77,7 @@ describe('issuing components', () => {
   })
 
   it('every line field has a real label naming its line', async () => {
-    await render(<LinesTable lines={[emptyLine(), emptyLine()]} onChange={() => {}} />)
+    await render(<LinesTable currency="PLN" lines={[emptyLine(), emptyLine()]} onChange={() => {}} />)
     for (const [name, label] of [['name', 'Nazwa'], ['unit', 'J.m.'], ['quantity', 'Ilość'], ['unitNetPrice', 'Cena netto'], ['vatRate', 'Stawka']]) {
       expect(container.querySelector(`label[for="line-1-${name}"]`)?.textContent).toBe(`${label} pozycji 2`)
     }
@@ -103,7 +103,7 @@ describe('issuing components', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(confirmed)
     vi.mocked(lookupNip).mockResolvedValue({ nip: '5260250274', name: 'Firma z listy', addressLine1: 'ul. A', addressLine2: '00-001 B', vatStatus: 'Czynny', bankAccounts: [] })
     function Harness(): ReactElement {
-      const [buyer, setBuyer] = useState<BuyerFormValue>({ kind: 'Company', nip: '5260250274', name: 'Wpisana nazwa', addressLine1: '', addressLine2: '' })
+      const [buyer, setBuyer] = useState<BuyerFormValue>({ ...emptyDraft().buyer, kind: 'Company', nip: '5260250274', name: 'Wpisana nazwa', addressLine1: '', addressLine2: '' })
       return <BuyerSection value={buyer} onChange={setBuyer} />
     }
     await render(<Harness />)
@@ -118,7 +118,7 @@ describe('issuing components', () => {
     const confirm = vi.spyOn(window, 'confirm')
     vi.mocked(lookupNip).mockResolvedValue({ nip: '5260250274', name: 'Firma z listy', addressLine1: null, addressLine2: null, vatStatus: 'Czynny', bankAccounts: [] })
     function Harness(): ReactElement {
-      const [buyer, setBuyer] = useState<BuyerFormValue>({ kind: 'Company', nip: '5260250274', name: '', addressLine1: '', addressLine2: '' })
+      const [buyer, setBuyer] = useState<BuyerFormValue>({ ...emptyDraft().buyer, kind: 'Company', nip: '5260250274', name: '', addressLine1: '', addressLine2: '' })
       return <BuyerSection value={buyer} onChange={setBuyer} />
     }
     await render(<Harness />)

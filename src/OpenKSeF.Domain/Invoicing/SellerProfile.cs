@@ -7,6 +7,11 @@ public sealed class SellerProfile
     public string? AddressLine1 { get; private set; }
     public string? AddressLine2 { get; private set; }
     public string? BankAccount { get; private set; }
+    public string? BankSwift { get; private set; }
+    public string? BankName { get; private set; }
+    public string? ForeignBankAccount { get; private set; }
+    public string? ForeignBankSwift { get; private set; }
+    public string? ForeignBankName { get; private set; }
     public bool CashAccounting { get; private set; }
     public string NumberingPattern { get; private set; } = InvoiceNumbering.DefaultPattern;
 
@@ -26,5 +31,27 @@ public sealed class SellerProfile
         NumberingPattern = numberingPattern.Trim();
     }
 
+    /// <summary>Null keeps the stored value, so older clients cannot wipe it; an empty string clears it.</summary>
+    public void SetBankDetails(string? bankSwift, string? bankName, string? foreignBankAccount, string? foreignBankSwift, string? foreignBankName)
+    {
+        BankSwift = bankSwift is null ? BankSwift : Clean(bankSwift)?.ToUpperInvariant();
+        BankName = bankName is null ? BankName : Clean(bankName);
+        ForeignBankAccount = foreignBankAccount is null ? ForeignBankAccount : Clean(foreignBankAccount) is { } account ? Nrb.NormalizeIban(account) : null;
+        ForeignBankSwift = foreignBankSwift is null ? ForeignBankSwift : Clean(foreignBankSwift)?.ToUpperInvariant();
+        ForeignBankName = foreignBankName is null ? ForeignBankName : Clean(foreignBankName);
+    }
+
+    public SellerPaymentAccount PaymentAccountFor(BuyerKind kind)
+    {
+        if (kind != BuyerKind.Foreign)
+            return new(BankAccount, null, null, null);
+
+        return ForeignBankAccount is not null
+            ? new(null, ForeignBankAccount, ForeignBankSwift, ForeignBankName)
+            : new(BankAccount, BankAccount is null ? null : "PL" + BankAccount, BankSwift, BankName);
+    }
+
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
+
+public record SellerPaymentAccount(string? BankAccount, string? Iban, string? Swift, string? BankName);

@@ -9,11 +9,11 @@ interface VatSummaryProps {
   totalNet: number
   totalVat: number
   totalGross: number
-  currency?: string
+  currency: string
   sticky?: boolean
 }
 
-export function VatSummary({ rows, totalNet, totalVat, totalGross, currency = 'PLN', sticky = false }: VatSummaryProps): ReactElement {
+export function VatSummary({ rows, totalNet, totalVat, totalGross, currency, sticky = false }: VatSummaryProps): ReactElement {
   const table = (
     <table className="inv-sum">
       <caption className="visually-hidden">Kwoty w {currency}</caption>

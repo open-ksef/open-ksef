@@ -1,19 +1,23 @@
 import type { ReactElement, ReactNode } from 'react'
 
+import type { VatRateCode } from '@/api/types'
 import { Icon } from '@/components/Icon'
 import { emptyLine, parseDecimal, type InvoiceLineFormValue } from '@/invoicing/form'
 import { formatMoney } from '@/invoicing/format'
-import { computeTotals } from '@/invoicing/totals'
+import { computeTotals, VAT_RATES } from '@/invoicing/totals'
 import { VatRateSelect } from './VatRateSelect'
 
 interface LinesTableProps {
   lines: InvoiceLineFormValue[]
+  currency: string
+  rates?: typeof VAT_RATES
+  newLineRate?: VatRateCode
   onChange: (lines: InvoiceLineFormValue[]) => void
   fieldErrors?: Record<string, string>
   children?: ReactNode
 }
 
-export function LinesTable({ lines, onChange, fieldErrors = {}, children }: LinesTableProps): ReactElement {
+export function LinesTable({ lines, currency, rates, newLineRate, onChange, fieldErrors = {}, children }: LinesTableProps): ReactElement {
   const { lineNet } = computeTotals(
     lines.map((line) => ({ quantity: parseDecimal(line.quantity), unitNetPrice: parseDecimal(line.unitNetPrice), vatRate: line.vatRate })),
   )
@@ -79,6 +83,7 @@ export function LinesTable({ lines, onChange, fieldErrors = {}, children }: Line
                 id={`line-${index}-vatRate`}
                 label={`Stawka pozycji ${index + 1}`}
                 value={line.vatRate}
+                rates={rates}
                 describedBy={rateError ? `line-${index}-vatRate-error` : undefined}
                 onChange={(vatRate) => update(index, { vatRate })}
               />
@@ -90,7 +95,7 @@ export function LinesTable({ lines, onChange, fieldErrors = {}, children }: Line
             </div>
             <div className="inv-line__gross">
               <span className="visually-hidden">Brutto pozycji {index + 1}: </span>
-              {formatMoney(Math.round((net + vat) * 100) / 100)}
+              {formatMoney(Math.round((net + vat) * 100) / 100, currency)}
             </div>
             <div className="inv-line__del">
               <button type="button" aria-label={`Usuń pozycję ${index + 1}`} disabled={lines.length === 1} onClick={() => onChange(lines.filter((_, i) => i !== index))}>
@@ -101,7 +106,7 @@ export function LinesTable({ lines, onChange, fieldErrors = {}, children }: Line
         )
       })}
       <div className="inv-lines-foot">
-        <button type="button" className="ui-button ui-button--outline ui-button--sm" onClick={() => onChange([...lines, emptyLine()])}>
+        <button type="button" className="ui-button ui-button--outline ui-button--sm" onClick={() => onChange([...lines, emptyLine(newLineRate)])}>
           <Icon name="plus" /> Dodaj pozycję
         </button>
         <p className="inv-help">VAT w wierszu jest poglądowy. Podatek liczymy od sumy netto w każdej stawce.</p>

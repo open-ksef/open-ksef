@@ -6,7 +6,7 @@ export function formatAmount(amount: number): string {
   return moneyFormat.format(amount)
 }
 
-export function formatMoney(amount: number, currency = 'PLN'): string {
+export function formatMoney(amount: number, currency: string): string {
   return `${formatAmount(amount)} ${currency}`
 }
 
@@ -24,6 +24,8 @@ export function formatNrb(digits: string | null | undefined): string {
   const nrb = digits.replace(/[\s-]/g, '').replace(/^PL/i, '')
   return /^\d{26}$/.test(nrb) ? `${nrb.slice(0, 2)} ${nrb.slice(2).replace(/(\d{4})(?=\d)/g, '$1 ')}` : digits
 }
+
+export const formatIban = (iban: string): string => iban.replace(/(.{4})(?=.)/g, '$1 ')
 
 export function accountDigits(account: string | null | undefined): string | null {
   const nrb = account?.replace(/[\s-]/g, '').replace(/^PL/i, '') ?? ''

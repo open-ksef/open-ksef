@@ -6,7 +6,10 @@ namespace OpenKSeF.Domain.Invoicing;
 /// <summary>Sales invoice issued by a tenant: editable draft until issued, then frozen with a seller snapshot and number.</summary>
 public sealed class IssuedInvoice
 {
-    public const string Currency = "PLN";
+    public const string DefaultCurrency = "PLN";
+    public const string BuyerIdVatUe = "VatUe";
+    public const string BuyerIdOther = "Other";
+    public const string BuyerIdNone = "None";
     public const int DefaultPaymentDays = 14;
 
     private static readonly TimeZoneInfo PolandTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Warsaw");
@@ -29,6 +32,9 @@ public sealed class IssuedInvoice
     public string? SellerAddressLine1 { get; private set; }
     public string? SellerAddressLine2 { get; private set; }
     public string? SellerBankAccount { get; private set; }
+    public string? SellerIban { get; private set; }
+    public string? SellerBankSwift { get; private set; }
+    public string? SellerBankName { get; private set; }
     public bool SellerCashAccounting { get; private set; }
 
     public BuyerKind BuyerKind { get; private set; }
@@ -36,6 +42,13 @@ public sealed class IssuedInvoice
     public string? BuyerName { get; private set; }
     public string? BuyerAddressLine1 { get; private set; }
     public string? BuyerAddressLine2 { get; private set; }
+    public string? BuyerCountryCode { get; private set; }
+    public string? BuyerIdType { get; private set; }
+    public string? BuyerForeignId { get; private set; }
+
+    public string Currency { get; private set; } = DefaultCurrency;
+    public decimal? ExchangeRate { get; private set; }
+    public DateOnly? ExchangeRateDate { get; private set; }
 
     public DateOnly IssueDate { get; private set; }
     public DateOnly SaleDate { get; private set; }
@@ -74,6 +87,8 @@ public sealed class IssuedInvoice
 
     public IReadOnlyList<IssuedInvoiceLine> Lines => _lines;
 
+    public bool NeedsExchangeRate => BuyerKind == BuyerKind.Foreign && Currency != DefaultCurrency && ExchangeRate is null;
+
     public bool IsEditable => Status is IssuedInvoiceStatus.Draft or IssuedInvoiceStatus.Rejected;
 
     public bool IsNumberTakenInKsef => Status == IssuedInvoiceStatus.Rejected && KsefStatusCode == KSeFSentInvoice.Duplicate;
@@ -105,6 +120,60 @@ public sealed class IssuedInvoice
         BuyerName = Clean(name);
         BuyerAddressLine1 = Clean(addressLine1);
         BuyerAddressLine2 = Clean(addressLine2);
+
+        if (kind == BuyerKind.Foreign)
+        {
+            SplitPayment = false;
+        }
+        else
+        {
+            BuyerCountryCode = null;
+            BuyerIdType = null;
+            BuyerForeignId = null;
+        }
+    }
+
+    /// <summary>Null keeps the stored value, so older clients cannot wipe it; an empty string clears it. The id type follows from the country.</summary>
+    public void SetForeignBuyer(string? countryCode, string? foreignId)
+    {
+        EnsureEditable();
+        if (BuyerKind != BuyerKind.Foreign)
+            return;
+
+        if (countryCode is not null)
+            BuyerCountryCode = Clean(countryCode)?.ToUpperInvariant() is { } code ? EuCountries.FromVatPrefix(code) : null;
+        if (foreignId is not null)
+            BuyerForeignId = Clean(foreignId);
+
+        var isEu = EuCountries.Contains(BuyerCountryCode);
+        if (isEu && BuyerForeignId is not null)
+            BuyerForeignId = EuCountries.VatNumberWithoutPrefix(BuyerForeignId, BuyerCountryCode!);
+
+        BuyerIdType = BuyerForeignId is null ? BuyerIdNone : isEu ? BuyerIdVatUe : BuyerIdOther;
+    }
+
+    /// <summary>A given rate is stored as is and a null date marks it as typed. Only a currency change drops a stored rate.</summary>
+    public void SetCurrency(string? currency, decimal? rate, DateOnly? rateDate)
+    {
+        EnsureEditable();
+        if (currency is not null && currency != Currency)
+        {
+            Currency = currency;
+            ExchangeRate = null;
+            ExchangeRateDate = null;
+        }
+
+        if (rate is not null)
+        {
+            ExchangeRate = rate;
+            ExchangeRateDate = rateDate;
+        }
+
+        if (Currency == DefaultCurrency)
+        {
+            ExchangeRate = null;
+            ExchangeRateDate = null;
+        }
     }
 
     public void SetDates(DateOnly issueDate, DateOnly saleDate, DateOnly dueDate)
@@ -123,7 +192,7 @@ public sealed class IssuedInvoice
     {
         EnsureEditable();
         PaymentMethod = method;
-        SplitPayment = splitPayment;
+        SplitPayment = splitPayment && BuyerKind != BuyerKind.Foreign;
     }
 
     public void SetExemptionBasis(ExemptionBasisKind? kind, string? text)
@@ -180,7 +249,11 @@ public sealed class IssuedInvoice
         SellerName = profile.LegalName;
         SellerAddressLine1 = profile.AddressLine1;
         SellerAddressLine2 = profile.AddressLine2;
-        SellerBankAccount = profile.BankAccount;
+        var account = profile.PaymentAccountFor(BuyerKind);
+        SellerBankAccount = account.BankAccount;
+        SellerIban = account.Iban;
+        SellerBankSwift = account.Swift;
+        SellerBankName = account.BankName;
         SellerCashAccounting = profile.CashAccounting;
         Number = assigned;
         Status = IssuedInvoiceStatus.Queued;

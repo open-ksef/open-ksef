@@ -44,6 +44,11 @@ public static class VatRates
         VatRate.Rate23, VatRate.Rate8, VatRate.Rate5, VatRate.ZeroDomestic, VatRate.Exempt
     };
 
+    public static readonly IReadOnlySet<VatRate> IssuableForeign = new HashSet<VatRate>
+    {
+        VatRate.NotTaxable, VatRate.NotTaxableArt100
+    };
+
     public static string Code(this VatRate rate) => Table[rate].Code;
 
     public static decimal Fraction(this VatRate rate) => Table[rate].Fraction;

@@ -15,6 +15,7 @@ public class IssuedInvoiceService(
     ISellerProfileService sellerProfiles,
     IFa3InvoiceWriter writer,
     IKSeFIssuingEnvironment environment,
+    IExchangeRateSource exchangeRates,
     TimeProvider timeProvider) : IIssuedInvoiceService
 {
     private const int MaxLines = 1000;
@@ -23,6 +24,8 @@ public class IssuedInvoiceService(
     private const decimal MaxQuantity = 1_000_000_000_000m;
     private const decimal MaxUnitNetPrice = 100_000_000_000_000m;
     private const decimal MaxLineNet = 10_000_000_000_000m;
+    private const decimal MaxExchangeRate = 1_000_000m;
+    private const int MaxForeignIdLength = 50;
 
     public IQueryable<IssuedInvoice> Query(Guid tenantId, IssuedInvoiceListFilter filter)
     {
@@ -73,6 +76,7 @@ public class IssuedInvoiceService(
             query = query.Where(i =>
                 i.BuyerName!.ToLower().Contains(term)
                 || i.BuyerNip!.Contains(term)
+                || i.BuyerForeignId!.ToLower().Contains(term)
                 || i.Number!.ToLower().Contains(term));
         }
 
@@ -97,13 +101,14 @@ public class IssuedInvoiceService(
                 i.Number,
                 i.BuyerName,
                 i.BuyerNip,
-                null,
-                null,
+                i.BuyerIdType,
+                i.BuyerForeignId,
+                i.BuyerCountryCode,
                 i.IssueDate,
                 i.DueDate,
                 i.TotalNet,
                 i.TotalGross,
-                IssuedInvoice.Currency,
+                i.Currency,
                 i.KsefNumber,
                 i.EscalatedAt != null,
                 i.IssueDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
@@ -129,6 +134,7 @@ public class IssuedInvoiceService(
                     i.BuyerNip,
                     i.BuyerIdType,
                     i.BuyerForeignId,
+                    null,
                     IssuedInvoice.PolandDate(i.IssueDate),
                     i.DueDate,
                     i.AmountNet,
@@ -187,10 +193,23 @@ public class IssuedInvoiceService(
         return invoice is null ? null : await ViewAsync(invoice, ct);
     }
 
+    public async Task<ExchangeRateQuote?> ProposeExchangeRateAsync(string? currency, DateOnly? issueDate, DateOnly? saleDate, CancellationToken ct = default)
+    {
+        var code = currency?.Trim().ToUpperInvariant();
+        if (!IsLetters(code, 3))
+            throw new InvoiceValidationException([new("INV-VAL-090", "currency", "Waluta musi być trzyliterowym kodem ISO 4217")]);
+        if (code == IssuedInvoice.DefaultCurrency)
+            return null;
+
+        var issued = issueDate ?? Today();
+        return await exchangeRates.LatestMidBeforeAsync(code!, Min(issued, saleDate ?? issued), ct);
+    }
+
     public async Task<IssuedInvoiceView> CreateAsync(Guid tenantId, IssuedInvoiceDraftInput input, CancellationToken ct = default)
     {
         var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, Today(), Now());
         Apply(invoice, input);
+        await ProposeRateIfMissingAsync(invoice, ct);
         db.IssuedInvoices.Add(invoice);
         await db.SaveChangesAsync(ct);
         return await ViewAsync(invoice, ct);
@@ -205,6 +224,7 @@ public class IssuedInvoiceService(
             throw new InvoiceStateException("Faktury w tym statusie nie można zmieniać");
 
         Apply(invoice, input);
+        await ProposeRateIfMissingAsync(invoice, ct);
         invoice.Touch(Now());
         await SaveOrConflictAsync(ct);
         return await ViewAsync(invoice, ct);
@@ -239,6 +259,8 @@ public class IssuedInvoiceService(
         var errors = IssueChecks.Errors(invoice, profile, Today());
         if (errors.Count > 0)
             throw new InvoiceValidationException(errors);
+
+        await EnsureProposedRateIsCurrentAsync(invoice, ct);
 
         var now = Now();
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -297,9 +319,12 @@ public class IssuedInvoiceService(
 
         var copy = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, Today(), Now());
         copy.SetBuyer(source.BuyerKind, source.BuyerNip, source.BuyerName, source.BuyerAddressLine1, source.BuyerAddressLine2);
+        copy.SetForeignBuyer(source.BuyerCountryCode, source.BuyerForeignId);
+        copy.SetCurrency(source.Currency, null, null);
         copy.SetPayment(source.PaymentMethod, source.SplitPayment);
         copy.SetExemptionBasis(source.ExemptionBasisKind, source.ExemptionBasisText);
         copy.ReplaceLines(source.Lines.OrderBy(l => l.LineNo).Select(l => ((string?)l.Name, (string?)l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)));
+        await ProposeRateIfMissingAsync(copy, ct);
         db.IssuedInvoices.Add(copy);
         await db.SaveChangesAsync(ct);
         return await ViewAsync(copy, ct);
@@ -336,7 +361,7 @@ public class IssuedInvoiceService(
     {
         var errors = new List<InvoiceCheck>();
 
-        var kind = ParseName(input.Buyer?.Kind, BuyerKind.Company, "INV-VAL-070", "buyer.kind", "Rodzaj nabywcy: Company lub Person", errors);
+        var kind = ParseName(input.Buyer?.Kind, BuyerKind.Company, "INV-VAL-070", "buyer.kind", "Rodzaj nabywcy: Company, Person lub Foreign", errors);
         var method = ParseName(input.PaymentMethod, PaymentMethod.Transfer, "INV-VAL-071", "paymentMethod", "Forma płatności: Transfer, Cash lub Card", errors);
         ExemptionBasisKind? exemption = input.ExemptionBasisKind is null
             ? null
@@ -348,6 +373,17 @@ public class IssuedInvoiceService(
         CheckLength(input.Buyer?.AddressLine1, MaxTextLength, "buyer.addressLine1", errors);
         CheckLength(input.Buyer?.AddressLine2, MaxTextLength, "buyer.addressLine2", errors);
         CheckLength(input.ExemptionBasisText, MaxShortTextLength, "exemptionBasis.text", errors);
+        CheckLength(input.Buyer?.ForeignId, MaxForeignIdLength, "buyer.foreignId", errors);
+
+        var country = input.Buyer?.CountryCode?.Trim();
+        if (!string.IsNullOrEmpty(country) && !IsLetters(country, 2))
+            errors.Add(new("INV-VAL-030", "buyer.countryCode", "Podaj kraj nabywcy inny niż Polska"));
+
+        var currency = input.Currency?.Trim().ToUpperInvariant();
+        if (currency is not null && !IsLetters(currency, 3))
+            errors.Add(new("INV-VAL-090", "currency", "Waluta musi być trzyliterowym kodem ISO 4217"));
+        if (input.ExchangeRate is { } exchangeRate && (Math.Abs(exchangeRate) >= MaxExchangeRate || Math.Round(exchangeRate, 6) != exchangeRate))
+            errors.Add(new("INV-VAL-093", "exchangeRate", "Kurs waluty poza zakresem lub ponad 6 miejsc po przecinku"));
 
         var lines = input.Lines ?? [];
         if (lines.Count > MaxLines)
@@ -380,11 +416,39 @@ public class IssuedInvoiceService(
 
         var issueDate = input.IssueDate ?? Today();
         invoice.SetBuyer(kind, input.Buyer?.Nip, input.Buyer?.Name, input.Buyer?.AddressLine1, input.Buyer?.AddressLine2);
+        invoice.SetForeignBuyer(input.Buyer?.CountryCode, input.Buyer?.ForeignId);
+        invoice.SetCurrency(currency, input.ExchangeRate, input.ExchangeRateDate);
         invoice.SetDates(issueDate, input.SaleDate ?? issueDate, input.DueDate ?? issueDate.AddDays(IssuedInvoice.DefaultPaymentDays));
         invoice.SetPayment(method, input.SplitPayment);
         invoice.SetExemptionBasis(exemption, input.ExemptionBasisText);
         invoice.ReplaceLines(parsedLines);
     }
+
+    private async Task ProposeRateIfMissingAsync(IssuedInvoice invoice, CancellationToken ct)
+    {
+        if (!invoice.NeedsExchangeRate)
+            return;
+
+        var quote = await exchangeRates.LatestMidBeforeAsync(invoice.Currency, Min(invoice.IssueDate, invoice.SaleDate), ct);
+        if (quote is not null)
+            invoice.SetCurrency(null, quote.Rate, quote.TableDate);
+    }
+
+    private async Task EnsureProposedRateIsCurrentAsync(IssuedInvoice invoice, CancellationToken ct)
+    {
+        if (invoice.Currency == IssuedInvoice.DefaultCurrency || invoice.ExchangeRateDate is not { } tableDate)
+            return;
+
+        var cutoff = Min(invoice.IssueDate, invoice.SaleDate);
+        var expected = await exchangeRates.LatestMidBeforeAsync(invoice.Currency, cutoff, ct);
+        if (tableDate >= cutoff || (expected is not null && expected.TableDate != tableDate))
+            throw new InvoiceValidationException([new("INV-VAL-094", "exchangeRate",
+                $"Kurs NBP z tabeli z {tableDate:yyyy-MM-dd} nie pasuje do dat faktury. Pobierz kurs ponownie albo wpisz go ręcznie.")]);
+    }
+
+    private static DateOnly Min(DateOnly a, DateOnly b) => a < b ? a : b;
+
+    private static bool IsLetters(string? value, int length) => value?.Length == length && value.All(char.IsAsciiLetter);
 
     private static T ParseName<T>(string? value, T fallback, string code, string field, string message, List<InvoiceCheck> errors) where T : struct, Enum
     {
@@ -423,13 +487,16 @@ public class IssuedInvoiceService(
         if (!invoice.IsEditable)
         {
             var snapshot = new IssuedInvoiceSeller(invoice.SellerNip!, invoice.SellerName, invoice.SellerAddressLine1,
-                invoice.SellerAddressLine2, invoice.SellerBankAccount, invoice.SellerCashAccounting);
+                invoice.SellerAddressLine2, invoice.SellerBankAccount, invoice.SellerCashAccounting,
+                invoice.SellerIban, invoice.SellerBankSwift, invoice.SellerBankName);
             return new IssuedInvoiceView(invoice, snapshot, invoice.KsefEnvironment ?? environment.Current, IssueChecks.Warnings(invoice));
         }
 
         var nip = await db.Tenants.Where(t => t.Id == invoice.TenantId).Select(t => t.Nip).SingleAsync(ct);
         var profile = await db.SellerProfiles.AsNoTracking().SingleOrDefaultAsync(p => p.TenantId == invoice.TenantId, ct);
-        var seller = new IssuedInvoiceSeller(nip, profile?.LegalName, profile?.AddressLine1, profile?.AddressLine2, profile?.BankAccount, profile?.CashAccounting ?? false);
+        var account = profile?.PaymentAccountFor(invoice.BuyerKind);
+        var seller = new IssuedInvoiceSeller(nip, profile?.LegalName, profile?.AddressLine1, profile?.AddressLine2, account?.BankAccount, profile?.CashAccounting ?? false,
+            account?.Iban, account?.Swift, account?.BankName);
         return new IssuedInvoiceView(invoice, seller, environment.Current, IssueChecks.Warnings(invoice));
     }
 

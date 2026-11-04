@@ -44,7 +44,8 @@ public class SellerProfileController(
         {
             var (view, errors) = await sellerProfiles.SaveAsync(tenantId, new SellerProfileInput(
                 request.LegalName, request.AddressLine1, request.AddressLine2, request.BankAccount, request.CashAccounting,
-                request.NumberingPattern, request.NextNumber, request.NextNumberPeriod), ct);
+                request.NumberingPattern, request.NextNumber, request.NextNumberPeriod,
+                request.BankSwift, request.BankName, request.ForeignBankAccount, request.ForeignBankSwift, request.ForeignBankName), ct);
 
             if (errors.Count > 0)
                 return BadRequest(ToEnvelope(errors));
@@ -79,5 +80,10 @@ public class SellerProfileController(
         view.Nip,
         view.Profile.IsComplete,
         view.NextNumberPreview,
-        ksefEnvironment.Current);
+        ksefEnvironment.Current,
+        view.Profile.BankSwift,
+        view.Profile.BankName,
+        view.Profile.ForeignBankAccount,
+        view.Profile.ForeignBankSwift,
+        view.Profile.ForeignBankName);
 }

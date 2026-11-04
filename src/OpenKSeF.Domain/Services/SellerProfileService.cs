@@ -10,12 +10,16 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
 {
     private const int MaxTextLength = 512;
     private const int MaxPatternLength = 100;
+    private const int MaxBankNameLength = 256;
 
     [GeneratedRegex(@"^\d{4}-(0[1-9]|1[0-2])$")]
     private static partial Regex MonthPeriodRegex();
 
     [GeneratedRegex(@"^\d{4}$")]
     private static partial Regex YearPeriodRegex();
+
+    [GeneratedRegex(@"^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$")]
+    private static partial Regex SwiftRegex();
 
     public async Task<SellerProfileView?> GetAsync(Guid tenantId, CancellationToken ct = default)
     {
@@ -53,6 +57,7 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
         }
 
         profile.Update(input.LegalName, input.AddressLine1, input.AddressLine2, bankAccount, input.CashAccounting, pattern);
+        profile.SetBankDetails(input.BankSwift, input.BankName, input.ForeignBankAccount, input.ForeignBankSwift, input.ForeignBankName);
 
         if (input.NextNumber is { } next)
         {
@@ -126,6 +131,21 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
         {
             if (value?.Trim().Length > MaxTextLength)
                 errors.Add(new("SP-VAL-005", field, $"Pole może mieć najwyżej {MaxTextLength} znaków"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(input.ForeignBankAccount) && !Nrb.IsValidIban(Nrb.NormalizeIban(input.ForeignBankAccount)))
+            errors.Add(new("SP-VAL-008", "foreignBankAccount", "Niepoprawny numer IBAN rachunku zagranicznego"));
+
+        foreach (var (field, value) in new[] { ("bankSwift", input.BankSwift), ("foreignBankSwift", input.ForeignBankSwift) })
+        {
+            if (!string.IsNullOrWhiteSpace(value) && !SwiftRegex().IsMatch(value.Trim().ToUpperInvariant()))
+                errors.Add(new("SP-VAL-009", field, "Kod SWIFT musi mieć 8 lub 11 znaków"));
+        }
+
+        foreach (var (field, value) in new[] { ("bankName", input.BankName), ("foreignBankName", input.ForeignBankName) })
+        {
+            if (value?.Trim().Length > MaxBankNameLength)
+                errors.Add(new("SP-VAL-005", field, $"Pole może mieć najwyżej {MaxBankNameLength} znaków"));
         }
 
         return errors;

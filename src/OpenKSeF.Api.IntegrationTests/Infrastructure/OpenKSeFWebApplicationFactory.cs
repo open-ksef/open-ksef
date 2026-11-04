@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using OpenKSeF.Domain.Abstractions;
 
 namespace OpenKSeF.Api.IntegrationTests.Infrastructure;
 
@@ -12,6 +13,8 @@ public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Progra
 
     private readonly TestcontainersFixture _fixture;
     private readonly TimeProvider? _timeProvider;
+
+    public StubExchangeRateSource ExchangeRates { get; } = new();
 
     public OpenKSeFWebApplicationFactory(TestcontainersFixture fixture, TimeProvider? timeProvider = null)
     {
@@ -33,6 +36,8 @@ public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Progra
 
         builder.UseEnvironment("Production");
 
+        builder.ConfigureTestServices(services => services.AddSingleton<IExchangeRateSource>(ExchangeRates));
+
         if (_timeProvider is not null)
             builder.ConfigureTestServices(services => services.AddSingleton(_timeProvider));
     }
@@ -46,5 +51,19 @@ public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Progra
         });
 
         return base.CreateHost(builder);
+    }
+}
+
+/// <summary>Replaces NBP in every test host, so no test reaches api.nbp.pl. A null quote behaves like NBP being down.</summary>
+public sealed class StubExchangeRateSource : IExchangeRateSource
+{
+    public ExchangeRateQuote? Quote { get; set; }
+
+    public List<(string Currency, DateOnly Date)> Calls { get; } = [];
+
+    public Task<ExchangeRateQuote?> LatestMidBeforeAsync(string currency, DateOnly date, CancellationToken ct = default)
+    {
+        Calls.Add((currency, date));
+        return Task.FromResult(Quote);
     }
 }

@@ -21,7 +21,9 @@ import { KsefStatusPanel } from '@/components/invoicing/KsefStatusPanel'
 import { VatSummary } from '@/components/invoicing/VatSummary'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
-import { formatDate, formatDecimal, formatMoney, formatNrb } from '@/invoicing/format'
+import { renderBilingualPdf, type PrintVariant } from '@/invoicing/bilingualPrint'
+import { countryName } from '@/invoicing/foreign'
+import { formatDate, formatDecimal, formatIban, formatMoney, formatNrb } from '@/invoicing/format'
 import { downloadFile, fileStem, isReissueBlocked, ksefPollInterval, renderInvoicePdf } from '@/invoicing/status'
 import { vatRateLabel } from '@/invoicing/totals'
 
@@ -66,6 +68,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
   const stem = fileStem(invoice.number, invoice.id)
   const { ksefNumber, verificationUrl } = invoice.ksef
   const accepted = invoice.status === 'Accepted'
+  const isForeign = invoice.buyer.kind === 'Foreign'
 
   function showFailure(error: unknown, fallback: string): void {
     setFailure(error instanceof Error ? error.message : fallback)
@@ -91,9 +94,10 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
   })
 
   const pdf = useMutation({
-    mutationFn: async ([nrKSeF, qrCode]: [string, string]) => {
+    mutationFn: async ({ nrKSeF, qrCode, variant }: { nrKSeF: string; qrCode: string; variant: PrintVariant | null }) => {
       const xml = await getIssuedInvoiceXml(tenantId, invoice.id)
-      downloadFile(await renderInvoicePdf(xml, nrKSeF, qrCode), `${stem}.pdf`, 'application/pdf')
+      const blob = variant ? await renderBilingualPdf(xml, nrKSeF, qrCode, variant) : await renderInvoicePdf(xml, nrKSeF, qrCode)
+      downloadFile(blob, variant ? `${stem}_${variant}.pdf` : `${stem}.pdf`, 'application/pdf')
     },
     onMutate: () => setFailure(null),
     onError: (error) => showFailure(error, 'Nie udało się wygenerować PDF'),
@@ -123,18 +127,29 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
     </button>
   )
 
+  const pdfButton = (label: string, variant: PrintVariant | null, primary: boolean) =>
+    ksefNumber && verificationUrl ? (
+      <button
+        type="button"
+        className={`ui-button ui-button--${primary ? 'primary' : 'outline'} ui-button--md`}
+        disabled={pdf.isPending}
+        onClick={() => pdf.mutate({ nrKSeF: ksefNumber, qrCode: verificationUrl, variant })}
+      >
+        <Icon name="file-down" /> {pdf.isPending && pdf.variables.variant === variant ? 'Generowanie…' : label}
+      </button>
+    ) : null
+
   const downloads = (
     <>
-      {ksefNumber && verificationUrl ? (
-        <button
-          type="button"
-          className="ui-button ui-button--primary ui-button--md"
-          disabled={pdf.isPending}
-          onClick={() => pdf.mutate([ksefNumber, verificationUrl])}
-        >
-          <Icon name="file-down" /> {pdf.isPending ? 'Generowanie…' : 'Pobierz PDF'}
-        </button>
-      ) : null}
+      {isForeign ? (
+        <>
+          {pdfButton('Pobierz PDF (EN/PL)', 'EN-PL', true)}
+          {pdfButton('Pobierz PDF (PL/EN)', 'PL-EN', false)}
+          {pdfButton('Pobierz PDF (wzór MF)', null, false)}
+        </>
+      ) : (
+        pdfButton('Pobierz PDF', null, true)
+      )}
       <div className="status-panel__row">
         <button
           type="button"
@@ -217,6 +232,18 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
                 <dd className="mono">{invoice.buyer.nip}</dd>
               </>
             ) : null}
+            {invoice.buyer.countryCode ? (
+              <>
+                <dt>Kraj nabywcy</dt>
+                <dd>{countryName(invoice.buyer.countryCode)}</dd>
+              </>
+            ) : null}
+            {invoice.buyer.foreignId ? (
+              <>
+                <dt>{invoice.buyer.idType === 'VatUe' ? 'Numer VAT UE' : 'Numer podatkowy'}</dt>
+                <dd className="mono">{invoice.buyer.foreignId}</dd>
+              </>
+            ) : null}
             <dt>Data wystawienia</dt>
             <dd>{formatDate(invoice.issueDate)}</dd>
             <dt>Data sprzedaży</dt>
@@ -231,7 +258,28 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
             {invoice.paymentMethod === 'Transfer' ? (
               <>
                 <dt>Rachunek</dt>
-                <dd className="mono">{formatNrb(invoice.seller.bankAccount)}</dd>
+                <dd className="mono">{invoice.seller.iban ? formatIban(invoice.seller.iban) : formatNrb(invoice.seller.bankAccount)}</dd>
+                {invoice.seller.swift ? (
+                  <>
+                    <dt>SWIFT</dt>
+                    <dd className="mono">{invoice.seller.swift}</dd>
+                  </>
+                ) : null}
+                {invoice.seller.bankName ? (
+                  <>
+                    <dt>Bank</dt>
+                    <dd>{invoice.seller.bankName}</dd>
+                  </>
+                ) : null}
+              </>
+            ) : null}
+            {invoice.exchangeRate ? (
+              <>
+                <dt>Kurs</dt>
+                <dd>
+                  1 {invoice.currency} = {formatDecimal(invoice.exchangeRate, 2)} PLN
+                  {invoice.exchangeRateDate ? ` (NBP z ${formatDate(invoice.exchangeRateDate)})` : ' (wpisany ręcznie)'}
+                </dd>
               </>
             ) : null}
           </dl>

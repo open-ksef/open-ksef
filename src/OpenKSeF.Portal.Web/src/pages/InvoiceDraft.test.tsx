@@ -210,6 +210,7 @@ describe('issuing pages', () => {
     vi.mocked(getIssuedInvoice).mockResolvedValue({
       id: 'i-1',
       status: 'Draft',
+      currency: 'PLN',
       number: null,
       buyer: { kind: 'Company', nip: '5260250274', name: 'Nabywca', addressLine1: 'a', addressLine2: 'b' },
       issueDate: '2026-11-01',
@@ -308,6 +309,7 @@ describe('issuing pages', () => {
       ({
         id,
         status: 'Draft',
+        currency: 'PLN',
         number: null,
         buyer: { kind: 'Company', nip: '5260250274', name: buyerName, addressLine1: 'a', addressLine2: 'b' },
         issueDate: '2026-11-01',

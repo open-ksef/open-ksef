@@ -8,6 +8,13 @@ export const VAT_RATES: readonly { code: VatRateCode; label: string; percent: nu
   { code: 'zw', label: 'zw', percent: 0 },
 ]
 
+export const FOREIGN_VAT_RATES: typeof VAT_RATES = [
+  { code: 'np I', label: 'np I', percent: 0 },
+  { code: 'np II', label: 'np II', percent: 0 },
+]
+
+const ALL_RATES = [...VAT_RATES, ...FOREIGN_VAT_RATES]
+
 export interface TotalsLineInput {
   quantity: number
   unitNetPrice: number
@@ -49,7 +56,7 @@ export function computeTotals(lines: readonly TotalsLineInput[]): InvoiceTotals 
 
   let totalNet = 0n
   let totalVat = 0n
-  const vatSummary = VAT_RATES.filter((rate) => netByRate.has(rate.code)).map((rate) => {
+  const vatSummary = ALL_RATES.filter((rate) => netByRate.has(rate.code)).map((rate) => {
     const net = netByRate.get(rate.code) ?? 0n
     const vat = divideHalfAwayFromZero(net * BigInt(rate.percent), 100n)
     totalNet += net
@@ -67,5 +74,5 @@ export function computeTotals(lines: readonly TotalsLineInput[]): InvoiceTotals 
 }
 
 export function vatRateLabel(code: string): string {
-  return VAT_RATES.find((rate) => rate.code === code)?.label ?? (/^\d+$/.test(code) ? `${code}%` : code)
+  return ALL_RATES.find((rate) => rate.code === code)?.label ?? (/^\d+$/.test(code) ? `${code}%` : code)
 }

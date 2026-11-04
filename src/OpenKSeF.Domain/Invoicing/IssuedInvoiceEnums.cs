@@ -12,7 +12,8 @@ public enum IssuedInvoiceStatus
 public enum BuyerKind
 {
     Company,
-    Person
+    Person,
+    Foreign
 }
 
 public enum PaymentMethod

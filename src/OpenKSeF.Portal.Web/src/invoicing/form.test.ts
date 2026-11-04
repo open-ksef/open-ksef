@@ -14,7 +14,7 @@ describe('draft form mapping', () => {
 
   it('sends dates unchanged, parses Polish decimals, drops NIP for a person', () => {
     const draft = emptyDraft('2026-11-01')
-    draft.buyer = { kind: 'Person', nip: '5260250274', name: ' Jan Kowalski ', addressLine1: 'ul. A 1', addressLine2: '' }
+    draft.buyer = { ...draft.buyer, kind: 'Person', nip: '5260250274', name: ' Jan Kowalski ', addressLine1: 'ul. A 1', addressLine2: '' }
     draft.lines = [{ name: 'Usługa', unit: 'h', quantity: '1,5', unitNetPrice: '1 200,50', vatRate: '8' }]
 
     const request = toDraftRequest(draft)

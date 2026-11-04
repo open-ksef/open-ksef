@@ -8,7 +8,12 @@ public record SellerProfileRequest(
     bool CashAccounting,
     string? NumberingPattern,
     int? NextNumber = null,
-    string? NextNumberPeriod = null);
+    string? NextNumberPeriod = null,
+    string? BankSwift = null,
+    string? BankName = null,
+    string? ForeignBankAccount = null,
+    string? ForeignBankSwift = null,
+    string? ForeignBankName = null);
 
 public record SellerProfileResponse(
     string? LegalName,
@@ -22,4 +27,9 @@ public record SellerProfileResponse(
     string Nip,
     bool IsComplete,
     string NextNumberPreview,
-    string KsefEnvironment);
+    string KsefEnvironment,
+    string? BankSwift = null,
+    string? BankName = null,
+    string? ForeignBankAccount = null,
+    string? ForeignBankSwift = null,
+    string? ForeignBankName = null);
