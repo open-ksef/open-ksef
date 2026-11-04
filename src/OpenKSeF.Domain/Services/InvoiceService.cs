@@ -4,6 +4,7 @@ using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.DTOs;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Events;
 using System.Linq;
 
@@ -64,14 +65,9 @@ public class InvoiceService : IInvoiceService
                     IssueDate = invoice.IssueDate,
                     AcquisitionDate = invoice.AcquisitionDate,
                     InvoiceType = invoice.InvoiceType,
-                    VendorBankAccount = invoice.VendorBankAccount,
-                    DueDate = invoice.DueDate,
                     FirstSeenAt = now,
                     LastUpdatedAt = now
                 };
-
-                if (invoice.Lines is { Count: > 0 })
-                    newInvoice.Lines = invoice.Lines.Select(l => MapLine(l, newInvoice.Id)).ToList();
 
                 _db.InvoiceHeaders.Add(newInvoice);
                 newInvoiceIds.Add(newInvoice.Id);
@@ -102,21 +98,7 @@ public class InvoiceService : IInvoiceService
                 existing.Currency = invoice.Currency ?? "PLN";
                 existing.AcquisitionDate = invoice.AcquisitionDate;
                 existing.InvoiceType = invoice.InvoiceType;
-                if (invoice.VendorBankAccount is not null)
-                    existing.VendorBankAccount = invoice.VendorBankAccount;
-                if (invoice.DueDate is not null)
-                    existing.DueDate = invoice.DueDate;
                 existing.LastUpdatedAt = now;
-
-                if (invoice.Lines is not null)
-                {
-                    var oldLines = await _db.InvoiceLines
-                        .Where(l => l.InvoiceHeaderId == existing.Id)
-                        .ToListAsync();
-                    _db.InvoiceLines.RemoveRange(oldLines);
-                    if (invoice.Lines.Count > 0)
-                        _db.InvoiceLines.AddRange(invoice.Lines.Select(l => MapLine(l, existing.Id)));
-                }
 
                 _logger.LogDebug(
                     "Updated existing invoice: {KSeFNumber} for tenant {TenantId}",
@@ -149,6 +131,37 @@ public class InvoiceService : IInvoiceService
         }
 
         return newInvoiceIds;
+    }
+
+    public async Task ApplyInvoiceXmlAsync(
+        Guid invoiceId, string? bankAccount, IReadOnlyList<InvoiceLineDto> lines, DateOnly? dueDate, CancellationToken cancellationToken = default)
+    {
+        var invoice = await _db.InvoiceHeaders.FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
+        if (invoice is null)
+            return;
+
+        if (invoice.Direction == InvoiceDirection.Received)
+        {
+            invoice.VendorBankAccount ??= bankAccount;
+            invoice.DueDate ??= dueDate;
+        }
+
+        if (lines.Count > 0 && !await _db.InvoiceLines.AnyAsync(l => l.InvoiceHeaderId == invoiceId, cancellationToken))
+            _db.InvoiceLines.AddRange(lines.Select(l => MapLine(l, invoiceId)));
+
+        invoice.XmlFetchedAt = DateTime.UtcNow;
+        invoice.LastUpdatedAt = invoice.XmlFetchedAt.Value;
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task RecordFailedInvoiceXmlAsync(Guid invoiceId, CancellationToken cancellationToken = default)
+    {
+        var invoice = await _db.InvoiceHeaders.FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
+        if (invoice is null)
+            return;
+
+        invoice.XmlAttemptedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     private static InvoiceLine MapLine(InvoiceLineDto dto, Guid invoiceHeaderId) => new()

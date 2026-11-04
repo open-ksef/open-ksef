@@ -27,7 +27,8 @@ public sealed class KSeFInvoiceXmlParser
         _logger = logger;
     }
 
-    public (string? BankAccount, IReadOnlyList<InvoiceLineDto> Lines, DateOnly? DueDate) ExtractInvoiceDetails(byte[] invoiceXml)
+    /// <returns>Null <c>Lines</c> when the XML cannot be read as an invoice.</returns>
+    public (string? BankAccount, IReadOnlyList<InvoiceLineDto>? Lines, DateOnly? DueDate) ExtractInvoiceDetails(byte[] invoiceXml)
     {
         try
         {
@@ -38,7 +39,7 @@ public sealed class KSeFInvoiceXmlParser
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to parse invoice XML for details extraction");
-            return (null, Array.Empty<InvoiceLineDto>(), null);
+            return (null, null, null);
         }
     }
 
@@ -71,13 +72,16 @@ public sealed class KSeFInvoiceXmlParser
         }
     }
 
-    private static (string? BankAccount, IReadOnlyList<InvoiceLineDto> Lines, DateOnly? DueDate) ExtractDetails(XDocument doc)
+    private static (string? BankAccount, IReadOnlyList<InvoiceLineDto>? Lines, DateOnly? DueDate) ExtractDetails(XDocument doc)
     {
         var root = doc.Root;
-        if (root is null) return (null, Array.Empty<InvoiceLineDto>(), null);
+        if (root is null) return (null, null, null);
 
         var ns = DetectNamespace(root);
-        if (ns is null) return (null, Array.Empty<InvoiceLineDto>(), null);
+        if (ns is null) return (null, null, null);
+
+        var fa = root.Descendants(ns + "Fa").FirstOrDefault();
+        if (fa is null) return (null, null, null);
 
         var bankAccount = root
             .Descendants(ns + "Platnosc")
@@ -91,39 +95,34 @@ public sealed class KSeFInvoiceXmlParser
         else
             bankAccount = bankAccount.Trim();
 
-        var fa = root.Descendants(ns + "Fa").FirstOrDefault();
         var lines = new List<InvoiceLineDto>();
-
-        if (fa is not null)
+        foreach (var wiersz in fa.Elements(ns + "FaWiersz"))
         {
-            foreach (var wiersz in fa.Elements(ns + "FaWiersz"))
-            {
-                var lineNumber = ParseInt(wiersz.Element(ns + "NrWierszaFa")?.Value) ?? 0;
-                var unitPriceNet = ParseDecimal(wiersz.Element(ns + "P_9A")?.Value);
-                var amountNet = ParseDecimal(wiersz.Element(ns + "P_11")?.Value);
-                var vatRate = wiersz.Element(ns + "P_12")?.Value?.Trim();
+            var lineNumber = ParseInt(wiersz.Element(ns + "NrWierszaFa")?.Value) ?? 0;
+            var unitPriceNet = ParseDecimal(wiersz.Element(ns + "P_9A")?.Value);
+            var amountNet = ParseDecimal(wiersz.Element(ns + "P_11")?.Value);
+            var vatRate = wiersz.Element(ns + "P_12")?.Value?.Trim();
 
-                // P_9B, P_11A, P_11Vat are only present for special cases (art. 106e ust. 7, 8, 10).
-                // For standard invoices, derive gross/VAT from net amount and rate.
-                var unitPriceGross = ParseDecimal(wiersz.Element(ns + "P_9B")?.Value)
-                    ?? DeriveGross(unitPriceNet, vatRate, 6);
-                var amountGross = ParseDecimal(wiersz.Element(ns + "P_11A")?.Value)
-                    ?? DeriveGross(amountNet, vatRate, 2);
-                var amountVat = ParseDecimal(wiersz.Element(ns + "P_11Vat")?.Value)
-                    ?? DeriveVat(amountNet, vatRate);
+            // P_9B, P_11A, P_11Vat are only present for special cases (art. 106e ust. 7, 8, 10).
+            // For standard invoices, derive gross/VAT from net amount and rate.
+            var unitPriceGross = ParseDecimal(wiersz.Element(ns + "P_9B")?.Value)
+                ?? DeriveGross(unitPriceNet, vatRate, 6);
+            var amountGross = ParseDecimal(wiersz.Element(ns + "P_11A")?.Value)
+                ?? DeriveGross(amountNet, vatRate, 2);
+            var amountVat = ParseDecimal(wiersz.Element(ns + "P_11Vat")?.Value)
+                ?? DeriveVat(amountNet, vatRate);
 
-                lines.Add(new InvoiceLineDto(
-                    LineNumber: lineNumber,
-                    Name: wiersz.Element(ns + "P_7")?.Value?.Trim(),
-                    Unit: wiersz.Element(ns + "P_8A")?.Value?.Trim(),
-                    Quantity: ParseDecimal(wiersz.Element(ns + "P_8B")?.Value),
-                    UnitPriceNet: unitPriceNet,
-                    UnitPriceGross: unitPriceGross,
-                    AmountNet: amountNet,
-                    AmountGross: amountGross,
-                    AmountVat: amountVat,
-                    VatRate: vatRate));
-            }
+            lines.Add(new InvoiceLineDto(
+                LineNumber: lineNumber,
+                Name: wiersz.Element(ns + "P_7")?.Value?.Trim(),
+                Unit: wiersz.Element(ns + "P_8A")?.Value?.Trim(),
+                Quantity: ParseDecimal(wiersz.Element(ns + "P_8B")?.Value),
+                UnitPriceNet: unitPriceNet,
+                UnitPriceGross: unitPriceGross,
+                AmountNet: amountNet,
+                AmountGross: amountGross,
+                AmountVat: amountVat,
+                VatRate: vatRate));
         }
 
         return (bankAccount, lines, ExtractDueDate(root, ns));

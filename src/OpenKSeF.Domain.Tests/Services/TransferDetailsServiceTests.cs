@@ -10,6 +10,7 @@ public class TransferDetailsServiceTests
     private const string CorrectionMessage = "Faktura korygująca: kwota to różnica. Sprawdź, czy jest coś do zapłaty.";
     private const string TypeMessage = "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).";
     private const string AccountMessage = "Brak poprawnego numeru rachunku na fakturze.";
+    private const string AccountPendingMessage = "Numer rachunku pobieramy jeszcze z KSeF. Sprawdź ponownie za kilka minut.";
     private const string NameOrTitleMessage = "Nie można utworzyć kodu QR: brak czytelnej nazwy sprzedawcy lub numeru faktury.";
     private const string ManualMessage = "Zaliczka/rozliczenie: wpisz kwotę ręcznie.";
     private const string MppMessage = "Sprawdź, czy faktura nie wymaga podzielonej płatności (MPP).";
@@ -320,6 +321,34 @@ public class TransferDetailsServiceTests
         Assert.Equal(AccountMessage, data.QrMessage);
     }
 
+    [Fact]
+    public void Qr_XmlNotFetchedYet_SaysAccountIsComing()
+    {
+        var invoice = MakeInvoice(vendorBankAccount: null);
+        invoice.XmlFetchedAt = null;
+
+        var data = _sut.BuildTransferData(invoice);
+
+        Assert.False(data.QrAvailable);
+        Assert.Equal(AccountPendingMessage, data.QrMessage);
+    }
+
+    [Fact]
+    public void Qr_DatedRowWithoutMarker_XmlWasParsed_SaysNoAccount()
+    {
+        var invoice = MakeInvoice(vendorBankAccount: null);
+        invoice.XmlFetchedAt = null;
+        invoice.DueDate = new DateOnly(2026, 11, 20);
+
+        Assert.Equal(AccountMessage, _sut.BuildTransferData(invoice).QrMessage);
+    }
+
+    [Fact]
+    public void Qr_XmlFetched_WithoutAccount_SaysNoAccount()
+    {
+        Assert.Equal(AccountMessage, _sut.BuildTransferData(MakeInvoice(vendorBankAccount: null)).QrMessage);
+    }
+
     private static InvoiceHeader MakeInvoice(
         string? invoiceNumber = "FV/2026/03/001",
         string? vendorBankAccount = null,
@@ -340,6 +369,7 @@ public class TransferDetailsServiceTests
             Currency = currency,
             IssueDate = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc),
             VendorBankAccount = vendorBankAccount,
-            InvoiceType = invoiceType
+            InvoiceType = invoiceType,
+            XmlFetchedAt = new DateTime(2026, 3, 2, 0, 0, 0, DateTimeKind.Utc)
         };
 }

@@ -17,9 +17,6 @@ public record InvoiceDto(
     DateTime IssueDate,
     DateTime? AcquisitionDate,
     string? InvoiceType,
-    string? VendorBankAccount = null,
-    IReadOnlyList<InvoiceLineDto>? Lines = null,
-    DateOnly? DueDate = null,
     InvoiceDirection Direction = InvoiceDirection.Received,
     string? BuyerIdType = null,
     string? BuyerForeignId = null);
