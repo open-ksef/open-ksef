@@ -7,6 +7,7 @@ export interface ListInvoicesParams extends Record<string, string | number | boo
   filterByVendor?: string
   dateFrom?: string
   dateTo?: string
+  isPaid?: boolean
 }
 
 export function listInvoices(tenantId: string, params?: ListInvoicesParams): Promise<PagedResult<InvoiceResponse>> {

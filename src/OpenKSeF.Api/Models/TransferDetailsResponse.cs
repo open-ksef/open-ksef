@@ -8,4 +8,5 @@ public record TransferDetailsResponse(
     string Currency,
     string Title,
     string TransferText,
-    string QrCodeBase64);
+    string? QrCodeBase64,
+    string? QrMessage = null);

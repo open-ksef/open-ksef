@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 using System.Linq;
@@ -41,7 +42,8 @@ public class InvoicesController : ControllerBase
         [FromQuery] int pageSize = 20,
         [FromQuery] string? filterByVendor = null,
         [FromQuery] DateTime? dateFrom = null,
-        [FromQuery] DateTime? dateTo = null)
+        [FromQuery] DateTime? dateTo = null,
+        [FromQuery] bool? isPaid = null)
     {
         if (!await VerifyTenantOwnership(tenantId))
             return Forbid();
@@ -51,25 +53,38 @@ public class InvoicesController : ControllerBase
         if (pageSize > 100) pageSize = 100;
 
         var query = _db.InvoiceHeaders
-            .Where(i => i.TenantId == tenantId);
+            .Where(i => i.TenantId == tenantId && i.Direction == InvoiceDirection.Received);
 
         if (!string.IsNullOrWhiteSpace(filterByVendor))
         {
+            var term = filterByVendor.Trim().ToLower();
             query = query.Where(i =>
-                i.VendorName.Contains(filterByVendor) ||
-                i.VendorNip.Contains(filterByVendor));
+                i.VendorName.ToLower().Contains(term) ||
+                i.VendorNip.Contains(term));
         }
 
         if (dateFrom.HasValue)
-            query = query.Where(i => i.IssueDate >= dateFrom.Value);
+        {
+            var from = DateTime.SpecifyKind(dateFrom.Value.Date, DateTimeKind.Utc);
+            query = query.Where(i => i.IssueDate >= from);
+        }
 
         if (dateTo.HasValue)
-            query = query.Where(i => i.IssueDate <= dateTo.Value);
+        {
+            var to = DateTime.SpecifyKind(dateTo.Value.Date.AddTicks(TimeSpan.TicksPerDay - 1), DateTimeKind.Utc);
+            query = query.Where(i => i.IssueDate <= to);
+        }
+
+        if (isPaid.HasValue)
+            query = query.Where(i => i.IsPaid == isPaid.Value);
 
         var totalCount = await query.CountAsync();
 
-        var items = await query
-            .OrderByDescending(i => i.IssueDate)
+        var ordered = isPaid == false
+            ? query.OrderBy(i => i.DueDate == null).ThenBy(i => i.DueDate).ThenByDescending(i => i.IssueDate).ThenBy(i => i.Id)
+            : query.OrderByDescending(i => i.IssueDate).ThenBy(i => i.Id);
+
+        var items = await ordered
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(i => new InvoiceResponse(
@@ -91,7 +106,12 @@ public class InvoicesController : ControllerBase
                 i.FirstSeenAt,
                 i.IsPaid,
                 i.PaidAt,
-                null))
+                i.VendorBankAccount,
+                null,
+                i.DueDate,
+                i.Direction.ToString(),
+                i.BuyerIdType,
+                i.BuyerForeignId))
             .ToListAsync();
 
         return Ok(new PagedResult<InvoiceResponse>
@@ -141,6 +161,7 @@ public class InvoicesController : ControllerBase
     [ProducesResponseType(typeof(TransferDetailsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> GetTransferDetails(Guid tenantId, Guid id)
     {
         if (!await VerifyTenantOwnership(tenantId))
@@ -152,10 +173,14 @@ public class InvoicesController : ControllerBase
         if (invoice is null)
             return NotFound();
 
+        if (invoice.Direction == InvoiceDirection.Issued)
+            return Conflict(new { message = "Przelew jest dostępny tylko dla faktur otrzymanych" });
+
         var transferData = _transferDetails.BuildTransferData(invoice);
         var transferText = _transferDetails.BuildTransferText(invoice);
-        var qrBytes = _qrCode.GenerateTransferQr(transferData);
-        var qrBase64 = $"data:image/png;base64,{Convert.ToBase64String(qrBytes)}";
+        var qrBase64 = transferData.QrAvailable
+            ? $"data:image/png;base64,{Convert.ToBase64String(_qrCode.GenerateTransferQr(transferData))}"
+            : null;
 
         return Ok(new TransferDetailsResponse(
             transferData.RecipientName,
@@ -165,13 +190,15 @@ public class InvoicesController : ControllerBase
             transferData.Currency,
             transferData.Title,
             transferText,
-            qrBase64));
+            qrBase64,
+            transferData.QrMessage));
     }
 
     [HttpPatch("{id:guid}/paid")]
     [ProducesResponseType(typeof(InvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> SetPaid(Guid tenantId, Guid id, [FromBody] SetInvoicePaidRequest request)
     {
         if (!await VerifyTenantOwnership(tenantId))
@@ -182,6 +209,9 @@ public class InvoicesController : ControllerBase
 
         if (invoice is null)
             return NotFound();
+
+        if (invoice.Direction == InvoiceDirection.Issued)
+            return Conflict(new { message = "Status zapłaty dotyczy tylko faktur otrzymanych" });
 
         invoice.IsPaid = request.IsPaid;
         invoice.PaidAt = request.IsPaid ? DateTime.UtcNow : null;
@@ -219,11 +249,16 @@ public class InvoicesController : ControllerBase
         i.FirstSeenAt,
         i.IsPaid,
         i.PaidAt,
+        i.VendorBankAccount,
         Lines: i.Lines
             .OrderBy(l => l.LineNumber)
             .Select(l => new InvoiceLineResponse(
                 l.LineNumber, l.Name, l.Unit, l.Quantity,
                 l.UnitPriceNet, l.UnitPriceGross,
                 l.AmountNet, l.AmountGross, l.AmountVat, l.VatRate))
-            .ToList());
+            .ToList(),
+        DueDate: i.DueDate,
+        Direction: i.Direction.ToString(),
+        BuyerIdType: i.BuyerIdType,
+        BuyerForeignId: i.BuyerForeignId);
 }

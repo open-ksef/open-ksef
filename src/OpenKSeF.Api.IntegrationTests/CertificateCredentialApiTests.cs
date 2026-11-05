@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json.Serialization;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 
@@ -12,11 +14,8 @@ public class CertificateCredentialApiTests : IDisposable
     private readonly OpenKSeFWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
-    private static readonly string TestCertPath =
-        Path.Combine(AppContext.BaseDirectory, "TestData", "TestOpenKSeF.crt");
-    private static readonly string TestKeyPath =
-        Path.Combine(AppContext.BaseDirectory, "TestData", "TestOpenKSeF.key");
-    private const string TestKeyPassword = "test!@#123TESTaaaa";
+    private const string TestKeyPassword = "OpenKSeF-selfsigned-test-key";
+    private static readonly (string CertPem, string KeyPem) TestCertificate = CreateTestCertificate();
     private const string TestNip = "2684494832";
 
     public CertificateCredentialApiTests(TestcontainersFixture fixture)
@@ -24,6 +23,19 @@ public class CertificateCredentialApiTests : IDisposable
         _fixture = fixture;
         _factory = new OpenKSeFWebApplicationFactory(fixture);
         _client = _factory.CreateClient();
+    }
+
+    private static (string CertPem, string KeyPem) CreateTestCertificate()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var request = new CertificateRequest(
+            "CN=OpenKSeF Test, OID.2.5.4.97=VATPL-1111111111, C=PL", key, HashAlgorithmName.SHA256);
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
+        using var cert = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
+        var keyPem = key.ExportEncryptedPkcs8PrivateKeyPem(
+            TestKeyPassword,
+            new PbeParameters(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 100_000));
+        return (cert.ExportCertificatePem(), keyPem);
     }
 
     private async Task AuthenticateAsync()
@@ -52,8 +64,8 @@ public class CertificateCredentialApiTests : IDisposable
         await AuthenticateAsync();
         var tenantId = await CreateTestTenantAsync();
 
-        var certPem = await File.ReadAllTextAsync(TestCertPath);
-        var keyPem = await File.ReadAllTextAsync(TestKeyPath);
+        var certPem = TestCertificate.CertPem;
+        var keyPem = TestCertificate.KeyPem;
 
         var response = await _client.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/credentials",
@@ -74,8 +86,8 @@ public class CertificateCredentialApiTests : IDisposable
         await AuthenticateAsync();
         var tenantId = await CreateTestTenantAsync("3542187690");
 
-        var certPem = await File.ReadAllTextAsync(TestCertPath);
-        var keyPem = await File.ReadAllTextAsync(TestKeyPath);
+        var certPem = TestCertificate.CertPem;
+        var keyPem = TestCertificate.KeyPem;
 
         var addResponse = await _client.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/credentials",
@@ -104,8 +116,8 @@ public class CertificateCredentialApiTests : IDisposable
         await AuthenticateAsync();
         var tenantId = await CreateTestTenantAsync("4618793205");
 
-        var certPem = await File.ReadAllTextAsync(TestCertPath);
-        var keyPem = await File.ReadAllTextAsync(TestKeyPath);
+        var certPem = TestCertificate.CertPem;
+        var keyPem = TestCertificate.KeyPem;
 
         var addResponse = await _client.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/credentials",
@@ -137,8 +149,8 @@ public class CertificateCredentialApiTests : IDisposable
         await AuthenticateAsync();
         var tenantId = await CreateTestTenantAsync("1234563218");
 
-        var certPem = await File.ReadAllTextAsync(TestCertPath);
-        var keyPem = await File.ReadAllTextAsync(TestKeyPath);
+        var certPem = TestCertificate.CertPem;
+        var keyPem = TestCertificate.KeyPem;
 
         var response = await _client.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/credentials",
@@ -159,8 +171,8 @@ public class CertificateCredentialApiTests : IDisposable
         await AuthenticateAsync();
         var tenantId = await CreateTestTenantAsync("5252344078");
 
-        var certPem = await File.ReadAllTextAsync(TestCertPath);
-        var keyPem = await File.ReadAllTextAsync(TestKeyPath);
+        var certPem = TestCertificate.CertPem;
+        var keyPem = TestCertificate.KeyPem;
 
         var response = await _client.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/credentials",
@@ -180,7 +192,7 @@ public class CertificateCredentialApiTests : IDisposable
         await AuthenticateAsync();
         var tenantId = await CreateTestTenantAsync("8943217650");
 
-        var certPem = await File.ReadAllTextAsync(TestCertPath);
+        var certPem = TestCertificate.CertPem;
 
         var response = await _client.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/credentials",
@@ -231,8 +243,8 @@ public class CertificateCredentialApiTests : IDisposable
         var before = await statusBefore.Content.ReadFromJsonAsync<CredentialStatusDto>();
         Assert.Equal("Token", before!.CredentialType);
 
-        var certPem = await File.ReadAllTextAsync(TestCertPath);
-        var keyPem = await File.ReadAllTextAsync(TestKeyPath);
+        var certPem = TestCertificate.CertPem;
+        var keyPem = TestCertificate.KeyPem;
         var certResponse = await _client.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/credentials",
             new
@@ -256,8 +268,8 @@ public class CertificateCredentialApiTests : IDisposable
         await AuthenticateAsync();
         var tenantId = await CreateTestTenantAsync("9442190348");
 
-        var certPem = await File.ReadAllTextAsync(TestCertPath);
-        var keyPem = await File.ReadAllTextAsync(TestKeyPath);
+        var certPem = TestCertificate.CertPem;
+        var keyPem = TestCertificate.KeyPem;
         var addResponse = await _client.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/credentials",
             new

@@ -35,6 +35,6 @@ describe('Table', () => {
     expect(container.textContent).toContain('Tenant A')
 
     ;(container.querySelector('tbody tr') as HTMLTableRowElement).click()
-    expect(onRowClick).toHaveBeenCalledWith({ id: '1', name: 'Tenant A' })
+    expect(onRowClick).toHaveBeenCalledWith({ id: '1', name: 'Tenant A' }, expect.anything())
   })
 })
