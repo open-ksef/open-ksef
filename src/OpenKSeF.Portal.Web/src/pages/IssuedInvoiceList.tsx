@@ -8,6 +8,7 @@ import type { IssuedFeedItemResponse, IssuedInvoiceStatus } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
+import { AddToken } from '@/components/CompanyStateCard'
 import { EmptyState } from '@/components/EmptyState'
 import { Icon } from '@/components/Icon'
 import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
@@ -216,20 +217,27 @@ export function IssuedInvoiceListPage(): ReactElement {
 
       {incomplete ? (
         <div className="inv-alert inv-alert--info company-note" role="status" data-testid="issued-fetch-incomplete">
-          <Icon name="clock" />
+          <Icon name="circle-alert" />
           <span>Ostatnie pobieranie faktur sprzedaży z KSeF nie objęło całego okresu. Lista może być niepełna.</span>
         </div>
       ) : null}
 
-      {stateCard ? (
+      {stateCard && hasCredential === false ? (
+        <EmptyState
+          icon="key-round"
+          title="Brakuje tokenu KSeF"
+          message="Bez tokenu nie pobierzemy faktur z KSeF ani nie wyślemy nowych. Możesz przygotować szkic."
+          actions={
+            <div className="ui-empty-state__actions">
+              <AddToken />
+            </div>
+          }
+        />
+      ) : stateCard ? (
         <EmptyState
           icon="send"
           title="Nie masz jeszcze wystawionych faktur"
-          message={
-            hasCredential === false
-              ? 'Możesz przygotować szkic. Do wysłania do KSeF potrzebny jest token z uprawnieniem zapisu.'
-              : 'Wystawiona faktura pojawi się tutaj razem ze statusem w KSeF. Sprzedaż z innych programów zobaczysz po pobraniu z KSeF.'
-          }
+          message="Wystawiona faktura pojawi się tutaj razem ze statusem w KSeF. Sprzedaż z innych programów zobaczysz po pobraniu z KSeF."
           actions={
             <div className="ui-empty-state__actions">
               <Link to={`/issued/new?${tenantQuery}`} className="ui-button ui-button--primary ui-button--md">
@@ -242,7 +250,7 @@ export function IssuedInvoiceListPage(): ReactElement {
         <AsyncStateView
           isLoading={tenantsQuery.isLoading || listQuery.isLoading || pastLastPage || (unfilteredEmpty && credentialsQuery.isLoading)}
           error={tenantsQuery.error ?? listQuery.error ?? (unfilteredEmpty ? credentialsQuery.error : null)}
-          isEmpty={rows.length === 0 && !incomplete}
+          isEmpty={rows.length === 0 && (!incomplete || !unfilteredEmpty)}
           emptyTitle="Brak faktur spełniających kryteria"
           emptyMessage="Zmień filtry lub kliknij „Nowa faktura”."
           onRetry={() => {

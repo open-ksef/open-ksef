@@ -23,6 +23,7 @@ export interface TokenReturnState {
 }
 
 const TOKEN_HELP = 'Token z uprawnieniem odczytu i zapisu, z Aplikacji Podatnika KSeF. Bez zapisu nie wystawisz faktur.'
+const LONG_TOAST = { duration: 12_000 }
 const FULL_RESYNC_TEXT = 'Pobiera brakujące pozycje, numer rachunku i termin. Niczego nie usuwa, oznaczenia opłacenia zostają. KSeF pozwala na około 16 plików na minutę, dlatego przy większej liczbie faktur uruchom ją ponownie później.'
 
 export function CompanyTokenPage(): ReactElement {
@@ -78,15 +79,15 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
     onSuccess: async (result) => {
       const counts = `Pobrane: ${result.fetchedInvoices}, nowe: ${result.newInvoices}.`
       const later = 'Nieopłacone uzupełnimy automatycznie, opłacone przy kolejnej pełnej resynchronizacji.'
-      const queued = result.queuedDownloads
-        ? ` Szczegóły pozostałych faktur (liczba: ${result.queuedDownloads}) pobierzemy w kolejnych cyklach, a opłaconych przy kolejnej pełnej resynchronizacji.`
-        : ''
       if (result.erroredDownloads) {
-        toast.error(`Pełna resynchronizacja niepełna. ${counts} Nie udało się pobrać szczegółów z KSeF (liczba: ${result.erroredDownloads}). ${later}${queued}`)
+        const queued = result.queuedDownloads ? `, ${result.queuedDownloads} w kolejce` : ''
+        toast.error(`Pełna resynchronizacja niepełna. ${counts} Bez szczegółów z KSeF: ${result.erroredDownloads} z błędem${queued}. ${later}`, LONG_TOAST)
       } else if (result.erroredDownloads === undefined && result.queuedDownloads === undefined && result.failedDownloads) {
-        toast.error(`Pełna resynchronizacja niepełna. ${counts} Bez szczegółów z KSeF (liczba: ${result.failedDownloads}). ${later}`)
+        toast.error(`Pełna resynchronizacja niepełna. ${counts} Bez szczegółów z KSeF (liczba: ${result.failedDownloads}). ${later}`, LONG_TOAST)
+      } else if (result.queuedDownloads) {
+        toast.success(`Pełna resynchronizacja zakończona. ${counts} Szczegóły pozostałych faktur (liczba: ${result.queuedDownloads}) pobierzemy w kolejnych cyklach, a opłaconych przy kolejnej pełnej resynchronizacji.`, LONG_TOAST)
       } else {
-        toast.success(`Pełna resynchronizacja zakończona. ${counts}${queued}`)
+        toast.success(`Pełna resynchronizacja zakończona. ${counts}`)
       }
       await refreshCredentials()
       await queryClient.invalidateQueries({ queryKey: ['invoices'] })

@@ -197,34 +197,38 @@ describe('Firma, Token KSeF i pobieranie', () => {
     await settle()
   }
 
+  const LONG_TOAST = { duration: 12_000 }
+
   it('full resync on an API with only failedDownloads reports the count, not success', async () => {
     await fullResync({ failedDownloads: 2 })
 
     expect(toast.success).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Bez szczegółów z KSeF (liczba: 2)'))
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('opłacone przy kolejnej pełnej resynchronizacji'))
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Bez szczegółów z KSeF (liczba: 2)'), LONG_TOAST)
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('opłacone przy kolejnej pełnej resynchronizacji'), LONG_TOAST)
   })
 
   it('full resync with errored downloads says how many failed', async () => {
     await fullResync({ failedDownloads: 2, erroredDownloads: 2, queuedDownloads: 0 })
 
     expect(toast.success).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Nie udało się pobrać szczegółów z KSeF (liczba: 2)'))
-    expect(toast.error).not.toHaveBeenCalledWith(expect.stringContaining('w kolejnych cyklach'))
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Bez szczegółów z KSeF: 2 z błędem. '), LONG_TOAST)
+    expect(toast.error).not.toHaveBeenCalledWith(expect.stringContaining('w kolejce'), LONG_TOAST)
   })
 
-  it('full resync with errored and queued downloads counts them apart', async () => {
+  it('full resync with errored and queued downloads counts them apart, short enough to read in its duration', async () => {
     await fullResync({ failedDownloads: 6, erroredDownloads: 2, queuedDownloads: 4 })
 
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Nie udało się pobrać szczegółów z KSeF (liczba: 2)'))
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Szczegóły pozostałych faktur (liczba: 4) pobierzemy w kolejnych cyklach'))
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Bez szczegółów z KSeF: 2 z błędem, 4 w kolejce.'), LONG_TOAST)
+    const [message, options] = vi.mocked(toast.error).mock.calls[0] as unknown as [string, { duration: number }]
+    expect(message.match(/pełnej resynchronizacji/g)).toHaveLength(1)
+    expect(message.length / (options.duration / 1000)).toBeLessThanOrEqual(16)
   })
 
   it('full resync with only queued downloads is a success that names the next cycles', async () => {
     await fullResync({ failedDownloads: 4, erroredDownloads: 0, queuedDownloads: 4 })
 
     expect(toast.error).not.toHaveBeenCalled()
-    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Szczegóły pozostałych faktur (liczba: 4) pobierzemy w kolejnych cyklach'))
+    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Szczegóły pozostałych faktur (liczba: 4) pobierzemy w kolejnych cyklach'), LONG_TOAST)
   })
 
   it('full resync with nothing outstanding reports plain success', async () => {

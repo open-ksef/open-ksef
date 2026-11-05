@@ -89,19 +89,37 @@ describe('Wystawione faktury, niepełne pobieranie', () => {
     expect(container.querySelector('.ui-pagination')).toBeNull()
   })
 
-  it('an empty list with the flag and no token keeps the token message', async () => {
+  it('an empty list with the flag and no token says the token is missing and links the token tab', async () => {
     vi.mocked(listCredentials).mockResolvedValue([{ tenantId: 'a', tenantDisplayName: 'Firma A', hasCredential: false, credentialType: null, lastUpdatedAt: null }])
     await render(feed([], { issuedFetchIncomplete: true }))
 
-    expect(container.textContent).toContain('Do wysłania do KSeF potrzebny jest token z uprawnieniem zapisu.')
+    expect(container.textContent).toContain('Brakuje tokenu KSeF')
+    expect(container.textContent).toContain('Bez tokenu nie pobierzemy faktur z KSeF')
+    expect(container.querySelector('.ui-empty-state a[href="/company/token"]')).not.toBeNull()
+    expect(container.textContent).not.toContain(NO_INVOICES)
     expect(note()?.textContent).toBe(NOTE)
   })
 
-  it('a filtered empty list with the flag shows the note instead of claiming no matches', async () => {
-    await render(feed([], { issuedFetchIncomplete: true }), '/issued?tenantId=a&status=Rejected')
+  it('an empty list without the flag and without a token does not claim no invoices either', async () => {
+    vi.mocked(listCredentials).mockResolvedValue([{ tenantId: 'a', tenantDisplayName: 'Firma A', hasCredential: false, credentialType: null, lastUpdatedAt: null }])
+    await render(feed([], { issuedFetchIncomplete: false }))
+
+    expect(container.textContent).toContain('Brakuje tokenu KSeF')
+    expect(container.textContent).not.toContain(NO_INVOICES)
+  })
+
+  it('a filter with no match and the flag shows the no-match message and the note', async () => {
+    await render(feed([], { issuedFetchIncomplete: true }), '/issued?tenantId=a&q=NIEMA-TAKIEJ')
 
     expect(note()?.textContent).toBe(NOTE)
-    expect(container.textContent).not.toContain(NO_MATCHES)
+    expect(container.textContent).toContain(NO_MATCHES)
+    expect(container.querySelector('#issued-q')).not.toBeNull()
+  })
+
+  it('a status filter with no match and the flag shows the no-match message', async () => {
+    await render(feed([], { issuedFetchIncomplete: true }), '/issued?tenantId=a&status=Rejected')
+
+    expect(container.textContent).toContain(NO_MATCHES)
   })
 
   it('a complete fetch shows no note and keeps the empty states', async () => {
