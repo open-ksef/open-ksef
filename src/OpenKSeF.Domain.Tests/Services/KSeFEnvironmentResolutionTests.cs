@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using KSeF.Client.Api.Services;
 using KSeF.Client.Core.Interfaces.Services;
 using KSeF.Client.DI;
@@ -83,6 +84,92 @@ public class KSeFEnvironmentResolutionTests
         var resolve = Assert.Throws<InvalidOperationException>(() => DependencyInjection.ResolveKSeFEnvironment(value));
         Assert.Contains($"Unknown KSeF environment '{value}'", resolve.Message);
         Assert.Throws<InvalidOperationException>(() => DependencyInjection.NormalizeKSeFEnvironmentKey(value));
+    }
+
+    [Theory]
+    [InlineData("https://api.ksef.mf.gov.pl/v2/invoices", true)]
+    [InlineData("https://API.KSEF.MF.GOV.PL/v2", true)]
+    [InlineData("https://qr.ksef.mf.gov.pl/invoice", true)]
+    [InlineData("https://api-latarnia.ksef.mf.gov.pl/status", true)]
+    [InlineData("https://ksef.mf.gov.pl/api", true)]
+    [InlineData("https://api-test.ksef.mf.gov.pl/v2", false)]
+    [InlineData("https://api-demo.ksef.mf.gov.pl/v2", false)]
+    [InlineData("https://qr-test.ksef.mf.gov.pl/invoice", false)]
+    [InlineData("https://api-latarnia-demo.ksef.mf.gov.pl/status", false)]
+    [InlineData("https://ksef-test.mf.gov.pl/api", false)]
+    [InlineData("https://api.ksef.mf.gov.pl.example.com/", false)]
+    [InlineData("http://keycloak:8080/auth", false)]
+    public async Task Guard_BlocksEveryProductionHost_AndNothingElse(string url, bool blocked)
+    {
+        using var invoker = new HttpMessageInvoker(new KSeFProductionGuard { InnerHandler = new AlwaysOk() });
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+        if (blocked)
+            await Assert.ThrowsAsync<InvalidOperationException>(() => invoker.SendAsync(request, CancellationToken.None));
+        else
+            Assert.Equal(HttpStatusCode.OK, (await invoker.SendAsync(request, CancellationToken.None)).StatusCode);
+    }
+
+    private sealed class AlwaysOk : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+    }
+
+    private static IConfiguration ForbidProduction(string? value) => new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?> { [DependencyInjection.ForbidProductionKey] = value })
+        .Build();
+
+    [Theory]
+    [InlineData("true", true)]
+    [InlineData("false", false)]
+    [InlineData(null, false)]
+    public void AddSyncServices_GuardsHttpClients_OnlyWithTheSignal(string? signal, bool guarded)
+    {
+        using var provider = new ServiceCollection().AddLogging().AddSyncServices(ForbidProduction(signal)).BuildServiceProvider();
+
+        HttpMessageHandler? handler = provider.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler();
+        var found = false;
+        while (handler is DelegatingHandler delegating)
+        {
+            found |= delegating is KSeFProductionGuard;
+            handler = delegating.InnerHandler;
+        }
+
+        Assert.Equal(guarded, found);
+    }
+
+    [Theory]
+    [InlineData("production")]
+    [InlineData("prod")]
+    [InlineData("https://api.ksef.mf.gov.pl/v2")]
+    [InlineData("https://ksef.podatki.gov.pl/api")]
+    public void StartupResolve_ProductionWithTheSignal_Refuses_WithoutItIsProduction(string value)
+    {
+        var error = Assert.Throws<InvalidOperationException>(() => DependencyInjection.ResolveStartupKSeFEnvironment(value, ForbidProduction("true")));
+
+        Assert.Contains(DependencyInjection.ForbidProductionKey, error.Message);
+        Assert.Equal(KsefEnvironmentsUris.PROD, DependencyInjection.ResolveStartupKSeFEnvironment(value, ForbidProduction(null)));
+        Assert.Equal(KsefEnvironmentsUris.PROD, DependencyInjection.ResolveStartupKSeFEnvironment(value, ForbidProduction("false")));
+    }
+
+    [Theory]
+    [InlineData("test", KsefEnvironmentsUris.TEST)]
+    [InlineData("demo", KsefEnvironmentsUris.DEMO)]
+    public void StartupResolve_TestOrDemoWithTheSignal_Starts(string value, string url)
+    {
+        Assert.Equal(url, DependencyInjection.ResolveStartupKSeFEnvironment(value, ForbidProduction("true")));
+    }
+
+    [Fact]
+    public void ForbidProductionSignal_IsOnlyInTheDevCompose()
+    {
+        var repo = new DirectoryInfo(AppContext.BaseDirectory);
+        while (!File.Exists(Path.Combine(repo.FullName, "docker-compose.dev.yml")))
+            repo = repo.Parent!;
+
+        Assert.Equal(2, File.ReadLines(Path.Combine(repo.FullName, "docker-compose.dev.yml")).Count(l => l.Contains("KSeF__ForbidProduction: \"true\"")));
+        Assert.DoesNotContain("ForbidProduction", File.ReadAllText(Path.Combine(repo.FullName, "docker-compose.yml")));
     }
 
     private static async Task<(KSeFRuntimeConfig Runtime, KSeFClientOptions Options, ICryptographyService Cryptography)> RuntimeAsync(

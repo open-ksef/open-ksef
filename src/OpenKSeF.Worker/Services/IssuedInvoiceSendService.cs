@@ -9,8 +9,11 @@ public sealed class IssuedInvoiceSendService(
     IServiceScopeFactory scopeFactory,
     KSeFRuntimeConfig runtimeConfig,
     IConfiguration configuration,
+    TimeProvider timeProvider,
     ILogger<IssuedInvoiceSendService> logger) : BackgroundService
 {
+    private static readonly TimeSpan RepeatedErrorLogInterval = TimeSpan.FromMinutes(15);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var interval = TimeSpan.FromSeconds(configuration.GetValue("Issuing:PollSeconds", 5));
@@ -18,6 +21,9 @@ public sealed class IssuedInvoiceSendService(
         logger.LogInformation("IssuedInvoiceSendService started. Poll: {Seconds}s", interval.TotalSeconds);
 
         await MigrationHelper.WaitForMigrationsAsync(scopeFactory, logger, stoppingToken);
+
+        string? lastError = null;
+        var logErrorAgainAt = DateTimeOffset.MinValue;
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -32,7 +38,13 @@ public sealed class IssuedInvoiceSendService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogError(ex, "Unhandled error in issued invoice send cycle");
+                var now = timeProvider.GetUtcNow();
+                if (ex.Message != lastError || now >= logErrorAgainAt)
+                {
+                    logger.LogError(ex, "Unhandled error in issued invoice send cycle. The same error repeats in the log at most every {Minutes} min", RepeatedErrorLogInterval.TotalMinutes);
+                    lastError = ex.Message;
+                    logErrorAgainAt = now + RepeatedErrorLogInterval;
+                }
             }
 
             await Task.Delay(interval, stoppingToken);

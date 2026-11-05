@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
@@ -46,6 +47,54 @@ public class SystemConfigServiceTests : IDisposable
     public void Dispose()
     {
         _serviceProvider.Dispose();
+    }
+
+    private SystemConfigService ServiceWithFailingReads(int failures)
+    {
+        var real = _serviceProvider.GetRequiredService<IServiceScopeFactory>();
+        var scopes = Substitute.For<IServiceScopeFactory>();
+        scopes.CreateScope().Returns(_ => failures-- > 0 ? throw new InvalidOperationException("database down") : real.CreateScope());
+        return new SystemConfigService(
+            scopes,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["KSeF:BaseUrl"] = "test" }).Build(),
+            NullLogger<SystemConfigService>.Instance);
+    }
+
+    [Fact]
+    public async Task LoadCache_ReadKeepsFailing_Throws()
+    {
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => ServiceWithFailingReads(int.MaxValue).LoadCacheAsync(retryDelay: TimeSpan.Zero));
+
+        Assert.Equal("database down", error.Message);
+    }
+
+    [Fact]
+    public async Task LoadCache_TransientFailure_RetriesAndGetsTheRow()
+    {
+        await _service.SetValueAsync(SystemConfigKeys.KSeFEnvironment, "production");
+        var service = ServiceWithFailingReads(4);
+
+        await service.LoadCacheAsync(retryDelay: TimeSpan.Zero);
+
+        Assert.Equal("production", service.GetValue(SystemConfigKeys.KSeFEnvironment));
+    }
+
+    [Fact]
+    public async Task LoadCache_NoRowsBeforeTheWizard_Succeeds_EnvironmentVariableApplies()
+    {
+        var service = ServiceWithFailingReads(0);
+
+        await service.LoadCacheAsync(retryDelay: TimeSpan.Zero);
+
+        Assert.False(service.IsInitialized);
+        Assert.Equal("test", service.GetValue(SystemConfigKeys.KSeFBaseUrl));
+    }
+
+    [Fact]
+    public async Task RefreshCache_ReadFails_KeepsRunning()
+    {
+        await ServiceWithFailingReads(int.MaxValue).RefreshCacheAsync();
     }
 
     [Fact]

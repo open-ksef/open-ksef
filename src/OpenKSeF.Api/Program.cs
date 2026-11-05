@@ -347,7 +347,7 @@ using (var scope = app.Services.CreateScope())
 
 // Load system config cache
 var systemConfig = app.Services.GetRequiredService<ISystemConfigService>();
-await systemConfig.RefreshCacheAsync();
+await systemConfig.LoadCacheAsync();
 
 // Resolve KSeF environment from DB config to the URL from KSeF.Client NuGet
 var ksefEnv = systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
@@ -355,7 +355,7 @@ var ksefEnv = systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
 if (!string.IsNullOrEmpty(ksefEnv))
 {
     var ksefOptions = app.Services.GetRequiredService<KSeF.Client.DI.KSeFClientOptions>();
-    ksefOptions.BaseUrl = OpenKSeF.Sync.DependencyInjection.ResolveKSeFEnvironment(ksefEnv);
+    ksefOptions.BaseUrl = OpenKSeF.Sync.DependencyInjection.ResolveStartupKSeFEnvironment(ksefEnv, app.Configuration);
 }
 
 // Trust forwarded headers from nginx proxy (X-Forwarded-For, X-Forwarded-Proto)

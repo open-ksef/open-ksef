@@ -10,6 +10,8 @@ namespace OpenKSeF.Domain.Services;
 
 public sealed class SystemConfigService : ISystemConfigService
 {
+    private const int LoadAttempts = 5;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<SystemConfigService> _logger;
@@ -105,23 +107,45 @@ public sealed class SystemConfigService : ISystemConfigService
     {
         try
         {
-            using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-            await EnsureTableExistsAsync(db, cancellationToken);
-
-            var entries = await db.SystemConfigs.AsNoTracking().ToListAsync(cancellationToken);
-            var newCache = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var entry in entries)
-                newCache[entry.Key] = entry.Value;
-            _cache = newCache;
-            _cacheLoaded = true;
+            await ReadCacheAsync(cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to load system config from database — using env vars only");
             _cacheLoaded = true;
         }
+    }
+
+    public async Task LoadCacheAsync(CancellationToken cancellationToken = default, TimeSpan? retryDelay = null)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await ReadCacheAsync(cancellationToken);
+                return;
+            }
+            catch (Exception ex) when (attempt < LoadAttempts && !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "Failed to load system config from database, attempt {Attempt} of {Attempts}. Retrying", attempt, LoadAttempts);
+                await Task.Delay(retryDelay ?? TimeSpan.FromSeconds(2), cancellationToken);
+            }
+        }
+    }
+
+    private async Task ReadCacheAsync(CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        await EnsureTableExistsAsync(db, cancellationToken);
+
+        var entries = await db.SystemConfigs.AsNoTracking().ToListAsync(cancellationToken);
+        var newCache = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+            newCache[entry.Key] = entry.Value;
+        _cache = newCache;
+        _cacheLoaded = true;
     }
 
     private void EnsureCacheLoaded()

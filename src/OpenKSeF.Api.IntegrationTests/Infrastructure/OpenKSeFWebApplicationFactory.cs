@@ -1,10 +1,10 @@
-using KSeF.Client.DI;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Sync;
 
 namespace OpenKSeF.Api.IntegrationTests.Infrastructure;
 
@@ -56,23 +56,6 @@ public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Progra
         });
 
         return base.CreateHost(builder);
-    }
-}
-
-/// <summary>A host on a production row warms up against the production KSeF host at start. No test may reach it.</summary>
-public sealed class KSeFProductionGuard : DelegatingHandler
-{
-    private static int _blocked;
-
-    public static int Blocked => Volatile.Read(ref _blocked);
-
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        if (request.RequestUri?.Host != new Uri(KsefEnvironmentsUris.PROD).Host)
-            return base.SendAsync(request, cancellationToken);
-
-        Interlocked.Increment(ref _blocked);
-        throw new InvalidOperationException($"Test tried to call KSeF production: {request.RequestUri}");
     }
 }
 

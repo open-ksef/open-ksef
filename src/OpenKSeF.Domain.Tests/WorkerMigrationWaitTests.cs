@@ -175,11 +175,14 @@ public sealed class WorkerMigrationWaitTests : IDisposable
             cycleRan.TrySetResult();
             return Task.FromResult<IReadOnlyList<TenantSyncResult>>([]);
         });
-        var loop = SyncLoop(services, NullLogger<InvoiceSyncService>.Instance);
+        var logger = new ListLogger<InvoiceSyncService>();
+        var loop = SyncLoop(services, logger);
 
         await loop.StartAsync(CancellationToken.None);
         await cycleRan.Task.WaitAsync(TimeSpan.FromSeconds(30));
         await loop.StopAsync(CancellationToken.None);
+
+        Assert.Contains(logger.Messages, m => m.StartsWith("Sync cycle complete"));
     }
 
     [Fact]
@@ -191,6 +194,7 @@ public sealed class WorkerMigrationWaitTests : IDisposable
             services.GetRequiredService<IServiceScopeFactory>(),
             RuntimeConfig(),
             new ConfigurationBuilder().Build(),
+            TimeProvider.System,
             logger);
 
         await loop.StartAsync(CancellationToken.None);
@@ -214,25 +218,50 @@ public sealed class WorkerMigrationWaitTests : IDisposable
 
         await _sync.DidNotReceive().SyncAllTenantsAsync(Arg.Any<CancellationToken>());
         Assert.Contains("Unknown KSeF environment 'tset'", logger.Exceptions.Single());
+        Assert.DoesNotContain(logger.Messages, m => m.StartsWith("Sync cycle complete"));
     }
 
     [Fact]
-    public async Task SendLoop_UnknownEnvironment_LogsAndKeepsPolling()
+    public async Task SendLoop_UnknownEnvironment_KeepsPolling_RepeatedErrorIsRateLimited()
     {
         await using var services = Services();
         await MigrateAsync(services);
+        var systemConfig = Substitute.For<ISystemConfigService>();
+        systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment).Returns("tset");
+        var refreshes = 0;
+        systemConfig.RefreshCacheAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            Interlocked.Increment(ref refreshes);
+            return Task.CompletedTask;
+        });
+        var now = DateTimeOffset.UnixEpoch;
+        var time = Substitute.For<TimeProvider>();
+        time.GetUtcNow().Returns(_ => now);
         var logger = new ListLogger<IssuedInvoiceSendService>();
         var loop = new IssuedInvoiceSendService(
             services.GetRequiredService<IServiceScopeFactory>(),
-            RuntimeConfig("tset"),
+            new KSeFRuntimeConfig(systemConfig, new KSeFClientOptions(), Substitute.For<ICryptographyService>(), NullLogger<KSeFRuntimeConfig>.Instance),
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Issuing:PollSeconds"] = "0" }).Build(),
+            time,
             logger);
 
         await loop.StartAsync(CancellationToken.None);
+        await WaitForErrorAsync(logger);
+        var seen = Volatile.Read(ref refreshes);
+        while (Volatile.Read(ref refreshes) < seen + 50)
+            await Task.Delay(5);
+        Assert.Single(logger.Exceptions);
+
+        now = now.AddMinutes(16);
         await WaitForErrorAsync(logger, count: 2);
+
+        systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment).Returns("other");
+        await WaitForErrorAsync(logger, count: 3);
         await loop.StopAsync(CancellationToken.None);
 
-        Assert.All(logger.Exceptions, e => Assert.Contains("Unknown KSeF environment 'tset'", e));
+        Assert.Equal(3, logger.Exceptions.Count);
+        Assert.Contains("Unknown KSeF environment 'tset'", logger.Exceptions[1]);
+        Assert.Contains("Unknown KSeF environment 'other'", logger.Exceptions[2]);
     }
 
     private static async Task WaitForErrorAsync<T>(ListLogger<T> logger, int count = 1)
@@ -254,6 +283,16 @@ public sealed class WorkerMigrationWaitTests : IDisposable
     {
         private readonly List<LogLevel> _levels = [];
         private readonly List<string> _exceptions = [];
+        private readonly List<string> _messages = [];
+
+        public IReadOnlyList<string> Messages
+        {
+            get
+            {
+                lock (_levels)
+                    return _messages.ToList();
+            }
+        }
 
         public IReadOnlyList<string> Exceptions
         {
@@ -282,6 +321,7 @@ public sealed class WorkerMigrationWaitTests : IDisposable
             lock (_levels)
             {
                 _levels.Add(logLevel);
+                _messages.Add(formatter(state, exception));
                 if (exception is not null)
                     _exceptions.Add(exception.Message);
             }

@@ -7,4 +7,5 @@ public interface ISystemConfigService
     Task SetValueAsync(string key, string value, CancellationToken cancellationToken = default);
     Task SetValuesAsync(IDictionary<string, string> values, CancellationToken cancellationToken = default);
     Task RefreshCacheAsync(CancellationToken cancellationToken = default);
+    Task LoadCacheAsync(CancellationToken cancellationToken = default, TimeSpan? retryDelay = null);
 }
