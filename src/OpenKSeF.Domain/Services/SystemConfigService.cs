@@ -18,7 +18,6 @@ public sealed class SystemConfigService : ISystemConfigService
 
     private static readonly Dictionary<string, string> EnvVarMapping = new(StringComparer.OrdinalIgnoreCase)
     {
-        [SystemConfigKeys.EncryptionKey] = "ENCRYPTION_KEY",
         [SystemConfigKeys.KSeFEnvironment] = "KSeF:Environment",
         [SystemConfigKeys.KSeFBaseUrl] = "KSeF:BaseUrl",
         [SystemConfigKeys.ExternalBaseUrl] = "APP_EXTERNAL_BASE_URL",

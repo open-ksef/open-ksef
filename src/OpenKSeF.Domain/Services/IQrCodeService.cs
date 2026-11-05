@@ -4,7 +4,7 @@ namespace OpenKSeF.Domain.Services;
 
 /// <summary>
 /// Generates QR codes for bank transfers using the Polish ZBP 2D standard.
-/// Format: |PL|ACCOUNT|AMOUNT|NAME|TITLE|||
+/// Format: NIP|PL|NRB|AMOUNT|NAME|TITLE|||
 /// </summary>
 public interface IQrCodeService
 {

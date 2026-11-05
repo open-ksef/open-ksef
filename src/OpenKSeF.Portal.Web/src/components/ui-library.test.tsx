@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Button } from './Button'
 import { EmptyState } from './EmptyState'
 import { ErrorBanner } from './ErrorBanner'
-import { FilterBar } from './FilterBar'
 import { Skeleton } from './Skeleton'
 import { StatusBadge } from './StatusBadge'
 import { Table } from './Table'
@@ -39,27 +38,7 @@ describe('UI component library', () => {
     expect(container.querySelector('[data-testid="sample-table"]')).toBeTruthy()
     const row = container.querySelector('tbody tr') as HTMLTableRowElement
     row.click()
-    expect(onRowClick).toHaveBeenCalledWith({ id: '1', name: 'Tenant A' })
-  })
-
-  it('runs filter apply and reset actions', async () => {
-    const onApply = vi.fn()
-    const onReset = vi.fn()
-
-    await act(async () => {
-      root.render(
-        <FilterBar onApply={onApply} onReset={onReset}>
-          <input aria-label="Query" />
-        </FilterBar>,
-      )
-    })
-
-    const buttons = container.querySelectorAll('button')
-    ;(buttons[0] as HTMLButtonElement).click()
-    ;(buttons[1] as HTMLButtonElement).click()
-
-    expect(onApply).toHaveBeenCalledTimes(1)
-    expect(onReset).toHaveBeenCalledTimes(1)
+    expect(onRowClick).toHaveBeenCalledWith({ id: '1', name: 'Tenant A' }, expect.anything())
   })
 
   it('renders status, skeleton, empty state and error banner', async () => {
@@ -84,7 +63,7 @@ describe('UI component library', () => {
     const createButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Create')
     createButton?.click()
 
-    const retryButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Retry')
+    const retryButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Spróbuj ponownie')
     retryButton?.click()
 
     const testButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Test button')

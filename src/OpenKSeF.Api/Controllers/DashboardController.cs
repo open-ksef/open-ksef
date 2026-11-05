@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Controllers;
@@ -40,9 +41,9 @@ public class DashboardController : ControllerBase
                 t.DisplayName,
                 t.SyncState != null ? t.SyncState.LastSyncedAt : null,
                 t.SyncState != null ? t.SyncState.LastSuccessfulSync : null,
-                _db.InvoiceHeaders.Count(i => i.TenantId == t.Id),
-                _db.InvoiceHeaders.Count(i => i.TenantId == t.Id && i.IssueDate >= last7DaysThreshold),
-                _db.InvoiceHeaders.Count(i => i.TenantId == t.Id && i.IssueDate >= last30DaysThreshold),
+                _db.InvoiceHeaders.Count(i => i.TenantId == t.Id && i.Direction == InvoiceDirection.Received),
+                _db.InvoiceHeaders.Count(i => i.TenantId == t.Id && i.Direction == InvoiceDirection.Received && i.IssueDate >= last7DaysThreshold),
+                _db.InvoiceHeaders.Count(i => i.TenantId == t.Id && i.Direction == InvoiceDirection.Received && i.IssueDate >= last30DaysThreshold),
                 t.SyncState == null || !t.SyncState.LastSuccessfulSync.HasValue
                     ? "Error"
                     : t.SyncState.LastSuccessfulSync >= successThreshold

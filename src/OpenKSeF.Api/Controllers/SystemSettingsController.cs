@@ -69,7 +69,7 @@ public class SystemSettingsController : ControllerBase
             return Unauthorized(new { error = "Invalid Keycloak admin credentials." });
 
         var result = await _settingsService.UpdateSettingsAsync(request, kcAdminToken, ct);
-        if (!result.Success)
+        if (!result.Success && !result.RequiresConfirmation)
             return BadRequest(result);
 
         return Ok(result);

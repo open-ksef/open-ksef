@@ -30,6 +30,6 @@ describe('mutation notifications', () => {
   it('emits error toast with error details when available', () => {
     notifyMutationError('update', 'Credential', new Error('Request failed'))
 
-    expect(error).toHaveBeenCalledWith('Nie udało się zaktualizować (Dane logowania): Request failed')
+    expect(error).toHaveBeenCalledWith('Nie udało się zaktualizować (Token KSeF): Request failed')
   })
 })

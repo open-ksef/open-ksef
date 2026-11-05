@@ -155,7 +155,7 @@ public class SystemSetupControllerTests
             .Returns(("admin", "secret"), (ValueTuple<string, string>?)null);
         _setupService.AuthenticateAdminAsync("admin", "secret").Returns("kc-token");
         _setupService.ApplySetupAsync(Arg.Any<SetupApplyRequest>(), "kc-token", "admin", Arg.Any<CancellationToken>())
-            .Returns(new SetupApplyResponse(true, null, null, null));
+            .Returns(new SetupApplyResponse(true, null));
         var controller = CreateController();
         var request = new SetupApplyRequest
         {

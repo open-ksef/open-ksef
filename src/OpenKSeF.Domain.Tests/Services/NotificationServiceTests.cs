@@ -107,6 +107,24 @@ public class NotificationServiceTests : IDisposable
         Assert.Equal(0, provider.Calls);
     }
 
+    [Fact]
+    public async Task NotifyIssuedInvoiceStuckAsync_PushesOwnerOnly_WithIssuedInvoiceData()
+    {
+        var tenantId = await SeedDeviceAsync("fcm-token-user-1");
+        var otherTenantId = await SeedTenantAsync("user-2");
+        var provider = new StubPushProvider(PushResult.Sent);
+        var invoiceId = Guid.NewGuid();
+
+        await CreateService(provider).NotifyIssuedInvoiceStuckAsync(tenantId, invoiceId, "FV/1/11/2026");
+        await CreateService(provider).NotifyIssuedInvoiceStuckAsync(otherTenantId, invoiceId, "FV/1/11/2026");
+
+        Assert.Equal(1, provider.Calls);
+        Assert.Equal("Faktura FV/1/11/2026 wymaga sprawdzenia, szczegóły w portalu. Nie wystawiaj jej ponownie bez sprawdzenia.", provider.Last!.Body);
+        Assert.Equal("issuedInvoiceStuck", provider.Last.Data!["type"]);
+        Assert.Equal(invoiceId.ToString(), provider.Last.Data["issuedInvoiceId"]);
+        Assert.False(provider.Last.Data.ContainsKey("invoiceId"));
+    }
+
     private NotificationService CreateService(params IPushProvider[] providers) =>
         new(
             _db,
@@ -172,9 +190,12 @@ public class NotificationServiceTests : IDisposable
 
         public int Calls { get; private set; }
 
+        public PushNotification? Last { get; private set; }
+
         public Task<PushResult> SendAsync(string deviceToken, Platform platform, PushNotification notification)
         {
             Calls++;
+            Last = notification;
             return _exception is null ? Task.FromResult(_result) : Task.FromException<PushResult>(_exception);
         }
     }

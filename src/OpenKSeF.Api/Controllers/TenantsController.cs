@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.DTOs;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Controllers;
@@ -15,11 +16,13 @@ public class TenantsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly IIssuedInvoiceService _issuedInvoices;
 
-    public TenantsController(ApplicationDbContext db, ICurrentUserService currentUser)
+    public TenantsController(ApplicationDbContext db, ICurrentUserService currentUser, IIssuedInvoiceService issuedInvoices)
     {
         _db = db;
         _currentUser = currentUser;
+        _issuedInvoices = issuedInvoices;
     }
 
     [HttpGet]
@@ -111,18 +114,20 @@ public class TenantsController : ControllerBase
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var tenant = await _db.Tenants
-            .FirstOrDefaultAsync(t => t.Id == id && t.UserId == _currentUser.UserId);
-
-        if (tenant is null)
+        if (!await _db.Tenants.AnyAsync(t => t.Id == id && t.UserId == _currentUser.UserId))
             return NotFound();
 
-        _db.Tenants.Remove(tenant);
-        await _db.SaveChangesAsync();
-
-        return NoContent();
+        try
+        {
+            return await _issuedInvoices.DeleteTenantAsync(id) ? NoContent() : NotFound();
+        }
+        catch (InvoiceStateException e)
+        {
+            return Conflict(new { message = e.Message });
+        }
     }
 
     private static bool IsUniqueConstraintViolation(DbUpdateException ex)
