@@ -302,18 +302,18 @@ Then run `docker compose up -d`.
 
 ## Reverse proxy and public URL
 
-Keycloak builds the token issuer (`iss`) and every absolute link (login redirects, email verification, password reset) from what the gateway sends it. The gateway takes the host and port from the `Host` header and the scheme from `X-Forwarded-Proto`. It ignores `X-Forwarded-Host` and `X-Forwarded-Port` from the client, so a forged header cannot change the issuer or the links. The issuer must equal `APP_EXTERNAL_BASE_URL/auth/realms/openksef` (or the URL saved by the wizard), otherwise the API answers 401.
+Keycloak builds the token issuer (`iss`) and every absolute link (login redirects, email verification, password reset) from what the gateway sends it. The gateway takes the host and port from the `Host` header. It takes the scheme from `APP_EXTERNAL_BASE_URL` when that is set in `.env`, otherwise from `X-Forwarded-Proto`. It ignores `X-Forwarded-Host` and `X-Forwarded-Port` from the client. `Host`, and `X-Forwarded-Proto` when `APP_EXTERNAL_BASE_URL` is not set, must come from a proxy that overwrites them; with direct access, or a proxy that passes the client's value, a request can still change the host or port in its own links, and without `APP_EXTERNAL_BASE_URL` also the scheme. The issuer must equal `APP_EXTERNAL_BASE_URL/auth/realms/openksef` (or the URL saved by the wizard), otherwise the API answers 401.
 
 | Setup | What the gateway needs | Issuer |
 |---|---|---|
 | Direct, `APP_HOST_PORT=18480` | Nothing | `http://<host>:18480/auth/realms/openksef` |
-| Nginx Proxy Manager, HTTPS on 443 | Nothing: NPM sends `Host` and `X-Forwarded-Proto` | `https://<domain>/auth/realms/openksef` |
+| Nginx Proxy Manager, HTTPS on 443 | `APP_EXTERNAL_BASE_URL=https://<domain>`. NPM passes a client `X-Forwarded-Proto` through; see below | `https://<domain>/auth/realms/openksef` |
 | ngrok, Cloudflare Tunnel, Caddy, Traefik | Nothing: they keep the public `Host` and send `X-Forwarded-Proto` | `https://<public host>/auth/realms/openksef` |
-| nginx with your own `location` | `proxy_set_header Host $http_host;` and `proxy_set_header X-Forwarded-Proto $scheme;` | public host and port |
-| Apache | `ProxyPreserveHost On` and `RequestHeader set X-Forwarded-Proto https` | public host |
-| Public HTTPS on a port other than 443 | The proxy must send that port in `Host`, for example `Host: example.com:8443` (nginx `$http_host`) | `https://example.com:8443/auth/realms/openksef` |
+| nginx with your own `location` | `proxy_set_header Host $host:$server_port;` and `proxy_set_header X-Forwarded-Proto $scheme;` | public host and port |
+| Apache | `ProxyPreserveHost On`, `RequestHeader set Host "<domain>"` and `RequestHeader set X-Forwarded-Proto https` | public host |
+| Public HTTPS on a port other than 443 | The proxy must send that port in `Host`, for example `Host: example.com:8443` (nginx `$host:$server_port`) | `https://example.com:8443/auth/realms/openksef` |
 
-A proxy that sends its upstream name as `Host` (for example `gateway:8080`) and the public name only in `X-Forwarded-Host` no longer works: set `Host` as above. The proxy must overwrite `X-Forwarded-Proto`, not pass the client's value. Check the result with `curl -s https://<domain>/auth/realms/openksef/.well-known/openid-configuration` and compare `issuer` with `APP_EXTERNAL_BASE_URL`.
+A proxy that sends its upstream name as `Host` (for example `gateway:8080`) and the public name only in `X-Forwarded-Host` no longer works: set `Host` as above. The proxy must overwrite `X-Forwarded-Proto`. Nginx Proxy Manager passes a client value through, so without `APP_EXTERNAL_BASE_URL` a request can get `http://` links. With `APP_EXTERNAL_BASE_URL` set, every access through the gateway gets its scheme, including a tunnel such as ngrok, so a plain `http://` value there gives `http://` links on an HTTPS tunnel. The gateway reads `APP_EXTERNAL_BASE_URL` only from a `docker-compose.yml` that passes it to the `gateway` service; an older file pulls the new image without it, and the scheme then still comes from `X-Forwarded-Proto`. Check the result with `curl -s https://<domain>/auth/realms/openksef/.well-known/openid-configuration` and compare `issuer` with `APP_EXTERNAL_BASE_URL`.
 
 ## Start failures and restart loops
 
