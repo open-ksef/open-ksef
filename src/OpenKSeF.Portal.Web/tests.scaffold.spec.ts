@@ -98,3 +98,48 @@ describe('Portal web scaffold requirements', () => {
     expect(envExample).toContain('VITE_AUTH_AUTHORITY=')
   })
 })
+
+describe('Self-host compose and release', () => {
+  const repoRoot = resolve(projectRoot, '../..')
+  const read = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8').replace(/\r\n/g, '\n')
+  const compose = read('docker-compose.yml')
+  const services = (compose.split('\nvolumes:')[0].match(/^ {2}[a-z-]+:$/gm) ?? []).map((line) => line.trim().slice(0, -1))
+  const block = (name: string) => compose.split(`\n  ${name}:\n`)[1].split(/\n {2}[a-z-]+:\n|\nvolumes:/)[0]
+
+  it('tags every own image with OPENKSEF_VERSION and never a literal :latest', () => {
+    for (const image of ['api', 'worker', 'portal-web', 'gateway']) {
+      expect(compose).toContain(`image: ghcr.io/open-ksef/openksef-${image}:\${OPENKSEF_VERSION:-latest}`)
+    }
+    expect(compose).not.toMatch(/image: \S+:latest\s/)
+  })
+
+  it('restarts every service and publishes only the gateway port', () => {
+    expect(services).toEqual(['postgres', 'keycloak', 'api', 'worker', 'portal-web', 'gateway'])
+    for (const name of services) {
+      expect(block(name)).toContain('restart: unless-stopped')
+    }
+    expect(compose.match(/^ {4}ports:$/gm)).toHaveLength(1)
+    expect(block('gateway')).toContain('- "${APP_HOST_PORT:-8080}:8080"')
+    expect(block('gateway')).toContain('KEYCLOAK_ADMIN_ALLOW: ${KEYCLOAK_ADMIN_ALLOW:-}')
+  })
+
+  it('starts the worker after a healthy API', () => {
+    expect(block('api')).toContain('healthcheck:')
+    expect(block('worker')).toMatch(/ {6}api:\n {8}condition: service_healthy/)
+  })
+
+  it('denies /auth/admin in the gateway unless allow-listed', () => {
+    const nginx = read('infra/nginx/default.conf')
+    expect(nginx).toMatch(/location \/auth\/admin \{\n\s+include \/etc\/nginx\/admin-allow\*\.conf;\n\s+deny all;/)
+    expect(read('infra/nginx/Dockerfile')).toContain('/docker-entrypoint.d/40-admin-allow.sh')
+  })
+
+  it('pins the attached compose and releases the push relay', () => {
+    const release = read('.github/workflows/release.yml')
+    const pin = release.indexOf('Pin docker-compose.yml to this release')
+    expect(pin).toBeGreaterThan(-1)
+    expect(pin).toBeLessThan(release.indexOf('Attach docker-compose.yml to release'))
+    expect(release).toContain('openksef-push-relay:${{ github.ref_name }}')
+    expect(release).toContain('for image in api worker portal-web gateway push-relay; do')
+  })
+})
