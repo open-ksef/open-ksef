@@ -1,12 +1,12 @@
 # Admin Setup Wizard
 
-The admin setup wizard automates first-time system configuration. Instead of manually editing `.env` files, copying Keycloak secrets, and restarting containers, an admin runs `docker-compose up` and walks through a web-based wizard at `http://localhost:8080/admin-setup`.
+The admin setup wizard automates first-time system configuration. Instead of copying Keycloak secrets and restarting containers, an admin writes a short `.env`, runs `docker compose up -d` and walks through a web-based wizard at `http://localhost:8080/admin-setup`.
 
 ## Prerequisites
 
-- Docker and Docker Compose installed
-- Ports 8080, 8081, 8082 available (or configure alternatives in `.env`)
-- `ENCRYPTION_KEY` set, see [Encryption key](#encryption-key)
+- Docker and Docker Compose v2 installed
+- Ports 8080, 8081, 8082, 8083 and 5432 free, or changed in `.env`: `docker-compose.yml` publishes all of them
+- `.env` next to `docker-compose.yml` with `POSTGRES_USER`, `POSTGRES_PASSWORD`, `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD` and `ENCRYPTION_KEY`, see [Encryption key](#encryption-key). `docker compose` refuses to run without them
 
 ## Quick Start
 
@@ -29,17 +29,19 @@ docker compose up -d
 
 ### Step 1: Keycloak Admin Authentication
 
-Enter the Keycloak admin credentials (default: `admin` / `admin` from `docker-compose.yml`). The wizard authenticates against the Keycloak master realm and receives a short-lived setup session token (10 minutes).
+Enter the Keycloak admin credentials: `KEYCLOAK_ADMIN` and `KEYCLOAK_ADMIN_PASSWORD` from `.env`. The wizard authenticates against the Keycloak master realm and receives a short-lived setup session token (10 minutes).
 
 ### Step 2: Base Configuration
 
 | Field | Description | Default |
 |-------|-------------|---------|
 | External URL | Public URL where the system is accessible | Current browser origin |
-| KSeF Environment | Test or Production | Test (`ksef-test.mf.gov.pl`) |
+| KSeF Environment | Test or Production | Test (`https://api-test.ksef.mf.gov.pl/v2`) |
 | Admin email | Email for the first OpenKSeF user | (required) |
 | Admin password | Password for the first user | (required, min 8 chars) |
 | First name / Last name | Optional user details | Admin |
+| NIP | NIP of the first company | (required) |
+| Company name | Optional | (none) |
 
 ### Step 3: Authentication & Email
 
@@ -87,14 +89,16 @@ The settings page says only whether a relay key is stored, and no API response c
 ### Step 6: Summary & Apply
 
 Review all settings and click "Apply". The wizard:
-1. Fetches the Keycloak API client secret
-2. Enables token-exchange for the service account
-3. Updates client redirect URIs with the external URL
-4. Configures the Keycloak realm (login policy, password policy, SMTP)
-5. Creates the admin user in Keycloak
-6. Configures Google IdP (if provided)
-7. Stores all configuration in the database
-8. Redirects to the login page
+1. Creates the `openksef` realm in Keycloak if it does not exist
+2. Creates the OAuth clients `openksef-api`, `openksef-mobile` and `openksef-portal-web`
+3. Fetches the Keycloak API client secret
+4. Enables token-exchange for the service account
+5. Updates client redirect URIs with the external URL
+6. Configures the Keycloak realm (login policy, password policy, SMTP)
+7. Creates the admin user in Keycloak
+8. Configures Google IdP (if provided)
+9. Stores all configuration in the database
+10. Redirects to the login page
 
 ## Encryption key
 
@@ -270,7 +274,7 @@ The portal checks `/api/system/setup-status` on every protected page load. If `i
 | Problem | Solution |
 |---------|----------|
 | Wizard doesn't appear | Only if the query from [upgrade step 1](#upgrade-from-v007-or-earlier) returns 0: check that the `SystemConfigs` table is empty. Delete rows and restart the API. |
-| Keycloak auth fails | Verify Keycloak is running (`docker compose logs keycloak`). Default creds: admin/admin. |
+| Keycloak auth fails | Verify Keycloak is running (`docker compose logs keycloak`). Credentials: `KEYCLOAK_ADMIN` and `KEYCLOAK_ADMIN_PASSWORD` from `.env`. |
 | Apply fails with 500 | Check API logs (`docker compose logs api`). Common: Keycloak realm not fully imported yet. |
 | SMTP test email fails | Verify SMTP credentials. Gmail requires an App Password (not regular password). |
 | Redirect loop after setup | Clear browser cache/cookies. The portal caches setup status for 60 seconds. |
@@ -290,9 +294,6 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 # Open http://localhost:8080 -> wizard appears
 # Walk through the wizard
-
-# Run E2E tests for the wizard
-dotnet test src/OpenKSeF.Portal.E2E -nologo --filter "FullyQualifiedName~AdminSetup"
 
 # Run integration tests (requires Docker for Testcontainers)
 dotnet test src/OpenKSeF.Api.IntegrationTests -nologo --filter "FullyQualifiedName~SystemSetup"

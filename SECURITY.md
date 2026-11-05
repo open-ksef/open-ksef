@@ -8,7 +8,7 @@
 
 ## Reporting a Vulnerability
 
-**Please do NOT open a public GitHub issue for security vulnerabilities.**
+**Please do NOT disclose security vulnerabilities publicly.**
 
 If you discover a security vulnerability in OpenKSeF, please report it responsibly:
 
@@ -19,7 +19,7 @@ If you discover a security vulnerability in OpenKSeF, please report it responsib
    - Potential impact
    - Suggested fix (if any)
 
-We will acknowledge your report within **48 hours** and aim to provide a fix or mitigation within **7 days** for critical issues.
+We aim to acknowledge your report within 7 days. OpenKSeF is maintained by one person, so there is no guaranteed fix time; critical issues are handled first.
 
 ## Scope
 
