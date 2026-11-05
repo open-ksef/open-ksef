@@ -108,7 +108,7 @@ var ksefEnv = systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
 if (!string.IsNullOrEmpty(ksefEnv))
 {
     var ksefOptions = host.Services.GetRequiredService<KSeF.Client.DI.KSeFClientOptions>();
-    ksefOptions.BaseUrl = OpenKSeF.Sync.DependencyInjection.ResolveKSeFEnvironment(ksefEnv);
+    ksefOptions.BaseUrl = OpenKSeF.Sync.DependencyInjection.ResolveStartupKSeFEnvironment(ksefEnv, builder.Configuration);
 }
 
 host.Run();

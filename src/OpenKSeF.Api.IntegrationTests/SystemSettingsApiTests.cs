@@ -8,13 +8,16 @@ using KSeF.Client.Api.Services;
 using KSeF.Client.DI;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
 using Npgsql;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
+using OpenKSeF.Sync;
 
 namespace OpenKSeF.Api.IntegrationTests;
 
@@ -247,6 +250,49 @@ public class SystemSettingsApiTests : IAsyncLifetime
         while (KSeFProductionGuard.Blocked == before && DateTime.UtcNow < deadline)
             await Task.Delay(50);
         Assert.True(KSeFProductionGuard.Blocked > before);
+    }
+
+    [Fact]
+    public async Task HostStart_ProductionRow_WithForbidProduction_Refuses_BeforeAnyKSeFCall()
+    {
+        await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = "production" });
+        var before = KSeFProductionGuard.Blocked;
+
+        await using var restarted = RestartedHost((DependencyInjection.ForbidProductionKey, "true"));
+        var error = Assert.ThrowsAny<Exception>(() => restarted.Services);
+
+        Assert.Contains(DependencyInjection.ForbidProductionKey, error.Message);
+        Assert.Equal(before, KSeFProductionGuard.Blocked);
+    }
+
+    [Fact]
+    public async Task HostStart_ConfigReadFails_Throws_RatherThanRunOnTheEnvVariable()
+    {
+        var systemConfig = Substitute.For<ISystemConfigService>();
+        systemConfig.LoadCacheAsync(Arg.Any<CancellationToken>(), Arg.Any<TimeSpan?>())
+            .Returns(Task.FromException(new TimeoutException("config read failed")));
+        systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl).Returns("test");
+
+        await using var restarted = RestartedHost().WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services => services.AddSingleton(systemConfig)));
+        var error = Assert.ThrowsAny<Exception>(() => restarted.Services);
+
+        Assert.Contains("config read failed", error.Message);
+    }
+
+    [Theory]
+    [InlineData("prod", "production")]
+    [InlineData("https://api.ksef.mf.gov.pl/v2", "production")]
+    [InlineData("https://ksef-demo.mf.gov.pl", "demo")]
+    [InlineData("tset", "tset")]
+    public async Task GetSettings_ReturnsTheCanonicalKey_AndAnUnknownRowAsStored(string row, string shown)
+    {
+        await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = row });
+
+        var response = await _client.PostAsJsonAsync("/api/system/settings", new { kcAdminUsername = "admin", kcAdminPassword = "admin" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(shown, (await response.Content.ReadFromJsonAsync<SettingsResponse>())!.KSeFEnvironment);
     }
 
     [Fact]

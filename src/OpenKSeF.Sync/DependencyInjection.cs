@@ -10,6 +10,8 @@ namespace OpenKSeF.Sync;
 
 public static class DependencyInjection
 {
+    public const string ForbidProductionKey = "KSeF:ForbidProduction";
+
     public static IServiceCollection AddSyncServices(
         this IServiceCollection services, IConfiguration configuration)
     {
@@ -19,6 +21,9 @@ public static class DependencyInjection
         });
 
         services.AddCryptographyClient(CryptographyServiceWarmupMode.NonBlocking);
+
+        if (configuration.GetValue<bool>(ForbidProductionKey))
+            services.ConfigureHttpClientDefaults(client => client.AddHttpMessageHandler(() => new KSeFProductionGuard()));
 
         services.AddScoped<IKSeFGateway, KSeFGateway>();
         services.AddSingleton<KSeFInvoiceXmlParser>();
@@ -64,6 +69,17 @@ public static class DependencyInjection
             _ => throw new InvalidOperationException(
                 $"Unknown KSeF environment '{envKey}'. Use test, demo or production, see docs/admin-setup.md."),
         };
+    }
+
+    /// <summary>Resolves the environment a host starts on. Only a stack that sets KSeF:ForbidProduction refuses production, so a real install, which never sets it, cannot stop here.</summary>
+    public static string ResolveStartupKSeFEnvironment(string envKey, IConfiguration configuration)
+    {
+        var url = ResolveKSeFEnvironment(envKey);
+        if (url == KsefEnvironmentsUris.PROD && configuration.GetValue<bool>(ForbidProductionKey))
+            throw new InvalidOperationException(
+                $"KSeF environment '{envKey}' is production, and {ForbidProductionKey} forbids it. On a real install remove KSeF__ForbidProduction from the stack and keep the row. On a dev or test stack set the ksef_environment row or KSEF_BASE_URL to test.");
+
+        return url;
     }
 
     /// <summary>

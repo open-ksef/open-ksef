@@ -63,9 +63,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
         var googleConfigured = await IsGoogleIdpConfiguredAsync(client, kcBase, kcAdminToken, ct);
         var (hasInvoices, hasCredentials) = await GetKSeFEnvironmentLockStatusAsync(ct);
 
-        var ksefEnv = _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
-            ?? DependencyInjection.NormalizeKSeFEnvironmentKey(
-                _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl));
+        var ksefEnv = StoredKSeFEnvironmentForDisplay();
 
         string? lockReason = null;
         var locked = false;
@@ -233,6 +231,21 @@ public sealed class SystemSettingsService : ISystemSettingsService
         {
             _logger.LogError(ex, "Failed to update settings");
             return new SettingsUpdateResponse(false, ex.Message);
+        }
+    }
+
+    private string? StoredKSeFEnvironmentForDisplay()
+    {
+        var stored = _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
+            ?? _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl);
+        try
+        {
+            return DependencyInjection.NormalizeKSeFEnvironmentKey(stored);
+        }
+        catch (InvalidOperationException)
+        {
+            // An unknown row must not take down the whole settings page.
+            return stored;
         }
     }
 

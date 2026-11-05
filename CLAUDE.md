@@ -244,4 +244,5 @@ Portal Web tests (`vitest`) also verify cross-project contracts (docker-compose 
 - `ENCRYPTION_KEY_FILE` - file holding the key, used when `ENCRYPTION_KEY` is empty; shipped compose does not forward it
 - `ENCRYPTION_KEY_NEW` - only for `rotate-encryption-key` on the API image
 - `KSeF__BaseUrl` - `test`, `demo` or `production`; legacy KSeF URLs resolve by exact host; an unknown value stops API and Worker; a DB row wins
+- `KSeF__ForbidProduction` - `true` only in `docker-compose.dev.yml` (dev stack, E2E, QA stacks built on it); API and Worker refuse to start on production and block HTTP to production KSeF hosts; never set on a real install
 - `Issuing__StuckAfterHours` - Worker; default `24`; hours after issue before an invoice is escalated as stuck

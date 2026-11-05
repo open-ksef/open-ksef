@@ -262,6 +262,10 @@ SQL
 docker compose restart api worker
 ```
 
+A row that goes bad while the hosts run does not stop them. The Worker keeps running and sends nothing to KSeF: each sync cycle logs the error and skips its tenants, the send loop logs the same error at most every 15 minutes, and stuck invoices are not escalated. The API keeps its cached value until a settings save. Both stop with `Unknown KSeF environment` at the next restart. Fix the row with the SQL above.
+
+The API also stops at start when it cannot read `SystemConfigs` after 5 attempts, rather than running on `KSEF_BASE_URL`. Check Postgres and start it again.
+
 ## Architecture
 
 ### Configuration Storage

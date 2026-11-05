@@ -43,13 +43,13 @@ public sealed class InvoiceSyncService : BackgroundService
             {
                 await _runtimeConfig.RefreshAsync(stoppingToken);
                 await SyncAllTenantsAsync(stoppingToken);
+                _logger.LogInformation("Sync cycle complete. Next run in {Hours}h", _syncOptions.IntervalHours);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogError(ex, "Unhandled error in sync cycle {CorrelationId}", correlationId);
+                _logger.LogError(ex, "Unhandled error in sync cycle {CorrelationId}. Next run in {Hours}h", correlationId, _syncOptions.IntervalHours);
             }
 
-            _logger.LogInformation("Sync cycle complete. Next run in {Hours}h", _syncOptions.IntervalHours);
             await Task.Delay(TimeSpan.FromHours(_syncOptions.IntervalHours), stoppingToken);
         }
     }

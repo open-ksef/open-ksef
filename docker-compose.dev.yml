@@ -61,6 +61,7 @@ services:
       Auth__AdditionalIssuers__1: http://localhost:8080/auth/realms/openksef
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       KSeF__BaseUrl: ${KSEF_BASE_URL:-test}
+      KSeF__ForbidProduction: "true"
       Sync__InitialSyncMonthsBack: ${SYNC_INITIAL_MONTHS_BACK:-12}
       Auth__ServiceAccount__ClientId: openksef-api
       Auth__ServiceAccount__ClientSecret: ${API_CLIENT_SECRET:-}
@@ -85,6 +86,7 @@ services:
       Auth__Authority: http://keycloak:8080/auth/realms/openksef
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       KSeF__BaseUrl: ${KSEF_BASE_URL:-test}
+      KSeF__ForbidProduction: "true"
       Sync__InitialSyncMonthsBack: ${SYNC_INITIAL_MONTHS_BACK:-12}
 
   portal-web:

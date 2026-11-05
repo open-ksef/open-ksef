@@ -334,7 +334,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task MissingHwm_StopsWithoutMoving()
+    public async Task MissingHwm_StopsWithoutMoving_NoteStays()
     {
         await MigrateAndSeedExistingTenantAsync();
         _issued = _ => Page([]);
@@ -343,8 +343,31 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
             await SyncService(db).SyncTenantAsync(_tenantId, UserId);
 
         Assert.Single(_issuedQueries);
+        Assert.NotEmpty(Logged(LogLevel.Warning, "did not advance"));
         await using (var db = NewContext())
-            Assert.Null((await db.SyncStates.SingleAsync()).IssuedContinuationAt);
+        {
+            var state = await db.SyncStates.SingleAsync();
+            Assert.Null(state.IssuedContinuationAt);
+            Assert.True(state.IssuedFetchIncomplete());
+        }
+    }
+
+    [Fact]
+    public async Task MissingHwmOnATruncatedPage_StopsWithoutMoving_NoteStays()
+    {
+        await MigrateAndSeedExistingTenantAsync();
+        _issued = _ => Page([], truncated: true);
+
+        await using (var db = NewContext())
+            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+
+        Assert.Single(_issuedQueries);
+        await using (var db = NewContext())
+        {
+            var state = await db.SyncStates.SingleAsync();
+            Assert.Null(state.IssuedContinuationAt);
+            Assert.True(state.IssuedFetchIncomplete());
+        }
     }
 
     [Fact]

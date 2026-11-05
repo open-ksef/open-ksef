@@ -23,7 +23,7 @@ interface CompanyStateCardProps {
   attentionClear?: boolean
 }
 
-function AddToken(): ReactElement {
+export function AddToken(): ReactElement {
   return (
     <Link to="/company/token" className={PRIMARY}>
       <Icon name="key-round" /> Dodaj token KSeF
