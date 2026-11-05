@@ -298,7 +298,7 @@ Then run `docker compose up -d`.
 
 **Keycloak admin console, allow-list.** Set `KEYCLOAK_ADMIN_ALLOW` in `.env` to the addresses that may open `/auth/admin` through the gateway, comma separated, IP or CIDR, for example `KEYCLOAK_ADMIN_ALLOW=192.168.88.0/24,10.8.0.5`. Then run `docker compose up -d`. Empty or unset means 403 for everyone. nginx checks the address of the connection it receives. Behind a reverse proxy or Cloudflare, that is the proxy's address, not the browser's. Listing it opens the console to every visitor, so use the SSH tunnel there. An invalid entry stops the gateway at start: see [Start failures and restart loops](#start-failures-and-restart-loops).
 
-**Image version.** `OPENKSEF_VERSION` in `.env` picks the tag of `api`, `worker`, `portal-web` and `gateway`, for example `OPENKSEF_VERSION=v1.2.3`. Leave it unset to use the release the compose came with. Upgrade: change it (or take the new compose), then `docker compose pull && docker compose up -d`. Roll back: set the previous tag and run the same commands. Migrations are not rolled back, so read the release notes first.
+**Image version.** `OPENKSEF_VERSION` in `.env` picks the tag of `api`, `worker`, `portal-web` and `gateway`, for example `OPENKSEF_VERSION=v1.2.3`. Leave it unset to use the release the compose came with. Upgrade: change it (or take the new compose), then `docker compose pull && docker compose up -d`. Roll back: set the previous tag and run the same commands. Migrations are not rolled back, so read the release notes first. A `docker-compose.yml` from v0.0.11 or older names `:latest`, which points to the newest release. Taking that file back restores the old ports, not the old images.
 
 ## Start failures and restart loops
 
@@ -319,7 +319,7 @@ docker compose logs --tail 50 api     # the reason; use worker or gateway for th
 
 `docker compose up -d` waits for the API health check before it starts the Worker. If the API loops, `up -d` ends with `dependency failed to start: container openksef-api is unhealthy` and the Worker stays down. That is expected.
 
-Fix the cause. A fixed database row needs nothing more: the next automatic restart starts normally. A fixed `.env` value needs `docker compose up -d`, because a restart keeps the old environment. Stop a loop while you work on it with `docker compose stop api worker`.
+Fix the cause. A container that already runs needs nothing more for a fixed database row: the next automatic restart starts it normally. Then run `docker compose up -d` once, so a Worker that a failed `up -d` never started comes up too. A fixed `.env` value needs `docker compose up -d`, because a restart keeps the old environment. Stop a loop while you work on it with `docker compose stop api worker`.
 
 ## Architecture
 
