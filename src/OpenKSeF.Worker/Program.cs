@@ -108,7 +108,17 @@ var ksefEnv = systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
 if (!string.IsNullOrEmpty(ksefEnv))
 {
     var ksefOptions = host.Services.GetRequiredService<KSeF.Client.DI.KSeFClientOptions>();
-    ksefOptions.BaseUrl = OpenKSeF.Sync.DependencyInjection.ResolveStartupKSeFEnvironment(ksefEnv, builder.Configuration);
+    try
+    {
+        ksefOptions.BaseUrl = OpenKSeF.Sync.DependencyInjection.ResolveStartupKSeFEnvironment(ksefEnv, builder.Configuration);
+    }
+    catch (InvalidOperationException ex)
+    {
+        Log.Fatal("{Message}", ex.Message);
+        await Log.CloseAndFlushAsync();
+        return 1;
+    }
 }
 
 host.Run();
+return 0;
