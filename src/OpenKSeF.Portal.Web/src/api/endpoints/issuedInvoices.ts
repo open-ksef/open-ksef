@@ -27,8 +27,11 @@ export function listIssuedInvoices(
   return apiClient.get<PagedResult<IssuedInvoiceListItemResponse>>(base(tenantId), { query: params })
 }
 
-export function listIssuedFeed(tenantId: string, params?: ListIssuedInvoicesParams): Promise<PagedResult<IssuedFeedItemResponse>> {
-  return apiClient.get<PagedResult<IssuedFeedItemResponse>>(`${base(tenantId)}/feed`, { query: params })
+export function listIssuedFeed(
+  tenantId: string,
+  params?: ListIssuedInvoicesParams,
+): Promise<PagedResult<IssuedFeedItemResponse> & { issuedFetchIncomplete: boolean }> {
+  return apiClient.get<PagedResult<IssuedFeedItemResponse> & { issuedFetchIncomplete: boolean }>(`${base(tenantId)}/feed`, { query: params })
 }
 
 export function getExchangeRateProposal(

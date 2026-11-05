@@ -241,8 +241,8 @@ describe('issuing pages', () => {
     const rows = [{ id: 'i-2', status: 'Accepted', number: 'FV/1/11/2026', buyerName: 'Inny', buyerNip: null, issueDate: '2026-11-02', dueDate: '2026-11-16', totalNet: 1, totalGross: 2, currency: 'PLN', ksefNumber: null, needsAttention: true }] as never
     vi.mocked(listIssuedFeed).mockImplementation(async (_tenant, query) =>
       (query?.page ?? 1) > 1
-        ? { items: [], page: query?.page ?? 1, pageSize: 20, totalCount: 1, totalPages: 1 }
-        : { items: rows, page: 1, pageSize: 20, totalCount: 1, totalPages: 1 },
+        ? { items: [], page: query?.page ?? 1, pageSize: 20, totalCount: 1, totalPages: 1, issuedFetchIncomplete: false }
+        : { items: rows, page: 1, pageSize: 20, totalCount: 1, totalPages: 1, issuedFetchIncomplete: false },
     )
     await render('/issued?tenantId=t-1&page=9', true)
     await waitFor(() => container.querySelectorAll('tbody tr').length === 1)
@@ -261,6 +261,7 @@ describe('issuing pages', () => {
       pageSize: 20,
       totalCount: 1,
       totalPages: 1,
+      issuedFetchIncomplete: false,
     })
     await render('/issued?tenantId=t-1', true)
     await waitFor(() => Boolean(container.querySelector('tbody tr .rowlink')))
@@ -526,6 +527,7 @@ describe('issuing pages', () => {
       pageSize: 20,
       totalCount: 2,
       totalPages: 1,
+      issuedFetchIncomplete: false,
     })
     await render('/issued?tenantId=t-1')
     await waitFor(() => container.querySelectorAll('tbody tr').length === 2)
@@ -558,6 +560,7 @@ describe('issuing pages', () => {
       pageSize: 20,
       totalCount: 2,
       totalPages: 1,
+      issuedFetchIncomplete: false,
     })
     await render('/issued?tenantId=t-1&q=a', true)
     await waitFor(() => container.querySelectorAll('tbody tr').length === 2)
@@ -584,7 +587,7 @@ describe('issuing pages', () => {
     const credentialRow = (hasCredential: boolean) => ({ tenantId: 't-1', tenantDisplayName: 'A', hasCredential, credentialType: null, lastUpdatedAt: null })
 
     beforeEach(() => {
-      vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 })
+      vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0, issuedFetchIncomplete: false })
     })
 
     it('with a token says where invoices appear, and hides the filters', async () => {
