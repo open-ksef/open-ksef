@@ -247,6 +247,62 @@ public class IssuedFeedApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Feed_AnotherUsersRealTenant_Is404()
+    {
+        _client.SetBearerToken(await _fixture.GetAccessTokenAsync());
+        var otherTenantId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        await WithDbAsync(async db =>
+        {
+            db.Tenants.Add(new Tenant { Id = otherTenantId, UserId = "other-user", Nip = "5222222222", CreatedAt = now, UpdatedAt = now });
+            db.InvoiceHeaders.Add(Synced(otherTenantId, "KSEF-OTHER-USER", Utc(10, 5)));
+            await db.SaveChangesAsync();
+        });
+
+        var response = await _client.GetAsync($"/api/tenants/{otherTenantId}/issued-invoices/feed");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Feed_AnotherTenantsOwnRowWithSameKsefNumber_DoesNotHideTheRow()
+    {
+        var tenantId = await CreateTenantAsync();
+        var otherTenantId = await CreateTenantAsync();
+        await WithDbAsync(async db =>
+        {
+            db.InvoiceHeaders.Add(Synced(tenantId, "KSEF-SHARED", Utc(10, 5)));
+            await SaveAcceptedAsync(db, Own(otherTenantId, new DateOnly(2026, 10, 5), DateTime.UtcNow), "KSEF-SHARED");
+        });
+
+        var result = await FeedAsync(tenantId);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal("External", result.Items.Single().Source);
+    }
+
+    [Fact]
+    public async Task Feed_QueryMatchesKsefNumberOfOwnRow()
+    {
+        var tenantId = await CreateTenantAsync();
+        await WithDbAsync(db => SaveAcceptedAsync(db, Own(tenantId, new DateOnly(2026, 10, 5), DateTime.UtcNow), "KSEF-OWN-SEARCH"));
+
+        var result = await FeedAsync(tenantId, "q=own-search");
+
+        Assert.Equal("OpenKSeF", result.Items.Single().Source);
+    }
+
+    [Fact]
+    public async Task Feed_PageIsCappedAtTenThousandRows()
+    {
+        var tenantId = await CreateTenantAsync();
+
+        var result = await FeedAsync(tenantId, $"page={int.MaxValue}&pageSize=100");
+
+        Assert.Equal(100, result.Page);
+    }
+
+    [Fact]
     public async Task ReceivedReaders_NeverSeeIssuedRows_AsCalledByCurrentMobileAndPortal()
     {
         var tenantId = await CreateTenantAsync();

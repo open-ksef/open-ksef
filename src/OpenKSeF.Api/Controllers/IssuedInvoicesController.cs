@@ -17,6 +17,8 @@ public class IssuedInvoicesController(
     ICurrentUserService currentUser,
     IIssuedInvoiceService issuedInvoices) : ControllerBase
 {
+    private const int MaxFeedRows = 10_000;
+
     [HttpGet]
     [ProducesResponseType(typeof(PagedResult<IssuedInvoiceListItemResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
@@ -78,6 +80,7 @@ public class IssuedInvoicesController(
         {
             page = Math.Max(page, 1);
             pageSize = pageSize < 1 ? 20 : Math.Min(pageSize, 100);
+            page = Math.Min(page, MaxFeedRows / pageSize);
 
             var (rows, totalCount) = await issuedInvoices.FeedAsync(tenantId, new IssuedInvoiceListFilter(status, month, q), page, pageSize, ct);
             var items = rows.Select(r => new IssuedFeedItemResponse(
