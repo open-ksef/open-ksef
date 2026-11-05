@@ -77,7 +77,7 @@ public static class DependencyInjection
         var url = ResolveKSeFEnvironment(envKey);
         if (url == KsefEnvironmentsUris.PROD && configuration.GetValue<bool>(ForbidProductionKey))
             throw new InvalidOperationException(
-                $"KSeF environment '{envKey}' is production, and {ForbidProductionKey} forbids it on this dev or test stack. Set the ksef_environment row or KSEF_BASE_URL to test.");
+                $"KSeF environment '{envKey}' is production, and {ForbidProductionKey} forbids it. On a real install remove KSeF__ForbidProduction from the stack and keep the row. On a dev or test stack set the ksef_environment row or KSEF_BASE_URL to test.");
 
         return url;
     }

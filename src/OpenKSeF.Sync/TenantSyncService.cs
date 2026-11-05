@@ -17,9 +17,6 @@ namespace OpenKSeF.Sync;
 public sealed class TenantSyncService : ITenantSyncService
 {
     private const int IssuedFirstRunMonthsBack = 12;
-
-    // Stays under SyncState.IssuedRecentRun, or a run without a HWM leaves the incomplete note on.
-    private static readonly TimeSpan IssuedMissingHwmLag = TimeSpan.FromMinutes(10);
     private const int MaxIssuedQueriesPerRun = 10;
     private const int MaxConsecutiveDownloadFailures = 3;
 
@@ -453,17 +450,7 @@ public sealed class TenantSyncService : ITenantSyncService
                     pageOffset++;
                 }
 
-                var continuation = result.ContinuationAt;
-                if (continuation is null && !result.IsTruncated)
-                {
-                    var behindNow = now - IssuedMissingHwmLag;
-                    continuation = windowEnd < behindNow ? windowEnd : behindNow;
-                    _logger.LogWarning(
-                        "KSeF returned no issued invoice HWM for the window ending {WindowEnd} for tenant {TenantId}. Continuing from {ContinuationAt}",
-                        windowEnd, tenant.Id, continuation);
-                }
-
-                if (continuation is not { } next || next <= windowStart)
+                if (result.ContinuationAt is not { } next || next <= windowStart)
                 {
                     _logger.LogWarning(
                         "Issued invoice continuation did not advance past {WindowStart} for tenant {TenantId}",
