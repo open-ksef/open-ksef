@@ -300,6 +300,21 @@ Then run `docker compose up -d`.
 
 **Image version.** `OPENKSEF_VERSION` in `.env` picks the tag of `api`, `worker`, `portal-web` and `gateway`, for example `OPENKSEF_VERSION=v1.2.3`. Leave it unset to use the release the compose came with. Upgrade: change it (or take the new compose), then `docker compose pull && docker compose up -d`. Roll back: set the previous tag and run the same commands. Migrations are not rolled back, so read the release notes first. A `docker-compose.yml` from v0.0.11 or older names `:latest`, which points to the newest release. Taking that file back restores the old ports, not the old images.
 
+## Reverse proxy and public URL
+
+Keycloak builds the token issuer (`iss`) and every absolute link (login redirects, email verification, password reset) from what the gateway sends it. The gateway takes the host and port from the `Host` header and the scheme from `X-Forwarded-Proto`. It ignores `X-Forwarded-Host` and `X-Forwarded-Port` from the client, so a forged header cannot change the issuer or the links. The issuer must equal `APP_EXTERNAL_BASE_URL/auth/realms/openksef` (or the URL saved by the wizard), otherwise the API answers 401.
+
+| Setup | What the gateway needs | Issuer |
+|---|---|---|
+| Direct, `APP_HOST_PORT=18480` | Nothing | `http://<host>:18480/auth/realms/openksef` |
+| Nginx Proxy Manager, HTTPS on 443 | Nothing: NPM sends `Host` and `X-Forwarded-Proto` | `https://<domain>/auth/realms/openksef` |
+| ngrok, Cloudflare Tunnel, Caddy, Traefik | Nothing: they keep the public `Host` and send `X-Forwarded-Proto` | `https://<public host>/auth/realms/openksef` |
+| nginx with your own `location` | `proxy_set_header Host $http_host;` and `proxy_set_header X-Forwarded-Proto $scheme;` | public host and port |
+| Apache | `ProxyPreserveHost On` and `RequestHeader set X-Forwarded-Proto https` | public host |
+| Public HTTPS on a port other than 443 | The proxy must send that port in `Host`, for example `Host: example.com:8443` (nginx `$http_host`) | `https://example.com:8443/auth/realms/openksef` |
+
+A proxy that sends its upstream name as `Host` (for example `gateway:8080`) and the public name only in `X-Forwarded-Host` no longer works: set `Host` as above. The proxy must overwrite `X-Forwarded-Proto`, not pass the client's value. Check the result with `curl -s https://<domain>/auth/realms/openksef/.well-known/openid-configuration` and compare `issuer` with `APP_EXTERNAL_BASE_URL`.
+
 ## Start failures and restart loops
 
 Every service has `restart: unless-stopped`. When API or Worker exits at start, Docker starts it again after a short, growing delay, without end. You see a loop, not a stopped container. Causes that exit at start:
