@@ -1,10 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.IntegrationTests;
 
@@ -65,6 +68,7 @@ public class SystemSetupIntegrationTests : IDisposable
     public async Task FullSetupFlow_PersistsConfigInDb()
     {
         await ClearSystemConfigAsync();
+        await _fixture.RemoveServiceAccountRolesAsync(TestcontainersFixture.RegistrationRoles);
 
         // 1. Authenticate
         var authRequest = new SetupAuthenticateRequest("admin", "admin");
@@ -92,11 +96,10 @@ public class SystemSetupIntegrationTests : IDisposable
         var applyResp = await _client.SendAsync(applyMsg);
         applyResp.EnsureSuccessStatusCode();
 
-        var applyResult = await applyResp.Content.ReadFromJsonAsync<SetupApplyResponse>();
-        Assert.NotNull(applyResult);
-        Assert.True(applyResult!.Success);
-        Assert.False(string.IsNullOrEmpty(applyResult.EncryptionKey));
-        Assert.False(string.IsNullOrEmpty(applyResult.ApiClientSecret));
+        var applyJson = await applyResp.Content.ReadAsStringAsync();
+        Assert.True(System.Text.Json.JsonSerializer.Deserialize<SetupApplyResponse>(applyJson, System.Text.Json.JsonSerializerOptions.Web)!.Success);
+        Assert.DoesNotContain("secret", applyJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("encryptionKey", applyJson, StringComparison.OrdinalIgnoreCase);
 
         // 3. Verify setup-status now returns initialized
         var statusResp = await _client.GetAsync("/api/system/setup-status");
@@ -106,9 +109,74 @@ public class SystemSetupIntegrationTests : IDisposable
         // 4. Verify DB has the config
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var encKey = await db.SystemConfigs.FindAsync("encryption_key");
-        Assert.NotNull(encKey);
-        Assert.False(string.IsNullOrEmpty(encKey!.Value));
+        Assert.Null(await db.SystemConfigs.FindAsync("encryption_key"));
+        Assert.NotNull(await db.SystemConfigs.FindAsync("api_client_secret"));
+
+        Assert.Empty((await _fixture.GetServiceAccountRoleNamesAsync()).Intersect(TestcontainersFixture.RegistrationRoles));
+    }
+
+    [Fact]
+    public async Task Apply_UnknownEnvironment_Is400_NotInitialized()
+    {
+        await ClearSystemConfigAsync();
+        var authResp = await _client.PostAsJsonAsync("/api/system/setup/authenticate", new SetupAuthenticateRequest("admin", "admin"));
+        authResp.EnsureSuccessStatusCode();
+        var auth = await authResp.Content.ReadFromJsonAsync<SetupAuthenticateResponse>();
+
+        using var applyMsg = new HttpRequestMessage(HttpMethod.Post, "/api/system/setup/apply");
+        applyMsg.Headers.Add("X-Setup-Token", auth!.SetupToken);
+        applyMsg.Content = JsonContent.Create(new SetupApplyRequest
+        {
+            ExternalBaseUrl = "http://localhost:8080",
+            KSeFBaseUrl = "tset",
+            AdminEmail = "unknown-environment@open-ksef.pl",
+            AdminPassword = "Test1234!",
+        });
+
+        var response = await _client.SendAsync(applyMsg);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Unknown KSeF environment", (await response.Content.ReadFromJsonAsync<SetupApplyResponse>())!.Error);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Empty(await db.SystemConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task HostStart_LegacyKeyRow_IsAdoptedBeforeTheCacheLoads()
+    {
+        await ClearSystemConfigAsync();
+        var oldKey = RandomNumberGenerator.GetBytes(32);
+        var tenantId = Guid.NewGuid();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.SystemConfigs.Add(new SystemConfig { Key = "encryption_key", Value = Convert.ToBase64String(oldKey), UpdatedAt = DateTime.UtcNow });
+            db.Tenants.Add(new Tenant { Id = tenantId, UserId = "upgrade-user", Nip = "1234563218", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            db.KSeFCredentials.Add(new KSeFCredential
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                EncryptedToken = new AesGcmEncryptionService(oldKey).Encrypt("ksef-token"),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var upgraded = new OpenKSeFWebApplicationFactory(_fixture);
+        using (var scope = upgraded.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            Assert.Null(await db.SystemConfigs.FindAsync("encryption_key"));
+            Assert.Null(scope.ServiceProvider.GetRequiredService<ISystemConfigService>().GetValue(SystemConfigKeys.EncryptionKey));
+
+            var credential = await db.KSeFCredentials.SingleAsync(c => c.TenantId == tenantId);
+            Assert.Equal("ksef-token", scope.ServiceProvider.GetRequiredService<IEncryptionService>().Decrypt(credential.EncryptedToken!));
+
+            db.Tenants.Remove(await db.Tenants.SingleAsync(t => t.Id == tenantId));
+            await db.SaveChangesAsync();
+        }
     }
 
     [Fact]

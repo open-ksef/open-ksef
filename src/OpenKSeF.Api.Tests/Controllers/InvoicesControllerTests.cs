@@ -12,6 +12,8 @@ namespace OpenKSeF.Api.Tests.Controllers;
 
 public class InvoicesControllerTests : IDisposable
 {
+    private const string ValidAccount = "PL61 1090 1014 0000 0712 1981 2874";
+
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly ITransferDetailsService _transferDetails;
@@ -115,6 +117,25 @@ public class InvoicesControllerTests : IDisposable
         Assert.Equal("I-2", paged.Items[0].KSeFInvoiceNumber);
     }
 
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("  aBc  ")]
+    [InlineData("654321")]
+    public async Task List_WithFilterByVendor_IgnoresCaseAndSurroundingSpaces(string term)
+    {
+        var match = MakeInvoice("MATCH", new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc), vendor: "ABC Sp. z o.o.");
+        match.VendorNip = "9876543210";
+        var other = MakeInvoice("OTHER", new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        other.VendorNip = "1111111111";
+        _db.InvoiceHeaders.AddRange(match, other);
+        await _db.SaveChangesAsync();
+
+        var result = await CreateController().List(_tenantId, filterByVendor: term) as OkObjectResult;
+
+        var paged = Assert.IsType<PagedResult<InvoiceResponse>>(result!.Value);
+        Assert.Equal("MATCH", Assert.Single(paged.Items).KSeFInvoiceNumber);
+    }
+
     [Fact]
     public async Task GetByKSeFNumber_ExistingInvoice_ReturnsOk()
     {
@@ -152,6 +173,8 @@ public class InvoicesControllerTests : IDisposable
     public async Task GetTransferDetails_ExistingInvoice_ReturnsTransferData()
     {
         var invoice = MakeInvoice("KSEF-TR-001", DateTime.UtcNow.Date);
+        invoice.VendorBankAccount = ValidAccount;
+        invoice.InvoiceType = "Vat";
         _db.InvoiceHeaders.Add(invoice);
         await _db.SaveChangesAsync();
 
@@ -164,6 +187,86 @@ public class InvoicesControllerTests : IDisposable
         Assert.Equal("9876543210", response.RecipientNip);
         Assert.Equal(100m, response.Amount);
         Assert.Contains("data:image/png;base64,", response.QrCodeBase64);
+        Assert.Null(response.QrMessage);
+    }
+
+    [Theory]
+    [InlineData(null, "Vat", "Brak poprawnego numeru rachunku na fakturze.")]
+    [InlineData("PL62 1090 1014 0000 0712 1981 2874", "Vat", "Brak poprawnego numeru rachunku na fakturze.")]
+    [InlineData(ValidAccount, "Kor", "Faktura korygująca: kwota to różnica. Sprawdź, czy jest coś do zapłaty.")]
+    [InlineData(ValidAccount, null, "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).")]
+    public async Task GetTransferDetails_Blocked_NullQrWithMessageAndText(string? account, string? invoiceType, string message)
+    {
+        var invoice = MakeInvoice("KSEF-TR-002", DateTime.UtcNow.Date);
+        invoice.VendorBankAccount = account;
+        invoice.InvoiceType = invoiceType;
+        invoice.XmlFetchedAt = DateTime.UtcNow;
+        _db.InvoiceHeaders.Add(invoice);
+        await _db.SaveChangesAsync();
+
+        var result = await CreateController().GetTransferDetails(_tenantId, invoice.Id) as OkObjectResult;
+
+        var response = Assert.IsType<TransferDetailsResponse>(result!.Value);
+        Assert.Null(response.QrCodeBase64);
+        Assert.Equal(message, response.QrMessage);
+        Assert.Equal(account, response.RecipientAccount);
+        Assert.Contains("Kwota: 100,00 PLN", response.TransferText);
+        _qrCode.DidNotReceive().GenerateTransferQr(Arg.Any<TransferData>());
+    }
+
+    [Fact]
+    public async Task GetTransferDetails_NameEmptyAfterSanitizing_NullQrWithMessage()
+    {
+        var invoice = MakeInvoice("KSEF-TR-003", DateTime.UtcNow.Date, vendor: "!!!");
+        invoice.VendorBankAccount = ValidAccount;
+        invoice.InvoiceType = "Vat";
+        _db.InvoiceHeaders.Add(invoice);
+        await _db.SaveChangesAsync();
+
+        var result = await CreateController().GetTransferDetails(_tenantId, invoice.Id) as OkObjectResult;
+
+        var response = Assert.IsType<TransferDetailsResponse>(result!.Value);
+        Assert.Null(response.QrCodeBase64);
+        Assert.Equal("Nie można utworzyć kodu QR: brak czytelnej nazwy sprzedawcy lub numeru faktury.", response.QrMessage);
+        Assert.Contains("Nr rachunku: " + ValidAccount, response.TransferText);
+    }
+
+    [Fact]
+    public async Task GetTransferDetails_Gross20000_QrWithMppNotice()
+    {
+        var invoice = MakeInvoice("KSEF-TR-004", DateTime.UtcNow.Date);
+        invoice.VendorBankAccount = ValidAccount;
+        invoice.InvoiceType = "Vat";
+        invoice.AmountGross = 20000m;
+        _db.InvoiceHeaders.Add(invoice);
+        await _db.SaveChangesAsync();
+
+        var controller = new InvoicesController(_db, _currentUser, _transferDetails, new QrCodeService());
+        var result = await controller.GetTransferDetails(_tenantId, invoice.Id) as OkObjectResult;
+
+        var response = Assert.IsType<TransferDetailsResponse>(result!.Value);
+        Assert.StartsWith("data:image/png;base64,", response.QrCodeBase64);
+        Assert.Equal("Sprawdź, czy faktura nie wymaga podzielonej płatności (MPP).", response.QrMessage);
+    }
+
+    [Theory]
+    [InlineData(ValidAccount)]
+    [InlineData(null)]
+    public async Task ListAndGet_ReturnVendorBankAccount(string? account)
+    {
+        var invoice = MakeInvoice("KSEF-ACC-001", DateTime.UtcNow.Date);
+        invoice.VendorBankAccount = account;
+        _db.InvoiceHeaders.Add(invoice);
+        await _db.SaveChangesAsync();
+
+        var controller = CreateController();
+        var list = await controller.List(_tenantId) as OkObjectResult;
+        var get = await controller.Get(_tenantId, invoice.Id) as OkObjectResult;
+        var byNumber = await controller.GetByKSeFNumber(_tenantId, "KSEF-ACC-001") as OkObjectResult;
+
+        Assert.Equal(account, Assert.IsType<PagedResult<InvoiceResponse>>(list!.Value).Items.Single().VendorBankAccount);
+        Assert.Equal(account, Assert.IsType<InvoiceResponse>(get!.Value).VendorBankAccount);
+        Assert.Equal(account, Assert.IsType<InvoiceResponse>(byNumber!.Value).VendorBankAccount);
     }
 
     [Fact]
@@ -172,6 +275,48 @@ public class InvoicesControllerTests : IDisposable
         var controller = CreateController();
         var result = await controller.GetTransferDetails(_tenantId, Guid.NewGuid());
         Assert.IsType<NotFoundResult>(result);
+    }
+
+    private async Task<InvoiceHeader> SeedOtherUsersInvoice()
+    {
+        var otherTenantId = Guid.NewGuid();
+        _db.Tenants.Add(new Tenant
+        {
+            Id = otherTenantId,
+            UserId = "user-2",
+            Nip = "1111111111",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+        var invoice = MakeInvoice("KSEF-OTHER", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        invoice.TenantId = otherTenantId;
+        invoice.InvoiceType = "Vat";
+        invoice.VendorBankAccount = ValidAccount;
+        _db.InvoiceHeaders.Add(invoice);
+        await _db.SaveChangesAsync();
+        return invoice;
+    }
+
+    [Fact]
+    public async Task GetTransferDetails_OtherUsersTenant_ReturnsForbid()
+    {
+        var invoice = await SeedOtherUsersInvoice();
+
+        var result = await CreateController().GetTransferDetails(invoice.TenantId, invoice.Id);
+
+        Assert.IsType<ForbidResult>(result);
+        _qrCode.DidNotReceive().GenerateTransferQr(Arg.Any<TransferData>());
+    }
+
+    [Fact]
+    public async Task GetTransferDetails_OtherTenantsInvoiceIdUnderOwnTenant_Returns404()
+    {
+        var invoice = await SeedOtherUsersInvoice();
+
+        var result = await CreateController().GetTransferDetails(_tenantId, invoice.Id);
+
+        Assert.IsType<NotFoundResult>(result);
+        _qrCode.DidNotReceive().GenerateTransferQr(Arg.Any<TransferData>());
     }
 
     [Fact]

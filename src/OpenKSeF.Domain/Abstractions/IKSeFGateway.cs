@@ -1,3 +1,5 @@
+using OpenKSeF.Domain.Enums;
+
 namespace OpenKSeF.Domain.Abstractions;
 
 public interface IKSeFGateway
@@ -20,7 +22,8 @@ public record KSeFQueryCriteria(
     DateTime? DateFrom = null,
     DateTime? DateTo = null,
     int PageSize = 100,
-    int PageOffset = 0);
+    int PageOffset = 0,
+    InvoiceDirection Direction = InvoiceDirection.Received);
 
 public record KSeFInvoiceHeader(
     string KSeFNumber,
@@ -37,10 +40,14 @@ public record KSeFInvoiceHeader(
     DateTime IssueDate,
     DateTime? AcquisitionDate,
     string? InvoiceType,
-    string? VendorBankAccount = null);
+    string? VendorBankAccount = null,
+    string? BuyerIdType = null,
+    string? BuyerForeignId = null);
 
 public record KSeFInvoiceQueryResult(
     IReadOnlyList<KSeFInvoiceHeader> Invoices,
     int TotalCount,
     int PageOffset,
-    int PageSize);
+    int PageSize,
+    DateTime? ContinuationAt = null,
+    bool IsTruncated = false);

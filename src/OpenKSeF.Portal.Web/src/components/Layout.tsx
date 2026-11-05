@@ -1,86 +1,80 @@
-import { useState, type ReactElement } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import type { ReactElement } from 'react'
+import { Link, Outlet, useLocation } from 'react-router-dom'
 
 import { useAuth } from '@/auth/useAuth'
+import { CompanyCard } from '@/company/CompanyCard'
+import { BrandMark } from './BrandMark'
+import { Icon, type IconName } from './Icon'
 
-const navItems = [
-  { to: '/', label: 'Pulpit', icon: '⊞', end: true },
-  { to: '/invoices', label: 'Faktury', icon: '≡' },
-  { to: '/tenants', label: 'Firmy', icon: '◉' },
-  { to: '/credentials', label: 'Dane logowania', icon: '⚿' },
-  { to: '/devices', label: 'Urządzenia', icon: '◈' },
-  { to: '/mobile-setup', label: 'Aplikacja mobilna', icon: '⬡' },
-  { to: '/settings', label: 'Ustawienia', icon: '⚙' },
+const navItems: { to: string; label: string; icon: IconName }[] = [
+  { to: '/', label: 'Start', icon: 'house' },
+  { to: '/invoices', label: 'Otrzymane', icon: 'inbox' },
+  { to: '/issued', label: 'Wystawione', icon: 'send' },
+  { to: '/company', label: 'Firma', icon: 'building-2' },
+  { to: '/mobile-setup', label: 'Telefon', icon: 'smartphone' },
 ]
 
-function getInitials(name: string | undefined | null): string {
-  if (!name) return 'U'
-  const parts = name.trim().split(/\s+/)
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-  return name.slice(0, 2).toUpperCase()
-}
+const isUnder = (pathname: string, base: string): boolean =>
+  base === '/' ? pathname === '/' : pathname === base || pathname.startsWith(`${base}/`)
 
 export function Layout(): ReactElement {
   const { user, logout } = useAuth()
-  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
+  const { pathname } = useLocation()
 
   const displayName = user?.profile?.name ?? user?.profile?.email ?? 'Użytkownik'
-  const initials = getInitials(user?.profile?.name ?? user?.profile?.email)
+  const onSettings = isUnder(pathname, '/settings')
 
   return (
     <div className="app-shell">
-      <aside className="app-sidebar" data-open={isMobileNavOpen}>
-        <div className="sidebar-brand">
-          <span className="sidebar-logo-icon" aria-hidden="true">⚡</span>
-          <span className="sidebar-logo-text">OpenKSeF</span>
-        </div>
+      <aside className="app-sidebar">
+        <Link to="/" className="sidebar-brand">
+          <BrandMark size={24} />
+          <span>OpenKSeF</span>
+        </Link>
 
-        <nav
-          className="sidebar-nav"
-          data-testid="mobile-nav"
-          data-open={isMobileNavOpen}
-          aria-label="Nawigacja główna"
-        >
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className="sidebar-nav-link"
-              onClick={() => setIsMobileNavOpen(false)}
-            >
-              <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
+        <CompanyCard />
+
+        <nav className="sidebar-nav" data-testid="mobile-nav" aria-label="Nawigacja główna">
+          {navItems.map((item) => {
+            const active = isUnder(pathname, item.to)
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={active ? 'sidebar-nav-link active' : 'sidebar-nav-link'}
+                aria-current={active ? 'page' : undefined}
+              >
+                <Icon name={item.icon} size={18} />
+                <span>{item.label}</span>
+              </Link>
+            )
+          })}
         </nav>
 
-        <div className="sidebar-footer">
-          <div className="user-avatar" aria-hidden="true">{initials}</div>
-          <span className="user-name">{displayName}</span>
+        <div className="sidebar-user">
+          <span className="sidebar-user__name" title={displayName}>{displayName}</span>
+          <Link
+            to="/settings"
+            className={onSettings ? 'sidebar-user__action active' : 'sidebar-user__action'}
+            data-testid="nav-settings"
+            aria-label="Ustawienia"
+            aria-current={onSettings ? 'page' : undefined}
+          >
+            <Icon name="settings" size={18} />
+          </Link>
           <button
             type="button"
-            className="sidebar-logout"
+            className="sidebar-user__action"
+            data-testid="nav-logout"
             aria-label="Wyloguj"
             onClick={() => void logout()}
           >
-            ↪
+            <Icon name="log-out" size={18} />
           </button>
         </div>
       </aside>
 
       <div className="app-content">
-        <button
-          type="button"
-          className="mobile-nav-toggle"
-          data-testid="mobile-nav-toggle"
-          aria-expanded={isMobileNavOpen}
-          aria-label={isMobileNavOpen ? 'Zamknij menu' : 'Otwórz menu'}
-          onClick={() => setIsMobileNavOpen((current) => !current)}
-        >
-          {isMobileNavOpen ? '✕' : '☰'}
-        </button>
-
         <main className="app-main">
           <Outlet />
         </main>

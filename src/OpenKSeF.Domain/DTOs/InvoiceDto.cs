@@ -1,3 +1,5 @@
+using OpenKSeF.Domain.Enums;
+
 namespace OpenKSeF.Domain.DTOs;
 
 public record InvoiceDto(
@@ -15,5 +17,6 @@ public record InvoiceDto(
     DateTime IssueDate,
     DateTime? AcquisitionDate,
     string? InvoiceType,
-    string? VendorBankAccount = null,
-    IReadOnlyList<InvoiceLineDto>? Lines = null);
+    InvoiceDirection Direction = InvoiceDirection.Received,
+    string? BuyerIdType = null,
+    string? BuyerForeignId = null);

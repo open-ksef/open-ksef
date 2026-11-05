@@ -2,7 +2,9 @@ using KSeF.Client.Api.Services;
 using KSeF.Client.DI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Sync.Issuing;
 
 namespace OpenKSeF.Sync;
 
@@ -20,10 +22,15 @@ public static class DependencyInjection
 
         services.AddScoped<IKSeFGateway, KSeFGateway>();
         services.AddSingleton<KSeFInvoiceXmlParser>();
+        services.AddSingleton<IFa3InvoiceWriter, Fa3InvoiceWriter>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<IKSeFInvoiceSubmitter, KSeFInvoiceSubmitter>();
+        services.AddScoped<IssuedInvoiceSendProcessor>();
 
         services.Configure<TenantSyncOptions>(
             configuration.GetSection(TenantSyncOptions.SectionName));
 
+        services.AddSingleton<XmlDownloadBlocks>();
         services.AddScoped<ITenantSyncService, TenantSyncService>();
 
         return services;
@@ -32,7 +39,7 @@ public static class DependencyInjection
     /// <summary>
     /// Resolves a KSeF environment key ("test", "production", "demo") or a legacy
     /// full URL to the canonical base URL from KSeF.Client NuGet package.
-    /// Handles backward compat with older installs that stored raw URLs.
+    /// Legacy URLs match by exact host. Any other value throws, so nothing runs on a guessed environment.
     /// </summary>
     public static string ResolveKSeFEnvironment(string? envKey)
     {
@@ -46,13 +53,17 @@ public static class DependencyInjection
         if (val is "demo") return KsefEnvironmentsUris.DEMO;
         if (val is "test") return KsefEnvironmentsUris.TEST;
 
-        // Legacy full URLs — detect production vs demo vs test by domain fragments
-        if (val.Contains("ksef.podatki.gov.pl") || val.Contains("api.ksef.mf.gov.pl"))
-            return KsefEnvironmentsUris.PROD;
-        if (val.Contains("demo"))
-            return KsefEnvironmentsUris.DEMO;
+        var host = Uri.TryCreate(val.Contains("://") ? val : $"https://{val}", UriKind.Absolute, out var uri) ? uri.Host : val;
 
-        return KsefEnvironmentsUris.TEST;
+        return host switch
+        {
+            "ksef-test.mf.gov.pl" or "api-test.ksef.mf.gov.pl" => KsefEnvironmentsUris.TEST,
+            "ksef-demo.mf.gov.pl" or "api-demo.ksef.mf.gov.pl" => KsefEnvironmentsUris.DEMO,
+            "ksef.podatki.gov.pl" or "api.ksef.mf.gov.pl" => KsefEnvironmentsUris.PROD,
+            // ksef.mf.gov.pl is left out on purpose: it means production but has run as TEST since #4, so either mapping flips someone.
+            _ => throw new InvalidOperationException(
+                $"Unknown KSeF environment '{envKey}'. Use test, demo or production, see docs/admin-setup.md."),
+        };
     }
 
     /// <summary>

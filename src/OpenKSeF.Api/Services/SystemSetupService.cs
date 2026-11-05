@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.Json;
 using KSeF.Client.DI;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +41,22 @@ public sealed class SystemSetupService : ISystemSetupService
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
+
+    /// <summary>Keycloak keeps the stored SMTP password when it receives this mask; omitting the key or sending "" replaces it.</summary>
+    internal static string KeycloakSmtpPassword(string? password) =>
+        string.IsNullOrEmpty(password) ? "**********" : password;
+
+    internal static readonly IReadOnlyDictionary<string, object> BruteForceSettings = new Dictionary<string, object>
+    {
+        ["bruteForceProtected"] = true,
+        ["permanentLockout"] = false,
+        ["failureFactor"] = 10,
+        ["waitIncrementSeconds"] = 60,
+        ["maxFailureWaitSeconds"] = 900,
+        ["maxDeltaTimeSeconds"] = 43200,
+        ["quickLoginCheckMilliSeconds"] = 1000,
+        ["minimumQuickLoginWaitSeconds"] = 60,
+    };
 
     private string KeycloakInternalBaseUrl
     {
@@ -92,6 +107,12 @@ public sealed class SystemSetupService : ISystemSetupService
     {
         try
         {
+            if (EncryptionServiceExtensions.ReadConfiguredKey(_configuration) is null)
+                return new SetupApplyResponse(false,
+                    "ENCRYPTION_KEY is not set. Generate one with: openssl rand -base64 32, set it on the API and Worker, and restart.");
+
+            var ksefEnv = DependencyInjection.NormalizeKSeFEnvironmentKey(request.KSeFBaseUrl);
+
             var client = _httpClientFactory.CreateClient("keycloak");
             var kcBase = KeycloakInternalBaseUrl;
 
@@ -101,11 +122,6 @@ public sealed class SystemSetupService : ISystemSetupService
 
             await EnsureClientsExistAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Keycloak clients verified/created");
-
-            // 2. Generate encryption key
-            var encryptionKeyBytes = RandomNumberGenerator.GetBytes(32);
-            var encryptionKey = Convert.ToBase64String(encryptionKeyBytes);
-            _logger.LogInformation("Generated encryption key");
 
             // 3. Fetch openksef-api client secret
             var apiClientSecret = await FetchApiClientSecretAsync(client, kcBase, adminToken, ct);
@@ -146,15 +162,8 @@ public sealed class SystemSetupService : ISystemSetupService
             }
 
             // 10. Store config in DB (environment key only, URL resolved at runtime)
-            var ksefEnv = request.KSeFBaseUrl?.ToLowerInvariant() switch
-            {
-                "production" => "production",
-                "demo" => "demo",
-                _ => "test",
-            };
             var configValues = new Dictionary<string, string>
             {
-                [SystemConfigKeys.EncryptionKey] = encryptionKey,
                 [SystemConfigKeys.ApiClientSecret] = apiClientSecret,
                 [SystemConfigKeys.ExternalBaseUrl] = request.ExternalBaseUrl.TrimEnd('/'),
                 [SystemConfigKeys.KSeFEnvironment] = ksefEnv,
@@ -202,12 +211,12 @@ public sealed class SystemSetupService : ISystemSetupService
 
             _logger.LogInformation("System setup completed successfully");
 
-            return new SetupApplyResponse(true, encryptionKey, apiClientSecret, null);
+            return new SetupApplyResponse(true, null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "System setup failed");
-            return new SetupApplyResponse(false, null, null, ex.Message);
+            return new SetupApplyResponse(false, ex.Message);
         }
     }
 
@@ -240,6 +249,8 @@ public sealed class SystemSetupService : ISystemSetupService
             ["resetPasswordAllowed"] = true,
             ["editUsernameAllowed"] = false,
         };
+        foreach (var (key, value) in BruteForceSettings)
+            realmPayload[key] = value;
 
         await SendKeycloakJsonAsync(client, HttpMethod.Post,
             $"{kcBase}/admin/realms", adminToken, realmPayload, ct);
@@ -265,7 +276,7 @@ public sealed class SystemSetupService : ISystemSetupService
                 ["directAccessGrantsEnabled"] = false,
                 ["serviceAccountsEnabled"] = true,
                 ["redirectUris"] = new[] { "/*" },
-                ["webOrigins"] = new[] { "*" },
+                ["webOrigins"] = new[] { "+" },
             },
             new Dictionary<string, object>
             {
@@ -277,7 +288,7 @@ public sealed class SystemSetupService : ISystemSetupService
                 ["standardFlowEnabled"] = true,
                 ["directAccessGrantsEnabled"] = true,
                 ["redirectUris"] = new[] { "/*", "openksef://auth/*" },
-                ["webOrigins"] = new[] { "*" },
+                ["webOrigins"] = new[] { "+" },
             },
             new Dictionary<string, object>
             {
@@ -291,7 +302,7 @@ public sealed class SystemSetupService : ISystemSetupService
                 ["directAccessGrantsEnabled"] = true,
                 ["serviceAccountsEnabled"] = false,
                 ["redirectUris"] = new[] { "/*" },
-                ["webOrigins"] = new[] { "*" },
+                ["webOrigins"] = new[] { "+" },
                 ["attributes"] = new Dictionary<string, string>
                 {
                     ["pkce.code.challenge.method"] = "S256",
@@ -403,7 +414,7 @@ public sealed class SystemSetupService : ISystemSetupService
     {
         var url = externalBaseUrl.TrimEnd('/');
         var redirectUris = new[] { $"{url}/*" };
-        var webOrigins = new[] { url, "*" };
+        var webOrigins = new[] { url };
 
         foreach (var clientId in new[] { "openksef-api", "openksef-mobile", "openksef-portal-web" })
         {
@@ -423,8 +434,11 @@ public sealed class SystemSetupService : ISystemSetupService
 
             var merged = existingRedirects.Concat(redirectUris).Distinct().ToArray();
 
+            // Keycloak 26.0 replaces the service account user, losing its roles, when a client PUT omits this field.
+            var serviceAccountsEnabled = clientJson.GetProperty("serviceAccountsEnabled").GetBoolean();
+
             await SendKeycloakJsonAsync(client, HttpMethod.Put, clientUrl, adminToken,
-                new { redirectUris = merged, webOrigins }, ct);
+                new { redirectUris = merged, webOrigins, serviceAccountsEnabled }, ct);
         }
     }
 
@@ -459,7 +473,7 @@ public sealed class SystemSetupService : ISystemSetupService
                 ["ssl"] = request.Smtp.Ssl.ToString().ToLowerInvariant(),
                 ["auth"] = request.Smtp.Auth.ToString().ToLowerInvariant(),
                 ["user"] = request.Smtp.User ?? "",
-                ["password"] = request.Smtp.Password ?? "",
+                ["password"] = KeycloakSmtpPassword(request.Smtp.Password),
             };
         }
 
