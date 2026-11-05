@@ -288,6 +288,22 @@ public class SystemSettingsApiTests : IAsyncLifetime
 
         var response = await client.PutAsJsonAsync("/api/system/settings", EnvironmentPut("production"));
 
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False((await response.Content.ReadFromJsonAsync<SettingsUpdateResponse>())!.RequiresConfirmation);
+        Assert.Equal(1, CredentialCount());
+    }
+
+    [Theory]
+    [InlineData("prod")]
+    [InlineData("https://api.ksef.mf.gov.pl/v2")]
+    public async Task NonCanonicalRow_EchoedByPortal_IsNoChange(string row)
+    {
+        await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = row });
+        await SeedCredentialAsync();
+
+        var response = await PutSettingsAsync(EnvironmentPut(row));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.False((await response.Content.ReadFromJsonAsync<SettingsUpdateResponse>())!.RequiresConfirmation);
         Assert.Equal(1, CredentialCount());
     }

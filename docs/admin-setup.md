@@ -251,7 +251,7 @@ A legacy test or demo URL (`ksef-test.mf.gov.pl`, `ksef-demo.mf.gov.pl`, `api-te
 
 API or Worker stops at start with `Unknown KSeF environment` when the value is anything else, so nothing is sent to KSeF on a guessed environment. This includes `https://ksef.mf.gov.pl/api`, which ran as TEST in earlier versions.
 
-If no wizard has run, fix `KSEF_BASE_URL` in `.env` and run `docker compose up -d`. Otherwise run the SQL below. To keep today's behavior, choose `test`. Choosing `production` needs a production KSeF token.
+If no wizard has run, fix `KSEF_BASE_URL` in `.env` and run `docker compose up -d`. Otherwise run the SQL below with the environment the install ran on: `production` if the old value contains `ksef.podatki.gov.pl` or `api.ksef.mf.gov.pl`, otherwise `demo` if it contains `demo`, otherwise `test`. Choosing `production` needs a production KSeF token.
 
 ```bash
 docker exec -i openksef-postgres sh -c 'psql -U "$POSTGRES_USER" -d openksef' <<'SQL'
