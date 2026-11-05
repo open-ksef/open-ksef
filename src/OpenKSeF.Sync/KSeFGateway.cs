@@ -115,11 +115,10 @@ public sealed class KSeFGateway : IKSeFGateway
 
         var totalCount = invoices.Count + (result.HasMore ? criteria.PageSize : 0);
 
-        var continuationAt = result.IsTruncated
-            ? result.Invoices?.LastOrDefault()?.PermanentStorageDate.UtcDateTime
-            : result.PermanentStorageHwmDate?.UtcDateTime;
+        var lastRowAt = result.Invoices?.LastOrDefault()?.PermanentStorageDate.UtcDateTime;
+        var continuationAt = result.IsTruncated ? lastRowAt : result.PermanentStorageHwmDate?.UtcDateTime;
 
-        return new KSeFInvoiceQueryResult(invoices, totalCount, criteria.PageOffset, criteria.PageSize, continuationAt, result.IsTruncated);
+        return new KSeFInvoiceQueryResult(invoices, totalCount, criteria.PageOffset, criteria.PageSize, continuationAt, result.IsTruncated, lastRowAt);
     }
 
     public async Task<byte[]> DownloadInvoiceAsync(

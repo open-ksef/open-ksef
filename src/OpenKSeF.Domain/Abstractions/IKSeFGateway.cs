@@ -50,4 +50,5 @@ public record KSeFInvoiceQueryResult(
     int PageOffset,
     int PageSize,
     DateTime? ContinuationAt = null,
-    bool IsTruncated = false);
+    bool IsTruncated = false,
+    DateTime? LastRowAt = null);

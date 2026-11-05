@@ -79,7 +79,8 @@ public class IssuedInvoiceService(
                 i.BuyerName!.ToLower().Contains(term)
                 || i.BuyerNip!.Contains(term)
                 || i.BuyerForeignId!.ToLower().Contains(term)
-                || i.Number!.ToLower().Contains(term));
+                || i.Number!.ToLower().Contains(term)
+                || i.KsefNumber!.ToLower().Contains(term));
         }
 
         return query;
@@ -89,7 +90,7 @@ public class IssuedInvoiceService(
         Guid tenantId, IssuedInvoiceListFilter filter, int page, int pageSize, CancellationToken ct = default)
     {
         var own = Query(tenantId, filter);
-        var take = (int)Math.Min((long)page * pageSize, int.MaxValue);
+        var take = page * pageSize;
 
         var ownRows = await own
             .OrderByDescending(i => i.IssueDate)

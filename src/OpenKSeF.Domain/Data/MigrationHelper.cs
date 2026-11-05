@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -74,8 +75,11 @@ public static class MigrationHelper
         IServiceScopeFactory scopeFactory,
         ILogger logger,
         CancellationToken cancellationToken,
-        TimeSpan? pollInterval = null)
+        TimeSpan? pollInterval = null,
+        TimeSpan? warnAfter = null)
     {
+        var waiting = Stopwatch.StartNew();
+        var warnAt = warnAfter ?? TimeSpan.FromMinutes(10);
         while (true)
         {
             try
@@ -86,9 +90,12 @@ public static class MigrationHelper
                 if (pending == 0)
                     return;
 
-                logger.LogInformation("Waiting for the API to apply {Count} pending migrations", pending);
+                logger.Log(
+                    waiting.Elapsed >= warnAt ? LogLevel.Warning : LogLevel.Information,
+                    "Waiting for the API to apply {Count} pending migrations",
+                    pending);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 logger.LogWarning(ex, "Could not read migration state. Retrying");
             }

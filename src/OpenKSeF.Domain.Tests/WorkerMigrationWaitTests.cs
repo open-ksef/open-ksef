@@ -90,6 +90,48 @@ public sealed class WorkerMigrationWaitTests : IDisposable
     }
 
     [Fact]
+    public async Task Helper_LongWait_LogsWarning()
+    {
+        await using var services = Services();
+        var logger = new ListLogger<WorkerMigrationWaitTests>();
+        using var cts = new CancellationTokenSource();
+
+        var wait = MigrationHelper.WaitForMigrationsAsync(
+            services.GetRequiredService<IServiceScopeFactory>(), logger, cts.Token, TimeSpan.FromMilliseconds(20), warnAfter: TimeSpan.Zero);
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (!logger.Levels.Contains(LogLevel.Warning) && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+        Assert.Contains(LogLevel.Warning, logger.Levels);
+    }
+
+    [Fact]
+    public async Task Helper_TimeoutWithoutCancelledToken_RetriesInsteadOfStoppingTheHost()
+    {
+        var timeouts = 0;
+        var scopeFactory = Substitute.For<IServiceScopeFactory>();
+        scopeFactory.CreateScope().Returns(_ =>
+        {
+            Interlocked.Increment(ref timeouts);
+            throw new TaskCanceledException("Simulated driver timeout");
+        });
+        using var cts = new CancellationTokenSource();
+
+        var wait = MigrationHelper.WaitForMigrationsAsync(
+            scopeFactory, new ListLogger<WorkerMigrationWaitTests>(), cts.Token, TimeSpan.FromMilliseconds(20));
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (Volatile.Read(ref timeouts) < 2 && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        Assert.False(wait.IsCompleted);
+        Assert.True(Volatile.Read(ref timeouts) >= 2);
+        await cts.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+    }
+
+    [Fact]
     public async Task SyncLoop_PendingMigrations_RunsNoCycle_LogsNoError()
     {
         await using var services = Services();

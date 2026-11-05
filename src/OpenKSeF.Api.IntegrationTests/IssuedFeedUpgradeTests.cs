@@ -376,6 +376,99 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         Assert.Equal(0, _issuedQueries[1].PageOffset);
     }
 
+    private async Task SetContinuationAsync(DateTime continuationAt)
+    {
+        await using var db = NewContext();
+        (await db.SyncStates.SingleAsync()).IssuedContinuationAt = continuationAt;
+        await db.SaveChangesAsync();
+    }
+
+    private static Func<KSeFQueryCriteria, KSeFInvoiceQueryResult> KsefPages(IReadOnlyList<(DateTime At, string Number)> sales) => c =>
+    {
+        var rows = sales
+            .Where(s => s.At >= c.DateFrom && s.At <= c.DateTo)
+            .Skip(c.PageOffset * c.PageSize)
+            .Take(c.PageSize)
+            .ToList();
+        return new KSeFInvoiceQueryResult(
+            rows.Select(r => Sale(r.Number)).ToList(), rows.Count, c.PageOffset, c.PageSize, c.DateTo, false, rows.LastOrDefault().At);
+    };
+
+    [Fact]
+    public async Task TwoThousandSalesInOneWindow_429AfterPage3_LaterRunsContinueFromSavedRow_AndFinish()
+    {
+        await MigrateAndSeedExistingTenantAsync();
+        var start = DateTime.UtcNow.AddMonths(-5);
+        var sales = Enumerable.Range(0, 2000).Select(n => (At: start.AddMinutes(n), Number: $"KSEF-{n:D4}")).ToList();
+        var pages = KsefPages(sales);
+        var servedRows = 0;
+        var blocked = true;
+        _issued = c =>
+        {
+            if (blocked && servedRows == 300)
+                throw new KsefApiException("rate limited", HttpStatusCode.TooManyRequests);
+            var page = pages(c);
+            servedRows += page.Invoices.Count;
+            return page;
+        };
+
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId, UserId)).Outcome);
+
+        await using (var db = NewContext())
+        {
+            Assert.Equal(sales[299].At, (await db.SyncStates.SingleAsync()).IssuedContinuationAt!.Value, TimeSpan.FromMilliseconds(1));
+            Assert.Equal(300, await db.InvoiceHeaders.CountAsync(i => i.Direction == InvoiceDirection.Issued));
+        }
+
+        blocked = false;
+        for (var run = 0; run < 2; run++)
+        {
+            var before = _issuedQueries.Count;
+            await using var db = NewContext();
+            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            Assert.InRange(_issuedQueries.Count - before, 1, 10);
+        }
+
+        await using (var db = NewContext())
+        {
+            var stored = await db.InvoiceHeaders.Where(i => i.Direction == InvoiceDirection.Issued).Select(i => i.KSeFInvoiceNumber).ToListAsync();
+            Assert.Equal(sales.Select(s => s.Number), stored.Order());
+            Assert.True((await db.SyncStates.SingleAsync()).IssuedContinuationAt > DateTime.UtcNow.AddMinutes(-15));
+        }
+    }
+
+    [Fact]
+    public async Task FullPageOfOneTimestamp_AtTheResumePoint_PagesOnAndFinishes()
+    {
+        await MigrateAndSeedExistingTenantAsync();
+        var at = DateTime.UtcNow.AddDays(-5);
+        await SetContinuationAsync(at);
+        _issued = KsefPages(Enumerable.Range(0, 150).Select(n => (at, $"KSEF-{n:D3}")).ToList());
+
+        await using (var db = NewContext())
+            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+
+        await using (var db = NewContext())
+            Assert.Equal(150, await db.InvoiceHeaders.CountAsync(i => i.Direction == InvoiceDirection.Issued));
+    }
+
+    [Fact]
+    public async Task IssuedStream_ContinuationWithin15Minutes_IsSkipped_OlderRuns()
+    {
+        await MigrateAndSeedExistingTenantAsync();
+        await SetContinuationAsync(DateTime.UtcNow.AddMinutes(-14));
+
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId, UserId)).Outcome);
+        Assert.Empty(_issuedQueries);
+
+        await SetContinuationAsync(DateTime.UtcNow.AddMinutes(-16));
+        await using (var db = NewContext())
+            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+        Assert.Single(_issuedQueries);
+    }
+
     [Fact]
     public async Task SelfInvoice_DroppedByIssuedStream_StoredAndNotifiedByReceived()
     {
