@@ -115,6 +115,43 @@ public class SystemSetupIntegrationTests : IDisposable
         Assert.Empty((await _fixture.GetServiceAccountRoleNamesAsync()).Intersect(TestcontainersFixture.RegistrationRoles));
     }
 
+    [Theory]
+    [InlineData("prod")]
+    [InlineData("https://api.ksef.mf.gov.pl/v2")]
+    [InlineData("https://ksef.podatki.gov.pl/api")]
+    public async Task Apply_ProdOrLegacyProductionUrl_StoresTheCanonicalKey(string environment)
+    {
+        await ClearSystemConfigAsync();
+        try
+        {
+            var authResp = await _client.PostAsJsonAsync("/api/system/setup/authenticate", new SetupAuthenticateRequest("admin", "admin"));
+            authResp.EnsureSuccessStatusCode();
+            var auth = await authResp.Content.ReadFromJsonAsync<SetupAuthenticateResponse>();
+
+            using var applyMsg = new HttpRequestMessage(HttpMethod.Post, "/api/system/setup/apply");
+            applyMsg.Headers.Add("X-Setup-Token", auth!.SetupToken);
+            applyMsg.Content = JsonContent.Create(new SetupApplyRequest
+            {
+                ExternalBaseUrl = "http://localhost:8080",
+                KSeFBaseUrl = environment,
+                AdminEmail = $"canonical-{Guid.NewGuid():N}@open-ksef.pl",
+                AdminPassword = "Test1234!",
+            });
+
+            var response = await _client.SendAsync(applyMsg);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            Assert.Equal("production", (await db.SystemConfigs.FindAsync(SystemConfigKeys.KSeFEnvironment))!.Value);
+            Assert.Null(await db.SystemConfigs.FindAsync(SystemConfigKeys.KSeFBaseUrl));
+        }
+        finally
+        {
+            await ClearSystemConfigAsync();
+        }
+    }
+
     [Fact]
     public async Task Apply_UnknownEnvironment_Is400_NotInitialized()
     {
