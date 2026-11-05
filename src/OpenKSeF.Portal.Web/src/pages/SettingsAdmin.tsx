@@ -372,7 +372,10 @@ export function SettingsAdminPage(): ReactElement {
               </select>
               {unknownKsefEnv && (
                 <span id="settings-ksef-env-unknown" data-testid="settings-ksef-env-unknown" className="ui-form-hint" style={{ color: 'var(--ui-warning)' }}>
-                  Zapisana wartość „{unknownKsefEnv}” nie jest znanym środowiskiem KSeF. Wybierz Test, Demo lub Produkcja i zapisz. Bez zmiany pola zapis nie zmieni środowiska.
+                  Zapisana wartość „{unknownKsefEnv}” nie jest znanym środowiskiem KSeF.{' '}
+                  {settings?.kSeFEnvironmentLocked
+                    ? <>Pole jest zablokowane, popraw wartość w bazie: <a href="https://github.com/open-ksef/open-ksef/blob/main/docs/admin-setup.md#ksef-environment-upgrade" target="_blank" rel="noopener noreferrer">instrukcja SQL</a>.</>
+                    : 'Wybierz Test, Demo lub Produkcja i zapisz. Bez zmiany pola zapis nie zmieni środowiska.'}
                 </span>
               )}
               {settings?.kSeFEnvironmentLockReason && (
