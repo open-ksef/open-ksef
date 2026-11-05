@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { useState, type ReactElement } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import {
   copyIssuedInvoice,
@@ -63,8 +63,10 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
   const [failure, setFailure] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const tenantQuery = `tenantId=${encodeURIComponent(tenantId)}`
+  const listSearch = (location.state as { listSearch?: string } | null)?.listSearch
   const stem = fileStem(invoice.number, invoice.id)
   const { ksefNumber, verificationUrl } = invoice.ksef
   const accepted = invoice.status === 'Accepted'
@@ -104,7 +106,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
   })
 
   const remove = useMutation({
-    mutationFn: () => deleteIssuedInvoice(tenantId, invoice.id),
+    mutationFn: () => deleteIssuedInvoice(tenantId, invoice.id, invoice.version),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
       navigate(`/issued?${tenantQuery}`, { replace: true })
@@ -172,7 +174,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
 
   return (
     <section className="invoice-details">
-      <Link to={`/issued?${tenantQuery}`} className="back-link">
+      <Link to={`/issued${listSearch ?? `?${tenantQuery}`}`} className="back-link">
         <Icon name="arrow-left" size={14} /> Wystawione
       </Link>
       <header className="page-header invoice-details-head">

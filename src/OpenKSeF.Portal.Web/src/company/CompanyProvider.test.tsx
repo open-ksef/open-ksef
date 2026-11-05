@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { Route, RouterProvider, Routes, createMemoryRouter, useLocation } from 'react-router-dom'
+import { Route, RouterProvider, Routes, createMemoryRouter, useLocation, type InitialEntry } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getDashboardOverview } from '@/api/endpoints/dashboard'
@@ -81,7 +81,7 @@ describe('CompanyProvider', () => {
     container.remove()
   })
 
-  async function render(path: string, page: ReactNode = null): Promise<void> {
+  async function render(path: InitialEntry, page: ReactNode = null): Promise<void> {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const router = createMemoryRouter(
       [
@@ -160,6 +160,14 @@ describe('CompanyProvider', () => {
 
     expect(probe().dataset.tenant).toBe('b')
     expect(localStorage.getItem(STORAGE_KEY)).toBe('b')
+  })
+
+  it('a switch on a row opened from the issued list goes to Wystawione', async () => {
+    await render({ pathname: '/invoices/KSEF-1', search: '?tenantId=a', state: { fromIssued: true } })
+    await chooseCompany('b')
+
+    expect(probe().textContent).toBe('/issued')
+    expect(probe().dataset.tenant).toBe('b')
   })
 
   it.each([

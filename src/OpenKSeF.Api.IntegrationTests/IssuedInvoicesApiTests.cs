@@ -20,6 +20,7 @@ namespace OpenKSeF.Api.IntegrationTests;
 public class IssuedInvoicesApiTests : IDisposable
 {
     private const string BuyerNip = "5261040828";
+    private const int HeapXminFrozen = 0x0300;
     private static readonly DateOnly Today = new(2026, 12, 20);
 
     private readonly TestcontainersFixture _fixture;
@@ -1022,6 +1023,113 @@ public class IssuedInvoicesApiTests : IDisposable
         Assert.Equal("KSeF nie odpowiada, ponowimy wysyłkę", sending.Ksef.LastError);
     }
 
+    [Fact]
+    public async Task Update_StaleVersion_Returns409_AndLeavesDraftUnchanged()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        var url = $"{Base(tenantId)}/{draft.Id}";
+
+        var first = await _client.PutAsJsonAsync($"{url}?version={draft.Version}", Draft(buyerName: "Pierwszy zapis", unitNetPrice: 200m));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var saved = (await first.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!;
+        Assert.NotEqual(draft.Version, saved.Version);
+
+        var stale = await _client.PutAsJsonAsync($"{url}?version={draft.Version}", Draft(buyerName: "Nieaktualny zapis", unitNetPrice: 300m));
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        Assert.Equal("Faktura została równocześnie zmieniona, odśwież stronę", (await stale.Content.ReadFromJsonAsync<JsonObject>())!["message"]!.GetValue<string>());
+
+        var stored = await LoadAsync(draft.Id);
+        Assert.Equal("Pierwszy zapis", stored.BuyerName);
+        Assert.Equal(200m, Assert.Single(stored.Lines).UnitNetPrice);
+        Assert.Equal(saved.UpdatedAt, stored.UpdatedAt);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync($"{url}?version=abc", Draft())).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync($"{url}?version={saved.Version}", Draft(buyerName: "Aktualny zapis"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Update_NoVersion_StillLastWriteWins()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        var url = $"{Base(tenantId)}/{draft.Id}";
+
+        Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync($"{url}?version={draft.Version}", Draft(buyerName: "Portal"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync(url, Draft(buyerName: "Stara aplikacja"))).StatusCode);
+
+        Assert.Equal("Stara aplikacja", (await LoadAsync(draft.Id)).BuyerName);
+    }
+
+    [Fact]
+    public async Task Delete_StaleVersion_Returns409_AndKeepsDraft()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        var url = $"{Base(tenantId)}/{draft.Id}";
+        var saved = await (await _client.PutAsJsonAsync(url, Draft(buyerName: "Zmieniony"))).Content.ReadFromJsonAsync<IssuedInvoiceResponse>();
+
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.DeleteAsync($"{url}?version={draft.Version}")).StatusCode);
+        Assert.Equal("Zmieniony", (await LoadAsync(draft.Id)).BuyerName);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"{url}?version={saved!.Version}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Issue_StaleVersion_Returns409_ConsumesNoNumber()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        var url = $"{Base(tenantId)}/{draft.Id}";
+        var saved = await (await _client.PutAsJsonAsync(url, Draft(buyerName: "Zmieniony"))).Content.ReadFromJsonAsync<IssuedInvoiceResponse>();
+
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"{url}/issue?version={draft.Version}", null)).StatusCode);
+
+        var stored = await LoadAsync(draft.Id);
+        Assert.Equal(IssuedInvoiceStatus.Draft, stored.Status);
+        Assert.Null(stored.Number);
+        Assert.Equal(0, await WithDbAsync(d => d.InvoiceNumberCounters.CountAsync(c => c.TenantId == tenantId)));
+
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{url}/issue?version={saved!.Version}", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Issue_StaleVersion_AlreadyQueued_Returns200()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        var issued = await IssueAsync(tenantId, draft.Id);
+        Assert.NotEqual(draft.Version, issued.Version);
+
+        var retry = await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?version={draft.Version}", null);
+
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        Assert.Equal(issued.Number, (await retry.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!.Number);
+    }
+
+    [Fact]
+    public async Task Version_SurvivesVacuumFreeze()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        var url = $"{Base(tenantId)}/{draft.Id}";
+
+        await WithDbAsync(async db =>
+        {
+            await db.Database.ExecuteSqlRawAsync("""VACUUM FREEZE "IssuedInvoices" """);
+            return await db.Database.ExecuteSqlRawAsync("CREATE EXTENSION IF NOT EXISTS pageinspect");
+        });
+        var frozen = await WithDbAsync(db => db.Database.SqlQuery<bool>($"""
+            SELECT (p.t_infomask & {HeapXminFrozen}) = {HeapXminFrozen} AS "Value"
+            FROM "IssuedInvoices" i, heap_page_items(get_raw_page('"IssuedInvoices"', (i.ctid::text::point)[0]::int)) p
+            WHERE i."Id" = {draft.Id} AND p.lp = (i.ctid::text::point)[1]::int
+            """).SingleAsync());
+        Assert.True(frozen);
+
+        Assert.Equal(draft.Version, (await _client.GetFromJsonAsync<IssuedInvoiceResponse>(url))!.Version);
+        Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync($"{url}?version={draft.Version}", Draft(buyerName: "Po zamrożeniu"))).StatusCode);
+    }
+
     private static void AssertMatchesFixture(string fixture, JsonNode actual)
     {
         Normalize(actual);
@@ -1040,7 +1148,7 @@ public class IssuedInvoicesApiTests : IDisposable
             case JsonObject obj:
                 foreach (var key in obj.Select(p => p.Key).ToList())
                 {
-                    if (key is "id" or "createdAt" or "updatedAt" or "issuedAt" or "acceptedAt" && obj[key] is not null)
+                    if (key is "id" or "createdAt" or "updatedAt" or "issuedAt" or "acceptedAt" or "version" && obj[key] is not null)
                         obj[key] = $"<{key}>";
                     else if (key == "seller")
                         obj[key]!["nip"] = "<nip>";

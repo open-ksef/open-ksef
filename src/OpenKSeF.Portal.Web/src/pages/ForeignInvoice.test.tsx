@@ -104,6 +104,7 @@ const invoice = (patch: Partial<IssuedInvoiceResponse> = {}): IssuedInvoiceRespo
   createdAt: '2026-11-03T10:00:00Z',
   updatedAt: '2026-11-03T10:00:00Z',
   issuedAt: null,
+  version: 5,
   exchangeRate: 5.1,
   exchangeRateDate: '2026-11-02',
   ...patch,
@@ -360,6 +361,32 @@ describe('foreign invoices in the portal', () => {
 
       expect(container.querySelector('#buyer-foreignId-error')?.textContent).toContain('Bez numeru podatkowego')
       expect(createIssuedInvoice).not.toHaveBeenCalled()
+    })
+
+    it.each(['test', 'production'] as const)('blocks issuing on %s while the rate is empty, and the rate is on screen before anything is sent', async (environment) => {
+      const draft = invoice({ ksef: { ...ksef, environment } })
+      vi.mocked(getSellerProfile).mockResolvedValue({ ...profile, ksefEnvironment: environment })
+      vi.mocked(getIssuedInvoice).mockResolvedValue(draft)
+      vi.mocked(updateIssuedInvoice).mockResolvedValue({ ...draft, exchangeRate: 5.1234 })
+      vi.mocked(issueIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending' }))
+      await render('/issued/i-1/edit?tenantId=t-1')
+      await waitFor(() => input('exchange-rate')?.value === '5,1234')
+
+      await act(async () => typeInto(input('exchange-rate'), ''))
+      await act(flush)
+      expect(input('exchange-rate').value).toBe('')
+      await act(async () => byText('Wystaw i wyślij do KSeF')!.click())
+      await act(flush)
+
+      expect(container.querySelector('#exchange-rate-error')?.textContent).toContain('Podaj kurs waluty')
+      expect(updateIssuedInvoice).not.toHaveBeenCalled()
+      expect(issueIssuedInvoice).not.toHaveBeenCalled()
+
+      await act(async () => byText('Użyj kursu NBP')!.click())
+      expect(input('exchange-rate').value).toBe('5,1234')
+      await act(async () => byText('Wystaw i wyślij do KSeF')!.click())
+      await waitFor(() => vi.mocked(updateIssuedInvoice).mock.calls.length === 1)
+      expect(vi.mocked(updateIssuedInvoice).mock.calls[0][2].exchangeRate).toBe(5.1234)
     })
 
     it('a reopened third-country draft without an id needs a new tick before issuing', async () => {

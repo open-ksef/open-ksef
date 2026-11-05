@@ -111,7 +111,7 @@ export function IssuedInvoiceListPage(): ReactElement {
     row.source === 'External'
       ? `/invoices/${encodeURIComponent(row.ksefNumber!)}?${tenantQuery}`
       : `/issued/${encodeURIComponent(row.id)}?${tenantQuery}`
-  const onRowClick = useRowOpen(detailsPath, { listSearch: location.search })
+  const onRowClick = useRowOpen(detailsPath, { listSearch: location.search, fromIssued: true })
 
   const columns: TableColumn<IssuedFeedItemResponse>[] = [
     {

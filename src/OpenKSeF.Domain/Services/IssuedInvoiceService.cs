@@ -18,6 +18,8 @@ public class IssuedInvoiceService(
     IExchangeRateSource exchangeRates,
     TimeProvider timeProvider) : IIssuedInvoiceService
 {
+    private const string ConcurrentChangeMessage = "Faktura została równocześnie zmieniona, odśwież stronę";
+
     private const int MaxLines = 1000;
     private const int MaxTextLength = 512;
     private const int MaxShortTextLength = 256;
@@ -215,13 +217,14 @@ public class IssuedInvoiceService(
         return await ViewAsync(invoice, ct);
     }
 
-    public async Task<IssuedInvoiceView?> UpdateAsync(Guid tenantId, Guid id, IssuedInvoiceDraftInput input, CancellationToken ct = default)
+    public async Task<IssuedInvoiceView?> UpdateAsync(Guid tenantId, Guid id, IssuedInvoiceDraftInput input, uint? expectedVersion = null, CancellationToken ct = default)
     {
         var invoice = await LoadAsync(tenantId, id, ct);
         if (invoice is null)
             return null;
         if (!invoice.IsEditable)
             throw new InvoiceStateException("Faktury w tym statusie nie można zmieniać");
+        EnsureVersion(invoice, expectedVersion);
 
         Apply(invoice, input);
         await ProposeRateIfMissingAsync(invoice, ct);
@@ -230,26 +233,28 @@ public class IssuedInvoiceService(
         return await ViewAsync(invoice, ct);
     }
 
-    public async Task<bool> DeleteAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    public async Task<bool> DeleteAsync(Guid tenantId, Guid id, uint? expectedVersion = null, CancellationToken ct = default)
     {
         var invoice = await LoadAsync(tenantId, id, ct);
         if (invoice is null)
             return false;
         if (invoice.Status != IssuedInvoiceStatus.Draft)
             throw new InvoiceStateException("Usunąć można tylko szkic");
+        EnsureVersion(invoice, expectedVersion);
 
         db.IssuedInvoices.Remove(invoice);
         await SaveOrConflictAsync(ct);
         return true;
     }
 
-    public async Task<(IssuedInvoiceView View, bool Issued)?> IssueAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    public async Task<(IssuedInvoiceView View, bool Issued)?> IssueAsync(Guid tenantId, Guid id, uint? expectedVersion = null, CancellationToken ct = default)
     {
         var invoice = await LoadAsync(tenantId, id, ct);
         if (invoice is null)
             return null;
         if (!invoice.IsEditable)
             return (await ViewAsync(invoice, ct), false);
+        EnsureVersion(invoice, expectedVersion);
 
         var profile = await db.SellerProfiles.SingleOrDefaultAsync(p => p.TenantId == tenantId, ct) ?? new SellerProfile(tenantId);
         var sellerNip = await db.Tenants.Where(t => t.Id == tenantId).Select(t => t.Nip).SingleOrDefaultAsync(ct);
@@ -470,6 +475,14 @@ public class IssuedInvoiceService(
     private Task<IssuedInvoice?> LoadAsync(Guid tenantId, Guid id, CancellationToken ct) =>
         db.IssuedInvoices.Include(i => i.Lines).SingleOrDefaultAsync(i => i.TenantId == tenantId && i.Id == id, ct);
 
+    private uint VersionOf(IssuedInvoice invoice) => db.Entry(invoice).Property<uint>("Version").CurrentValue;
+
+    private void EnsureVersion(IssuedInvoice invoice, uint? expected)
+    {
+        if (expected is { } version && version != VersionOf(invoice))
+            throw new InvoiceStateException(ConcurrentChangeMessage);
+    }
+
     private async Task SaveOrConflictAsync(CancellationToken ct)
     {
         try
@@ -478,7 +491,7 @@ public class IssuedInvoiceService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            throw new InvoiceStateException("Faktura została równocześnie zmieniona, odśwież stronę");
+            throw new InvoiceStateException(ConcurrentChangeMessage);
         }
     }
 
@@ -489,7 +502,7 @@ public class IssuedInvoiceService(
             var snapshot = new IssuedInvoiceSeller(invoice.SellerNip!, invoice.SellerName, invoice.SellerAddressLine1,
                 invoice.SellerAddressLine2, invoice.SellerBankAccount, invoice.SellerCashAccounting,
                 invoice.SellerIban, invoice.SellerBankSwift, invoice.SellerBankName);
-            return new IssuedInvoiceView(invoice, snapshot, invoice.KsefEnvironment ?? environment.Current, IssueChecks.Warnings(invoice));
+            return new IssuedInvoiceView(invoice, snapshot, invoice.KsefEnvironment ?? environment.Current, IssueChecks.Warnings(invoice), VersionOf(invoice));
         }
 
         var nip = await db.Tenants.Where(t => t.Id == invoice.TenantId).Select(t => t.Nip).SingleAsync(ct);
@@ -497,7 +510,7 @@ public class IssuedInvoiceService(
         var account = profile?.PaymentAccountFor(invoice.BuyerKind);
         var seller = new IssuedInvoiceSeller(nip, profile?.LegalName, profile?.AddressLine1, profile?.AddressLine2, account?.BankAccount, profile?.CashAccounting ?? false,
             account?.Iban, account?.Swift, account?.BankName);
-        return new IssuedInvoiceView(invoice, seller, environment.Current, IssueChecks.Warnings(invoice));
+        return new IssuedInvoiceView(invoice, seller, environment.Current, IssueChecks.Warnings(invoice), VersionOf(invoice));
     }
 
     private DateOnly Today() => IssuedInvoice.PolandDate(timeProvider.GetUtcNow());

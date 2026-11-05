@@ -92,7 +92,7 @@ public class IssuingContractSerializationTests
             100.00m, 23.00m, 123.00m, "PLN",
             new IssuedInvoiceKsefResponse("test", null, null, null, null, null, null, null, false, null),
             [new ValidationIssue("INV-W-MPP", "splitPayment", "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)")],
-            created, created, null);
+            created, created, null, Version: 3000000000);
 
         AssertJson(response, """
             { "id": "8f1c2a8e-6a5d-4c55-9c7a-1b2c3d4e5f60", "status": "Draft", "number": null,
@@ -106,7 +106,7 @@ public class IssuingContractSerializationTests
               "ksef": { "environment": "test", "ksefNumber": null, "acceptedAt": null, "statusCode": null, "statusMessage": null, "statusDetails": null,
                         "lastError": null, "verificationUrl": null, "hasUpo": false, "duplicateKsefNumber": null },
               "warnings": [ { "code": "INV-W-MPP", "field": "splitPayment", "message": "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)" } ],
-              "createdAt": "2026-11-03T10:00:00Z", "updatedAt": "2026-11-03T10:00:00Z", "issuedAt": null, "exchangeRate": null, "exchangeRateDate": null }
+              "createdAt": "2026-11-03T10:00:00Z", "updatedAt": "2026-11-03T10:00:00Z", "issuedAt": null, "exchangeRate": null, "exchangeRateDate": null, "version": 3000000000 }
             """);
     }
 

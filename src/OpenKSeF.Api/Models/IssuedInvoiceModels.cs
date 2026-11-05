@@ -91,7 +91,8 @@ public record IssuedInvoiceResponse(
     DateTime UpdatedAt,
     DateTime? IssuedAt,
     decimal? ExchangeRate = null,
-    DateOnly? ExchangeRateDate = null);
+    DateOnly? ExchangeRateDate = null,
+    uint Version = 0);
 
 public record ExchangeRateProposalResponse(string Currency, decimal? Rate, DateOnly? TableDate);
 

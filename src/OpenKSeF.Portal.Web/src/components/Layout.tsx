@@ -1,8 +1,11 @@
+import { useQuery } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { Link, Outlet, useLocation } from 'react-router-dom'
+import { Link, Outlet, useLocation, useMatch } from 'react-router-dom'
 
+import type { InvoiceResponse } from '@/api/types'
 import { useAuth } from '@/auth/useAuth'
 import { CompanyCard } from '@/company/CompanyCard'
+import { useCompany } from '@/company/useCompany'
 import { BrandMark } from './BrandMark'
 import { Icon, type IconName } from './Icon'
 
@@ -19,7 +22,11 @@ const isUnder = (pathname: string, base: string): boolean =>
 
 export function Layout(): ReactElement {
   const { user, logout } = useAuth()
-  const { pathname } = useLocation()
+  const { pathname, state } = useLocation()
+  const { tenantId } = useCompany()
+  const number = useMatch('/invoices/:ksefInvoiceNumber')?.params.ksefInvoiceNumber
+  const { data } = useQuery<InvoiceResponse>({ queryKey: ['invoice-details', tenantId, number], enabled: false })
+  const current = number && (data?.direction === 'Issued' || (state as { fromIssued?: boolean } | null)?.fromIssued) ? '/issued' : pathname
 
   const displayName = user?.profile?.name ?? user?.profile?.email ?? 'Użytkownik'
   const onSettings = isUnder(pathname, '/settings')
@@ -36,7 +43,7 @@ export function Layout(): ReactElement {
 
         <nav className="sidebar-nav" data-testid="mobile-nav" aria-label="Nawigacja główna">
           {navItems.map((item) => {
-            const active = isUnder(pathname, item.to)
+            const active = isUnder(current, item.to)
             return (
               <Link
                 key={item.to}

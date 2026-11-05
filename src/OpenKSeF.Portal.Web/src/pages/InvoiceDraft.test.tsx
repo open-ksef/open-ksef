@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate, type InitialEntry, type NavigateFunction } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createIssuedInvoice, getIssuedInvoice, listIssuedFeed, updateIssuedInvoice } from '@/api/endpoints/issuedInvoices'
+import { createIssuedInvoice, deleteIssuedInvoice, getIssuedInvoice, listIssuedFeed, updateIssuedInvoice } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { listTenants } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
@@ -25,6 +25,7 @@ vi.mock('@/api/endpoints/nipLookup', () => ({ lookupNip: vi.fn() }))
 vi.mock('@/api/endpoints/credentials', () => ({ listCredentials: vi.fn() }))
 vi.mock('@/api/endpoints/issuedInvoices', () => ({
   createIssuedInvoice: vi.fn(),
+  deleteIssuedInvoice: vi.fn(),
   updateIssuedInvoice: vi.fn(),
   getIssuedInvoice: vi.fn(),
   listIssuedFeed: vi.fn(),
@@ -97,7 +98,11 @@ describe('issuing pages', () => {
       go = navigate
     })
     visited.push(location.pathname)
-    return <output data-testid="location">{location.pathname + location.search}</output>
+    return (
+      <output data-testid="location" data-state={JSON.stringify(location.state)}>
+        {location.pathname + location.search}
+      </output>
+    )
   }
 
   async function render(path: InitialEntry, withCard = false, seed?: (client: QueryClient) => void): Promise<void> {
@@ -335,6 +340,72 @@ describe('issuing pages', () => {
       vi.mocked(updateIssuedInvoice).mockImplementation(async (_tenant, id) => drafts.find((saved) => saved.id === id)!)
     })
 
+    it('a refetch under the open form does not move the version it saves with', async () => {
+      const loaded = { ...draft('i-c', 'Nabywca C'), version: 7 }
+      const moved = { ...draft('i-c', 'Zmieniony gdzie indziej'), version: 9 }
+      let refetchLands!: (value: IssuedInvoiceResponse) => void
+      vi.mocked(getIssuedInvoice).mockReturnValue(new Promise((resolve) => (refetchLands = resolve)))
+      vi.mocked(updateIssuedInvoice).mockResolvedValue({ ...loaded, version: 8 })
+      let client!: QueryClient
+      await render(edit('i-c'), true, (seeded) => {
+        client = seeded
+        seeded.setQueryData(['issued-invoice', 't-1', 'i-c'], loaded)
+      })
+      await waitFor(() => buyerName() === 'Nabywca C')
+      await act(async () => refetchLands(moved))
+      await waitFor(() => client.getQueryData<IssuedInvoiceResponse>(['issued-invoice', 't-1', 'i-c'])?.version === 9)
+      await act(flush)
+      expect(buyerName()).toBe('Nabywca C')
+
+      await act(async () => buttonByText(container, 'Zapisz szkic').click())
+      await waitFor(() => vi.mocked(updateIssuedInvoice).mock.calls.length === 1)
+      expect(vi.mocked(updateIssuedInvoice).mock.calls[0][3]).toBe(7)
+      await waitFor(() => !buttonByText(container, 'Zapisz szkic').disabled)
+
+      await act(async () => client.setQueryData(['issued-invoice', 't-1', 'i-c'], moved))
+      await act(flush)
+      await act(async () => buttonByText(container, 'Zapisz szkic').click())
+      await waitFor(() => vi.mocked(updateIssuedInvoice).mock.calls.length === 2)
+      expect(vi.mocked(updateIssuedInvoice).mock.calls[1][3]).toBe(8)
+    })
+
+    it('a refetch under the open form does not move the version it deletes with', async () => {
+      let refetchLands!: (value: IssuedInvoiceResponse) => void
+      vi.mocked(getIssuedInvoice).mockReturnValue(new Promise((resolve) => (refetchLands = resolve)))
+      vi.mocked(deleteIssuedInvoice).mockResolvedValue(undefined)
+      let client!: QueryClient
+      await render(edit('i-c'), true, (seeded) => {
+        client = seeded
+        seeded.setQueryData(['issued-invoice', 't-1', 'i-c'], { ...draft('i-c', 'Nabywca C'), version: 7 })
+      })
+      await waitFor(() => buyerName() === 'Nabywca C')
+      await act(async () => refetchLands({ ...draft('i-c', 'Zmieniony gdzie indziej'), version: 9 }))
+      await waitFor(() => client.getQueryData<IssuedInvoiceResponse>(['issued-invoice', 't-1', 'i-c'])?.version === 9)
+      await act(flush)
+
+      await act(async () => buttonByText(container, 'Usuń szkic').click())
+      await act(async () => buttonByText(container.querySelector<HTMLElement>('[role="alertdialog"]')!, 'Usuń szkic').click())
+      await waitFor(() => vi.mocked(deleteIssuedInvoice).mock.calls.length === 1)
+
+      expect(deleteIssuedInvoice).toHaveBeenCalledWith('t-1', 'i-c', 7)
+    })
+
+    it('an invoice created in this form saves next with the version the create returned', async () => {
+      vi.mocked(createIssuedInvoice).mockResolvedValue({ ...draft('i-new', 'Nabywca'), version: 3 })
+      vi.mocked(updateIssuedInvoice).mockResolvedValue({ ...draft('i-new', 'Nabywca'), version: 4 })
+      vi.mocked(getIssuedInvoice).mockResolvedValue({ ...draft('i-new', 'Nabywca'), version: 3 })
+      await render('/issued/new?tenantId=t-1', true)
+      await waitFor(() => Boolean(container.querySelector('#buyer-name')))
+
+      await act(async () => buttonByText(container, 'Zapisz szkic').click())
+      await waitFor(() => container.querySelector('[data-testid="location"]')?.textContent === edit('i-new'))
+      await waitFor(() => !buttonByText(container, 'Zapisz szkic').disabled)
+      await act(async () => buttonByText(container, 'Zapisz szkic').click())
+      await waitFor(() => vi.mocked(updateIssuedInvoice).mock.calls.length === 1)
+
+      expect(vi.mocked(updateIssuedInvoice).mock.calls[0][3]).toBe(3)
+    })
+
     it('a history jump between two cached drafts shows and saves the draft the URL names', async () => {
       await render(edit('i-a'), true, seedDrafts)
       await waitFor(() => buyerName() === 'Nabywca A')
@@ -506,6 +577,7 @@ describe('issuing pages', () => {
     await act(async () => external.querySelector<HTMLElement>('.received-gross')!.click())
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 300)))
     await waitFor(() => container.querySelector('[data-testid="location"]')?.textContent === '/invoices/1111111111-20261102-ABC%2F1?tenantId=t-1')
+    expect(JSON.parse(container.querySelector<HTMLElement>('[data-testid="location"]')!.dataset.state!)).toEqual({ listSearch: '?tenantId=t-1&q=a', fromIssued: true })
   })
 
   describe('list without invoices', () => {
