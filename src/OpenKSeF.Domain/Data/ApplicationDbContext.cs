@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
+using OpenKSeF.Domain.Invoicing;
 
 namespace OpenKSeF.Domain.Data;
 
@@ -17,6 +19,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<SyncState> SyncStates => Set<SyncState>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
     public DbSet<SystemConfig> SystemConfigs => Set<SystemConfig>();
+    public DbSet<IssuedInvoice> IssuedInvoices => Set<IssuedInvoice>();
+    public DbSet<IssuedInvoiceLine> IssuedInvoiceLines => Set<IssuedInvoiceLine>();
+    public DbSet<SellerProfile> SellerProfiles => Set<SellerProfile>();
+    public DbSet<InvoiceNumberCounter> InvoiceNumberCounters => Set<InvoiceNumberCounter>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -59,6 +65,12 @@ public class ApplicationDbContext : DbContext
             entity.Property(i => i.VendorNip).IsRequired().HasMaxLength(10);
             entity.Property(i => i.BuyerName).HasMaxLength(500);
             entity.Property(i => i.BuyerNip).HasMaxLength(10);
+            entity.Property(i => i.BuyerIdType).HasMaxLength(8);
+            entity.Property(i => i.BuyerForeignId).HasMaxLength(50);
+            entity.Property(i => i.Direction)
+                .HasDefaultValue(InvoiceDirection.Received)
+                .HasConversion<string>()
+                .HasMaxLength(16);
             entity.Property(i => i.AmountNet).HasPrecision(18, 2);
             entity.Property(i => i.AmountVat).HasPrecision(18, 2);
             entity.Property(i => i.AmountGross).HasPrecision(18, 2);
@@ -121,6 +133,106 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(s => s.Key);
             entity.Property(s => s.Key).HasMaxLength(128);
             entity.Property(s => s.Value).IsRequired();
+        });
+
+        modelBuilder.Entity<IssuedInvoice>(entity =>
+        {
+            entity.HasKey(i => i.Id);
+            entity.Property<uint>("Version").IsRowVersion();
+            entity.HasIndex(i => new { i.TenantId, i.Number }).IsUnique().HasFilter("\"Number\" IS NOT NULL");
+            entity.HasIndex(i => new { i.Status, i.NextAttemptAt });
+            entity.HasIndex(i => new { i.TenantId, i.CreatedAt });
+            entity.HasIndex(i => new { i.TenantId, i.KsefNumber });
+            entity.Property(i => i.Status).HasConversion<string>().HasMaxLength(16);
+            entity.Property(i => i.Number).HasMaxLength(256);
+            entity.Property(i => i.NumberPeriod).HasMaxLength(7);
+            entity.Property(i => i.SellerNip).HasMaxLength(10);
+            entity.Property(i => i.SellerName).HasMaxLength(512);
+            entity.Property(i => i.SellerAddressLine1).HasMaxLength(512);
+            entity.Property(i => i.SellerAddressLine2).HasMaxLength(512);
+            entity.Property(i => i.SellerBankAccount).HasMaxLength(26);
+            entity.Property(i => i.SellerIban).HasMaxLength(34);
+            entity.Property(i => i.SellerBankSwift).HasMaxLength(11);
+            entity.Property(i => i.SellerBankName).HasMaxLength(256);
+            entity.Property(i => i.BuyerKind).HasConversion<string>().HasMaxLength(16);
+            entity.Property(i => i.BuyerNip).HasMaxLength(10);
+            entity.Property(i => i.BuyerName).HasMaxLength(512);
+            entity.Property(i => i.BuyerAddressLine1).HasMaxLength(512);
+            entity.Property(i => i.BuyerAddressLine2).HasMaxLength(512);
+            entity.Property(i => i.BuyerCountryCode).HasMaxLength(2);
+            entity.Property(i => i.BuyerIdType).HasMaxLength(8);
+            entity.Property(i => i.BuyerForeignId).HasMaxLength(50);
+            entity.Property(i => i.Currency).IsRequired().HasMaxLength(3).HasDefaultValue(IssuedInvoice.DefaultCurrency);
+            entity.Property(i => i.ExchangeRate).HasPrecision(18, 6);
+            entity.Property(i => i.PaymentMethod).HasConversion<string>().HasMaxLength(16);
+            entity.Property(i => i.ExemptionBasisKind).HasConversion<string>().HasMaxLength(16);
+            entity.Property(i => i.ExemptionBasisText).HasMaxLength(256);
+            entity.Property(i => i.TotalNet).HasPrecision(18, 2);
+            entity.Property(i => i.TotalVat).HasPrecision(18, 2);
+            entity.Property(i => i.TotalGross).HasPrecision(18, 2);
+            entity.Property(i => i.KsefEnvironment).HasMaxLength(16);
+            entity.Property(i => i.SentXmlSha256).HasMaxLength(64);
+            entity.Property(i => i.VerificationUrl).HasMaxLength(512);
+            entity.Property(i => i.KsefSessionRef).HasMaxLength(100);
+            entity.Property(i => i.KsefElementRef).HasMaxLength(100);
+            entity.Property(i => i.KsefNumber).HasMaxLength(64);
+            entity.Property(i => i.KsefStatusDescription).HasMaxLength(1000);
+            entity.Property(i => i.LastError).HasMaxLength(1000);
+            entity.HasMany(i => i.Lines)
+                .WithOne()
+                .HasForeignKey(l => l.IssuedInvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(i => i.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(i => i.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<IssuedInvoiceLine>(entity =>
+        {
+            entity.HasKey(l => l.Id);
+            entity.Property(l => l.Id).ValueGeneratedNever();
+            entity.HasIndex(l => new { l.IssuedInvoiceId, l.LineNo });
+            entity.Property(l => l.Name).IsRequired().HasMaxLength(512);
+            entity.Property(l => l.Unit).IsRequired().HasMaxLength(256);
+            entity.Property(l => l.Quantity).HasPrecision(18, 6);
+            entity.Property(l => l.UnitNetPrice).HasPrecision(18, 2);
+            entity.Property(l => l.VatRate)
+                .HasConversion(r => r.Code(), code => VatRates.Parse(code))
+                .HasMaxLength(8);
+            entity.Property(l => l.NetAmount).HasPrecision(18, 2);
+            entity.Property(l => l.VatAmount).HasPrecision(18, 2);
+        });
+
+        modelBuilder.Entity<SellerProfile>(entity =>
+        {
+            entity.HasKey(p => p.TenantId);
+            entity.Property<uint>("Version").IsRowVersion();
+            entity.Property(p => p.LegalName).HasMaxLength(512);
+            entity.Property(p => p.AddressLine1).HasMaxLength(512);
+            entity.Property(p => p.AddressLine2).HasMaxLength(512);
+            entity.Property(p => p.BankAccount).HasMaxLength(26);
+            entity.Property(p => p.BankSwift).HasMaxLength(11);
+            entity.Property(p => p.BankName).HasMaxLength(256);
+            entity.Property(p => p.ForeignBankAccount).HasMaxLength(34);
+            entity.Property(p => p.ForeignBankSwift).HasMaxLength(11);
+            entity.Property(p => p.ForeignBankName).HasMaxLength(256);
+            entity.Property(p => p.NumberingPattern).IsRequired().HasMaxLength(100);
+            entity.HasOne<Tenant>()
+                .WithOne()
+                .HasForeignKey<SellerProfile>(p => p.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InvoiceNumberCounter>(entity =>
+        {
+            entity.HasKey(c => new { c.TenantId, c.Period });
+            entity.Property(c => c.Period).HasMaxLength(7);
+            entity.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(c => c.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

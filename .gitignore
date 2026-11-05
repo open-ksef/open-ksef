@@ -76,3 +76,5 @@ Thumbs.db
 *.cer
 *.crt
 *.csr
+# Generated setup QR (encodes server URL + setup token)
+scripts/test-setup-qr.png

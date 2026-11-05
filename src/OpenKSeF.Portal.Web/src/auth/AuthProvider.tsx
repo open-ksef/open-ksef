@@ -136,11 +136,15 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
       throw new Error((body.error as string) ?? 'Registration failed.')
     }
 
-    await manager.signinResourceOwnerCredentials({
-      username: data.email,
-      password: data.password,
-      skipUserInfo: false,
-    })
+    try {
+      await manager.signinResourceOwnerCredentials({
+        username: data.email,
+        password: data.password,
+        skipUserInfo: false,
+      })
+    } catch {
+      throw new Error('Konto zostało utworzone, ale nie udało się zalogować. Jeśli dostaniesz wiadomość e-mail, potwierdź adres, a potem zaloguj się.')
+    }
   }, [manager])
 
   const logout = useCallback(async () => {

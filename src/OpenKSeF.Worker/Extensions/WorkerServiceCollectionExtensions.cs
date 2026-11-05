@@ -13,6 +13,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IEmailService, NoOpEmailService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IInvoiceService, InvoiceService>();
+        services.AddScoped<IssuedInvoiceEscalationService>();
 
         // Push providers (Relay -> FCM -> APNs, same order as API)
         services.AddHttpClient("push-relay");
