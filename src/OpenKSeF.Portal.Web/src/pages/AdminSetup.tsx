@@ -6,12 +6,16 @@ import toast from 'react-hot-toast'
 import {
   authenticateAdmin,
   applySetup,
+  DEFAULT_RELAY_URL,
   type SetupApplyRequest,
   type SmtpConfig,
 } from '@/api/endpoints/system'
 import { Button } from '@/components/Button'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
+
+const ENCRYPTION_KEY_ERROR =
+  'Brak prawidłowego klucza szyfrowania. Wygeneruj klucz poleceniem openssl rand -base64 32, ustaw go w zmiennej ENCRYPTION_KEY usług API i Worker, zachowaj kopię poza bazą danych i uruchom te usługi ponownie. Następnie kliknij „Dalej” i przejdź kreator jeszcze raz. Wprowadzone dane zostały zachowane.'
 
 function StepIndicator({ current }: { current: Step }) {
   const steps = [1, 2, 3, 4, 5, 6] as const
@@ -49,14 +53,11 @@ function StepIndicator({ current }: { current: Step }) {
 }
 
 function CollapsibleGuide({ title, children }: { title: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false)
   return (
-    <div className="onboarding-instruction" style={{ cursor: 'pointer' }}>
-      <div onClick={() => setOpen(!open)} style={{ fontWeight: 600, userSelect: 'none' }}>
-        {open ? '▾' : '▸'} {title}
-      </div>
-      {open && <div style={{ marginTop: '8px' }}>{children}</div>}
-    </div>
+    <details className="onboarding-instruction">
+      <summary style={{ fontWeight: 600, cursor: 'pointer' }}>{title}</summary>
+      <div style={{ marginTop: '8px' }}>{children}</div>
+    </details>
   )
 }
 
@@ -102,17 +103,15 @@ export function AdminSetupPage(): ReactElement {
   const [smtpUser, setSmtpUser] = useState('')
   const [smtpPassword, setSmtpPassword] = useState('')
 
-  // Step 4 (auto-generated, shown after apply)
-  const [encryptionKey, setEncryptionKey] = useState<string | null>(null)
-  const [apiClientSecret, setApiClientSecret] = useState<string | null>(null)
-
   // Step 5
   const [googleClientId, setGoogleClientId] = useState('')
   const [googleClientSecret, setGoogleClientSecret] = useState('')
   const [pushMode, setPushMode] = useState<'relay' | 'firebase' | 'local'>('relay')
-  const [pushRelayUrl, setPushRelayUrl] = useState('https://push.open-ksef.pl')
+  const [pushRelayUrl, setPushRelayUrl] = useState(DEFAULT_RELAY_URL)
   const [pushRelayApiKey, setPushRelayApiKey] = useState('')
   const [firebaseJson, setFirebaseJson] = useState('')
+
+  const [setupDone, setSetupDone] = useState(false)
 
   const passwordPolicyValue = (() => {
     switch (passwordPolicyPreset) {
@@ -174,6 +173,17 @@ export function AdminSetupPage(): ReactElement {
     setStep(6)
   }
 
+  const failApply = (message: string) => {
+    // shortcut: matches the API's English text, use an error code if more cases need mapping
+    if (/encryption[_ ]key/i.test(message)) {
+      setError(ENCRYPTION_KEY_ERROR)
+      // The API burns the setup session on apply and restarting it drops all sessions, so a retry must log in again.
+      setStep(1)
+      return
+    }
+    setError(message)
+  }
+
   const handleApply = async () => {
     if (!setupToken) { setError('Sesja wygasła. Zaloguj się ponownie.'); return }
     setError(null)
@@ -189,7 +199,7 @@ export function AdminSetupPage(): ReactElement {
           ssl: smtpSsl,
           auth: smtpAuth,
           user: smtpAuth ? smtpUser : undefined,
-          password: smtpAuth ? smtpPassword : undefined,
+          password: smtpAuth ? smtpPassword || undefined : undefined,
         }
       : undefined
 
@@ -211,7 +221,7 @@ export function AdminSetupPage(): ReactElement {
       googleClientId: googleClientId || undefined,
       googleClientSecret: googleClientSecret || undefined,
       pushRelayUrl: pushMode === 'relay' ? pushRelayUrl || undefined : undefined,
-      pushRelayApiKey: pushMode === 'relay' && pushRelayUrl !== 'https://push.open-ksef.pl'
+      pushRelayApiKey: pushMode === 'relay' && pushRelayUrl !== DEFAULT_RELAY_URL
         ? pushRelayApiKey || undefined : undefined,
       firebaseCredentialsJson: pushMode === 'firebase' ? firebaseJson || undefined : undefined,
       newKeycloakAdminPassword: newKcPassword || undefined,
@@ -220,15 +230,14 @@ export function AdminSetupPage(): ReactElement {
     try {
       const result = await applySetup(setupToken, request)
       if (!result.success) {
-        setError(result.error ?? 'Konfiguracja nie powiodła się')
+        failApply(result.error ?? 'Konfiguracja nie powiodła się')
         return
       }
-      setEncryptionKey(result.encryptionKey ?? null)
-      setApiClientSecret(result.apiClientSecret ?? null)
+      setSetupDone(true)
       queryClient.setQueryData(['setup-status'], { isInitialized: true })
       toast.success('System skonfigurowany pomyślnie!')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Konfiguracja nie powiodła się')
+      failApply(err instanceof Error ? err.message : 'Konfiguracja nie powiodła się')
     } finally {
       setLoading(false)
     }
@@ -313,8 +322,8 @@ export function AdminSetupPage(): ReactElement {
                 <label htmlFor="setup-ksef-env">Środowisko KSeF</label>
                 <select id="setup-ksef-env" data-testid="setup-ksef-env"
                   value={ksefEnv} onChange={e => setKsefEnv(e.target.value)}>
-                  <option value="test">Test (ksef-test.mf.gov.pl)</option>
-                  <option value="production">Produkcja (ksef.podatki.gov.pl)</option>
+                  <option value="test">Test</option>
+                  <option value="production">Produkcja</option>
                 </select>
               </div>
 
@@ -332,12 +341,12 @@ export function AdminSetupPage(): ReactElement {
                   value={userPassword} onInput={e => setUserPassword((e.target as HTMLInputElement).value)} />
               </div>
               <div className="ui-form-group">
-                <label htmlFor="setup-user-fname">Imię <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span></label>
+                <label htmlFor="setup-user-fname">Imię <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(opcjonalnie)</span></label>
                 <input id="setup-user-fname" data-testid="setup-admin-fname" type="text"
                   value={userFirstName} onInput={e => setUserFirstName((e.target as HTMLInputElement).value)} />
               </div>
               <div className="ui-form-group">
-                <label htmlFor="setup-user-lname">Nazwisko <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span></label>
+                <label htmlFor="setup-user-lname">Nazwisko <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(opcjonalnie)</span></label>
                 <input id="setup-user-lname" data-testid="setup-admin-lname" type="text"
                   value={userLastName} onInput={e => setUserLastName((e.target as HTMLInputElement).value)} />
               </div>
@@ -352,7 +361,7 @@ export function AdminSetupPage(): ReactElement {
                   value={firstTenantNip} onInput={e => setFirstTenantNip((e.target as HTMLInputElement).value.replace(/\D/g, ''))} />
               </div>
               <div className="ui-form-group">
-                <label htmlFor="setup-tenant-name">Nazwa firmy <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(opcjonalnie)</span></label>
+                <label htmlFor="setup-tenant-name">Nazwa firmy <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(opcjonalnie)</span></label>
                 <input id="setup-tenant-name" data-testid="setup-tenant-name" type="text" placeholder="Moja Firma Sp. z o.o."
                   value={firstTenantDisplayName} onInput={e => setFirstTenantDisplayName((e.target as HTMLInputElement).value)} />
               </div>
@@ -467,32 +476,20 @@ export function AdminSetupPage(): ReactElement {
           </>
         )}
 
-        {/* Step 4: Security (auto-generated) */}
+        {/* Step 4: Security */}
         {step === 4 && (
           <>
             <h1 className="onboarding-title">Bezpieczeństwo</h1>
             <p className="onboarding-subtitle">
-              Klucze zostaną wygenerowane automatycznie podczas konfiguracji.
-              Zostaną zapisane bezpiecznie i udostępnione między usługami.
+              Klucz szyfrowania ustawiasz poza aplikacją. Sekret klienta API
+              zostanie pobrany automatycznie podczas konfiguracji.
             </p>
             <div className="onboarding-form">
               <div className="onboarding-instruction">
-                Klucz szyfrowania AES-256 oraz sekret klienta API zostaną wygenerowane
-                automatycznie po kliknięciu „Zastosuj" na ostatnim kroku.
-                Nie musisz ich kopiować ani konfigurować ręcznie.
+                Klucz szyfrowania AES-256 pochodzi ze zmiennej ENCRYPTION_KEY usług API i Worker
+                i nie jest zapisywany w bazie danych. Przechowuj jego kopię poza bazą i jej kopiami
+                zapasowymi: bez klucza zapisane tokeny KSeF będą nie do odczytania.
               </div>
-              {encryptionKey && (
-                <div className="ui-form-group">
-                  <label>Klucz szyfrowania (wygenerowany)</label>
-                  <input type="text" readOnly value={encryptionKey} data-testid="setup-encryption-key" style={{ fontFamily: 'monospace', fontSize: '12px' }} />
-                </div>
-              )}
-              {apiClientSecret && (
-                <div className="ui-form-group">
-                  <label>Sekret klienta API (z Keycloak)</label>
-                  <input type="text" readOnly value={apiClientSecret} data-testid="setup-api-secret" style={{ fontFamily: 'monospace', fontSize: '12px' }} />
-                </div>
-              )}
             </div>
             <div className="onboarding-actions">
               <button type="button" className="onboarding-skip-link" onClick={() => setStep(3)}>Wstecz</button>
@@ -541,7 +538,7 @@ export function AdminSetupPage(): ReactElement {
                 <label>
                   <input type="radio" name="pushMode" value="relay"
                     checked={pushMode === 'relay'} onChange={() => setPushMode('relay')} />
-                  {' '}Relay OpenKSeF <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(zalecane)</span>
+                  {' '}Relay OpenKSeF <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(zalecane)</span>
                 </label>
                 <span className="ui-form-hint">
                   Powiadomienia dostarczane przez serwer relay zespołu OpenKSeF. Nie wymaga konfiguracji Firebase.
@@ -555,7 +552,7 @@ export function AdminSetupPage(): ReactElement {
                     <input id="setup-relay-url" data-testid="setup-relay-url" type="url"
                       value={pushRelayUrl} onInput={e => setPushRelayUrl((e.target as HTMLInputElement).value)} />
                   </div>
-                  {pushRelayUrl === 'https://push.open-ksef.pl' ? (
+                  {pushRelayUrl === DEFAULT_RELAY_URL ? (
                     <div className="onboarding-instruction">
                       System zostanie automatycznie zarejestrowany w serwisie relay.
                       Klucz API zostanie wygenerowany automatycznie podczas konfiguracji.
@@ -575,7 +572,7 @@ export function AdminSetupPage(): ReactElement {
                 <label>
                   <input type="radio" name="pushMode" value="firebase"
                     checked={pushMode === 'firebase'} onChange={() => setPushMode('firebase')} />
-                  {' '}Własny projekt Firebase <span style={{ fontWeight: 400, color: 'var(--ui-text-muted)' }}>(zaawansowane)</span>
+                  {' '}Własny projekt Firebase <span style={{ fontWeight: 400, color: 'var(--ui-muted)' }}>(zaawansowane)</span>
                 </label>
                 <span className="ui-form-hint">
                   Użyj własnego projektu Firebase do dostarczania powiadomień.
@@ -620,7 +617,7 @@ export function AdminSetupPage(): ReactElement {
         )}
 
         {/* Step 6: Summary + Apply */}
-        {step === 6 && !encryptionKey && (
+        {step === 6 && !setupDone && (
           <>
             <h1 className="onboarding-title">Podsumowanie</h1>
             <p className="onboarding-subtitle">Sprawdź konfigurację i zastosuj.</p>
@@ -654,7 +651,7 @@ export function AdminSetupPage(): ReactElement {
         )}
 
         {/* Step 6: Success */}
-        {step === 6 && encryptionKey && (
+        {step === 6 && setupDone && (
           <div className="onboarding-success" data-testid="setup-success">
             <div className="onboarding-success__icon">✓</div>
             <h1 className="onboarding-success__title">System skonfigurowany!</h1>

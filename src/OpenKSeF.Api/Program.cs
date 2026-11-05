@@ -10,7 +10,6 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using OpenKSeF.Api.Extensions;
 using OpenKSeF.Api.Hubs;
 using OpenKSeF.Api.Push;
 using OpenKSeF.Domain.Push;
@@ -160,6 +159,21 @@ builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ITransferDetailsService, TransferDetailsService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<ISellerProfileService, SellerProfileService>();
+builder.Services.AddScoped<IKSeFIssuingEnvironment, OpenKSeF.Api.Services.KSeFIssuingEnvironment>();
+builder.Services.AddScoped<IIssuedInvoiceService, IssuedInvoiceService>();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient<WhiteListClient>(client =>
+{
+    client.BaseAddress = WhiteListClient.BaseAddress;
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+builder.Services.AddHttpClient<IExchangeRateSource, NbpExchangeRateSource>(client =>
+{
+    client.BaseAddress = NbpExchangeRateSource.BaseAddress;
+    client.Timeout = TimeSpan.FromSeconds(3);
+});
 
 // Email
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
@@ -206,6 +220,8 @@ builder.Services.AddSingleton<IPushProvider, ApnsPushProvider>(sp =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = (context, ct) => new ValueTask(context.HttpContext.Response.WriteAsJsonAsync(
+        new { code = "rate_limited", error = "Zbyt wiele prób. Spróbuj ponownie później." }, ct));
 
     // Strict limit for setup authentication: 5 attempts per 15 minutes per IP
     options.AddPolicy("setup-auth", context =>
@@ -228,6 +244,31 @@ builder.Services.AddRateLimiter(options =>
         {
             Window = TimeSpan.FromMinutes(15),
             PermitLimit = 5,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+
+    // Until T-030 every client behind the gateway shares this bucket: the short window makes a lockout end by itself.
+    options.AddPolicy("register", context =>
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(15),
+            PermitLimit = 5,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+
+    options.AddPolicy(OpenKSeF.Api.Controllers.NipLookupController.RateLimitPolicy, context =>
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromHours(1),
+            PermitLimit = 30,
             QueueLimit = 0,
             AutoReplenishment = true
         });
@@ -285,6 +326,14 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// Before migrations and adoption, because a refused rotation must write nothing.
+if (args.Contains("rotate-encryption-key"))
+{
+    using var scope = app.Services.CreateScope();
+    return await EncryptionKeyMigration.RunRotateCommandAsync(
+        scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(), app.Configuration, Console.Out);
+}
+
 // Apply pending migrations on startup
 using (var scope = app.Services.CreateScope())
 {
@@ -293,6 +342,7 @@ using (var scope = app.Services.CreateScope())
         .GetRequiredService<ILoggerFactory>()
         .CreateLogger("OpenKSeF.Api.Migrations");
     await MigrationHelper.ApplyMigrationsIdempotentlyAsync(db, startupLogger);
+    await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, app.Configuration, startupLogger);
 }
 
 // Load system config cache
@@ -343,5 +393,6 @@ app.MapHub<NotificationHub>("/hubs/notifications");
 app.MapHealthChecks("/health");
 
 app.Run();
+return 0;
 
 public partial class Program { }

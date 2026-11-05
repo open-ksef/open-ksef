@@ -164,6 +164,24 @@ public class InvoicesSummaryControllerTests : IDisposable
         Assert.Equal(100, paged.Items.Count);
     }
 
+    [Theory]
+    [InlineData("PL61 1090 1014 0000 0712 1981 2874")]
+    [InlineData(null)]
+    public async Task ListAndGetByNumber_ReturnVendorBankAccount(string? account)
+    {
+        var invoice = MakeInvoice(_tenantAId, "A-ACC", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        invoice.VendorBankAccount = account;
+        _db.InvoiceHeaders.Add(invoice);
+        await _db.SaveChangesAsync();
+
+        var controller = CreateController();
+        var list = await controller.List() as OkObjectResult;
+        var byNumber = await controller.GetByNumber("A-ACC") as OkObjectResult;
+
+        Assert.Equal(account, Assert.IsType<PagedResult<InvoiceResponse>>(list!.Value).Items.Single().VendorBankAccount);
+        Assert.Equal(account, Assert.IsType<InvoiceResponse>(byNumber!.Value).VendorBankAccount);
+    }
+
     [Fact]
     public async Task GetByNumber_WithoutTenantId_SearchesAcrossAllOwnedTenants()
     {

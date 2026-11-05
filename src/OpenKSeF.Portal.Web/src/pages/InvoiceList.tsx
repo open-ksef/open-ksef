@@ -1,340 +1,317 @@
 import { useQuery } from '@tanstack/react-query'
-import { useMemo, useState, type ChangeEvent, type ReactElement } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useState, type ReactElement } from 'react'
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom'
 
 import { listInvoices } from '@/api/endpoints/invoices'
-import { listTenants } from '@/api/endpoints/tenants'
 import type { InvoiceResponse } from '@/api/types'
+import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
-import { FilterBar } from '@/components/FilterBar'
+import { Button } from '@/components/Button'
+import { CompanyStateCard } from '@/components/CompanyStateCard'
+import { DueDate } from '@/components/DueDate'
+import { KsefSync } from '@/components/KsefSync'
+import { PaidStatus } from '@/components/PaidStatus'
+import '@/components/invoicing/invoicing.css'
 import { Table, type TableColumn } from '@/components/Table'
+import { FIRST_FETCH_POLL_MS, useCompanyState } from '@/hooks/useCompanyState'
+import { useKsefFetch } from '@/hooks/useKsefFetch'
+import { selectWordAt, useRowOpen } from '@/hooks/useRowOpen'
+import { useTenants } from '@/hooks/useTenants'
+import { formatDate, formatMoney } from '@/invoicing/format'
 
-interface InvoiceListFilters {
-  tenantId: string
-  dateFrom: string
-  dateTo: string
-  page: number
-  pageSize: number
+const PAGE_SIZE = 25
+const SEARCH_DELAY_MS = 300
+
+function parsePage(value: string | null): number {
+  const parsed = Number.parseInt(value ?? '', 10)
+  return parsed > 0 ? parsed : 1
 }
 
-function parseNumber(value: string | null, fallback: number): number {
-  if (!value) return fallback
-  const parsed = Number.parseInt(value, 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+function vendorFilter(term: string): string {
+  return /^(pl)?[\d\s-]+$/i.test(term) ? term.replace(/^pl|[\s-]/gi, '') : term
+}
+
+function withFilters(current: URLSearchParams, filters: Record<string, string>): URLSearchParams {
+  const next = new URLSearchParams(current)
+  next.delete('page')
+  for (const [name, value] of Object.entries(filters)) {
+    if (value) next.set(name, value)
+    else next.delete(name)
+  }
+  return next
+}
+
+function withPage(current: URLSearchParams, page: number): URLSearchParams {
+  const next = new URLSearchParams(current)
+  if (page > 1) next.set('page', String(page))
+  else next.delete('page')
+  return next
+}
+
+function DateFilter({ id, label, value, onCommit }: { id: string; label: string; value: string; onCommit: (value: string) => void }): ReactElement {
+  const [draft, setDraft] = useState(value)
+  const [seen, setSeen] = useState(value)
+  if (value !== seen) {
+    setSeen(value)
+    setDraft(value)
+  }
+
+  return (
+    <>
+      <label htmlFor={id} className="visually-hidden">
+        {label}
+      </label>
+      <input
+        id={id}
+        data-testid={id}
+        type="date"
+        value={draft}
+        onBlur={() => setDraft(value)}
+        onChange={(event) => {
+          const next = event.target.value
+          setDraft(next)
+          // Typing a year passes through 0002, 0020, 0202. The router commits after the event, so a URL-controlled value would reset the field mid-typing.
+          if (!next || next >= '1000') onCommit(next)
+        }}
+      />
+    </>
+  )
 }
 
 export function InvoiceListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
 
-  const tenantIdFromUrl = searchParams.get('tenantId') ?? ''
-  const dateFromFromUrl = searchParams.get('dateFrom') ?? ''
-  const dateToFromUrl = searchParams.get('dateTo') ?? ''
-  const pageFromUrl = parseNumber(searchParams.get('page'), 1)
-  const pageSizeFromUrl = parseNumber(searchParams.get('pageSize'), 10)
+  const q = searchParams.get('q') ?? ''
+  const dateFrom = searchParams.get('dateFrom') ?? ''
+  const dateTo = searchParams.get('dateTo') ?? ''
+  const unpaid = searchParams.get('unpaid') === '1'
+  const page = parsePage(searchParams.get('page'))
 
-  const [draftTenantId, setDraftTenantId] = useState(tenantIdFromUrl)
-  const [draftDateFrom, setDraftDateFrom] = useState(dateFromFromUrl)
-  const [draftDateTo, setDraftDateTo] = useState(dateToFromUrl)
-  const [draftPageSize, setDraftPageSize] = useState(pageSizeFromUrl)
+  const [draft, setDraft] = useState(q)
+  const [urlTerm, setUrlTerm] = useState(q)
+  if (q !== urlTerm) {
+    setUrlTerm(q)
+    // Without this check our own debounced write drops the space the user just typed between words.
+    if (q !== draft.trim()) setDraft(q)
+  }
 
-  const tenantsQuery = useQuery({
-    queryKey: ['tenants', 'invoice-filters'],
-    queryFn: () => listTenants(),
-  })
+  useEffect(() => {
+    const term = draft.trim()
+    if (term === q) return
+    const timer = setTimeout(() => setSearchParams(withFilters(searchParams, { q: term }), { replace: true }), SEARCH_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [draft, q, searchParams, setSearchParams])
 
-  const effectiveTenantId = draftTenantId || tenantsQuery.data?.[0]?.id || ''
+  const tenantsQuery = useTenants()
+  const { tenantId } = useCompany()
+  const { state, summary, credential, isLoading: stateLoading, error: stateError, refetch: refetchState } = useCompanyState()
+  const ksef = useKsefFetch(tenantId)
 
+  const filterByVendor = vendorFilter(q)
   const invoicesQuery = useQuery({
-    queryKey: ['invoices', effectiveTenantId, dateFromFromUrl, dateToFromUrl, pageFromUrl, pageSizeFromUrl],
+    queryKey: ['invoices', tenantId, filterByVendor, dateFrom, dateTo, unpaid, page],
     queryFn: () =>
-      listInvoices(effectiveTenantId, {
-        page: pageFromUrl,
-        pageSize: pageSizeFromUrl,
-        dateFrom: dateFromFromUrl || undefined,
-        dateTo: dateToFromUrl || undefined,
+      listInvoices(tenantId, {
+        page,
+        pageSize: PAGE_SIZE,
+        filterByVendor: filterByVendor || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        isPaid: unpaid ? false : undefined,
       }),
-    enabled: Boolean(effectiveTenantId),
+    enabled: Boolean(tenantId),
     retry: false,
+    refetchInterval: state === 'first-fetch' ? FIRST_FETCH_POLL_MS : false,
   })
 
   const rows = invoicesQuery.data?.items ?? []
-  const combinedError = tenantsQuery.error ?? invoicesQuery.error
-
-  const columns = useMemo<TableColumn<InvoiceResponse>[]>(
-    () => [
-      {
-        key: 'invoiceNumber',
-        label: 'Nr faktury',
-        render: (row) => (
-          <span
-            data-testid="invoice-number"
-            style={{ fontWeight: 700, fontFamily: 'ui-monospace, monospace', fontSize: '13px' }}
-          >
-            {row.invoiceNumber ?? row.ksefInvoiceNumber}
-          </span>
-        ),
-      },
-      {
-        key: 'ksefInvoiceNumber',
-        label: 'Numer KSeF',
-        render: (row) => (
-          <span className="token-display" data-testid="invoice-ksef-number">
-            {row.ksefInvoiceNumber}
-          </span>
-        ),
-      },
-      { key: 'vendorName', label: 'Sprzedawca' },
-      {
-        key: 'vendorNip',
-        label: 'NIP sprzedawcy',
-        render: (row) => (
-          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '13px' }}>
-            {row.vendorNip}
-          </span>
-        ),
-      },
-      {
-        key: 'issueDate',
-        label: 'Data wystawienia',
-        render: (row) => new Date(row.issueDate).toLocaleDateString('pl-PL'),
-      },
-      {
-        key: 'amountGross',
-        label: 'Brutto',
-        render: (row) => (
-          <span style={{ fontWeight: 600 }}>
-            {row.amountGross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-        ),
-      },
-      {
-        key: 'amountNet',
-        label: 'Netto',
-        render: (row) => row.amountNet.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      },
-      {
-        key: 'currency',
-        label: 'Waluta',
-        render: (row) => (
-          <span
-            className="ui-status-badge ui-status-badge--success"
-            style={{ fontSize: '11px', fontFamily: 'ui-monospace, monospace' }}
-          >
-            {row.currency}
-          </span>
-        ),
-      },
-      {
-        key: 'isPaid',
-        label: 'Status',
-        render: (row) => (
-          <span data-testid="invoice-paid-status">
-            <span className={`paid-indicator ${row.isPaid ? 'paid-indicator--paid' : 'paid-indicator--unpaid'}`} />
-            {row.isPaid ? 'Opłacona' : 'Nieopłacona'}
-          </span>
-        ),
-      },
-      {
-        key: 'id',
-        label: '',
-        render: (row) => (
-          <Link
-            to={`/invoices/${encodeURIComponent(row.ksefInvoiceNumber)}?tenantId=${effectiveTenantId}`}
-            data-testid="invoice-view-details"
-            className="btn-action btn-action--edit"
-          >
-            Otwórz →
-          </Link>
-        ),
-      },
-    ],
-    [effectiveTenantId],
-  )
-
   const totalPages = invoicesQuery.data?.totalPages ?? 0
   const totalCount = invoicesQuery.data?.totalCount ?? 0
+  const firstRow = (page - 1) * PAGE_SIZE + 1
 
-  const updateSearch = (filters: InvoiceListFilters): void => {
-    const next = new URLSearchParams()
-    if (filters.tenantId) next.set('tenantId', filters.tenantId)
-    if (filters.dateFrom) next.set('dateFrom', filters.dateFrom)
-    if (filters.dateTo) next.set('dateTo', filters.dateTo)
-    next.set('page', String(filters.page))
-    next.set('pageSize', String(filters.pageSize))
-    setSearchParams(next)
-  }
+  const unfilteredEmpty = invoicesQuery.isSuccess && rows.length === 0 && !q && !dateFrom && !dateTo && !unpaid && page === 1
+  const stateCard = unfilteredEmpty && state && state !== 'full' ? state : null
 
-  const onApplyFilters = () => {
-    updateSearch({
-      tenantId: draftTenantId || effectiveTenantId,
-      dateFrom: draftDateFrom,
-      dateTo: draftDateTo,
-      page: 1,
-      pageSize: draftPageSize,
-    })
-  }
+  const detailsPath = (row: InvoiceResponse): string =>
+    `/invoices/${encodeURIComponent(row.ksefInvoiceNumber)}?tenantId=${encodeURIComponent(tenantId)}`
+  const detailsState = { listSearch: location.search, siblings: rows.map((row) => row.ksefInvoiceNumber) }
 
-  const onResetFilters = () => {
-    setDraftDateFrom('')
-    setDraftDateTo('')
-    updateSearch({
-      tenantId: effectiveTenantId,
-      dateFrom: '',
-      dateTo: '',
-      page: 1,
-      pageSize: draftPageSize,
-    })
-  }
+  const onChangePage = (nextPage: number): void => setSearchParams(withPage(searchParams, nextPage))
 
-  const onChangePage = (nextPage: number): void => {
-    updateSearch({
-      tenantId: tenantIdFromUrl || effectiveTenantId,
-      dateFrom: dateFromFromUrl,
-      dateTo: dateToFromUrl,
-      page: nextPage,
-      pageSize: pageSizeFromUrl,
-    })
-  }
+  const onRowClick = useRowOpen(detailsPath, detailsState)
+  const pastLastPage = invoicesQuery.isSuccess && rows.length === 0 && totalCount > 0 && page > totalPages
 
-  const onChangeTenant = (event: ChangeEvent<HTMLSelectElement>): void => {
-    setDraftTenantId(event.target.value)
-  }
-
-  const onChangePageSize = (event: ChangeEvent<HTMLSelectElement>): void => {
-    const nextPageSize = parseNumber(event.target.value, 10)
-    setDraftPageSize(nextPageSize)
-  }
+  const columns: TableColumn<InvoiceResponse>[] = [
+    {
+      key: 'vendorName',
+      label: 'Sprzedawca i numer',
+      render: (row) => {
+        const number = row.invoiceNumber ?? row.ksefInvoiceNumber
+        return (
+          <>
+            <Link
+              to={detailsPath(row)}
+              state={detailsState}
+              className="rowlink"
+              title={row.vendorName}
+              aria-label={`${row.vendorName}, ${number}`}
+              data-testid="invoice-view-details"
+              onClick={(event) => event.preventDefault()}
+              onDoubleClick={selectWordAt}
+            >
+              {row.vendorName}
+            </Link>
+            <span className="received-sub" title={number}>
+              <span data-testid="invoice-number">{number}</span> · {formatDate(row.issueDate)}
+            </span>
+          </>
+        )
+      },
+    },
+    {
+      key: 'dueDate',
+      label: 'Termin płatności',
+      className: 'received-due',
+      render: (row) => <DueDate row={row} testId="invoice-due-date" />,
+    },
+    {
+      key: 'amountNet',
+      label: 'Netto',
+      className: 'received-net received-num',
+      render: (row) => formatMoney(row.amountNet, row.currency),
+    },
+    {
+      key: 'amountGross',
+      label: 'Brutto',
+      className: 'received-gross received-num',
+      render: (row) => (
+        <>
+          <span className="received-amount" title={formatMoney(row.amountGross, row.currency)}>
+            {formatMoney(row.amountGross, row.currency)}
+          </span>
+          <span className="received-status-mobile">
+            {row.isOverdue ? <DueDate row={row} testId="invoice-due-date-mobile" /> : <PaidStatus row={row} testId="invoice-paid-status-mobile" />}
+          </span>
+        </>
+      ),
+    },
+    {
+      key: 'isPaid',
+      label: 'Płatność',
+      className: 'received-status',
+      render: (row) => <PaidStatus row={row} testId="invoice-paid-status" />,
+    },
+    {
+      key: 'ksefInvoiceNumber',
+      label: 'Numer KSeF',
+      className: 'received-ksef',
+      render: (row) => <span data-testid="invoice-ksef-number">{row.ksefInvoiceNumber}</span>,
+    },
+  ]
 
   return (
     <section>
-      <header className="page-header">
-        <h1>Faktury</h1>
-        <button
-          data-testid="invoice-refresh-button"
-          type="button"
-          onClick={() => {
-            void tenantsQuery.refetch()
-            void invoicesQuery.refetch()
-          }}
-        >
-          ↺ Odśwież
-        </button>
+      <header className="page-header received-head">
+        <h1>Otrzymane faktury</h1>
+        <KsefSync state={state} summary={summary} ksef={ksef} disabled={!tenantId} variant="primary" />
       </header>
 
-      <FilterBar
-        onApply={onApplyFilters}
-        onReset={onResetFilters}
-        applyButtonTestId="invoice-apply-filters"
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label htmlFor="invoice-tenant-filter" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-text-muted)' }}>
-            Firma
-          </label>
-          <select
-            id="invoice-tenant-filter"
-            data-testid="invoice-tenant-filter"
-            value={draftTenantId || effectiveTenantId}
-            onChange={onChangeTenant}
-          >
-            {(tenantsQuery.data ?? []).map((tenant) => (
-              <option key={tenant.id} value={tenant.id}>
-                {tenant.displayName || tenant.nip}
-              </option>
+      {pastLastPage ? <Navigate to={{ search: withPage(searchParams, totalPages).toString() }} replace /> : null}
+
+      {stateCard ? null : (
+        <div className="received-tools">
+          <div className="inv-chips" role="group" aria-label="Filtr płatności">
+            {[
+              { label: 'Wszystkie', value: '' },
+              { label: 'Nieopłacone', value: '1' },
+            ].map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                aria-pressed={unpaid === (chip.value === '1')}
+                onClick={() => setSearchParams(withFilters(searchParams, { unpaid: chip.value }), { replace: true })}
+              >
+                {chip.label}
+              </button>
             ))}
-          </select>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label htmlFor="invoice-date-from" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-text-muted)' }}>
-            Od
+          </div>
+          <label htmlFor="invoice-search" className="visually-hidden">
+            Szukaj sprzedawcy
           </label>
           <input
+            id="invoice-search"
+            data-testid="invoice-search"
+            type="search"
+            placeholder="Nazwa lub NIP"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <DateFilter
             id="invoice-date-from"
-            data-testid="invoice-date-from"
-            type="date"
-            value={draftDateFrom}
-            onChange={(event) => setDraftDateFrom(event.target.value)}
+            label="Data wystawienia od"
+            value={dateFrom}
+            onCommit={(value) => setSearchParams(withFilters(searchParams, { dateFrom: value }), { replace: true })}
           />
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label htmlFor="invoice-date-to" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-text-muted)' }}>
-            Do
-          </label>
-          <input
+          <DateFilter
             id="invoice-date-to"
-            data-testid="invoice-date-to"
-            type="date"
-            value={draftDateTo}
-            onChange={(event) => setDraftDateTo(event.target.value)}
+            label="Data wystawienia do"
+            value={dateTo}
+            onCommit={(value) => setSearchParams(withFilters(searchParams, { dateTo: value }), { replace: true })}
           />
         </div>
+      )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label htmlFor="invoice-page-size" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ui-text-muted)' }}>
-            Na stronę
-          </label>
-          <select
-            id="invoice-page-size"
-            data-testid="invoice-page-size"
-            value={draftPageSize}
-            onChange={onChangePageSize}
-          >
-            <option value={10}>10</option>
-            <option value={25}>25</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-          </select>
-        </div>
-      </FilterBar>
-
-      <AsyncStateView
-        isLoading={tenantsQuery.isLoading || invoicesQuery.isLoading}
-        error={combinedError}
-        isEmpty={rows.length === 0}
-        loadingLines={6}
-        emptyTitle="Nie znaleziono faktur"
-        emptyMessage="Zmień filtry lub wybierz inną firmę."
-        onRetry={() => {
-          void tenantsQuery.refetch()
-          void invoicesQuery.refetch()
-        }}
-      >
-        <>
-            <Table
-              testId="invoice-table"
-              columns={columns}
-              data={rows}
-              getRowProps={() => ({ 'data-testid': 'invoice-row' })}
-            />
+      {stateCard ? (
+        <CompanyStateCard state={stateCard} place="list" summary={summary} credential={credential} />
+      ) : (
+        <AsyncStateView
+          isLoading={tenantsQuery.isLoading || invoicesQuery.isLoading || pastLastPage || (unfilteredEmpty && stateLoading)}
+          error={tenantsQuery.error ?? invoicesQuery.error ?? (unfilteredEmpty ? stateError : null)}
+          isEmpty={rows.length === 0}
+          loadingLines={6}
+          emptyTitle={unpaid ? 'Nie ma nieopłaconych faktur' : 'Nie znaleziono faktur'}
+          emptyMessage="Zmień filtry lub wybierz inną firmę."
+          onRetry={() => {
+            void tenantsQuery.refetch()
+            void invoicesQuery.refetch()
+            if (unfilteredEmpty) refetchState()
+          }}
+        >
+          <section className="received-list" aria-label="Lista faktur">
+            <Table testId="invoice-table" columns={columns} data={rows} onRowClick={onRowClick} getRowProps={() => ({ 'data-testid': 'invoice-row' })} />
 
             <nav className="ui-pagination" aria-label="Paginacja faktur">
               <span className="ui-pagination-info">
-                {totalCount > 0
-                  ? `Strona ${pageFromUrl} z ${Math.max(totalPages, 1)} · ${totalCount} ${totalCount === 1 ? 'faktura' : totalCount >= 2 && totalCount <= 4 ? 'faktury' : 'faktur'} łącznie`
-                  : 'Brak wyników'}
+                {firstRow}–{firstRow + rows.length - 1} z {totalCount}{' '}
+                {unpaid
+                  ? `${totalCount === 1 ? 'nieopłaconej' : 'nieopłaconych'}, od najbliższego terminu, bez terminu na końcu`
+                  : `${totalCount === 1 ? 'faktury' : 'faktur'}, od najnowszej`}
               </span>
               <div className="ui-pagination-controls">
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
                   data-testid="invoice-prev-page"
-                  type="button"
-                  disabled={pageFromUrl <= 1}
-                  onClick={() => onChangePage(pageFromUrl - 1)}
+                  disabled={page <= 1}
+                  onClick={() => onChangePage(page - 1)}
                 >
-                  ← Wstecz
-                </button>
-                <button
+                  Poprzednia
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   data-testid="invoice-next-page"
-                  type="button"
-                  disabled={totalPages === 0 || pageFromUrl >= totalPages}
-                  onClick={() => onChangePage(pageFromUrl + 1)}
+                  disabled={page >= totalPages}
+                  onClick={() => onChangePage(page + 1)}
                 >
-                  Dalej →
-                </button>
+                  Następna
+                </Button>
               </div>
             </nav>
-        </>
-      </AsyncStateView>
+          </section>
+        </AsyncStateView>
+      )}
     </section>
   )
 }

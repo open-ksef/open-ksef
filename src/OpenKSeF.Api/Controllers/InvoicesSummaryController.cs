@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 using System.Linq;
@@ -44,21 +45,28 @@ public class InvoicesSummaryController : ControllerBase
             return Forbid();
 
         var query = _db.InvoiceHeaders
-            .Where(i => userTenantIds.Contains(i.TenantId));
+            .Where(i => userTenantIds.Contains(i.TenantId) && i.Direction == InvoiceDirection.Received);
 
         if (tenantId.HasValue)
             query = query.Where(i => i.TenantId == tenantId.Value);
 
         if (dateFrom.HasValue)
-            query = query.Where(i => i.IssueDate >= dateFrom.Value);
+        {
+            var from = DateTime.SpecifyKind(dateFrom.Value.Date, DateTimeKind.Utc);
+            query = query.Where(i => i.IssueDate >= from);
+        }
 
         if (dateTo.HasValue)
-            query = query.Where(i => i.IssueDate <= dateTo.Value);
+        {
+            var to = DateTime.SpecifyKind(dateTo.Value.Date.AddTicks(TimeSpan.TicksPerDay - 1), DateTimeKind.Utc);
+            query = query.Where(i => i.IssueDate <= to);
+        }
 
         var totalCount = await query.CountAsync();
 
         var items = await query
             .OrderByDescending(i => i.IssueDate)
+            .ThenBy(i => i.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(ToInvoiceResponse())
@@ -88,7 +96,7 @@ public class InvoicesSummaryController : ControllerBase
 
         var headerQuery = _db.InvoiceHeaders
             .Include(i => i.Lines)
-            .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber);
+            .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber && i.Direction == InvoiceDirection.Received);
 
         if (tenantId.HasValue)
             headerQuery = headerQuery.Where(i => i.TenantId == tenantId.Value);
@@ -128,7 +136,12 @@ public class InvoicesSummaryController : ControllerBase
             i.FirstSeenAt,
             i.IsPaid,
             i.PaidAt,
-            null);
+            i.VendorBankAccount,
+            null,
+            i.DueDate,
+            i.Direction.ToString(),
+            i.BuyerIdType,
+            i.BuyerForeignId);
 
     private static InvoiceResponse ToDetailResponse(InvoiceHeader i) => new(
         i.Id,
@@ -149,11 +162,16 @@ public class InvoicesSummaryController : ControllerBase
         i.FirstSeenAt,
         i.IsPaid,
         i.PaidAt,
+        i.VendorBankAccount,
         Lines: i.Lines
             .OrderBy(l => l.LineNumber)
             .Select(l => new InvoiceLineResponse(
                 l.LineNumber, l.Name, l.Unit, l.Quantity,
                 l.UnitPriceNet, l.UnitPriceGross,
                 l.AmountNet, l.AmountGross, l.AmountVat, l.VatRate))
-            .ToList());
+            .ToList(),
+        DueDate: i.DueDate,
+        Direction: i.Direction.ToString(),
+        BuyerIdType: i.BuyerIdType,
+        BuyerForeignId: i.BuyerForeignId);
 }

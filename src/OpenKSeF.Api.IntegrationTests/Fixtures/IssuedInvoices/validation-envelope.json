@@ -1,0 +1,9 @@
+{
+  "errors": [
+    { "code": "INV-VAL-013", "field": "buyer.nip", "message": "Dla nabywcy firmy wymagany jest poprawny NIP" },
+    { "code": "INV-VAL-015", "field": "buyer.name", "message": "Uzupełnij nazwę nabywcy" },
+    { "code": "INV-VAL-016", "field": "buyer.addressLine1", "message": "Uzupełnij adres nabywcy" },
+    { "code": "INV-VAL-002", "field": "lines", "message": "Faktura musi zawierać co najmniej jedną pozycję" }
+  ],
+  "warnings": []
+}

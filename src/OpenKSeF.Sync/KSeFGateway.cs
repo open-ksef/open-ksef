@@ -8,6 +8,7 @@ using KSeF.Client.Core.Models.Authorization;
 using KSeF.Client.Core.Models.Invoices;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Domain.Enums;
 
 using CirfmfKSeFClient = KSeF.Client.Core.Interfaces.Clients.IKSeFClient;
 
@@ -20,6 +21,8 @@ namespace OpenKSeF.Sync;
 /// </summary>
 public sealed class KSeFGateway : IKSeFGateway
 {
+    private const int NameMaxLength = 500;
+
     private readonly CirfmfKSeFClient _client;
     private readonly IAuthCoordinator _authCoordinator;
     private readonly ICryptographyService _cryptography;
@@ -81,9 +84,10 @@ public sealed class KSeFGateway : IKSeFGateway
     public async Task<KSeFInvoiceQueryResult> QueryInvoicesAsync(
         KSeFSession session, KSeFQueryCriteria criteria, CancellationToken ct = default)
     {
+        var issued = criteria.Direction == InvoiceDirection.Issued;
         var filters = new InvoiceQueryFilters
         {
-            SubjectType = InvoiceSubjectType.Subject2,
+            SubjectType = issued ? InvoiceSubjectType.Subject1 : InvoiceSubjectType.Subject2,
             DateRange = new DateRange
             {
                 // KSeF docs: incremental sync must use PermanentStorage; Invoicing can skip
@@ -94,7 +98,8 @@ public sealed class KSeFGateway : IKSeFGateway
                     : DateTimeOffset.UtcNow.AddMonths(-3),
                 To = criteria.DateTo.HasValue
                     ? new DateTimeOffset(criteria.DateTo.Value, TimeSpan.Zero)
-                    : null
+                    : null,
+                RestrictToPermanentStorageHwmDate = issued ? true : null
             }
         };
 
@@ -110,7 +115,11 @@ public sealed class KSeFGateway : IKSeFGateway
 
         var totalCount = invoices.Count + (result.HasMore ? criteria.PageSize : 0);
 
-        return new KSeFInvoiceQueryResult(invoices, totalCount, criteria.PageOffset, criteria.PageSize);
+        var continuationAt = result.IsTruncated
+            ? result.Invoices?.LastOrDefault()?.PermanentStorageDate.UtcDateTime
+            : result.PermanentStorageHwmDate?.UtcDateTime;
+
+        return new KSeFInvoiceQueryResult(invoices, totalCount, criteria.PageOffset, criteria.PageSize, continuationAt, result.IsTruncated);
     }
 
     public async Task<byte[]> DownloadInvoiceAsync(
@@ -126,19 +135,30 @@ public sealed class KSeFGateway : IKSeFGateway
         return Task.CompletedTask;
     }
 
-    private static KSeFInvoiceHeader MapInvoice(InvoiceSummary inv) => new(
-        KSeFNumber: inv.KsefNumber ?? string.Empty,
-        ReferenceNumber: inv.KsefNumber ?? string.Empty,
-        InvoiceNumber: inv.InvoiceNumber,
-        VendorNip: inv.Seller?.Nip ?? string.Empty,
-        VendorName: inv.Seller?.Name ?? string.Empty,
-        BuyerNip: inv.Buyer?.Identifier?.Value,
-        BuyerName: inv.Buyer?.Name,
-        AmountNet: inv.NetAmount,
-        AmountVat: inv.VatAmount,
-        AmountGross: inv.GrossAmount,
-        Currency: inv.Currency ?? "PLN",
-        IssueDate: inv.IssueDate.UtcDateTime,
-        AcquisitionDate: inv.AcquisitionDate.UtcDateTime,
-        InvoiceType: inv.InvoiceType.ToString());
+    private static KSeFInvoiceHeader MapInvoice(InvoiceSummary inv)
+    {
+        var buyerId = inv.Buyer?.Identifier;
+        var buyerIsNip = buyerId?.Type == BuyerIdentifierType.Nip;
+
+        return new(
+            KSeFNumber: inv.KsefNumber ?? string.Empty,
+            ReferenceNumber: inv.KsefNumber ?? string.Empty,
+            InvoiceNumber: inv.InvoiceNumber,
+            VendorNip: inv.Seller?.Nip ?? string.Empty,
+            VendorName: CutName(inv.Seller?.Name) ?? string.Empty,
+            BuyerNip: buyerIsNip ? buyerId!.Value : null,
+            BuyerName: CutName(inv.Buyer?.Name),
+            AmountNet: inv.NetAmount,
+            AmountVat: inv.VatAmount,
+            AmountGross: inv.GrossAmount,
+            Currency: inv.Currency ?? "PLN",
+            IssueDate: inv.IssueDate.UtcDateTime,
+            AcquisitionDate: inv.AcquisitionDate.UtcDateTime,
+            InvoiceType: inv.InvoiceType.ToString(),
+            BuyerIdType: buyerId?.Type.ToString(),
+            BuyerForeignId: buyerIsNip ? null : buyerId?.Value);
+    }
+
+    private static string? CutName(string? name) =>
+        name is { Length: > NameMaxLength } ? name[..NameMaxLength] : name;
 }
