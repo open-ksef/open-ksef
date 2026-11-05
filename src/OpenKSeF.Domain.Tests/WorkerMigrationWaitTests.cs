@@ -29,11 +29,16 @@ public sealed class WorkerMigrationWaitTests : IDisposable
         .AddSingleton(_sync)
         .BuildServiceProvider();
 
-    private static KSeFRuntimeConfig RuntimeConfig() => new(
-        Substitute.For<ISystemConfigService>(),
-        new KSeFClientOptions(),
-        Substitute.For<ICryptographyService>(),
-        NullLogger<KSeFRuntimeConfig>.Instance);
+    private static KSeFRuntimeConfig RuntimeConfig(string? environment = null)
+    {
+        var systemConfig = Substitute.For<ISystemConfigService>();
+        systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment).Returns(environment);
+        return new KSeFRuntimeConfig(
+            systemConfig,
+            new KSeFClientOptions(),
+            Substitute.For<ICryptographyService>(),
+            NullLogger<KSeFRuntimeConfig>.Instance);
+    }
 
     private static async Task MigrateAsync(ServiceProvider services)
     {
@@ -41,9 +46,9 @@ public sealed class WorkerMigrationWaitTests : IDisposable
         await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.MigrateAsync();
     }
 
-    private InvoiceSyncService SyncLoop(ServiceProvider services, ILogger<InvoiceSyncService> logger) => new(
+    private InvoiceSyncService SyncLoop(ServiceProvider services, ILogger<InvoiceSyncService> logger, string? environment = null) => new(
         services.GetRequiredService<IServiceScopeFactory>(),
-        RuntimeConfig(),
+        RuntimeConfig(environment),
         Options.Create(new SyncOptions { IntervalHours = 4 }),
         logger);
 
@@ -135,6 +140,49 @@ public sealed class WorkerMigrationWaitTests : IDisposable
         Assert.DoesNotContain(logger.Levels, l => l >= LogLevel.Error);
     }
 
+    [Fact]
+    public async Task SyncLoop_UnknownEnvironment_LogsAndSkipsTheCycle()
+    {
+        await using var services = Services();
+        await MigrateAsync(services);
+        var logger = new ListLogger<InvoiceSyncService>();
+        var loop = SyncLoop(services, logger, "tset");
+
+        await loop.StartAsync(CancellationToken.None);
+        await WaitForErrorAsync(logger);
+        await loop.StopAsync(CancellationToken.None);
+
+        await _sync.DidNotReceive().SyncAllTenantsAsync(Arg.Any<CancellationToken>());
+        Assert.Contains("Unknown KSeF environment 'tset'", logger.Exceptions.Single());
+    }
+
+    [Fact]
+    public async Task SendLoop_UnknownEnvironment_LogsAndKeepsPolling()
+    {
+        await using var services = Services();
+        await MigrateAsync(services);
+        var logger = new ListLogger<IssuedInvoiceSendService>();
+        var loop = new IssuedInvoiceSendService(
+            services.GetRequiredService<IServiceScopeFactory>(),
+            RuntimeConfig("tset"),
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Issuing:PollSeconds"] = "0" }).Build(),
+            logger);
+
+        await loop.StartAsync(CancellationToken.None);
+        await WaitForErrorAsync(logger, count: 2);
+        await loop.StopAsync(CancellationToken.None);
+
+        Assert.All(logger.Exceptions, e => Assert.Contains("Unknown KSeF environment 'tset'", e));
+    }
+
+    private static async Task WaitForErrorAsync<T>(ListLogger<T> logger, int count = 1)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (logger.Exceptions.Count < count && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+        Assert.True(logger.Exceptions.Count >= count);
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();
@@ -145,6 +193,16 @@ public sealed class WorkerMigrationWaitTests : IDisposable
     private sealed class ListLogger<T> : ILogger<T>
     {
         private readonly List<LogLevel> _levels = [];
+        private readonly List<string> _exceptions = [];
+
+        public IReadOnlyList<string> Exceptions
+        {
+            get
+            {
+                lock (_levels)
+                    return _exceptions.ToList();
+            }
+        }
 
         public IReadOnlyList<LogLevel> Levels
         {
@@ -162,7 +220,11 @@ public sealed class WorkerMigrationWaitTests : IDisposable
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
             lock (_levels)
+            {
                 _levels.Add(logLevel);
+                if (exception is not null)
+                    _exceptions.Add(exception.Message);
+            }
         }
     }
 }

@@ -243,6 +243,25 @@ COMMIT;
 
 The script removes only issued rows and their lines. They hold no user data, and sync loads them again after the next upgrade. The columns stay. Inserts from the older image get the database default, `Received`.
 
+## KSeF environment: upgrade
+
+`KSEF_BASE_URL` takes `test`, `demo` or `production`. It is read only until the wizard has run: after that the `ksef_environment` row in `SystemConfigs` wins.
+
+A legacy test or demo URL (`ksef-test.mf.gov.pl`, `ksef-demo.mf.gov.pl`, `api-test.ksef.mf.gov.pl`, `api-demo.ksef.mf.gov.pl`) and a legacy production URL (`ksef.podatki.gov.pl`, `api.ksef.mf.gov.pl`) keep working. No action is needed.
+
+API or Worker stops at start with `Unknown KSeF environment` when the value is anything else, so nothing is sent to KSeF on a guessed environment. This includes `https://ksef.mf.gov.pl/api`, which ran as TEST in earlier versions.
+
+If no wizard has run, fix `KSEF_BASE_URL` in `.env` and run `docker compose up -d`. Otherwise run the SQL below with the environment the install ran on: `production` if the old value contains `ksef.podatki.gov.pl` or `api.ksef.mf.gov.pl`, otherwise `demo` if it contains `demo`, otherwise `test`. Choosing `production` needs a production KSeF token.
+
+```bash
+docker exec -i openksef-postgres sh -c 'psql -U "$POSTGRES_USER" -d openksef' <<'SQL'
+INSERT INTO "SystemConfigs" ("Key", "Value", "UpdatedAt")
+VALUES ('ksef_environment', 'test', now())
+ON CONFLICT ("Key") DO UPDATE SET "Value" = EXCLUDED."Value", "UpdatedAt" = EXCLUDED."UpdatedAt";
+SQL
+docker compose restart api worker
+```
+
 ## Architecture
 
 ### Configuration Storage
@@ -281,6 +300,7 @@ The portal checks `/api/system/setup-status` on every protected page load. If `i
 | Need to re-run wizard | Only if the query from [upgrade step 1](#upgrade-from-v007-or-earlier) returns 0: delete all rows from the `SystemConfigs` table and restart the API container. |
 | Wizard reports no valid encryption key | Generate a key, set `ENCRYPTION_KEY`, keep a copy outside the database and run `docker compose up -d`. Then click **Dalej** (Next) and go through the wizard again. Entered data is kept. |
 | `docker compose` reports a missing `ENCRYPTION_KEY`, `POSTGRES_USER` or another required variable | The new `docker-compose.yml` requires the key. On an existing installation first run the row count query in its `docker exec` form from the [upgrade](#upgrade-from-v007-or-earlier). Result 1: follow the upgrade, because setting the key alone skips stopping the hosts and the backup. Result 0: the stack has adopted, so restore the previous `ENCRYPTION_KEY` value and do not generate a new one, because a new key does not decrypt the stored data. If you have no copy, the containers still hold it: `docker inspect openksef-api \| grep '"ENCRYPTION_KEY='`. This command prints a secret to the terminal. No value: see upgrade step 1. Do not run `docker compose up -d` before that. Other variables: restore them from the old `.env` before `up -d`. `docker inspect openksef-postgres \| grep POSTGRES_` and `docker inspect openksef-keycloak \| grep -E 'KEYCLOAK_ADMIN\|KC_DB_'` print them, including secrets. Do the same for the optional values, because `up -d` removes this copy: `docker inspect openksef-api --format '{{range .Config.Env}}{{println .}}{{end}}' \| grep -E 'Auth__PublicAuthority\|KSeF__BaseUrl\|Auth__ServiceAccount__ClientSecret\|Firebase__CredentialsJson'`. This command prints secrets too. In `.env` they are `APP_EXTERNAL_BASE_URL` (`Auth__PublicAuthority` without `/auth/realms/openksef`), `KSEF_BASE_URL`, `API_CLIENT_SECRET` and `FIREBASE_CREDENTIALS_JSON`. `docker ps` shows custom host ports. In `.env` they are `APP_HOST_PORT`, `API_HOST_PORT`, `KEYCLOAK_HOST_PORT`, `PORTAL_WEB_HOST_PORT` and `POSTGRES_HOST_PORT`. |
+| API or Worker stops with `Unknown KSeF environment` | The stored or configured value is not a known environment. See [KSeF environment: upgrade](#ksef-environment-upgrade). |
 | Critical: `The configured encryption key does not decrypt` | The configured key does not match the ciphertext. Restore the key that encrypted it. |
 | Critical: `The configured encryption key cannot be used` | The row is gone and `ENCRYPTION_KEY` is empty or malformed. Login and invoice reads work. Adding credentials, sync and send do not. Restore the key. |
 

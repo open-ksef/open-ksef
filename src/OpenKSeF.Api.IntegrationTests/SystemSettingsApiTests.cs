@@ -4,6 +4,8 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using DotNet.Testcontainers.Builders;
+using KSeF.Client.Api.Services;
+using KSeF.Client.DI;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -180,6 +182,140 @@ public class SystemSettingsApiTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.False((await response.Content.ReadFromJsonAsync<SettingsUpdateResponse>())!.RequiresConfirmation);
         Assert.Equal(1, CredentialCount());
+    }
+
+    private static object EnvironmentPut(string environment) =>
+        new { kcAdminUsername = "admin", kcAdminPassword = "admin", ksefEnvironment = environment };
+
+    private string? StoredEnvironment()
+    {
+        using var scope = _factory.Services.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().SystemConfigs
+            .Single(c => c.Key == SystemConfigKeys.KSeFEnvironment).Value;
+    }
+
+    private WebApplicationFactory<Program> RestartedHost(params (string Key, string Value)[] settings) =>
+        new OpenKSeFWebApplicationFactory(_fixture).WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("ConnectionStrings:Db", new NpgsqlConnectionStringBuilder(_fixture.PostgresConnectionString) { Database = _database }.ConnectionString);
+            foreach (var (key, value) in settings)
+                builder.UseSetting(key, value);
+        });
+
+    [Theory]
+    [InlineData("tset")]
+    [InlineData("https://ksef.mf.gov.pl/api")]
+    public async Task UnknownEnvironment_Is400_RowAndCredentialsIntact_AndTheNextStartWorks(string environment)
+    {
+        await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = "production" });
+        await SeedCredentialAsync();
+
+        var response = await PutSettingsAsync(EnvironmentPut(environment));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Unknown KSeF environment", (await response.Content.ReadFromJsonAsync<SettingsUpdateResponse>())!.Error);
+        Assert.Equal("production", StoredEnvironment());
+        Assert.Equal(1, CredentialCount());
+
+        await using var restarted = RestartedHost();
+        Assert.Equal(KsefEnvironmentsUris.PROD, restarted.Services.GetRequiredService<KSeFClientOptions>().BaseUrl);
+    }
+
+    [Theory]
+    [InlineData("prod", "production", KsefEnvironmentsUris.PROD)]
+    [InlineData("PRODUCTION", "production", KsefEnvironmentsUris.PROD)]
+    [InlineData("https://ksef-test.mf.gov.pl/api", "test", KsefEnvironmentsUris.TEST)]
+    public async Task KnownEnvironment_IsStoredAsItsCanonicalKey(string environment, string stored, string baseUrl)
+    {
+        var response = await PutSettingsAsync(EnvironmentPut(environment));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(stored, StoredEnvironment());
+        Assert.Equal(baseUrl, _factory.Services.GetRequiredService<KSeFClientOptions>().BaseUrl);
+    }
+
+    [Fact]
+    public async Task HostStart_ProductionRow_KSeFWarmupStopsAtTheTestGuard()
+    {
+        await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = "production" });
+        var before = KSeFProductionGuard.Blocked;
+
+        await using var restarted = RestartedHost();
+        _ = restarted.Services;
+
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (KSeFProductionGuard.Blocked == before && DateTime.UtcNow < deadline)
+            await Task.Delay(50);
+        Assert.True(KSeFProductionGuard.Blocked > before);
+    }
+
+    [Fact]
+    public async Task HostStart_UnknownStoredEnvironment_Throws()
+    {
+        await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = "tset" });
+
+        await using var restarted = RestartedHost();
+        var error = Assert.ThrowsAny<Exception>(() => restarted.Services);
+
+        Assert.Contains("Unknown KSeF environment 'tset'", error.Message);
+    }
+
+    [Theory]
+    [InlineData("production", "test", KsefEnvironmentsUris.PROD)]
+    [InlineData("test", "production", KsefEnvironmentsUris.TEST)]
+    public async Task HostStart_StoredEnvironmentWinsOverEnvVariable(string row, string envVariable, string baseUrl)
+    {
+        await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = row });
+
+        await using var restarted = RestartedHost(("KSeF:Environment", envVariable), ("KSeF:BaseUrl", envVariable));
+
+        Assert.Equal(baseUrl, restarted.Services.GetRequiredService<KSeFClientOptions>().BaseUrl);
+    }
+
+    [Fact]
+    public async Task HostStart_LegacyBaseUrlRow_ResolvesAndReadsAsItsKey_SavingTheSameKeepsCredentials()
+    {
+        await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = "", [SystemConfigKeys.KSeFBaseUrl] = "https://ksef.podatki.gov.pl/api" });
+
+        await using var restarted = RestartedHost(("KSeF:Environment", ""));
+        Assert.Equal(KsefEnvironmentsUris.PROD, restarted.Services.GetRequiredService<KSeFClientOptions>().BaseUrl);
+
+        await SeedCredentialAsync();
+        using var client = restarted.CreateClient();
+        client.SetBearerToken(await _fixture.GetAccessTokenAsync());
+        var settings = await (await client.PostAsJsonAsync("/api/system/settings", new { kcAdminUsername = "admin", kcAdminPassword = "admin" })).Content.ReadFromJsonAsync<SettingsResponse>();
+        Assert.Equal("production", settings!.KSeFEnvironment);
+
+        var response = await client.PutAsJsonAsync("/api/system/settings", EnvironmentPut("production"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False((await response.Content.ReadFromJsonAsync<SettingsUpdateResponse>())!.RequiresConfirmation);
+        Assert.Equal(1, CredentialCount());
+    }
+
+    [Theory]
+    [InlineData("prod")]
+    [InlineData("https://api.ksef.mf.gov.pl/v2")]
+    public async Task NonCanonicalRow_EchoedByPortal_IsNoChange(string row)
+    {
+        await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = row });
+        await SeedCredentialAsync();
+
+        var response = await PutSettingsAsync(EnvironmentPut(row));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False((await response.Content.ReadFromJsonAsync<SettingsUpdateResponse>())!.RequiresConfirmation);
+        Assert.Equal(1, CredentialCount());
+    }
+
+    [Fact]
+    public async Task HostStart_NoEnvironmentAnywhere_RunsOnTest()
+    {
+        await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = "" });
+
+        await using var restarted = RestartedHost(("KSeF:Environment", ""));
+
+        Assert.Equal(KsefEnvironmentsUris.TEST, restarted.Services.GetRequiredService<KSeFClientOptions>().BaseUrl);
     }
 
     [Fact]

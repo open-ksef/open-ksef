@@ -243,5 +243,5 @@ Portal Web tests (`vitest`) also verify cross-project contracts (docker-compose 
 - `ENCRYPTION_KEY` - required; base64 of 32 bytes; not in the DB once adopted (legacy row read until then)
 - `ENCRYPTION_KEY_FILE` - file holding the key, used when `ENCRYPTION_KEY` is empty; shipped compose does not forward it
 - `ENCRYPTION_KEY_NEW` - only for `rotate-encryption-key` on the API image
-- `KSeF__BaseUrl`
+- `KSeF__BaseUrl` - `test`, `demo` or `production`; legacy KSeF URLs resolve by exact host; an unknown value stops API and Worker; a DB row wins
 - `Issuing__StuckAfterHours` - Worker; default `24`; hours after issue before an invoice is escalated as stuck

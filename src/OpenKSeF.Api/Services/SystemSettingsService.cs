@@ -111,14 +111,17 @@ public sealed class SystemSettingsService : ISystemSettingsService
             var kcBase = KeycloakInternalBaseUrl;
 
             // Validate KSeF environment change before doing any work
+            var requestedEnv = string.IsNullOrWhiteSpace(request.KSeFEnvironment)
+                ? null
+                : DependencyInjection.NormalizeKSeFEnvironmentKey(request.KSeFEnvironment);
             var needsCredentialWipe = false;
-            if (!string.IsNullOrEmpty(request.KSeFEnvironment))
+            if (requestedEnv != null)
             {
-                var currentEnv = _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
-                    ?? DependencyInjection.NormalizeKSeFEnvironmentKey(
-                        _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl));
+                var currentEnv = DependencyInjection.NormalizeKSeFEnvironmentKey(
+                    _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
+                    ?? _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl));
 
-                if (!string.Equals(currentEnv, request.KSeFEnvironment, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(currentEnv, requestedEnv, StringComparison.OrdinalIgnoreCase))
                 {
                     var (hasInvoices, hasCredentials) = await GetKSeFEnvironmentLockStatusAsync(ct);
                     if (hasInvoices)
@@ -155,8 +158,8 @@ public sealed class SystemSettingsService : ISystemSettingsService
                 await UpdateClientRedirectUrisAsync(client, kcBase, kcAdminToken, url, ct);
             }
 
-            if (!string.IsNullOrEmpty(request.KSeFEnvironment))
-                configValues[SystemConfigKeys.KSeFEnvironment] = request.KSeFEnvironment;
+            if (requestedEnv != null)
+                configValues[SystemConfigKeys.KSeFEnvironment] = requestedEnv;
 
             if (request.GoogleClientId != null)
                 configValues[SystemConfigKeys.GoogleClientId] = request.GoogleClientId;
@@ -205,14 +208,14 @@ public sealed class SystemSettingsService : ISystemSettingsService
                 await _systemConfig.RefreshCacheAsync(ct);
             }
 
-            if (!string.IsNullOrEmpty(request.KSeFEnvironment))
+            if (requestedEnv != null)
             {
-                var newBaseUrl = DependencyInjection.ResolveKSeFEnvironment(request.KSeFEnvironment);
+                var newBaseUrl = DependencyInjection.ResolveKSeFEnvironment(requestedEnv);
                 if (_ksefOptions.BaseUrl != newBaseUrl)
                 {
                     _ksefOptions.BaseUrl = newBaseUrl;
                     _logger.LogInformation("KSeF environment hot-reloaded to {Env} ({Url})",
-                        request.KSeFEnvironment, newBaseUrl);
+                        requestedEnv, newBaseUrl);
                 }
             }
 
@@ -220,7 +223,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
             if (needsCredentialWipe)
             {
                 await WipeKSeFCredentialsAsync(ct);
-                _logger.LogWarning("Wiped all KSeF credentials due to environment change to {Env}", request.KSeFEnvironment);
+                _logger.LogWarning("Wiped all KSeF credentials due to environment change to {Env}", requestedEnv);
             }
 
             _logger.LogInformation("Settings updated successfully");

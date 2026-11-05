@@ -1154,6 +1154,43 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Fact]
+    public async Task UnknownCurrentEnvironment_NothingSent_InvoiceUntouched()
+    {
+        var id = await SeedAsync();
+
+        await RunAsync("tset");
+
+        Assert.Equal(IssuedInvoiceStatus.Queued, (await LoadAsync(id)).Status);
+        Assert.Equal((0, 0), (_submitter.Logins, _submitter.Sends));
+        Assert.Contains(_logs.Messages, m => m.Contains("Unknown KSeF environment 'tset'"));
+    }
+
+    [Fact]
+    public async Task UnknownInvoiceEnvironment_NothingSentForThatTenant_OtherTenantSends()
+    {
+        var bad = await SeedAsync(environment: "tset");
+        var good = await SeedAsync(tenant: Guid.NewGuid());
+
+        await RunAsync();
+
+        Assert.Equal(IssuedInvoiceStatus.Queued, (await LoadAsync(bad)).Status);
+        Assert.NotEqual(IssuedInvoiceStatus.Queued, (await LoadAsync(good)).Status);
+        Assert.Equal(1, _submitter.Sends);
+        Assert.Contains(_logs.Messages, m => m.Contains("Unknown KSeF environment 'tset'"));
+    }
+
+    [Fact]
+    public async Task LegacyInvoiceEnvironment_MatchesCurrentAndSends()
+    {
+        var id = await SeedAsync(environment: "https://api.ksef.mf.gov.pl/v2");
+
+        await RunAsync("production");
+
+        Assert.NotEqual(IssuedInvoiceStatus.Rejected, (await LoadAsync(id)).Status);
+        Assert.Equal(1, _submitter.Sends);
+    }
+
+    [Fact]
     public async Task CertificateOnlyTenant_RejectedWithTokenMessage()
     {
         var id = await SeedAsync(tokenCredential: false);
