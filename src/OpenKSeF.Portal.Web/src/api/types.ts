@@ -102,6 +102,8 @@ export interface TenantManualSyncResponse {
   failedDownloads?: number
   queuedDownloads?: number
   erroredDownloads?: number
+  issuedFetchedInvoices?: number
+  issuedNewInvoices?: number
 }
 
 export interface DeviceTokenResponse {
