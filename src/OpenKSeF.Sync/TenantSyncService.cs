@@ -17,6 +17,8 @@ namespace OpenKSeF.Sync;
 public sealed class TenantSyncService : ITenantSyncService
 {
     private const int IssuedFirstRunMonthsBack = 12;
+    private const int MaxIssuedQueriesPerRun = 10;
+    private static readonly TimeSpan IssuedRecentRun = TimeSpan.FromMinutes(15);
     private const int MaxConsecutiveDownloadFailures = 3;
 
     private readonly ApplicationDbContext _db;
@@ -382,9 +384,13 @@ public sealed class TenantSyncService : ITenantSyncService
     private async Task SyncIssuedInvoicesAsync(
         Tenant tenant, KSeFSession session, SyncState syncState, DateTime now, CancellationToken cancellationToken)
     {
+        if (syncState.IssuedContinuationAt > now - IssuedRecentRun)
+            return;
+
         try
         {
             var windowStart = syncState.IssuedContinuationAt ?? now.AddMonths(-IssuedFirstRunMonthsBack);
+            var queries = 0;
 
             while (windowStart < now)
             {
@@ -396,6 +402,9 @@ public sealed class TenantSyncService : ITenantSyncService
                 KSeFInvoiceQueryResult result;
                 while (true)
                 {
+                    if (queries++ == MaxIssuedQueriesPerRun)
+                        return;
+
                     result = await _gateway.QueryInvoicesAsync(session, new KSeFQueryCriteria(
                         SubjectNip: tenant.Nip,
                         DateFrom: windowStart,
@@ -413,6 +422,13 @@ public sealed class TenantSyncService : ITenantSyncService
 
                     if (result.IsTruncated || result.Invoices.Count < _syncOptions.BatchSize)
                         break;
+
+                    // Rows are stored first and sorted ascending under the HWM: a restart from here re-reads, never skips.
+                    if (result.LastRowAt > windowStart)
+                    {
+                        syncState.IssuedContinuationAt = result.LastRowAt;
+                        await _db.SaveChangesAsync(cancellationToken);
+                    }
 
                     pageOffset++;
                 }
