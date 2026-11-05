@@ -138,17 +138,17 @@ public class IssuedInvoicesController(
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public Task<IActionResult> Update(Guid tenantId, Guid id, IssuedInvoiceDraftRequest request, CancellationToken ct) =>
+    public Task<IActionResult> Update(Guid tenantId, Guid id, IssuedInvoiceDraftRequest request, [FromQuery] uint? version, CancellationToken ct) =>
         GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
-            await issuedInvoices.UpdateAsync(tenantId, id, ToInput(request), ct) is { } view ? Ok(ToResponse(view)) : NotFound());
+            await issuedInvoices.UpdateAsync(tenantId, id, ToInput(request), version, ct) is { } view ? Ok(ToResponse(view)) : NotFound());
 
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public Task<IActionResult> Delete(Guid tenantId, Guid id, CancellationToken ct) =>
+    public Task<IActionResult> Delete(Guid tenantId, Guid id, [FromQuery] uint? version, CancellationToken ct) =>
         GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
-            await issuedInvoices.DeleteAsync(tenantId, id, ct) ? NoContent() : NotFound());
+            await issuedInvoices.DeleteAsync(tenantId, id, version, ct) ? NoContent() : NotFound());
 
     [HttpPost("{id:guid}/issue")]
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status202Accepted)]
@@ -156,10 +156,10 @@ public class IssuedInvoicesController(
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public Task<IActionResult> Issue(Guid tenantId, Guid id, CancellationToken ct) =>
+    public Task<IActionResult> Issue(Guid tenantId, Guid id, [FromQuery] uint? version, CancellationToken ct) =>
         GuardedAsync(tenantId, StatusCodes.Status422UnprocessableEntity, async () =>
         {
-            if (await issuedInvoices.IssueAsync(tenantId, id, ct) is not { } result)
+            if (await issuedInvoices.IssueAsync(tenantId, id, version, ct) is not { } result)
                 return NotFound();
 
             var response = ToResponse(result.View);
@@ -293,6 +293,7 @@ public class IssuedInvoicesController(
             invoice.UpdatedAt,
             invoice.IssuedAt,
             invoice.ExchangeRate,
-            invoice.ExchangeRateDate);
+            invoice.ExchangeRateDate,
+            view.Version);
     }
 }

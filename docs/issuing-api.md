@@ -16,9 +16,9 @@ GET  /api/tenants/{tenantId}/issued-invoices?page=&pageSize=&status=&month=&q=  
 POST /api/tenants/{tenantId}/issued-invoices                IssuedInvoiceDraftRequest -> 201 IssuedInvoiceResponse | 400 ValidationEnvelope
 GET  /api/tenants/{tenantId}/issued-invoices/exchange-rate?currency=&issueDate=&saleDate=   -> 200 ExchangeRateProposalResponse | 400 ValidationEnvelope (INV-VAL-090)
 GET  /api/tenants/{tenantId}/issued-invoices/{id}           -> 200 IssuedInvoiceResponse
-PUT  /api/tenants/{tenantId}/issued-invoices/{id}           IssuedInvoiceDraftRequest -> 200 | 400 ValidationEnvelope | 422 ValidationEnvelope (INV-VAL-022) | 409 (not Draft/Rejected)
-DELETE /api/tenants/{tenantId}/issued-invoices/{id}         -> 204 | 409 (not Draft)
-POST /api/tenants/{tenantId}/issued-invoices/{id}/issue     -> 202 IssuedInvoiceResponse (status Sending) | 200 if already Sending/Accepted | 422 ValidationEnvelope | 409 (number already used, concurrent change)
+PUT  /api/tenants/{tenantId}/issued-invoices/{id}?version=  IssuedInvoiceDraftRequest -> 200 | 400 ValidationEnvelope | 422 ValidationEnvelope (INV-VAL-022) | 409 (not Draft/Rejected, stale version)
+DELETE /api/tenants/{tenantId}/issued-invoices/{id}?version= -> 204 | 409 (not Draft, stale version)
+POST /api/tenants/{tenantId}/issued-invoices/{id}/issue?version= -> 202 IssuedInvoiceResponse (status Sending) | 200 if already Sending/Accepted | 422 ValidationEnvelope | 409 (number already used, concurrent change, stale version)
 POST /api/tenants/{tenantId}/issued-invoices/{id}/copy      -> 201 IssuedInvoiceResponse (new Draft, same buyer+lines+currency, dates = today, no number, rate proposed again) | 409 (source Sending)
 GET  /api/tenants/{tenantId}/issued-invoices/{id}/xml       -> 200 application/xml (stored bytes) | 409 unless Accepted
 GET  /api/tenants/{tenantId}/issued-invoices/{id}/upo       -> 200 application/xml | 409 unless Accepted with UPO
@@ -26,6 +26,8 @@ DELETE /api/tenants/{id}                                    -> 204 | 409 (invoic
 ```
 
 Cross-tenant on any route returns 404. A 409 without a `ValidationEnvelope` has the body `{ "message": "..." }`.
+
+`IssuedInvoiceResponse.version` is the row's concurrency token. Send it back as the optional `?version=` on PUT, DELETE and issue. A value that no longer matches gives 409 and changes nothing. A request with no `version` skips the check. Issue on a row already Sending or Accepted stays 200 whatever the token, so a retry after a lost response is safe.
 
 List filters:
 - `status`: `Draft`, `Sending` (internal Queued + Sending), `Accepted`, `Rejected`.

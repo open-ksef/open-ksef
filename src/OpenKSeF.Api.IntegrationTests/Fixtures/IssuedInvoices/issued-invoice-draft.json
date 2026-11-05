@@ -10,5 +10,5 @@
   "ksef": { "environment": "test", "ksefNumber": null, "acceptedAt": null, "statusCode": null, "statusMessage": null,
             "statusDetails": null, "lastError": null, "verificationUrl": null, "hasUpo": false, "duplicateKsefNumber": null },
   "warnings": [ { "code": "INV-W-MPP", "field": "splitPayment", "message": "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)" } ],
-  "createdAt": "<createdAt>", "updatedAt": "<updatedAt>", "issuedAt": null, "exchangeRate": null, "exchangeRateDate": null
+  "createdAt": "<createdAt>", "updatedAt": "<updatedAt>", "issuedAt": null, "exchangeRate": null, "exchangeRateDate": null, "version": "<version>"
 }
