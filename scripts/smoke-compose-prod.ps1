@@ -143,7 +143,7 @@ try {
         $apply = Invoke-RestMethod -Uri 'http://localhost:8080/api/system/setup/apply' -Method Post `
             -ContentType 'application/json' -Headers @{ 'X-Setup-Token' = $auth.setupToken } -Body (@{
                 externalBaseUrl = 'http://localhost:8080'
-                ksefBaseUrl = 'https://ksef-test.mf.gov.pl/api'
+                ksefBaseUrl = 'test'
                 adminEmail = $adminEmail
                 adminPassword = $adminPassword
             } | ConvertTo-Json)

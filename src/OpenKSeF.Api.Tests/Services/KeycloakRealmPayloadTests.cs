@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using KSeF.Client.Api.Services;
 using KSeF.Client.DI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,6 +56,61 @@ public class KeycloakRealmPayloadTests
 
         Assert.False(result.Success);
         Assert.Equal(0, _keycloak.RequestCount);
+        await systemConfig.DidNotReceiveWithAnyArgs().SetValuesAsync(default!, default);
+    }
+
+    [Theory]
+    [InlineData("tset")]
+    [InlineData("https://ksef.mf.gov.pl/api")]
+    public async Task ApplySetup_UnknownEnvironment_FailsBeforeAnyKeycloakCall(string environment)
+    {
+        var systemConfig = Substitute.For<ISystemConfigService>();
+
+        var result = await CreateSetupService(systemConfig, ValidKey).ApplySetupAsync(
+            new SetupApplyRequest
+            {
+                ExternalBaseUrl = "https://ksef.example.com",
+                KSeFBaseUrl = environment,
+                AdminEmail = "admin@example.com",
+                AdminPassword = "Secret123!",
+            }, "token", "admin");
+
+        Assert.False(result.Success);
+        Assert.Contains("Unknown KSeF environment", result.Error);
+        Assert.Equal(0, _keycloak.RequestCount);
+        await systemConfig.DidNotReceiveWithAnyArgs().SetValuesAsync(default!, default);
+    }
+
+    [Theory]
+    [InlineData("tset")]
+    [InlineData("https://ksef.mf.gov.pl/api")]
+    public async Task UpdateSettings_UnknownEnvironment_FailsBeforeAnyKeycloakCall(string environment)
+    {
+        var systemConfig = Substitute.For<ISystemConfigService>();
+        var options = new KSeFClientOptions { BaseUrl = KsefEnvironmentsUris.PROD };
+
+        var result = await CreateSettingsService(systemConfig, options).UpdateSettingsAsync(
+            new SettingsUpdateRequest { KSeFEnvironment = environment }, "token");
+
+        Assert.False(result.Success);
+        Assert.Contains("Unknown KSeF environment", result.Error);
+        Assert.Equal(0, _keycloak.RequestCount);
+        Assert.Equal(KsefEnvironmentsUris.PROD, options.BaseUrl);
+        await systemConfig.DidNotReceiveWithAnyArgs().SetValuesAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task UpdateSettings_BlankEnvironment_KeepsTheStoredOne()
+    {
+        var systemConfig = Substitute.For<ISystemConfigService>();
+        systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment).Returns("production");
+        var options = new KSeFClientOptions { BaseUrl = KsefEnvironmentsUris.PROD };
+
+        var result = await CreateSettingsService(systemConfig, options).UpdateSettingsAsync(
+            new SettingsUpdateRequest { KSeFEnvironment = "   " }, "token");
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal(KsefEnvironmentsUris.PROD, options.BaseUrl);
         await systemConfig.DidNotReceiveWithAnyArgs().SetValuesAsync(default!, default);
     }
 
@@ -195,9 +251,9 @@ public class KeycloakRealmPayloadTests
         AdminPassword = "Secret123!",
     };
 
-    private SystemSettingsService CreateSettingsService() => new(
-        _httpClientFactory, new ConfigurationBuilder().Build(), Substitute.For<ISystemConfigService>(),
-        new KSeFClientOptions(), Substitute.For<IServiceScopeFactory>(), NullLogger<SystemSettingsService>.Instance);
+    private SystemSettingsService CreateSettingsService(ISystemConfigService? systemConfig = null, KSeFClientOptions? options = null) => new(
+        _httpClientFactory, new ConfigurationBuilder().Build(), systemConfig ?? Substitute.For<ISystemConfigService>(),
+        options ?? new KSeFClientOptions(), Substitute.For<IServiceScopeFactory>(), NullLogger<SystemSettingsService>.Instance);
 
     private sealed class FakeKeycloak : HttpMessageHandler
     {

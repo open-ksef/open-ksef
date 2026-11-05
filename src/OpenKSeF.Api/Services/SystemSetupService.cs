@@ -111,6 +111,8 @@ public sealed class SystemSetupService : ISystemSetupService
                 return new SetupApplyResponse(false,
                     "ENCRYPTION_KEY is not set. Generate one with: openssl rand -base64 32, set it on the API and Worker, and restart.");
 
+            var ksefEnv = DependencyInjection.NormalizeKSeFEnvironmentKey(request.KSeFBaseUrl);
+
             var client = _httpClientFactory.CreateClient("keycloak");
             var kcBase = KeycloakInternalBaseUrl;
 
@@ -160,12 +162,6 @@ public sealed class SystemSetupService : ISystemSetupService
             }
 
             // 10. Store config in DB (environment key only, URL resolved at runtime)
-            var ksefEnv = request.KSeFBaseUrl?.ToLowerInvariant() switch
-            {
-                "production" => "production",
-                "demo" => "demo",
-                _ => "test",
-            };
             var configValues = new Dictionary<string, string>
             {
                 [SystemConfigKeys.ApiClientSecret] = apiClientSecret,

@@ -1,3 +1,4 @@
+using KSeF.Client.DI;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -36,7 +37,11 @@ public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Progra
 
         builder.UseEnvironment("Production");
 
-        builder.ConfigureTestServices(services => services.AddSingleton<IExchangeRateSource>(ExchangeRates));
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IExchangeRateSource>(ExchangeRates);
+            services.ConfigureHttpClientDefaults(client => client.AddHttpMessageHandler(() => new KSeFProductionGuard()));
+        });
 
         if (_timeProvider is not null)
             builder.ConfigureTestServices(services => services.AddSingleton(_timeProvider));
@@ -51,6 +56,23 @@ public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Progra
         });
 
         return base.CreateHost(builder);
+    }
+}
+
+/// <summary>A host on a production row warms up against the production KSeF host at start. No test may reach it.</summary>
+public sealed class KSeFProductionGuard : DelegatingHandler
+{
+    private static int _blocked;
+
+    public static int Blocked => Volatile.Read(ref _blocked);
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (request.RequestUri?.Host != new Uri(KsefEnvironmentsUris.PROD).Host)
+            return base.SendAsync(request, cancellationToken);
+
+        Interlocked.Increment(ref _blocked);
+        throw new InvalidOperationException($"Test tried to call KSeF production: {request.RequestUri}");
     }
 }
 
