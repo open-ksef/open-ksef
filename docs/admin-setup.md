@@ -296,7 +296,7 @@ Then run `docker compose up -d`.
 
 **Keycloak admin console, SSH tunnel (recommended).** With the `keycloak` entry of the override above, run on your computer `ssh -L 8082:127.0.0.1:8082 user@your-server` and open <http://localhost:8082/auth/admin>. The console is not reachable from any network, and the gateway stays at 403.
 
-**Keycloak admin console, allow-list.** Set `KEYCLOAK_ADMIN_ALLOW` in `.env` to the addresses that may open `/auth/admin` through the gateway, comma separated, IP or CIDR, for example `KEYCLOAK_ADMIN_ALLOW=192.168.88.0/24,10.8.0.5`. Then run `docker compose up -d`. Empty or unset means 403 for everyone. nginx checks the address of the connection it receives. Behind a reverse proxy or Cloudflare, that is the proxy's address, not the browser's. Listing it opens the console to every visitor, so use the SSH tunnel there. An invalid entry stops the gateway at start: see [Start failures and restart loops](#start-failures-and-restart-loops).
+**Keycloak admin console, allow-list.** Set `KEYCLOAK_ADMIN_ALLOW` in `.env` to the addresses that may open `/auth/admin` through the gateway, comma separated, IP or CIDR, for example `KEYCLOAK_ADMIN_ALLOW=192.168.88.0/24,10.8.0.5`. Then run `docker compose up -d`. Empty or unset means 403 for everyone. nginx checks the address of the connection it receives. Behind a reverse proxy or Cloudflare, that is the proxy's address, not the browser's. Listing it opens the console to every visitor, so use the SSH tunnel there. The same applies when Docker's userland proxy forwards the port: on Docker Desktop (Windows, macOS) for every client, on Linux for connections to `localhost` and for all clients when `"iptables": false` is set in `daemon.json`. nginx then sees the Docker bridge gateway, for example `172.18.0.1`, and listing that address opens the console to everyone who reaches the port. Check the address nginx sees with `docker compose logs gateway`. The gateway skips an invalid entry, logs `KEYCLOAK_ADMIN_ALLOW entry '<entry>' is not a valid nginx allow address, skipped` and keeps the other entries.
 
 **Image version.** `OPENKSEF_VERSION` in `.env` picks the tag of `api`, `worker`, `portal-web` and `gateway`, for example `OPENKSEF_VERSION=v1.2.3`. Leave it unset to use the release the compose came with. Upgrade: change it (or take the new compose), then `docker compose pull && docker compose up -d`. Roll back: set the previous tag and run the same commands. Migrations are not rolled back, so read the release notes first. A `docker-compose.yml` from v0.0.11 or older names `:latest`, which points to the newest release. Taking that file back restores the old ports, not the old images.
 
@@ -307,7 +307,6 @@ Every service has `restart: unless-stopped`. When API or Worker exits at start, 
 - a bad `ksef_environment` row or `KSEF_BASE_URL` (`Unknown KSeF environment`), see [KSeF environment: upgrade](#ksef-environment-upgrade)
 - `KSeF:ForbidProduction` set on a stack whose environment is production
 - `SystemConfigs` unreadable after 5 attempts (Postgres down or broken)
-- the gateway with an invalid `KEYCLOAK_ADMIN_ALLOW` entry
 
 API and Worker log one `FTL` line with the reason. The KSeF environment refusals exit with code 1. How to see the loop and the reason:
 
