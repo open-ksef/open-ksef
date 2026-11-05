@@ -197,7 +197,7 @@ export function InvoiceDetailsPage(): ReactElement {
   const queryClient = useQueryClient()
 
   const tenantIdFromUrl = searchParams.get('tenantId') ?? ''
-  const walkState = location.state as { listSearch?: string; siblings?: string[] } | null
+  const walkState = location.state as { listSearch?: string; siblings?: string[]; fromIssued?: boolean } | null
   const listSearch = walkState?.listSearch
   const siblings = walkState?.siblings ?? []
   const position = siblings.indexOf(ksefInvoiceNumber)
@@ -227,7 +227,8 @@ export function InvoiceDetailsPage(): ReactElement {
 
   const invoice = invoiceQuery.data
   const isIssued = invoice?.direction === 'Issued'
-  const listPath = isIssued ? '/issued' : '/invoices'
+  const backToIssued = isIssued || walkState?.fromIssued === true
+  const listPath = backToIssued ? '/issued' : '/invoices'
   const buyer = invoice ? buyerId(invoice) : null
 
   const transferQuery = useQuery({
@@ -286,7 +287,7 @@ export function InvoiceDetailsPage(): ReactElement {
         className="back-link"
       >
         <Icon name="arrow-left" size={14} />
-        {isIssued ? 'Wystawione' : 'Otrzymane'}
+        {backToIssued ? 'Wystawione' : 'Otrzymane'}
       </Link>
 
       <header className="page-header invoice-details-head">

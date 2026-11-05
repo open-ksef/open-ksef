@@ -50,16 +50,17 @@ export function updateIssuedInvoice(
   tenantId: string,
   id: string,
   request: IssuedInvoiceDraftRequest,
+  version?: number,
 ): Promise<IssuedInvoiceResponse> {
-  return apiClient.put<IssuedInvoiceResponse>(item(tenantId, id), request)
+  return apiClient.put<IssuedInvoiceResponse>(item(tenantId, id), request, { query: { version } })
 }
 
-export function deleteIssuedInvoice(tenantId: string, id: string): Promise<void> {
-  return apiClient.delete<void>(item(tenantId, id))
+export function deleteIssuedInvoice(tenantId: string, id: string, version?: number): Promise<void> {
+  return apiClient.delete<void>(item(tenantId, id), { query: { version } })
 }
 
-export function issueIssuedInvoice(tenantId: string, id: string): Promise<IssuedInvoiceResponse> {
-  return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/issue`)
+export function issueIssuedInvoice(tenantId: string, id: string, version?: number): Promise<IssuedInvoiceResponse> {
+  return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/issue`, undefined, { query: { version } })
 }
 
 export function copyIssuedInvoice(tenantId: string, id: string): Promise<IssuedInvoiceResponse> {

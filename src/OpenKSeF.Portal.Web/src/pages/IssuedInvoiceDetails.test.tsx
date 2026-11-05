@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, type InitialEntry } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -92,6 +92,7 @@ const invoice = (patch: Partial<IssuedInvoiceResponse>): IssuedInvoiceResponse =
   createdAt: '2026-11-03T10:00:00Z',
   updatedAt: '2026-11-03T10:00:00Z',
   issuedAt: null,
+  version: 5,
   ...patch,
 })
 
@@ -141,7 +142,7 @@ describe('issue and detail pages', () => {
     container.remove()
   })
 
-  async function render(path: string): Promise<void> {
+  async function render(path: InitialEntry): Promise<void> {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () =>
       root.render(
@@ -196,7 +197,7 @@ describe('issue and detail pages', () => {
 
     await act(async () => buttonByText(container.querySelector<HTMLElement>('[role="alertdialog"]')!, 'Wystaw i wyślij')!.click())
     await waitFor(() => container.textContent?.includes('czekamy na przyjęcie') ?? false)
-    expect(vi.mocked(issueIssuedInvoice).mock.calls[0]).toEqual(['t-1', 'i-1'])
+    expect(vi.mocked(issueIssuedInvoice).mock.calls[0]).toEqual(['t-1', 'i-1', 5])
   })
 
   const envKsef = (environment: unknown) => ({ ...ksef, environment }) as IssuedInvoiceResponse['ksef']
@@ -604,7 +605,114 @@ describe('issue and detail pages', () => {
     const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]')!
     await act(async () => buttonByText(dialog, 'Usuń szkic')!.click())
     await waitFor(() => vi.mocked(deleteIssuedInvoice).mock.calls.length === 1)
-    expect(deleteIssuedInvoice).toHaveBeenCalledWith('t-1', 'i-1')
+    expect(deleteIssuedInvoice).toHaveBeenCalledWith('t-1', 'i-1', 5)
+  })
+
+  describe('a draft changed elsewhere', () => {
+    const conflictMessage = 'Faktura została równocześnie zmieniona, odśwież stronę'
+    const conflict = () =>
+      normalizeError(new Response(JSON.stringify({ message: conflictMessage }), { status: 409, headers: { 'Content-Type': 'application/json' } }))
+    const buyerName = () => container.querySelector<HTMLInputElement>('#buyer-name')!
+    const typeBuyer = async (value: string) =>
+      act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(buyerName(), value)
+        buyerName().dispatchEvent(new Event('input', { bubbles: true }))
+      })
+
+    it('issue sends the version the save just returned', async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+      vi.mocked(updateIssuedInvoice).mockResolvedValue(invoice({ number: null, version: 6 }))
+      vi.mocked(issueIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending', version: 7 }))
+      await render('/issued/i-1/edit?tenantId=t-1')
+      await waitFor(() => Boolean(buttonByText(container, 'Wystaw i wyślij do KSeF')))
+
+      await act(async () => buttonByText(container, 'Wystaw i wyślij do KSeF')!.click())
+      await waitFor(() => vi.mocked(issueIssuedInvoice).mock.calls.length === 1)
+
+      expect(vi.mocked(updateIssuedInvoice).mock.calls[0][3]).toBe(5)
+      expect(issueIssuedInvoice).toHaveBeenCalledWith('t-1', 'i-1', 6)
+    })
+
+    it('a stale save shows the server message and keeps the form and the typing', async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+      vi.mocked(updateIssuedInvoice).mockRejectedValue(await conflict())
+      await render('/issued/i-1/edit?tenantId=t-1')
+      await waitFor(() => buyerName()?.value === 'Nabywca')
+      await typeBuyer('Wpisany nabywca')
+
+      await act(async () => buttonByText(container, 'Zapisz szkic')!.click())
+      await waitFor(() => container.textContent?.includes(conflictMessage) ?? false)
+
+      expect(buyerName().value).toBe('Wpisany nabywca')
+      expect(issueIssuedInvoice).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['save', (error: unknown) => vi.mocked(updateIssuedInvoice).mockRejectedValue(error)],
+      ['issue', (error: unknown) => {
+        vi.mocked(updateIssuedInvoice).mockResolvedValue(invoice({ number: null, version: 6 }))
+        vi.mocked(issueIssuedInvoice).mockRejectedValue(error)
+      }],
+    ])('a stale %s on issue shows the server message and keeps the form and the typing', async (_step, arrange) => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+      arrange(await conflict())
+      await render('/issued/i-1/edit?tenantId=t-1')
+      await waitFor(() => buyerName()?.value === 'Nabywca')
+      await typeBuyer('Wpisany nabywca')
+
+      await act(async () => buttonByText(container, 'Wystaw i wyślij do KSeF')!.click())
+      await waitFor(() => container.textContent?.includes(conflictMessage) ?? false)
+
+      expect(buyerName().value).toBe('Wpisany nabywca')
+    })
+
+    it('the form delete sends the version the form loaded, and a stale one keeps the form', async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+      vi.mocked(deleteIssuedInvoice).mockRejectedValue(await conflict())
+      await render('/issued/i-1/edit?tenantId=t-1')
+      await waitFor(() => buyerName()?.value === 'Nabywca')
+
+      await act(async () => buttonByText(container, 'Usuń szkic')!.click())
+      await act(async () => buttonByText(container.querySelector<HTMLElement>('[role="alertdialog"]')!, 'Usuń szkic')!.click())
+      await waitFor(() => container.textContent?.includes(conflictMessage) ?? false)
+
+      expect(deleteIssuedInvoice).toHaveBeenCalledWith('t-1', 'i-1', 5)
+      expect(buyerName().value).toBe('Nabywca')
+    })
+
+    it('a stale delete on details shows the server message and stays', async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+      vi.mocked(deleteIssuedInvoice).mockRejectedValue(await conflict())
+      await render('/issued/i-1?tenantId=t-1')
+      await waitFor(() => Boolean(buttonByText(container, 'Usuń szkic')))
+
+      await act(async () => buttonByText(container, 'Usuń szkic')!.click())
+      await act(async () => buttonByText(container.querySelector<HTMLElement>('[role="alertdialog"]')!, 'Usuń szkic')!.click())
+      await waitFor(() => container.textContent?.includes(conflictMessage) ?? false)
+
+      expect(container.querySelector('[role="alertdialog"]')).toBeNull()
+      expect(buttonByText(container, 'Usuń szkic')).toBeTruthy()
+    })
+  })
+
+  describe('back link', () => {
+    const backLink = () => container.querySelector('.back-link')
+
+    it('returns to the list search it came from', async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({}))
+      await render({ pathname: '/issued/i-1', search: '?tenantId=t-1', state: { listSearch: '?tenantId=t-1&status=Draft&page=2', fromIssued: true } })
+      await waitFor(() => Boolean(backLink()))
+
+      expect(backLink()?.getAttribute('href')).toBe('/issued?tenantId=t-1&status=Draft&page=2')
+    })
+
+    it('keeps the company on a deep link', async () => {
+      vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({}))
+      await render('/issued/i-1?tenantId=t-1')
+      await waitFor(() => Boolean(backLink()))
+
+      expect(backLink()?.getAttribute('href')).toBe('/issued?tenantId=t-1')
+    })
   })
 
   it('Rejected for a token with code 450 shows the stored description', async () => {
@@ -733,7 +841,7 @@ describe('issue and detail pages', () => {
     await act(async () => buttonByText(container, 'Usuń szkic')!.click())
     await act(async () => buttonByText(dialog(), 'Usuń szkic')!.click())
     await waitFor(() => vi.mocked(deleteIssuedInvoice).mock.calls.length === 1)
-    expect(deleteIssuedInvoice).toHaveBeenCalledWith('t-1', 'i-1')
+    expect(deleteIssuedInvoice).toHaveBeenCalledWith('t-1', 'i-1', 5)
     await waitFor(() => !buttonByText(container, 'Zapisz szkic'))
   })
 

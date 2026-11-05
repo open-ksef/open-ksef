@@ -220,6 +220,29 @@ describe('InvoiceDetailsPage', () => {
     expect(testId('invoice-details-back-link')).toBeTruthy()
   })
 
+  describe('opened from the issued list', () => {
+    const entry = { pathname: '/invoices/KSEF-404', search: '?tenantId=tenant-1', state: { listSearch: '?tenantId=tenant-1&q=abc', fromIssued: true } }
+
+    it('back link says Wystawione on a 404', async () => {
+      vi.mocked(getInvoiceByKSeFNumber).mockRejectedValue(new ApiError('Not found', 404))
+
+      await render(entry)
+
+      expect(container.textContent).toContain('Nie znaleziono żądanej faktury.')
+      expect(testId('invoice-details-back-link')?.textContent).toBe('Wystawione')
+      expect(testId('invoice-details-back-link')?.getAttribute('href')).toBe('/issued?tenantId=tenant-1&q=abc')
+    })
+
+    it('back link says Wystawione while loading', async () => {
+      vi.mocked(getInvoiceByKSeFNumber).mockReturnValue(new Promise(() => {}))
+
+      await render(entry)
+
+      expect(testId('invoice-details-back-link')?.textContent).toBe('Wystawione')
+      expect(testId('invoice-details-back-link')?.getAttribute('href')).toBe('/issued?tenantId=tenant-1&q=abc')
+    })
+  })
+
   describe('formats', () => {
     const line = {
       lineNumber: 1,

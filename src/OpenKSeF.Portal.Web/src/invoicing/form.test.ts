@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { IssuedInvoiceResponse } from '@/api/types'
-import { ART_113, emptyDraft, fromResponse, toDraftRequest, toFieldErrors } from './form'
+import { ART_113, emptyDraft, fromResponse, missingRateError, toDraftRequest, toFieldErrors } from './form'
 
 describe('draft form mapping', () => {
   it('defaults: sale date = issue date, due date +14 days, one 23% line', () => {
@@ -49,6 +49,17 @@ describe('draft form mapping', () => {
     } as unknown as IssuedInvoiceResponse
 
     expect(fromResponse(response)).toEqual(draft)
+  })
+
+  it.each([
+    ['PLN', '', false],
+    ['GBP', '', true],
+    ['GBP', '  ', true],
+    ['GBP', '5,1', false],
+  ])('missingRateError for %s with rate "%s" is %s', (currency, exchangeRate, blocked) => {
+    const error = missingRateError({ ...emptyDraft('2026-11-01'), currency, exchangeRate })
+
+    expect(error?.field ?? null).toBe(blocked ? 'exchangeRate' : null)
   })
 
   it('maps envelope fields to the first message per field', () => {

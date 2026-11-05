@@ -25,8 +25,8 @@ function writeStored(id: string): void {
   }
 }
 
-function pathAfterSwitch(pathname: string): string {
-  if (/^\/invoices\/[^/]+$/.test(pathname)) return '/invoices'
+function pathAfterSwitch(pathname: string, fromIssued: boolean): string {
+  if (/^\/invoices\/[^/]+$/.test(pathname)) return fromIssued ? '/issued' : '/invoices'
   if (/^\/issued\/[^/]+\/edit$/.test(pathname)) return '/issued/new'
   if (pathname !== '/issued/new' && /^\/issued\/[^/]+$/.test(pathname)) return '/issued'
   return pathname
@@ -90,7 +90,7 @@ export function CompanyProvider({ children }: PropsWithChildren): ReactElement {
     const params = new URLSearchParams(location.search)
     params.delete('tenantId')
     params.delete('page')
-    const pathname = pathAfterSwitch(location.pathname)
+    const pathname = pathAfterSwitch(location.pathname, (location.state as { fromIssued?: boolean } | null)?.fromIssued === true)
     void navigate(
       { pathname, search: params.toString() },
       pathname === '/issued/new' ? { state: { companyNotice: notice, companyId: target.id } } : undefined,

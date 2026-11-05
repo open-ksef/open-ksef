@@ -105,6 +105,12 @@ export function missingTaxIdError(form: DraftFormValue): ValidationIssue | null 
     : null
 }
 
+export function missingRateError(form: DraftFormValue): ValidationIssue | null {
+  return form.currency !== 'PLN' && !form.exchangeRate.trim()
+    ? { code: 'INV-VAL-092', field: 'exchangeRate', message: 'Podaj kurs waluty większy od zera' }
+    : null
+}
+
 export function toDraftRequest(form: DraftFormValue, storedRate?: number | null): IssuedInvoiceDraftRequest {
   const isCompany = form.buyer.kind === 'Company'
   const isForeign = form.buyer.kind === 'Foreign'

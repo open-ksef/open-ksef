@@ -33,6 +33,7 @@ import {
   emptyDraft,
   fromResponse,
   hasExemptLine,
+  missingRateError,
   missingTaxIdError,
   parseDecimal,
   rateToInput,
@@ -123,6 +124,8 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   const { setSwitchGuard } = useCompany()
   const [form, setForm] = useState<DraftFormValue>(() => (invoice ? fromResponse(invoice) : emptyDraft()))
   const baseline = useRef(JSON.stringify(form))
+  // Not invoice.version: a refetch moves the prop past the content this form holds, and sending that would hide the conflict.
+  const version = useRef(invoice?.version)
   const [errors, setErrors] = useState<ValidationIssue[]>([])
   const [warnings, setWarnings] = useState<ValidationIssue[]>(invoice?.warnings ?? [])
   const [failure, setFailure] = useState<string | null>(null)
@@ -150,7 +153,8 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   async function saveDraft(stay = false): Promise<IssuedInvoiceResponse> {
     const snapshot = JSON.stringify(form)
     const request = toDraftRequest(form, invoice?.exchangeRate)
-    const saved = invoice ? await updateIssuedInvoice(tenantId, invoice.id, request) : await createIssuedInvoice(tenantId, request)
+    const saved = invoice ? await updateIssuedInvoice(tenantId, invoice.id, request, version.current) : await createIssuedInvoice(tenantId, request)
+    version.current = saved.version
     if (form.currency !== 'PLN' && !form.exchangeRate.trim() && saved.exchangeRate) {
       const withServerRate = { ...form, exchangeRate: rateToInput(saved.exchangeRate), exchangeRateDate: saved.exchangeRateDate ?? null }
       baseline.current = JSON.stringify(withServerRate)
@@ -207,7 +211,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   })
 
   const issue = useMutation({
-    mutationFn: (target: IssuedInvoiceResponse) => issueIssuedInvoice(tenantId, target.id),
+    mutationFn: (target: IssuedInvoiceResponse) => issueIssuedInvoice(tenantId, target.id, target.version),
     onSuccess: (issued) => {
       queryClient.setQueryData(['issued-invoice', tenantId, issued.id], issued)
       void queryClient.invalidateQueries({ queryKey: ['seller-profile', tenantId] })
@@ -229,7 +233,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   })
 
   const remove = useMutation({
-    mutationFn: () => deleteIssuedInvoice(tenantId, invoice?.id ?? ''),
+    mutationFn: () => deleteIssuedInvoice(tenantId, invoice?.id ?? '', version.current),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
       navigate(`/issued?tenantId=${encodeURIComponent(tenantId)}`, { replace: true })
@@ -256,9 +260,9 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
       disabled={busy || !profile.isComplete}
       onClick={(event) => {
         issueOpener.current = event.currentTarget
-        const missingTaxId = missingTaxIdError(form)
-        if (missingTaxId) {
-          setErrors([missingTaxId])
+        const missing = missingTaxIdError(form) ?? missingRateError(form)
+        if (missing) {
+          setErrors([missing])
           return
         }
         prepareIssue.mutate()

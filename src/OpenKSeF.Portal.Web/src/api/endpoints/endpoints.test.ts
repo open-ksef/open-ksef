@@ -179,11 +179,19 @@ describe('issuing endpoints', () => {
     ])
     expect(apiClientMock.post.mock.calls).toEqual([
       ['/tenants/t-1/issued-invoices', draft],
-      ['/tenants/t-1/issued-invoices/i-1/issue'],
+      ['/tenants/t-1/issued-invoices/i-1/issue', undefined, { query: { version: undefined } }],
       ['/tenants/t-1/issued-invoices/i-1/copy'],
     ])
     expect(apiClientMock.put.mock.calls[0][0]).toBe('/tenants/t-1/issued-invoices/i-1')
     expect(apiClientMock.put.mock.calls[1][0]).toBe('/tenants/t-1/seller-profile')
-    expect(apiClientMock.delete).toHaveBeenCalledWith('/tenants/t-1/issued-invoices/i-1')
+    expect(apiClientMock.delete).toHaveBeenCalledWith('/tenants/t-1/issued-invoices/i-1', { query: { version: undefined } })
+
+    await issued.updateIssuedInvoice('t-1', 'i-1', draft, 7)
+    await issued.deleteIssuedInvoice('t-1', 'i-1', 7)
+    await issued.issueIssuedInvoice('t-1', 'i-1', 7)
+
+    expect(apiClientMock.put).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1', draft, { query: { version: 7 } })
+    expect(apiClientMock.delete).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1', { query: { version: 7 } })
+    expect(apiClientMock.post).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1/issue', undefined, { query: { version: 7 } })
   })
 })
