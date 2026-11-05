@@ -448,7 +448,7 @@ public class CredentialsControllerCrudTests : IDisposable
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var distinguishedName = new X500DistinguishedName("CN=ECDSA Test");
         var req = new CertificateRequest(distinguishedName, ecdsa, HashAlgorithmName.SHA256);
-        // KSeF certificates always carry this. Without it CreateFromEncryptedPem picks ECDH, which Windows CNG refuses for this key.
+        // CreateFromEncryptedPem picks ECDH for an EC key with no KeyUsage, and Windows CNG refuses it. KSeF certificates carry a signing KeyUsage.
         req.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
         using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(1));
 

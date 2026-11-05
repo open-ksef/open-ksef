@@ -87,7 +87,9 @@ public class CredentialsControllerSyncTests : IDisposable
                 Outcome: TenantSyncOutcome.Success,
                 FetchedInvoices: 5,
                 NewInvoices: 2,
-                SyncedAtUtc: syncedAt));
+                SyncedAtUtc: syncedAt,
+                QueuedDownloads: 4,
+                ErroredDownloads: 1));
 
         var controller = CreateController();
         var result = await controller.SyncNow(tenantId, CancellationToken.None);
@@ -98,6 +100,9 @@ public class CredentialsControllerSyncTests : IDisposable
         Assert.Equal(5, payload.FetchedInvoices);
         Assert.Equal(2, payload.NewInvoices);
         Assert.Equal(syncedAt, payload.SyncedAtUtc);
+        Assert.Equal(5, payload.FailedDownloads);
+        Assert.Equal(4, payload.QueuedDownloads);
+        Assert.Equal(1, payload.ErroredDownloads);
     }
 
     public void Dispose() => _db.Dispose();

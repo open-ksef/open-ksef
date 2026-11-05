@@ -130,6 +130,22 @@ public class KSeFGatewayQueryTests
     }
 
     [Fact]
+    public async Task LastRowAt_IsPermanentStorageDateOfTheLastRow()
+    {
+        var first = Summary(BuyerIdentifierType.Nip, "5261040828");
+        var last = Summary(BuyerIdentifierType.Nip, "5261040828");
+        last.PermanentStorageDate = To.AddHours(-1);
+        last.InvoicingDate = To.AddHours(-2);
+
+        var response = Response(first, last);
+        response.PermanentStorageHwmDate = new DateTimeOffset(To);
+
+        var result = await Gateway(response).QueryInvoicesAsync(Session, Criteria(InvoiceDirection.Issued));
+
+        Assert.Equal(To.AddHours(-1), result.LastRowAt);
+    }
+
+    [Fact]
     public async Task Continuation_IsLastRow_WhenTruncated()
     {
         var response = Response(Summary(BuyerIdentifierType.Nip, "5261040828"));

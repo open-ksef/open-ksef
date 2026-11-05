@@ -105,6 +105,41 @@ public class IssuedFeedApiTests : IDisposable
         return (await response.Content.ReadFromJsonAsync<PagedResult<InvoiceResponse>>())!;
     }
 
+    private async Task<JsonNode> FeedJsonAsync(Guid tenantId)
+    {
+        var response = await _client.GetAsync($"/api/tenants/{tenantId}/issued-invoices/feed");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<JsonNode>())!;
+    }
+
+    [Fact]
+    public async Task Feed_IssuedFetchIncomplete_FollowsTheSyncState_AndKeepsThePageShape()
+    {
+        var tenantId = await CreateTenantAsync();
+        Assert.False((await FeedJsonAsync(tenantId))["issuedFetchIncomplete"]!.GetValue<bool>());
+
+        var lastRun = DateTime.UtcNow;
+        var stateId = Guid.NewGuid();
+        await WithDbAsync(async db =>
+        {
+            db.SyncStates.Add(new SyncState { Id = stateId, TenantId = tenantId, LastSyncedAt = lastRun, LastSuccessfulSync = lastRun });
+            await db.SaveChangesAsync();
+        });
+
+        var incomplete = await FeedJsonAsync(tenantId);
+        Assert.True(incomplete["issuedFetchIncomplete"]!.GetValue<bool>());
+        Assert.Equal(0, incomplete["totalCount"]!.GetValue<int>());
+        Assert.Empty(incomplete["items"]!.AsArray());
+
+        await WithDbAsync(async db =>
+        {
+            (await db.SyncStates.SingleAsync(s => s.Id == stateId)).IssuedContinuationAt = lastRun.AddMinutes(-2);
+            await db.SaveChangesAsync();
+        });
+
+        Assert.False((await FeedJsonAsync(tenantId))["issuedFetchIncomplete"]!.GetValue<bool>());
+    }
+
     [Fact]
     public async Task Feed_PagesAcrossBothTables_WithoutGapsOrDuplicates_EvenOnTiedTimestamps()
     {

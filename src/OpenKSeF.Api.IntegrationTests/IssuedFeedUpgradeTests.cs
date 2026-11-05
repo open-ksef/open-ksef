@@ -3,6 +3,7 @@ using KSeF.Client.Core.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -40,6 +41,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
     private readonly IKSeFGateway _gateway = Substitute.For<IKSeFGateway>();
     private readonly INotificationService _notifications = Substitute.For<INotificationService>();
+    private readonly ILogger<TenantSyncService> _logger = Substitute.For<ILogger<TenantSyncService>>();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly List<KSeFQueryCriteria> _issuedQueries = [];
 
@@ -74,7 +76,13 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero }),
         new XmlDownloadBlocks(),
-        NullLogger<TenantSyncService>.Instance);
+        _logger);
+
+    private List<string> Logged(LogLevel level, string text) => _logger.ReceivedCalls()
+        .Where(c => c.GetMethodInfo().Name == nameof(ILogger.Log) && (LogLevel)c.GetArguments()[0]! == level)
+        .Select(c => c.GetArguments()[2]!.ToString()!)
+        .Where(m => m.Contains(text))
+        .ToList();
 
     private static KSeFInvoiceQueryResult Page(IReadOnlyList<KSeFInvoiceHeader> invoices, DateTime? continuationAt = null, bool truncated = false) =>
         new(invoices, invoices.Count, 0, 100, continuationAt, truncated);
@@ -436,6 +444,97 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
             Assert.Equal(sales.Select(s => s.Number), stored.Order());
             Assert.True((await db.SyncStates.SingleAsync()).IssuedContinuationAt > DateTime.UtcNow.AddMinutes(-15));
         }
+
+        Assert.Empty(Logged(LogLevel.Warning, "stalled"));
+    }
+
+    [Fact]
+    public async Task SecondPageFailsToStore_ContinuationStaysOnLastStoredRow_AndItsRowsAreAbsent()
+    {
+        await MigrateAndSeedExistingTenantAsync();
+        var start = DateTime.UtcNow.AddMonths(-2);
+        var at = (int n) => start.AddMinutes(n);
+        _issued = c =>
+        {
+            var rows = Enumerable.Range(c.PageOffset * c.PageSize, c.PageSize).ToList();
+            var invoices = rows
+                .Select(n => Sale($"KSEF-{n:D3}", vendorName: n == 199 ? new string('x', 600) : "Moja firma"))
+                .ToList();
+            return new KSeFInvoiceQueryResult(invoices, invoices.Count, c.PageOffset, c.PageSize, c.DateTo, false, at(rows[^1]));
+        };
+
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId, UserId)).Outcome);
+
+        Assert.Equal(2, _issuedQueries.Count);
+        await using (var db = NewContext())
+        {
+            Assert.Equal(at(99), (await db.SyncStates.SingleAsync()).IssuedContinuationAt!.Value, TimeSpan.FromMilliseconds(1));
+            var stored = await db.InvoiceHeaders.Where(i => i.Direction == InvoiceDirection.Issued).Select(i => i.KSeFInvoiceNumber).ToListAsync();
+            Assert.Equal(Enumerable.Range(0, 100).Select(n => $"KSEF-{n:D3}"), stored.Order());
+        }
+    }
+
+    [Fact]
+    public async Task ThousandRowsOfOneTimestamp_WarnOnEachStalledRun_WithoutMovingTheContinuation()
+    {
+        await MigrateAndSeedExistingTenantAsync();
+        var now = DateTime.UtcNow.AddDays(-5);
+        var at = now.AddTicks(-(now.Ticks % 10));
+        await SetContinuationAsync(at);
+        _issued = KsefPages(Enumerable.Range(0, 1200).Select(n => (at, $"KSEF-{n:D4}")).ToList());
+
+        for (var run = 1; run <= 2; run++)
+        {
+            await using var db = NewContext();
+            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            Assert.Equal(run, Logged(LogLevel.Warning, "stalled").Count);
+        }
+
+        await using (var db = NewContext())
+        {
+            var state = await db.SyncStates.SingleAsync();
+            Assert.Equal(at, state.IssuedContinuationAt);
+            Assert.True(state.IssuedFetchIncomplete());
+            Assert.Equal(1000, await db.InvoiceHeaders.CountAsync(i => i.Direction == InvoiceDirection.Issued));
+        }
+    }
+
+    [Fact]
+    public async Task IssuedFetchIncomplete_TrueAfter429_FalseOnceTheRunFinishes_AndWhileSkipped()
+    {
+        await MigrateAndSeedExistingTenantAsync();
+        _issued = _ => throw new KsefApiException("rate limited", HttpStatusCode.TooManyRequests);
+
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId, UserId)).Outcome);
+        await using (var db = NewContext())
+            Assert.True((await db.SyncStates.SingleAsync()).IssuedFetchIncomplete());
+
+        _issued = c => Page([], c.DateTo);
+        await using (var db = NewContext())
+            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+        await using (var db = NewContext())
+            Assert.False((await db.SyncStates.SingleAsync()).IssuedFetchIncomplete());
+
+        var queries = _issuedQueries.Count;
+        await using (var db = NewContext())
+            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+        Assert.Equal(queries, _issuedQueries.Count);
+        await using (var db = NewContext())
+            Assert.False((await db.SyncStates.SingleAsync()).IssuedFetchIncomplete());
+
+        await using (var db = NewContext())
+        {
+            var state = await db.SyncStates.SingleAsync();
+            state.IssuedContinuationAt = DateTime.UtcNow.AddHours(-4);
+            await db.SaveChangesAsync();
+        }
+        _issued = _ => throw new KsefApiException("rate limited", HttpStatusCode.TooManyRequests);
+        await using (var db = NewContext())
+            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+        await using (var db = NewContext())
+            Assert.True((await db.SyncStates.SingleAsync()).IssuedFetchIncomplete());
     }
 
     [Fact]
@@ -462,11 +561,13 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         await using (var db = NewContext())
             Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId, UserId)).Outcome);
         Assert.Empty(_issuedQueries);
+        Assert.Single(Logged(LogLevel.Information, "skipped"));
 
         await SetContinuationAsync(DateTime.UtcNow.AddMinutes(-16));
         await using (var db = NewContext())
             await SyncService(db).SyncTenantAsync(_tenantId, UserId);
         Assert.Single(_issuedQueries);
+        Assert.Single(Logged(LogLevel.Information, "skipped"));
     }
 
     [Fact]

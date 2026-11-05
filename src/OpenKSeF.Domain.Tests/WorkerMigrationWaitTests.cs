@@ -132,6 +132,24 @@ public sealed class WorkerMigrationWaitTests : IDisposable
     }
 
     [Fact]
+    public async Task Helper_OtherExceptionAfterCancel_StopsWithCancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        var scopeFactory = Substitute.For<IServiceScopeFactory>();
+        scopeFactory.CreateScope().Returns(_ =>
+        {
+            cts.Cancel();
+            throw new InvalidOperationException("Connection closed during shutdown");
+        });
+        var logger = new ListLogger<WorkerMigrationWaitTests>();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => MigrationHelper.WaitForMigrationsAsync(
+            scopeFactory, logger, cts.Token, TimeSpan.FromMilliseconds(20)));
+
+        Assert.DoesNotContain(logger.Levels, l => l >= LogLevel.Error);
+    }
+
+    [Fact]
     public async Task SyncLoop_PendingMigrations_RunsNoCycle_LogsNoError()
     {
         await using var services = Services();
