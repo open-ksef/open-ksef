@@ -350,8 +350,12 @@ export function StartPage(): ReactElement {
                 isLoading={feedQuery.isLoading}
                 error={feedQuery.error}
                 isEmpty={recentIssued.length === 0}
-                emptyTitle="Nie masz jeszcze wystawionych faktur"
-                emptyMessage="Wystawiona faktura pojawi się tutaj razem ze statusem w KSeF."
+                emptyTitle={feedQuery.data?.issuedFetchIncomplete ? 'Lista może być niepełna' : 'Nie masz jeszcze wystawionych faktur'}
+                emptyMessage={
+                  feedQuery.data?.issuedFetchIncomplete
+                    ? 'Ostatnie pobieranie faktur sprzedaży z KSeF nie objęło całego okresu.'
+                    : 'Wystawiona faktura pojawi się tutaj razem ze statusem w KSeF.'
+                }
                 onRetry={() => void feedQuery.refetch()}
               >
                 <ul className="start-list">

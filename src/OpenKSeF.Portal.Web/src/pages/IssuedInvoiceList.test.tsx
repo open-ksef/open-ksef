@@ -18,7 +18,7 @@ vi.mock('@/api/endpoints/credentials', () => ({ listCredentials: vi.fn() }))
 vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedFeed: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn() }))
 
-const NOTE = 'Pobieranie faktur sprzedaży z KSeF jeszcze trwa. Lista może być niepełna.'
+const NOTE = 'Ostatnie pobieranie faktur sprzedaży z KSeF nie objęło całego okresu. Lista może być niepełna.'
 const NO_INVOICES = 'Nie masz jeszcze wystawionych faktur'
 const NO_MATCHES = 'Brak faktur spełniających kryteria'
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
@@ -87,6 +87,14 @@ describe('Wystawione faktury, niepełne pobieranie', () => {
     expect(container.textContent).not.toContain(NO_INVOICES)
     expect(container.textContent).not.toContain(NO_MATCHES)
     expect(container.querySelector('.ui-pagination')).toBeNull()
+  })
+
+  it('an empty list with the flag and no token keeps the token message', async () => {
+    vi.mocked(listCredentials).mockResolvedValue([{ tenantId: 'a', tenantDisplayName: 'Firma A', hasCredential: false, credentialType: null, lastUpdatedAt: null }])
+    await render(feed([], { issuedFetchIncomplete: true }))
+
+    expect(container.textContent).toContain('Do wysłania do KSeF potrzebny jest token z uprawnieniem zapisu.')
+    expect(note()?.textContent).toBe(NOTE)
   })
 
   it('a filtered empty list with the flag shows the note instead of claiming no matches', async () => {

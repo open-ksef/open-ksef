@@ -235,6 +235,21 @@ describe('StartPage', () => {
       expect(vi.mocked(listIssuedInvoices)).toHaveBeenCalledWith('a', expect.objectContaining({ pageSize: 100 }))
     })
 
+    it('an empty feed with the fetch flag does not claim there are no issued invoices', async () => {
+      useData()
+      vi.mocked(listIssuedFeed).mockResolvedValue({ ...paged([]), issuedFetchIncomplete: true })
+      await render()
+      expect(text()).not.toContain('Nie masz jeszcze wystawionych faktur')
+      expect(text()).toContain('Ostatnie pobieranie faktur sprzedaży z KSeF nie objęło całego okresu.')
+    })
+
+    it('an empty feed without the fetch flag says there are no issued invoices', async () => {
+      useData()
+      await render()
+      expect(text()).toContain('Nie masz jeszcze wystawionych faktur')
+      expect(text()).not.toContain('Ostatnie pobieranie')
+    })
+
     it('lists a sale from another tool in the recent card, opening its details, with no attention item', async () => {
       useData()
       vi.mocked(listIssuedInvoices).mockImplementation(async () => paged([]))

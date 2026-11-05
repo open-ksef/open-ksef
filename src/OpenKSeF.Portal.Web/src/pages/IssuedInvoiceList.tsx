@@ -104,7 +104,7 @@ export function IssuedInvoiceListPage(): ReactElement {
   const unfilteredEmpty = listQuery.isSuccess && rows.length === 0 && !status && !month && !q && page === 1
   const hasCredential = credentialsQuery.data?.find((row) => row.tenantId === tenantId)?.hasCredential
   const incomplete = listQuery.data?.issuedFetchIncomplete ?? false
-  const stateCard = unfilteredEmpty && credentialsQuery.isSuccess && !incomplete
+  const stateCard = unfilteredEmpty && credentialsQuery.isSuccess && (!incomplete || hasCredential === false)
   const totalCount = listQuery.data?.totalCount ?? 0
   const firstRow = (page - 1) * PAGE_SIZE + 1
   const pastLastPage = listQuery.isSuccess && rows.length === 0 && totalCount > 0 && page > totalPages
@@ -217,7 +217,7 @@ export function IssuedInvoiceListPage(): ReactElement {
       {incomplete ? (
         <div className="inv-alert inv-alert--info company-note" role="status" data-testid="issued-fetch-incomplete">
           <Icon name="clock" />
-          <span>Pobieranie faktur sprzedaży z KSeF jeszcze trwa. Lista może być niepełna.</span>
+          <span>Ostatnie pobieranie faktur sprzedaży z KSeF nie objęło całego okresu. Lista może być niepełna.</span>
         </div>
       ) : null}
 
