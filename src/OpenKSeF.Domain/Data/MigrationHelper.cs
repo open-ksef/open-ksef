@@ -3,6 +3,7 @@ using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace OpenKSeF.Domain.Data;
@@ -65,6 +66,34 @@ public static class MigrationHelper
                     cancellationToken);
                 await db.Database.CloseConnectionAsync();
             }
+        }
+    }
+
+    /// <summary>The API owns migrations. Worker loops call this first, so a deploy never runs a cycle on the old schema.</summary>
+    public static async Task WaitForMigrationsAsync(
+        IServiceScopeFactory scopeFactory,
+        ILogger logger,
+        CancellationToken cancellationToken,
+        TimeSpan? pollInterval = null)
+    {
+        while (true)
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var pending = (await db.Database.GetPendingMigrationsAsync(cancellationToken)).Count();
+                if (pending == 0)
+                    return;
+
+                logger.LogInformation("Waiting for the API to apply {Count} pending migrations", pending);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Could not read migration state. Retrying");
+            }
+
+            await Task.Delay(pollInterval ?? TimeSpan.FromSeconds(5), cancellationToken);
         }
     }
 

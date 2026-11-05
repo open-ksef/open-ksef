@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactElement } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '@/auth/useAuth'
+import { BrandMark } from '@/components/BrandMark'
 
 type AuthTab = 'login' | 'register'
 
@@ -81,7 +82,9 @@ export function LoginPage(): ReactElement {
   return (
     <main className="auth-page">
       <div className="auth-card">
-        <div className="auth-logo" aria-hidden="true">⚡</div>
+        <div className="auth-logo">
+          <BrandMark size={40} />
+        </div>
         <h1 className="auth-card__title">OpenKSeF</h1>
         <p className="auth-card__desc">
           {tab === 'login'

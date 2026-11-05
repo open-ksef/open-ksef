@@ -7,6 +7,7 @@ import type { User } from 'oidc-client-ts'
 
 const mockManager = {
   getUser: vi.fn<() => Promise<User | null>>(),
+  signinResourceOwnerCredentials: vi.fn<() => Promise<User>>(),
   signinRedirect: vi.fn<() => Promise<void>>(),
   signoutRedirect: vi.fn<() => Promise<void>>(),
   signinRedirectCallback: vi.fn<() => Promise<void>>(),
@@ -55,6 +56,55 @@ describe('AuthProvider', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
+  })
+
+  async function renderContext() {
+    mockManager.getUser.mockResolvedValue(null)
+    const { AuthProvider } = await import('./AuthProvider')
+    const { AuthContext } = await import('./AuthContext')
+
+    const setContextValue = vi.fn<(value: ContextType<typeof AuthContext>) => void>()
+    function Consumer() {
+      const value = useContext(AuthContext)
+      useEffect(() => {
+        setContextValue(value)
+      }, [value])
+      return null
+    }
+
+    await act(async () => {
+      root.render(
+        <AuthProvider>
+          <Consumer />
+        </AuthProvider>,
+      )
+      await flushPromises()
+    })
+
+    return setContextValue.mock.calls.at(-1)![0]!
+  }
+
+  const registerData = { email: 'a@b.pl', password: 'Haslo1234!' }
+
+  it('shows the API error of a refused registration and does not log in', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ code: 'registration_disabled', error: 'Rejestracja nowych kont jest wyłączona.' }),
+      { status: 403 },
+    )))
+
+    const context = await renderContext()
+
+    await expect(context.register(registerData)).rejects.toThrow('Rejestracja nowych kont jest wyłączona.')
+    expect(mockManager.signinResourceOwnerCredentials).not.toHaveBeenCalled()
+  })
+
+  it('says the account exists when login right after registration fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })))
+    mockManager.signinResourceOwnerCredentials.mockRejectedValue(new Error('Account is not fully set up'))
+
+    const context = await renderContext()
+
+    await expect(context.register(registerData)).rejects.toThrow('Konto zostało utworzone')
   })
 
   it('exposes login/logout and access token from current user', async () => {

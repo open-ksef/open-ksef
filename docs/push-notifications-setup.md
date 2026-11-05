@@ -7,7 +7,7 @@ Push notifications let the mobile app receive real-time alerts when new invoices
 | **1. SignalR (local push)** | Direct WebSocket connection | App is connected to the API | None (always on) |
 | **2. Relay (team-operated)** | HTTP POST to relay server | App is in background, any network | Toggle ON in admin wizard (default) |
 | **3. Direct FCM/APNs** | Firebase / Apple push | App is in background, own Firebase | Advanced: paste Firebase JSON |
-| **4. Email fallback** | SMTP | Always | Configure SMTP in admin wizard |
+| **4. Email** | SMTP | Manual sync only | Off by default: set `Email__*` on the API, see [Layer 4](#layer-4-email) |
 
 Most self-hosted admins only need **Layer 1 + Layer 2** which require no Firebase setup at all.
 
@@ -25,7 +25,7 @@ New invoice synced from KSeF
     │
     ├─ 3. Direct FCM/APNs: if own Firebase configured, send directly
     │
-    └─ 4. Email: send notification email to tenant email address
+    └─ 4. Email: manual sync only, to the tenant notification address, when enabled
 ```
 
 ### Layer 1: SignalR (local push)
@@ -53,9 +53,9 @@ For admins who want full control over push delivery, the existing direct FCM/APN
 
 See the [Firebase setup section](#android--firebase-cloud-messaging-fcm) below.
 
-### Layer 4: Email fallback
+### Layer 4: Email
 
-If a tenant has a notification email configured, the system always sends an email notification regardless of push delivery success.
+Off by default (`Email__Enabled`). It needs `Email__*` variables in the `api` service environment: `.env` alone does not pass them, and SMTP from the wizard is for Keycloak only. When enabled, a manual sync emails the tenant notification address. The Worker never sends email.
 
 ---
 
@@ -151,9 +151,9 @@ When using the relay service, iOS push notifications work out of the box since t
 ### Remote push (relay or direct)
 
 1. Open http://localhost:8080 and log in to the portal
-2. Navigate to **Urządzenia** (Devices)
-3. Find the registered device in the table
-4. Click **Testuj** — the API sends a test push and reports success/failure
+2. Go to **Telefon**
+3. Find the device under **Moje urządzenia**
+4. Click **Wyślij test** — the API sends a test push and reports success/failure
 
 ### Automatic confirmation on registration
 
@@ -171,10 +171,10 @@ Devices with `device-*` tokens **only receive SignalR real-time notifications** 
 
 ## Background Sync Notifications (Worker)
 
-The Worker process handles background KSeF synchronization. When new invoices are discovered during sync, the Worker sends push notifications using the same layered delivery as the API:
+The Worker process handles background KSeF synchronization. When new invoices are discovered during sync, the Worker sends push notifications:
 
 - **Relay** → FCM → APNs (no SignalR, since the Worker has no hub connection)
-- **Email fallback** if tenant has a notification email
+- No email
 
 The Worker reads push configuration from the same database (`SystemConfig` table) and supports the same `Firebase__CredentialsJson` environment variable as the API.
 
@@ -199,9 +199,8 @@ The relay has its own dedicated compose file (`docker-compose.push-relay.yml`), 
 # Dev (build from source):
 docker compose -f docker-compose.push-relay.yml up -d --build
 
-# Prod (pull from GHCR):
-PUSH_RELAY_IMAGE=ghcr.io/open-ksef/openksef-push-relay:latest \
-  docker compose -f docker-compose.push-relay.yml up -d
+# With an image you built and pushed yourself (the release workflow publishes no relay image):
+PUSH_RELAY_IMAGE=<your-image> docker compose -f docker-compose.push-relay.yml up -d --no-build
 ```
 
 ### Production: Cloudflare + Docker
@@ -264,7 +263,7 @@ Headers:
 |---------|-------|-----|
 | No notifications at all | No push providers configured | Enable relay in admin wizard or configure Firebase |
 | SignalR not connecting | Auth token expired or wrong server URL | Re-login in the mobile app |
-| Relay returns 401 | Invalid HMAC signature or unregistered instance | Check registration status in Settings, re-register if needed |
+| Relay returns 401 | Invalid HMAC signature or unregistered instance | **Ustawienia** > **Administracja instancji** > **Powiadomienia push**: **Zarejestruj ponownie** |
 | Relay returns 403 | Instance has been disabled on the relay | Contact OpenKSeF team |
 | Relay returns 429 | Rate limit exceeded | Reduce push frequency or contact OpenKSeF team |
 | Relay returns 502 | Firebase/APNs credentials invalid on relay | Check relay logs, verify Firebase JSON |
@@ -280,11 +279,8 @@ Headers:
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `FIREBASE_CREDENTIALS_JSON` | For direct FCM | *(none — uses relay)* | Firebase service account JSON (single line). Used by both API and Worker. |
-| `APNS_BUNDLE_ID` | For direct iOS | `com.openksef.mobile` | iOS app bundle identifier |
-| `APNS_BASE_URL` | For direct iOS | `https://api.push.apple.com` | APNs endpoint |
-| `APNS_KEY_ID` | For direct iOS | *(none)* | APNs Auth Key ID |
-| `APNS_TEAM_ID` | For direct iOS | *(none)* | Apple Developer Team ID |
-| `APNS_AUTH_KEY_P8` | For direct iOS | *(none)* | Contents of the `.p8` private key file |
+
+Direct APNs is not usable from an instance: `ApnsPushProvider` sends no authentication, and the shipped `docker-compose.yml` passes no APNs variables. The relay holds the APNs credentials.
 
 ### PushRelay service
 

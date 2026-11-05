@@ -31,6 +31,109 @@ public class InvoiceServiceTests : IDisposable
         Assert.Equal(expectedNotifications, _notifications.Count);
     }
 
+    [Fact]
+    public async Task ApplyInvoiceXmlAsync_FillsDueDate_UpsertKeepsIt_AndNeitherTouchesPaid()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var tenantId = Guid.NewGuid();
+        var paidAt = new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
+        var ids = await sut.UpsertInvoicesAsync(tenantId, [CreateInvoice()], notify: false);
+        var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
+        Assert.Null(stored.DueDate);
+        stored.IsPaid = true;
+        stored.PaidAt = paidAt;
+        await _db.SaveChangesAsync();
+
+        await sut.ApplyInvoiceXmlAsync(ids[0], null, [], new DateOnly(2026, 11, 20));
+        Assert.Equal(new DateOnly(2026, 11, 20), stored.DueDate);
+        Assert.NotNull(stored.XmlFetchedAt);
+
+        await sut.UpsertInvoicesAsync(tenantId, [CreateInvoice()], notify: false);
+        Assert.Equal(new DateOnly(2026, 11, 20), stored.DueDate);
+        Assert.True(stored.IsPaid);
+        Assert.Equal(paidAt, stored.PaidAt);
+    }
+
+    [Fact]
+    public async Task UpsertInvoicesAsync_OtherDirection_LeavesExistingRowUntouched()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var tenantId = Guid.NewGuid();
+        var received = CreateInvoice();
+        var ids = await sut.UpsertInvoicesAsync(tenantId, [received], notify: false);
+        var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
+        stored.DueDate = new DateOnly(2026, 11, 20);
+        stored.VendorBankAccount = "PL61109010140000071219812874";
+        stored.IsPaid = true;
+        var updatedAt = stored.LastUpdatedAt;
+        await _db.SaveChangesAsync();
+
+        var newIds = await sut.UpsertInvoicesAsync(
+            tenantId,
+            [CreateInvoice() with { VendorName = "Nadpisane", AmountGross = 1m, Direction = InvoiceDirection.Issued, BuyerIdType = "Other" }],
+            notify: true);
+
+        Assert.Empty(newIds);
+        Assert.Equal(0, _notifications.Count);
+        Assert.Equal(InvoiceDirection.Received, stored.Direction);
+        Assert.Equal(received.VendorName, stored.VendorName);
+        Assert.Equal(received.AmountGross, stored.AmountGross);
+        Assert.Equal(new DateOnly(2026, 11, 20), stored.DueDate);
+        Assert.Equal("PL61109010140000071219812874", stored.VendorBankAccount);
+        Assert.Equal(updatedAt, stored.LastUpdatedAt);
+        Assert.Null(stored.BuyerIdType);
+        Assert.True(stored.IsPaid);
+    }
+
+    [Fact]
+    public async Task ApplyInvoiceXmlAsync_IssuedRow_GetsLinesOnly()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice() with { Direction = InvoiceDirection.Issued }], notify: false);
+
+        await sut.ApplyInvoiceXmlAsync(ids[0], "PL61109010140000071219812874", [Line()], new DateOnly(2026, 11, 20));
+
+        var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
+        Assert.Null(stored.DueDate);
+        Assert.Null(stored.VendorBankAccount);
+        Assert.NotNull(stored.XmlFetchedAt);
+        Assert.Equal(1, await _db.InvoiceLines.CountAsync(l => l.InvoiceHeaderId == ids[0]));
+    }
+
+    [Fact]
+    public async Task ApplyInvoiceXmlAsync_KeepsStoredAccountAndLines()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()], notify: false);
+        await sut.ApplyInvoiceXmlAsync(ids[0], "PL61109010140000071219812874", [Line()], null);
+        var lineId = (await _db.InvoiceLines.SingleAsync()).Id;
+
+        await sut.ApplyInvoiceXmlAsync(ids[0], "PL00000000000000000000000000", [Line(), Line()], new DateOnly(2026, 11, 20));
+
+        var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
+        Assert.Equal("PL61109010140000071219812874", stored.VendorBankAccount);
+        Assert.Equal(new DateOnly(2026, 11, 20), stored.DueDate);
+        Assert.Equal(lineId, (await _db.InvoiceLines.SingleAsync()).Id);
+    }
+
+    private static InvoiceLineDto Line() => new(1, "Towar", "szt", 1m, 100m, 123m, 100m, 123m, 23m, "23");
+
+    [Theory]
+    [InlineData("2026-11-03", "2026-11-03T22:59:00Z", false, false)]
+    [InlineData("2026-11-03", "2026-11-03T23:00:00Z", false, true)]
+    [InlineData("2026-07-03", "2026-07-03T21:59:00Z", false, false)]
+    [InlineData("2026-07-03", "2026-07-03T22:00:00Z", false, true)]
+    [InlineData("2026-11-04", "2026-11-03T12:00:00Z", false, false)]
+    [InlineData("2026-11-02", "2026-11-03T12:00:00Z", false, true)]
+    [InlineData("2026-11-02", "2026-11-03T12:00:00Z", true, false)]
+    [InlineData(null, "2026-11-03T12:00:00Z", false, false)]
+    public void IsOverdue_UsesTodayInWarsaw_NotPaidNotUndated(string? due, string now, bool isPaid, bool expected)
+    {
+        var dueDate = due is null ? (DateOnly?)null : DateOnly.Parse(due, System.Globalization.CultureInfo.InvariantCulture);
+
+        Assert.Equal(expected, Entities.InvoiceHeader.IsOverdue(isPaid, dueDate, DateTimeOffset.Parse(now, System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
     private static InvoiceDto CreateInvoice() => new(
         Number: "KSEF-1",
         ReferenceNumber: "REF-1",
@@ -58,6 +161,8 @@ public class InvoiceServiceTests : IDisposable
             Count++;
             return Task.CompletedTask;
         }
+
+        public Task NotifyIssuedInvoiceStuckAsync(Guid tenantId, Guid issuedInvoiceId, string? number) => Task.CompletedTask;
 
         public Task SendConfirmationAsync(string deviceToken, Platform platform) => Task.CompletedTask;
 

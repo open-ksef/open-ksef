@@ -37,7 +37,7 @@ New code must respect this layering. Never add a reference from Domain to any up
 
 ### CIRFMF KSeF.Client library — library-first principle
 
-The `OpenKSeF.Sync` project uses the [CIRFMF KSeF.Client](https://github.com/CIRFMF/ksef-client-csharp) NuGet package (`KSeF.Client Version="2.*"`) as the primary interface to the KSeF API. Before writing custom code for KSeF communication or data extraction, always check what the library already provides:
+The `OpenKSeF.Sync` project uses the [CIRFMF KSeF.Client](https://github.com/CIRFMF/ksef-client-csharp) NuGet package (`KSeF.Client` and `KSeF.Client.Core` `Version="[2.9.0]"`, pinned exactly, restored only from the CIRFMF feed via `packageSourceMapping` in `src/nuget.config`) as the primary interface to the KSeF API. Upgrade them only in their own PR, and run the opt-in KSeF TEST send on that branch and put the result in the PR: `KSEF_TEST_SEND=1 dotnet test src/OpenKSeF.Domain.Tests --filter Category=KSeFTest`. Before writing custom code for KSeF communication or data extraction, always check what the library already provides:
 
 - `IKSeFClient.GetInvoiceAsync(ksefNumber, accessToken)` — downloads full invoice XML as `string`
 - `IKSeFClient.QueryInvoiceMetadataAsync()` — returns `InvoiceSummary` (amounts, dates, NIP, invoice number) but no invoice body details like bank accounts
@@ -48,7 +48,7 @@ The CIRFMF library handles API communication but does **not** parse FA(2)/FA(3) 
 
 ### KSeF documentation reference
 
-The `ksef-docs/` folder (sibling to `open-ksef/` in the workspace) is a clone of [CIRFMF/ksef-docs](https://github.com/CIRFMF/ksef-docs) and contains:
+`ksef-docs/` is not in this repo. Clone [CIRFMF/ksef-docs](https://github.com/CIRFMF/ksef-docs) as a sibling of `open-ksef/`, or read it with `gh api repos/CIRFMF/ksef-docs/contents/<path>`. It contains:
 
 - Official KSeF API integrator guide (Polish)
 - `faktury/schemy/FA/` — XSD schemas for FA(2) and FA(3) invoice XML structures
@@ -104,11 +104,13 @@ The project uses direct `ApplicationDbContext` injection -- there is no generic 
 One-command bootstrap:
 
 ```powershell
-./scripts/dev-env-up.ps1          # start Docker, configure Keycloak, create test user
+./scripts/dev-env-up.ps1 -SkipNgrok  # start Docker, configure Keycloak, create test user (without -SkipNgrok: public ngrok tunnel)
 ./scripts/dev-env-down.ps1        # stop all (add -RemoveVolumes for clean state)
 ```
 
-The script copies `.env.test` to `.env` if missing. `.env.test` contains deterministic dev credentials with placeholder values for secrets. Real credentials (CIRFMF NuGet PAT, KSeF tokens) must be set in `.env` -- see `.env.example` for the full list.
+`.env.test` is gitignored. On a fresh clone the script creates it from `.env.test.example`, generates `ENCRYPTION_KEY`, and stops until `NUGET_CIRFMF_USER` and `NUGET_CIRFMF_PAT` are set there. It then copies `.env.test` to `.env` if missing. `E2E_TEST_NIP` and `E2E_TEST_KSEF_TOKEN` are optional.
+
+A fresh stack has no `openksef` realm: the script stops and asks for the setup wizard. Complete it at http://localhost:8080 (Keycloak admin `admin` / `admin`), never in Relay mode (step 5: **Tylko lokalne (SignalR)**), because Relay registers the dev stack on the production relay. Then run `./scripts/dev-env-up.ps1 -SkipBuild -SkipNgrok`.
 
 ### URLs (after dev-env-up)
 
@@ -133,15 +135,22 @@ The script copies `.env.test` to `.env` if missing. `.env.test` contains determi
 
 | Item | Value |
 |------|-------|
-| NIP | `1111111111` |
-| KSeF token | stored in `E2E_TEST_KSEF_TOKEN` in `.env.test` |
-| KSeF environment | `https://ksef-test.mf.gov.pl/api` (docker default) |
+| NIP | `E2E_TEST_NIP` in `.env.test` (team KSeF TEST company; same value as `KSEF_TEST_NIP`, never commit it) |
+| KSeF token | `E2E_TEST_KSEF_TOKEN` in `.env.test` (gitignored; KSeF TEST token for that NIP, ask the team, never commit) |
+| KSeF environment | `KSEF_BASE_URL=test` -> KSeF.Client `KsefEnvironmentsUris.TEST` (`https://api-test.ksef.mf.gov.pl/v2`) |
+| First-sync lookback | `Sync__InitialSyncMonthsBack` = `SYNC_INITIAL_MONTHS_BACK` (dev default 12 months) |
+
+Both `E2E_TEST_NIP` and `E2E_TEST_KSEF_TOKEN` must be set, otherwise provisioning is skipped.
+Sync imports received (`Subject2`) metadata, then issued (`Subject1`) metadata: 12 months on the first run, no notifications for issued. XML comes last, from one queue per NIP: new received, undated unpaid received, issued without lines. Worker: 60 downloads per NIP per cycle, 4 s apart. Manual sync: 15 downloads per run, 150 ms apart. A row that fails moves behind others in its tier. A 429 stops the NIP until Retry-After.
+
+KSeF TEST rate limit: 20 `invoices/query/metadata` requests per hour per NIP. A first sync with a 12-month lookback uses 4+ of them (3-month windows plus paging), and every `dev-env-up` re-run restarts the worker, which syncs on startup. The script skips its own sync when the tenant synced successfully within the last hour. On 429 (`Przekroczono limit 20 żądań na godzinę`) the script prints `PARTIAL` and exits 1: wait for the window to reset, then run `powershell -File scripts/setup-test-data.ps1` once. Do not loop it.
 
 The script is **idempotent** -- re-running skips existing data. It:
 1. Authenticates as `testuser` via OIDC direct-access grant
 2. Creates tenant with the test NIP if missing
-3. Adds KSeF credentials (token) to the tenant
-4. Triggers invoice sync from KSeF test
+3. Adds KSeF credentials (token) to the tenant if missing (to rotate the token, delete the credential in the portal first)
+4. Triggers invoice sync from KSeF test (incremental after the first run; skipped if synced within the last hour or with `-SkipSync`)
+5. Exits 1 with a `PARTIAL` summary if the sync failed or the tenant has 0 invoices
 
 Run standalone: `./scripts/setup-test-data.ps1` (requires Docker stack + test user)
 
@@ -151,12 +160,12 @@ Portal `/login` uses ROPC grant (no Keycloak redirect), Google IdP brokering, an
 
 ## MCP servers for agent testing
 
-Configured in `.cursor/mcp.json` (project-level). All connect to the local Docker stack.
+Configured in `.cursor/mcp.json` (Cursor only, gitignored, not in the repo). Claude Code reads `.mcp.json`; none is committed in this repo. All connect to the local Docker stack.
 
 | Server | Package | Purpose |
 |--------|---------|---------|
 | **playwright** | `@playwright/mcp` | Browse portal UI, fill forms, verify pages via accessibility tree. Config: `.cursor/playwright-mcp.config.json` (headless chromium, 1280x720, saveTrace). |
-| **postgres** | `@modelcontextprotocol/server-postgres` | Read-only SQL queries on `openksef` database. Inspect `tenants`, `invoice_headers`, `ksef_credentials`, `sync_states`, `device_tokens`. |
+| **postgres** | `crystaldba/postgres-mcp` (restricted mode, Docker) | Read-only SQL queries on `openksef` database. Inspect `"Tenants"`, `"InvoiceHeaders"`, `"KSeFCredentials"`, `"SyncStates"`, `"DeviceTokens"` (PascalCase, quote them). |
 | **keycloak** | `keycloak-mcp` | Manage Keycloak users/realms/clients. Tools: `create-user`, `delete-user`, `list-users`, `list-clients`, `assign-client-role`, etc. |
 | **context7** | (global) | Look up library/framework documentation on demand. |
 
@@ -164,11 +173,10 @@ Configured in `.cursor/mcp.json` (project-level). All connect to the local Docke
 
 1. **Start environment**: run `./scripts/dev-env-up.ps1` via shell
 2. **Browse portal**: use Playwright MCP to navigate http://localhost:8080, log in as `testuser`, inspect pages
-3. **Query database**: use Postgres MCP to run SQL (e.g. `SELECT * FROM tenants`)
+3. **Query database**: use Postgres MCP to run SQL (e.g. `SELECT * FROM "Tenants"`)
 4. **Manage users**: use Keycloak MCP to create/delete test users dynamically
 5. **Run unit tests**: `./scripts/run-all-tests.ps1` or individual `dotnet test` / `npm test`
-6. **Run Portal E2E**: `./scripts/run-e2e-portal.ps1`
-7. **Check docs**: use Context7 MCP for up-to-date API references
+6. **Check docs**: use Context7 MCP for up-to-date API references
 
 ### Debugging playbook
 
@@ -232,5 +240,8 @@ Portal Web tests (`vitest`) also verify cross-project contracts (docker-compose 
 - `Auth__Authority`
 - `Auth__RequireHttpsMetadata` - default `true`; set `false` when `Auth__Authority` is plain http (compose `http://keycloak`)
 - `Database__EnableSensitiveDataLogging` - default `false`; logs SQL parameter values, never enable in prod
-- `ENCRYPTION_KEY`
-- `KSeF__BaseUrl`
+- `ENCRYPTION_KEY` - required; base64 of 32 bytes; not in the DB once adopted (legacy row read until then)
+- `ENCRYPTION_KEY_FILE` - file holding the key, used when `ENCRYPTION_KEY` is empty; shipped compose does not forward it
+- `ENCRYPTION_KEY_NEW` - only for `rotate-encryption-key` on the API image
+- `KSeF__BaseUrl` - `test`, `demo` or `production`; legacy KSeF URLs resolve by exact host; an unknown value stops API and Worker; a DB row wins
+- `Issuing__StuckAfterHours` - Worker; default `24`; hours after issue before an invoice is escalated as stuck

@@ -63,26 +63,33 @@ public class CredentialsController : ControllerBase
     private readonly ICurrentUserService _currentUser;
     private readonly IEncryptionService _encryption;
     private readonly ITenantSyncService _tenantSyncService;
+    private readonly ISystemConfigService _systemConfig;
     private readonly ILogger<CredentialsController> _logger;
+    private readonly bool _onRowKey;
 
     public CredentialsController(
         ApplicationDbContext db,
         ICurrentUserService currentUser,
         IEncryptionService encryption,
         ITenantSyncService tenantSyncService,
+        ISystemConfigService systemConfig,
         ILogger<CredentialsController> logger)
     {
         _db = db;
         _currentUser = currentUser;
         _encryption = encryption;
         _tenantSyncService = tenantSyncService;
+        _systemConfig = systemConfig;
         _logger = logger;
+        // Read here, not in the action: binding awaits the request body after _encryption is resolved.
+        _onRowKey = systemConfig.GetValue(SystemConfigKeys.EncryptionKey) is not null;
     }
 
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> AddOrUpdate(Guid tenantId, [FromBody] AddCredentialRequest request)
     {
         if (!await VerifyTenantOwnership(tenantId))
@@ -130,6 +137,14 @@ public class CredentialsController : ControllerBase
                 return BadRequest(new { error = $"Unknown credential type: {request.Type}" });
         }
 
+        await using var transaction = _onRowKey && _db.Database.IsNpgsql() ? await _db.Database.BeginTransactionAsync() : null;
+        if (_onRowKey && await EncryptionKeyMigration.ReadKeyRowLockedAsync(_db, forUpdate: false) is null)
+        {
+            await _systemConfig.RefreshCacheAsync();
+            _logger.LogCritical("This host still held the encryption key from the database after it moved out, credential not saved for tenant {TenantId}", tenantId);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Encryption key changed. Try again." });
+        }
+
         var existing = await _db.KSeFCredentials
             .FirstOrDefaultAsync(c => c.TenantId == tenantId);
 
@@ -159,6 +174,8 @@ public class CredentialsController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
+        if (transaction is not null)
+            await transaction.CommitAsync();
         return Ok(new { message = "Credential saved." });
     }
 
@@ -243,7 +260,8 @@ public class CredentialsController : ControllerBase
             TenantId: result.TenantId,
             FetchedInvoices: result.FetchedInvoices,
             NewInvoices: result.NewInvoices,
-            SyncedAtUtc: result.SyncedAtUtc ?? DateTime.UtcNow)),
+            SyncedAtUtc: result.SyncedAtUtc ?? DateTime.UtcNow,
+            FailedDownloads: result.FailedDownloads)),
         _ => StatusCode(StatusCodes.Status500InternalServerError, new { error = "Unknown sync outcome." })
     };
 
