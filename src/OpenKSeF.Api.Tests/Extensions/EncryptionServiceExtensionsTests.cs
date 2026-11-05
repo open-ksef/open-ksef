@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
-using OpenKSeF.Api.Extensions;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Tests.Extensions;
@@ -9,14 +8,21 @@ namespace OpenKSeF.Api.Tests.Extensions;
 public class EncryptionServiceExtensionsTests
 {
     private const string ValidKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+    private const string OtherKey = "ZmVkY2JhOTg3NjU0MzIxMGZlZGNiYTk4NzY1NDMyMTA=";
 
-    [Fact]
-    public void Resolve_Throws_WhenNoKeyInDbOrConfig()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("c2hvcnQ=")]
+    [InlineData("generate_with_openssl_rand")]
+    public void Resolve_NoRow_NoOrMalformedKey_SaysRestore_NotGenerate(string? envKey)
     {
-        var provider = BuildProvider(dbKey: null, envKey: null);
+        var provider = BuildProvider(dbKey: null, envKey: envKey);
 
         var ex = Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IEncryptionService>());
         Assert.Contains("ENCRYPTION_KEY", ex.Message);
+        Assert.Contains("Restore the key that encrypted the credentials", ex.Message);
+        Assert.Contains("only if no copy remains", ex.Message);
+        Assert.DoesNotContain("openssl rand", ex.Message);
     }
 
     [Fact]
@@ -35,6 +41,15 @@ public class EncryptionServiceExtensionsTests
         var provider = BuildProvider(dbKey: ValidKey, envKey: null);
 
         Assert.IsType<AesGcmEncryptionService>(provider.GetRequiredService<IEncryptionService>());
+    }
+
+    [Fact]
+    public void Resolve_RowBeatsEnv()
+    {
+        var ciphertext = new AesGcmEncryptionService(Convert.FromBase64String(ValidKey)).Encrypt("secret");
+        var provider = BuildProvider(dbKey: ValidKey, envKey: OtherKey);
+
+        Assert.Equal("secret", provider.GetRequiredService<IEncryptionService>().Decrypt(ciphertext));
     }
 
     private static ServiceProvider BuildProvider(string? dbKey, string? envKey)

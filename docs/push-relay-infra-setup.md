@@ -55,7 +55,6 @@ The relay uses three defense layers:
 Create a `.env` file:
 
 ```bash
-PUSH_RELAY_IMAGE=ghcr.io/open-ksef/openksef-push-relay:latest
 PUSH_RELAY_API_KEY=                          # Legacy global key (optional, for backward compat)
 PUSH_RELAY_ADMIN_KEY=your-admin-secret-key   # Required for admin endpoints
 FIREBASE_CREDENTIALS_JSON={"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}
@@ -67,13 +66,15 @@ APNS_AUTH_KEY_P8=
 Start:
 
 ```bash
-docker compose -f docker-compose.push-relay.yml up -d
+docker compose -f docker-compose.push-relay.yml up -d --build
 ```
+
+The release workflow publishes no relay image, so this builds from source. Set `PUSH_RELAY_IMAGE` and add `--no-build` to run an image you built and pushed yourself.
 
 ### Verify the relay is running
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:8084/health
 # Expected: {"status":"healthy"}
 ```
 
@@ -122,7 +123,7 @@ Each self-hosted Open-KSeF instance registers automatically during the admin set
 ### Via Settings Page (re-registration)
 
 1. Log in as admin to the portal
-2. Go to **Settings** > **Integracje** > **Powiadomienia push**
+2. Go to **Ustawienia** > **Administracja instancji** > **Powiadomienia push**
 3. Select **Relay OpenKSeF**
 4. Click **Zarejestruj ponownie** (Re-register) to get a new key
 5. Save
@@ -132,8 +133,8 @@ Each self-hosted Open-KSeF instance registers automatically during the admin set
 ## Step 6: Test End-to-End
 
 1. Register a device in the mobile app (open the app, log in, complete onboarding)
-2. In the portal, go to **Urządzenia** (Devices)
-3. Find the registered device and click **Testuj** (Test)
+2. In the portal, go to **Telefon**
+3. Find the device under **Moje urządzenia** and click **Wyślij test**
 4. Check if the mobile device receives the push notification
 5. Check relay logs: `docker logs openksef-push-relay`
 

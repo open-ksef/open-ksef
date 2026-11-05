@@ -133,6 +133,23 @@ public class SystemSettingsControllerTests
     }
 
     [Fact]
+    public async Task UpdateSettings_RequiresConfirmation_ReturnsOkWithTheFlag()
+    {
+        _systemConfig.IsInitialized.Returns(true);
+        _setupService.AuthenticateAdminAsync("admin", "admin").Returns("kc-token");
+        _settingsService.UpdateSettingsAsync(Arg.Any<SettingsUpdateRequest>(), "kc-token", Arg.Any<CancellationToken>())
+            .Returns(new SettingsUpdateResponse(false, "wipe", RequiresConfirmation: true));
+
+        var result = await CreateController().UpdateSettings(
+            new SettingsUpdateRequest { KcAdminUsername = "admin", KcAdminPassword = "admin", KSeFEnvironment = "production" },
+            CancellationToken.None) as OkObjectResult;
+
+        var response = Assert.IsType<SettingsUpdateResponse>(result!.Value);
+        Assert.True(response.RequiresConfirmation);
+        Assert.False(response.Success);
+    }
+
+    [Fact]
     public async Task UpdateSettings_ServiceError_ReturnsBadRequest()
     {
         _systemConfig.IsInitialized.Returns(true);

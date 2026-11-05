@@ -42,20 +42,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
         options.EnableSensitiveDataLogging();
 });
 
-// Encryption: deferred factory that reads from SystemConfigService (DB first, env fallback).
-// The actual key resolution happens at first use, after the startup wait-gate confirms setup is complete.
-builder.Services.AddSingleton<IEncryptionService>(sp =>
-{
-    var sysConfig = sp.GetRequiredService<ISystemConfigService>();
-    var keyBase64 = sysConfig.GetValue(SystemConfigKeys.EncryptionKey);
-
-    if (string.IsNullOrEmpty(keyBase64))
-        throw new InvalidOperationException(
-            "Encryption key not configured. Run the admin setup wizard or set ENCRYPTION_KEY env var. " +
-            "Generate one with: openssl rand -base64 32");
-
-    return new AesGcmEncryptionService(Convert.FromBase64String(keyBase64));
-});
+// Encryption: key resolution happens at first use, after adoption and the startup wait-gate.
+builder.Services.AddEncryptionService(builder.Configuration);
 
 // System config (DB-backed key-value store with env var fallback)
 builder.Services.AddSingleton<ISystemConfigService, SystemConfigService>();
@@ -84,7 +72,9 @@ builder.Services.AddWorkerDomainServices(builder.Configuration);
 // Worker-specific sync options
 builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection(SyncOptions.SectionName));
 
+builder.Services.AddSingleton<KSeFRuntimeConfig>();
 builder.Services.AddHostedService<InvoiceSyncService>();
+builder.Services.AddHostedService<IssuedInvoiceSendService>();
 
 var host = builder.Build();
 
@@ -92,14 +82,19 @@ var host = builder.Build();
 var systemConfig = host.Services.GetRequiredService<ISystemConfigService>();
 await systemConfig.RefreshCacheAsync();
 
-// Wait for admin setup to complete before starting sync.
-// The Worker starts alongside all services via docker-compose, but the encryption key
-// and KSeF environment only exist after the admin runs the setup wizard.
-// Env-configured deployments (ENCRYPTION_KEY set directly) skip the wait-gate.
-bool IsReady() => systemConfig.IsInitialized
-    || !string.IsNullOrEmpty(systemConfig.GetValue(SystemConfigKeys.EncryptionKey));
+using (var scope = host.Services.CreateScope())
+{
+    await EncryptionKeyMigration.AdoptConfiguredKeyAsync(
+        scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
+        builder.Configuration,
+        scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("OpenKSeF.Worker.EncryptionKey"));
+}
+await systemConfig.RefreshCacheAsync();
 
-while (!IsReady())
+// Wait for admin setup to complete before starting sync.
+// The Worker starts alongside all services via docker-compose, but the Keycloak realm
+// and KSeF environment only exist after the admin runs the setup wizard.
+while (!systemConfig.IsInitialized)
 {
     Log.Information("System not initialized — waiting for admin setup wizard. Retrying in 30s...");
     await Task.Delay(TimeSpan.FromSeconds(30));

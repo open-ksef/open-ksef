@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Api.Services;
@@ -72,9 +73,12 @@ public class AccountController : ControllerBase
 
     [HttpPost("register")]
     [AllowAnonymous]
+    [EnableRateLimiting("register")]
     [ProducesResponseType(typeof(RegisterResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
@@ -86,7 +90,7 @@ public class AccountController : ControllerBase
 
         if (!result.Success)
         {
-            return StatusCode((int)result.StatusCode, new { error = result.ErrorMessage });
+            return StatusCode((int)result.StatusCode, new { code = result.ErrorCode, error = result.ErrorMessage });
         }
 
         return Ok(new RegisterResponse("Account created successfully."));

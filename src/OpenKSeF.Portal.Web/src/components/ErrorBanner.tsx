@@ -11,7 +11,7 @@ export function ErrorBanner({ message, onRetry }: ErrorBannerProps): ReactElemen
   return (
     <section className="ui-error-banner" role="alert">
       <span>{message}</span>
-      {onRetry ? <Button variant="outline" size="sm" onClick={onRetry}>Retry</Button> : null}
+      {onRetry ? <Button variant="outline" size="sm" onClick={onRetry}>Spróbuj ponownie</Button> : null}
     </section>
   )
 }

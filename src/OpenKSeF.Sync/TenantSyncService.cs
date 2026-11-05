@@ -1,5 +1,7 @@
+using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using KSeF.Client.Api.Services;
+using KSeF.Client.Core.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -7,18 +9,23 @@ using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.DTOs;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Sync;
 
 public sealed class TenantSyncService : ITenantSyncService
 {
+    private const int IssuedFirstRunMonthsBack = 12;
+    private const int MaxConsecutiveDownloadFailures = 3;
+
     private readonly ApplicationDbContext _db;
     private readonly IKSeFGateway _gateway;
     private readonly IEncryptionService _encryption;
     private readonly IInvoiceService _invoiceService;
     private readonly KSeFInvoiceXmlParser _xmlParser;
     private readonly TenantSyncOptions _syncOptions;
+    private readonly XmlDownloadBlocks _xmlBlocks;
     private readonly ILogger<TenantSyncService> _logger;
 
     public TenantSyncService(
@@ -28,6 +35,7 @@ public sealed class TenantSyncService : ITenantSyncService
         IInvoiceService invoiceService,
         KSeFInvoiceXmlParser xmlParser,
         IOptions<TenantSyncOptions> syncOptions,
+        XmlDownloadBlocks xmlBlocks,
         ILogger<TenantSyncService> logger)
     {
         _db = db;
@@ -40,6 +48,7 @@ public sealed class TenantSyncService : ITenantSyncService
         {
             _syncOptions.BatchSize = 100;
         }
+        _xmlBlocks = xmlBlocks;
         _logger = logger;
     }
 
@@ -51,14 +60,28 @@ public sealed class TenantSyncService : ITenantSyncService
             .Where(t => t.KSeFCredentials.Any())
             .ToListAsync(cancellationToken);
 
-        var results = new List<TenantSyncResult>(tenants.Count);
-        foreach (var tenant in tenants)
+        var runStartedAt = DateTime.UtcNow;
+        var sessions = new Dictionary<Guid, KSeFSession?>();
+        try
         {
-            var result = await SyncTenantInternalAsync(tenant, fullResyncWindowStart: null, cancellationToken);
-            results.Add(result);
-        }
+            var results = new List<TenantSyncResult>(tenants.Count);
+            foreach (var tenant in tenants)
+                results.Add(await SyncMetadataAsync(tenant, fullResyncWindowStart: null, sessions, cancellationToken));
 
-        return results;
+            // Five failed calls in a row open the KSeF.Client breaker for every caller, so XML waits for all metadata.
+            var synced = results.Where(r => r.Outcome == TenantSyncOutcome.Success).Select(r => r.TenantId).ToHashSet();
+            foreach (var sameNip in tenants.Where(t => synced.Contains(t.Id)).GroupBy(t => t.Nip))
+            {
+                await DownloadQueuedXmlAsync(
+                    sameNip.ToList(), sessions, runStartedAt, _syncOptions.XmlDownloadsPerCycle, _syncOptions.XmlDownloadSpacing, fullResync: false, cancellationToken);
+            }
+
+            return results;
+        }
+        finally
+        {
+            await TerminateSessionsAsync(sessions, cancellationToken);
+        }
     }
 
     public async Task<TenantSyncResult> SyncTenantAsync(
@@ -85,16 +108,32 @@ public sealed class TenantSyncService : ITenantSyncService
         if (forceFullResync)
         {
             var earliestIssueDate = await _db.InvoiceHeaders
-                .Where(h => h.TenantId == tenantId)
+                .Where(h => h.TenantId == tenantId && h.Direction == InvoiceDirection.Received)
                 .MinAsync(h => (DateTime?)h.IssueDate, cancellationToken);
             fullResyncWindowStart = earliestIssueDate?.AddHours(-1)
                 ?? DateTime.UtcNow.AddMonths(-_syncOptions.InitialSyncMonthsBack);
         }
 
-        return await SyncTenantInternalAsync(tenant, fullResyncWindowStart, cancellationToken);
+        var runStartedAt = DateTime.UtcNow;
+        var sessions = new Dictionary<Guid, KSeFSession?>();
+        try
+        {
+            var result = await SyncMetadataAsync(tenant, fullResyncWindowStart, sessions, cancellationToken);
+            if (result.Outcome != TenantSyncOutcome.Success)
+                return result;
+
+            var failedDownloads = await DownloadQueuedXmlAsync(
+                [tenant], sessions, runStartedAt, _syncOptions.XmlDownloadsPerManualRun, _syncOptions.XmlManualDownloadSpacing, forceFullResync, cancellationToken);
+            return result with { FailedDownloads = failedDownloads };
+        }
+        finally
+        {
+            await TerminateSessionsAsync(sessions, cancellationToken);
+        }
     }
 
-    private async Task<TenantSyncResult> SyncTenantInternalAsync(Tenant tenant, DateTime? fullResyncWindowStart, CancellationToken cancellationToken)
+    private async Task<TenantSyncResult> SyncMetadataAsync(
+        Tenant tenant, DateTime? fullResyncWindowStart, Dictionary<Guid, KSeFSession?> sessions, CancellationToken cancellationToken)
     {
         var credential = tenant.KSeFCredentials.FirstOrDefault();
         if (credential is null)
@@ -106,14 +145,10 @@ public sealed class TenantSyncService : ITenantSyncService
                 ErrorMessage: "No credential configured for this tenant.");
         }
 
-        KSeFSession? session = null;
         try
         {
-            session = credential.Type switch
-            {
-                CredentialType.Certificate => await InitCertificateSessionAsync(tenant.Nip, credential, cancellationToken),
-                _ => await InitTokenSessionAsync(tenant.Nip, credential, cancellationToken),
-            };
+            var session = await InitSessionAsync(tenant, credential, cancellationToken);
+            sessions[tenant.Id] = session;
 
             var syncState = tenant.SyncState ?? new SyncState
             {
@@ -123,7 +158,7 @@ public sealed class TenantSyncService : ITenantSyncService
 
             var now = DateTime.UtcNow;
             var windowStart = fullResyncWindowStart
-                ?? syncState.LastSuccessfulSync?.AddHours(-1)
+                ?? ReceivedResumePoint(syncState)
                 ?? now.AddMonths(-_syncOptions.InitialSyncMonthsBack);
             // Initial sync and forced resync import history: store it, don't push it.
             var notify = fullResyncWindowStart is null && syncState.LastSuccessfulSync is not null;
@@ -138,6 +173,7 @@ public sealed class TenantSyncService : ITenantSyncService
                     windowEnd = now;
 
                 var pageOffset = 0;
+                KSeFInvoiceQueryResult result;
                 while (true)
                 {
                     var criteria = new KSeFQueryCriteria(
@@ -147,68 +183,33 @@ public sealed class TenantSyncService : ITenantSyncService
                         PageSize: _syncOptions.BatchSize,
                         PageOffset: pageOffset);
 
-                    var result = await _gateway.QueryInvoicesAsync(session, criteria, cancellationToken);
+                    result = await _gateway.QueryInvoicesAsync(session, criteria, cancellationToken);
 
                     totalFetched += result.Invoices.Count;
                     if (result.Invoices.Count == 0)
                         break;
 
-                    var batchNumbers = result.Invoices.Select(i => i.KSeFNumber).ToList();
-                    HashSet<string> skipDownloadSet;
-                    if (fullResyncWindowStart is not null)
-                    {
-                        skipDownloadSet = [];
-                    }
-                    else
-                    {
-                        var invoicesAlreadyParsed = await _db.InvoiceHeaders
-                            .Where(h => h.TenantId == tenant.Id
-                                && batchNumbers.Contains(h.KSeFInvoiceNumber)
-                                && h.VendorBankAccount != null
-                                && h.Lines.Any())
-                            .Select(h => h.KSeFInvoiceNumber)
-                            .ToListAsync(cancellationToken);
-                        skipDownloadSet = new HashSet<string>(invoicesAlreadyParsed);
-                    }
-
-                    var invoiceDtos = new List<InvoiceDto>(result.Invoices.Count);
-                    foreach (var i in result.Invoices)
-                    {
-                        string? bankAccount = null;
-                        IReadOnlyList<Domain.DTOs.InvoiceLineDto>? lines = null;
-                        if (!skipDownloadSet.Contains(i.KSeFNumber))
-                        {
-                            (bankAccount, lines) = await DownloadInvoiceDetailsAsync(
-                                session, i.KSeFNumber, cancellationToken);
-                        }
-
-                        invoiceDtos.Add(new InvoiceDto(
-                            Number: i.KSeFNumber,
-                            ReferenceNumber: i.ReferenceNumber,
-                            InvoiceNumber: i.InvoiceNumber,
-                            VendorName: i.VendorName,
-                            VendorNip: i.VendorNip,
-                            BuyerName: i.BuyerName,
-                            BuyerNip: i.BuyerNip,
-                            AmountNet: i.AmountNet,
-                            AmountVat: i.AmountVat,
-                            AmountGross: i.AmountGross,
-                            Currency: i.Currency,
-                            IssueDate: i.IssueDate,
-                            AcquisitionDate: i.AcquisitionDate,
-                            InvoiceType: i.InvoiceType,
-                            VendorBankAccount: bankAccount,
-                            Lines: lines));
-                    }
-
-                    var newIds = await _invoiceService.UpsertInvoicesAsync(tenant.Id, invoiceDtos, notify);
+                    var newIds = await _invoiceService.UpsertInvoicesAsync(
+                        tenant.Id, result.Invoices.Select(i => ToDto(i, InvoiceDirection.Received)).ToList(), notify);
                     totalNew += newIds.Count;
 
-                    if (result.Invoices.Count < _syncOptions.BatchSize)
+                    if (result.IsTruncated || result.Invoices.Count < _syncOptions.BatchSize)
                         break;
 
                     pageOffset++;
                 }
+
+                if (result.IsTruncated)
+                {
+                    if (result.ContinuationAt is not { } next || next <= windowStart)
+                        throw new InvalidOperationException($"Truncated KSeF result did not advance past {windowStart:O}.");
+
+                    windowStart = next;
+                    continue;
+                }
+
+                if (isLastWindow && result.ContinuationAt is not null)
+                    syncState.ReceivedContinuationAt = result.ContinuationAt;
 
                 windowStart = windowEnd;
             }
@@ -221,6 +222,8 @@ public sealed class TenantSyncService : ITenantSyncService
 
             await _db.SaveChangesAsync(cancellationToken);
 
+            await SyncIssuedInvoicesAsync(tenant, session, syncState, now, cancellationToken);
+
             return new TenantSyncResult(
                 TenantId: tenant.Id,
                 Nip: tenant.Nip,
@@ -229,11 +232,12 @@ public sealed class TenantSyncService : ITenantSyncService
                 NewInvoices: totalNew,
                 SyncedAtUtc: now);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "Sync failed for tenant {TenantId}", tenant.Id);
+            DetachPendingChanges();
 
-            var statusCode = (ex as KSeF.Client.Core.Exceptions.KsefApiException)?.StatusCode;
+            var statusCode = (ex as KsefApiException)?.StatusCode;
             return new TenantSyncResult(
                 TenantId: tenant.Id,
                 Nip: tenant.Nip,
@@ -241,37 +245,223 @@ public sealed class TenantSyncService : ITenantSyncService
                 ErrorMessage: ex.Message,
                 ErrorStatusCode: statusCode.HasValue ? (int)statusCode.Value : null);
         }
-        finally
+    }
+
+    private static DateTime? ReceivedResumePoint(SyncState syncState)
+    {
+        var overlap = syncState.LastSuccessfulSync?.AddHours(-1);
+        return syncState.ReceivedContinuationAt < overlap ? syncState.ReceivedContinuationAt : overlap;
+    }
+
+    /// <returns>Waiting invoices that did not get their XML in this run, including those over the budget.</returns>
+    private async Task<int> DownloadQueuedXmlAsync(
+        IReadOnlyList<Tenant> tenants,
+        Dictionary<Guid, KSeFSession?> sessions,
+        DateTime runStartedAt,
+        int budget,
+        TimeSpan spacing,
+        bool fullResync,
+        CancellationToken cancellationToken)
+    {
+        var nip = tenants[0].Nip;
+        var tenantIds = tenants.Select(t => t.Id).ToList();
+        var waiting = _db.InvoiceHeaders.AsNoTracking()
+            .Where(h => tenantIds.Contains(h.TenantId)
+                && h.XmlFetchedAt == null
+                && (!h.Lines.Any()
+                    || (h.Direction == InvoiceDirection.Received && h.DueDate == null && (!h.IsPaid || fullResync))));
+        var waitingCount = await waiting.CountAsync(cancellationToken);
+        if (waitingCount == 0)
+            return 0;
+
+        var queue = await waiting
+            .OrderBy(h => h.Direction == InvoiceDirection.Received && h.FirstSeenAt >= runStartedAt ? 0
+                : h.Direction == InvoiceDirection.Received && !h.IsPaid && h.DueDate == null ? 1
+                : h.Direction == InvoiceDirection.Issued ? 2
+                : 3)
+            .ThenBy(h => h.XmlAttemptedAt == null ? 0 : 1)
+            .ThenBy(h => h.XmlAttemptedAt)
+            .ThenByDescending(h => h.IssueDate)
+            .ThenBy(h => h.Id)
+            .Select(h => new { h.Id, h.TenantId, h.KSeFInvoiceNumber })
+            .Take(budget)
+            .ToListAsync(cancellationToken);
+
+        if (_xmlBlocks.IsBlocked(nip))
         {
-            if (session is not null)
+            _logger.LogInformation("Invoice XML downloads for NIP {Nip} wait for KSeF Retry-After", nip);
+            return waitingCount;
+        }
+
+        var completed = 0;
+        var attempted = 0;
+        var failuresInARow = 0;
+        foreach (var row in queue)
+        {
+            if (attempted++ > 0 && spacing > TimeSpan.Zero)
+                await Task.Delay(spacing, cancellationToken);
+
+            try
             {
-                try
+                var session = await CurrentSessionAsync(tenants.First(t => t.Id == row.TenantId), sessions, cancellationToken);
+                var xml = await _gateway.DownloadInvoiceAsync(session!, row.KSeFInvoiceNumber, cancellationToken);
+                failuresInARow = 0;
+
+                var (bankAccount, lines, dueDate) = _xmlParser.ExtractInvoiceDetails(xml);
+                if (lines is null)
                 {
-                    await _gateway.TerminateSessionAsync(session, cancellationToken);
+                    await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, cancellationToken);
+                    continue;
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to terminate KSeF session for tenant {TenantId}", tenant.Id);
-                }
+
+                await _invoiceService.ApplyInvoiceXmlAsync(row.Id, bankAccount, lines, dueDate, cancellationToken);
+                completed++;
+            }
+            catch (KsefApiException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                var retryAfter = (ex as KsefRateLimitException)?.RecommendedDelay ?? TimeSpan.Zero;
+                _xmlBlocks.Block(nip, retryAfter);
+                _logger.LogWarning("KSeF 429 on invoice XML for NIP {Nip}, stopping downloads, Retry-After {RetryAfter}", nip, retryAfter);
+                break;
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "Failed to store invoice XML details: {KSeFNumber}", row.KSeFInvoiceNumber);
+                DetachPendingChanges();
+                await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, cancellationToken);
+                if (++failuresInARow >= MaxConsecutiveDownloadFailures)
+                    break;
+            }
+        }
+
+        _logger.LogInformation("Invoice XML queue for NIP {Nip}: {Completed} of {Queued} done", nip, completed, queue.Count);
+        return waitingCount - completed;
+    }
+
+    private async Task<KSeFSession?> CurrentSessionAsync(
+        Tenant tenant, Dictionary<Guid, KSeFSession?> sessions, CancellationToken cancellationToken)
+    {
+        if (sessions.TryGetValue(tenant.Id, out var session) && session?.ExpiresAtUtc > DateTime.UtcNow.AddMinutes(1))
+            return session;
+
+        return sessions[tenant.Id] = await InitSessionAsync(tenant, tenant.KSeFCredentials.First(), cancellationToken);
+    }
+
+    private Task<KSeFSession> InitSessionAsync(Tenant tenant, KSeFCredential credential, CancellationToken cancellationToken) =>
+        credential.Type switch
+        {
+            CredentialType.Certificate => InitCertificateSessionAsync(tenant.Nip, credential, cancellationToken),
+            _ => InitTokenSessionAsync(tenant.Nip, credential, cancellationToken),
+        };
+
+    private async Task TerminateSessionsAsync(Dictionary<Guid, KSeFSession?> sessions, CancellationToken cancellationToken)
+    {
+        foreach (var (tenantId, session) in sessions)
+        {
+            if (session is null)
+                continue;
+
+            try
+            {
+                await _gateway.TerminateSessionAsync(session, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to terminate KSeF session for tenant {TenantId}", tenantId);
             }
         }
     }
 
-    private async Task<(string? BankAccount, IReadOnlyList<Domain.DTOs.InvoiceLineDto>? Lines)> DownloadInvoiceDetailsAsync(
-        KSeFSession session, string ksefNumber, CancellationToken ct)
+    // One context serves all tenants: a failed batch would fail their saves. Clear() would untrack their SyncState.
+    private void DetachPendingChanges()
+    {
+        foreach (var entry in _db.ChangeTracker.Entries().Where(e => e.State != EntityState.Unchanged).ToList())
+            entry.State = EntityState.Detached;
+    }
+
+    private async Task SyncIssuedInvoicesAsync(
+        Tenant tenant, KSeFSession session, SyncState syncState, DateTime now, CancellationToken cancellationToken)
     {
         try
         {
-            var xmlBytes = await _gateway.DownloadInvoiceAsync(session, ksefNumber, ct);
-            return _xmlParser.ExtractInvoiceDetails(xmlBytes);
+            var windowStart = syncState.IssuedContinuationAt ?? now.AddMonths(-IssuedFirstRunMonthsBack);
+
+            while (windowStart < now)
+            {
+                var windowEnd = windowStart.AddMonths(3);
+                if (windowEnd > now)
+                    windowEnd = now;
+
+                var pageOffset = 0;
+                KSeFInvoiceQueryResult result;
+                while (true)
+                {
+                    result = await _gateway.QueryInvoicesAsync(session, new KSeFQueryCriteria(
+                        SubjectNip: tenant.Nip,
+                        DateFrom: windowStart,
+                        DateTo: windowEnd,
+                        PageSize: _syncOptions.BatchSize,
+                        PageOffset: pageOffset,
+                        Direction: InvoiceDirection.Issued), cancellationToken);
+
+                    var sales = result.Invoices
+                        .Where(i => !(i.BuyerIdType == nameof(KSeF.Client.Core.Models.Invoices.BuyerIdentifierType.Nip) && i.BuyerNip == tenant.Nip))
+                        .Select(i => ToDto(i, InvoiceDirection.Issued))
+                        .ToList();
+                    if (sales.Count > 0)
+                        await _invoiceService.UpsertInvoicesAsync(tenant.Id, sales, notify: false);
+
+                    if (result.IsTruncated || result.Invoices.Count < _syncOptions.BatchSize)
+                        break;
+
+                    pageOffset++;
+                }
+
+                if (result.ContinuationAt is not { } next || next <= windowStart)
+                {
+                    _logger.LogWarning(
+                        "Issued invoice continuation did not advance past {WindowStart} for tenant {TenantId}",
+                        windowStart, tenant.Id);
+                    return;
+                }
+
+                if (next > windowEnd)
+                    next = windowEnd;
+
+                syncState.IssuedContinuationAt = next;
+                await _db.SaveChangesAsync(cancellationToken);
+
+                if (windowEnd == now && !result.IsTruncated)
+                    return;
+
+                windowStart = next;
+            }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning(ex,
-                "Failed to download invoice XML for details extraction: {KSeFNumber}", ksefNumber);
-            return (null, null);
+            _logger.LogWarning(ex, "Issued invoice sync failed for tenant {TenantId}", tenant.Id);
+            DetachPendingChanges();
         }
     }
+
+    private static InvoiceDto ToDto(KSeFInvoiceHeader i, InvoiceDirection direction) => new(
+        Number: i.KSeFNumber,
+        ReferenceNumber: i.ReferenceNumber,
+        InvoiceNumber: i.InvoiceNumber,
+        VendorName: i.VendorName,
+        VendorNip: i.VendorNip,
+        BuyerName: i.BuyerName,
+        BuyerNip: i.BuyerNip,
+        AmountNet: i.AmountNet,
+        AmountVat: i.AmountVat,
+        AmountGross: i.AmountGross,
+        Currency: i.Currency,
+        IssueDate: i.IssueDate,
+        AcquisitionDate: i.AcquisitionDate,
+        InvoiceType: i.InvoiceType,
+        Direction: direction,
+        BuyerIdType: i.BuyerIdType,
+        BuyerForeignId: i.BuyerForeignId);
 
     private async Task<KSeFSession> InitTokenSessionAsync(
         string nip, KSeFCredential credential, CancellationToken ct)

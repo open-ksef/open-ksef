@@ -96,7 +96,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
             GoogleClientId = _systemConfig.GetValue(SystemConfigKeys.GoogleClientId),
             GoogleConfigured = googleConfigured,
             PushRelayUrl = _systemConfig.GetValue(SystemConfigKeys.PushRelayUrl),
-            PushRelayApiKey = _systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey),
+            PushRelayApiKeyConfigured = !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey)),
             PushRelayInstanceId = _systemConfig.GetValue(SystemConfigKeys.PushRelayInstanceId),
             FirebaseConfigured = !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.FirebaseCredentialsJson)),
         };
@@ -111,14 +111,17 @@ public sealed class SystemSettingsService : ISystemSettingsService
             var kcBase = KeycloakInternalBaseUrl;
 
             // Validate KSeF environment change before doing any work
+            var requestedEnv = string.IsNullOrWhiteSpace(request.KSeFEnvironment)
+                ? null
+                : DependencyInjection.NormalizeKSeFEnvironmentKey(request.KSeFEnvironment);
             var needsCredentialWipe = false;
-            if (!string.IsNullOrEmpty(request.KSeFEnvironment))
+            if (requestedEnv != null)
             {
-                var currentEnv = _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
-                    ?? DependencyInjection.NormalizeKSeFEnvironmentKey(
-                        _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl));
+                var currentEnv = DependencyInjection.NormalizeKSeFEnvironmentKey(
+                    _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
+                    ?? _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl));
 
-                if (!string.Equals(currentEnv, request.KSeFEnvironment, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(currentEnv, requestedEnv, StringComparison.OrdinalIgnoreCase))
                 {
                     var (hasInvoices, hasCredentials) = await GetKSeFEnvironmentLockStatusAsync(ct);
                     if (hasInvoices)
@@ -127,7 +130,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
                     if (hasCredentials)
                     {
                         if (!request.ConfirmCredentialWipe)
-                            return new SettingsUpdateResponse(false, "Zmiana środowiska KSeF wymaga usunięcia wszystkich poświadczeń KSeF. Potwierdź operację.");
+                            return new SettingsUpdateResponse(false, "Zmiana środowiska KSeF wymaga usunięcia wszystkich poświadczeń KSeF.", RequiresConfirmation: true);
 
                         needsCredentialWipe = true;
                     }
@@ -155,8 +158,8 @@ public sealed class SystemSettingsService : ISystemSettingsService
                 await UpdateClientRedirectUrisAsync(client, kcBase, kcAdminToken, url, ct);
             }
 
-            if (!string.IsNullOrEmpty(request.KSeFEnvironment))
-                configValues[SystemConfigKeys.KSeFEnvironment] = request.KSeFEnvironment;
+            if (requestedEnv != null)
+                configValues[SystemConfigKeys.KSeFEnvironment] = requestedEnv;
 
             if (request.GoogleClientId != null)
                 configValues[SystemConfigKeys.GoogleClientId] = request.GoogleClientId;
@@ -205,14 +208,14 @@ public sealed class SystemSettingsService : ISystemSettingsService
                 await _systemConfig.RefreshCacheAsync(ct);
             }
 
-            if (!string.IsNullOrEmpty(request.KSeFEnvironment))
+            if (requestedEnv != null)
             {
-                var newBaseUrl = DependencyInjection.ResolveKSeFEnvironment(request.KSeFEnvironment);
+                var newBaseUrl = DependencyInjection.ResolveKSeFEnvironment(requestedEnv);
                 if (_ksefOptions.BaseUrl != newBaseUrl)
                 {
                     _ksefOptions.BaseUrl = newBaseUrl;
                     _logger.LogInformation("KSeF environment hot-reloaded to {Env} ({Url})",
-                        request.KSeFEnvironment, newBaseUrl);
+                        requestedEnv, newBaseUrl);
                 }
             }
 
@@ -220,7 +223,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
             if (needsCredentialWipe)
             {
                 await WipeKSeFCredentialsAsync(ct);
-                _logger.LogWarning("Wiped all KSeF credentials due to environment change to {Env}", request.KSeFEnvironment);
+                _logger.LogWarning("Wiped all KSeF credentials due to environment change to {Env}", requestedEnv);
             }
 
             _logger.LogInformation("Settings updated successfully");
@@ -238,7 +241,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        var hasInvoices = await db.InvoiceHeaders.AnyAsync(ct);
+        var hasInvoices = await db.InvoiceHeaders.AnyAsync(ct) || await db.IssuedInvoices.AnyAsync(ct);
         var hasCredentials = await db.KSeFCredentials.AnyAsync(ct);
 
         return (hasInvoices, hasCredentials);
@@ -327,12 +330,38 @@ public sealed class SystemSettingsService : ISystemSettingsService
                 ["ssl"] = request.Smtp.Ssl.ToString().ToLowerInvariant(),
                 ["auth"] = request.Smtp.Auth.ToString().ToLowerInvariant(),
                 ["user"] = request.Smtp.User ?? "",
-                ["password"] = request.Smtp.Password ?? "",
+                ["password"] = SystemSetupService.KeycloakSmtpPassword(request.Smtp.Password),
             };
         }
         else if (request.ClearSmtp)
         {
             payload["smtpServer"] = new Dictionary<string, string>();
+        }
+
+        using var getReq = new HttpRequestMessage(HttpMethod.Get, realmUrl);
+        getReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+        using var getResp = await client.SendAsync(getReq, ct);
+        if (!getResp.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Could not read Keycloak realm ({Status}), brute-force settings not enforced",
+                (int)getResp.StatusCode);
+        }
+        else
+        {
+            var realm = await getResp.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+            var maxFailures = (int)SystemSetupService.BruteForceSettings["failureFactor"];
+            if (!(realm.TryGetProperty("bruteForceProtected", out var bf) && bf.GetBoolean()))
+            {
+                foreach (var (key, value) in SystemSetupService.BruteForceSettings)
+                    payload[key] = value;
+            }
+            else
+            {
+                if (!(realm.TryGetProperty("failureFactor", out var ff) && ff.GetInt32() <= maxFailures))
+                    payload["failureFactor"] = maxFailures;
+                if (realm.TryGetProperty("permanentLockout", out var pl) && pl.GetBoolean())
+                    payload["permanentLockout"] = false;
+            }
         }
 
         if (payload.Count > 0)
@@ -394,7 +423,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
         HttpClient client, string kcBase, string adminToken, string externalBaseUrl, CancellationToken ct)
     {
         var redirectUris = new[] { $"{externalBaseUrl}/*" };
-        var webOrigins = new[] { externalBaseUrl, "*" };
+        var webOrigins = new[] { externalBaseUrl };
 
         foreach (var clientId in new[] { "openksef-api", "openksef-mobile", "openksef-portal-web" })
         {
@@ -416,7 +445,9 @@ public sealed class SystemSettingsService : ISystemSettingsService
 
             using var putReq = new HttpRequestMessage(HttpMethod.Put, clientUrl);
             putReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
-            putReq.Content = JsonContent.Create(new { redirectUris = merged, webOrigins });
+            // Keycloak 26.0 replaces the service account user, losing its roles, when a client PUT omits this field.
+            var serviceAccountsEnabled = clientJson.GetProperty("serviceAccountsEnabled").GetBoolean();
+            putReq.Content = JsonContent.Create(new { redirectUris = merged, webOrigins, serviceAccountsEnabled });
             var putResp = await client.SendAsync(putReq, ct);
             putResp.EnsureSuccessStatusCode();
         }

@@ -4,4 +4,5 @@ public record TenantManualSyncResponse(
     Guid TenantId,
     int FetchedInvoices,
     int NewInvoices,
-    DateTime SyncedAtUtc);
+    DateTime SyncedAtUtc,
+    int FailedDownloads = 0);
