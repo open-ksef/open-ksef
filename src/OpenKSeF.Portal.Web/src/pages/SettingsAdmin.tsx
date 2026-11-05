@@ -123,6 +123,9 @@ export function SettingsAdminPage(): ReactElement {
   const [reRegisterRelay, setReRegisterRelay] = useState(false)
   const [firebaseJson, setFirebaseJson] = useState('')
 
+  const storedKsefEnv = settings?.kSeFEnvironment
+  const unknownKsefEnv = storedKsefEnv && !['test', 'demo', 'production'].includes(storedKsefEnv) ? storedKsefEnv : undefined
+
   const [confirmWipeOpen, setConfirmWipeOpen] = useState(false)
   const [pendingRequest, setPendingRequest] = useState<SettingsUpdateRequest | null>(null)
   const saveButton = useRef<HTMLElement | null>(null)
@@ -205,7 +208,7 @@ export function SettingsAdminPage(): ReactElement {
       kcAdminUsername: kcUsername,
       kcAdminPassword: kcPassword,
       externalBaseUrl: externalUrl.replace(/\/+$/, '') || undefined,
-      kSeFEnvironment: ksefEnv,
+      kSeFEnvironment: ksefEnv === settings?.kSeFEnvironment ? undefined : ksefEnv,
       registrationAllowed,
       verifyEmail: smtpEnabled ? verifyEmail : false,
       loginWithEmailAllowed: loginWithEmail,
@@ -360,10 +363,18 @@ export function SettingsAdminPage(): ReactElement {
               <select id="settings-ksef-env" data-testid="settings-ksef-env"
                 value={ksefEnv}
                 onChange={e => setKsefEnv(e.target.value)}
-                disabled={settings?.kSeFEnvironmentLocked}>
+                disabled={settings?.kSeFEnvironmentLocked}
+                aria-describedby={unknownKsefEnv ? 'settings-ksef-env-unknown' : undefined}>
                 <option value="test">Test</option>
+                <option value="demo">Demo</option>
                 <option value="production">Produkcja</option>
+                {unknownKsefEnv && <option value={unknownKsefEnv} disabled>Nieznane: {unknownKsefEnv}</option>}
               </select>
+              {unknownKsefEnv && (
+                <span id="settings-ksef-env-unknown" data-testid="settings-ksef-env-unknown" className="ui-form-hint" style={{ color: 'var(--ui-warning)' }}>
+                  Zapisana wartość „{unknownKsefEnv}” nie jest znanym środowiskiem KSeF. Wybierz Test, Demo lub Produkcja i zapisz. Bez zmiany pola zapis nie zmieni środowiska.
+                </span>
+              )}
               {settings?.kSeFEnvironmentLockReason && (
                 <span className="ui-form-hint" style={{ color: settings.kSeFEnvironmentLocked ? 'var(--ui-error)' : 'var(--ui-warning)' }}>
                   {settings.kSeFEnvironmentLockReason}

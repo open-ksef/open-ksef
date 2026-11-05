@@ -195,6 +195,39 @@ describe('Ustawienia', () => {
       expect(container.querySelector('.settings-error')?.textContent).toBe('Potwierdź operację')
     })
 
+    it('sends no environment when the field is untouched', async () => {
+      await save()
+      expect(lastRequest().kSeFEnvironment).toBeUndefined()
+
+      await act(async () => {
+        const select = by('settings-ksef-env') as HTMLSelectElement
+        select.value = 'demo'
+        select.dispatchEvent(new Event('change', { bubbles: true }))
+      })
+      await save()
+      expect(lastRequest().kSeFEnvironment).toBe('demo')
+    })
+
+    it.each([
+      ['demo', 'Demo', false],
+      ['bogus-env', 'Nieznane: bogus-env', true],
+    ])('shows a stored %s row as is and saves no environment change', async (stored, label, unknown) => {
+      act(() => root.unmount())
+      root = createRoot(container)
+      vi.mocked(getSettings).mockResolvedValue({ ...settings, kSeFEnvironment: stored })
+      await render(<SettingsAdminPage />)
+      await login()
+
+      const select = by('settings-ksef-env') as HTMLSelectElement
+      expect(select.value).toBe(stored)
+      expect(select.selectedOptions[0].textContent).toBe(label)
+      expect(by('settings-ksef-env-unknown') !== null).toBe(unknown)
+      if (unknown) expect(select.getAttribute('aria-describedby')).toBe('settings-ksef-env-unknown')
+
+      await save()
+      expect(lastRequest().kSeFEnvironment).toBeUndefined()
+    })
+
     it('has no serious axe violations', async () => {
       const result = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } })
       expect(result.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([])
@@ -228,7 +261,7 @@ describe('Ustawienia', () => {
     for (const id of ['settings-url', 'settings-ksef-env', 'settings-pass-policy', 'settings-smtp-host', 'settings-smtp-from', 'settings-google-id', 'settings-google-secret', 'settings-relay-url', 'settings-relay-key', 'device-form-token', 'device-form-submit', 'settings-save', 'settings-save-bottom']) {
       expect(by(id), id).not.toBeNull()
     }
-    expect([...(by('settings-ksef-env') as HTMLSelectElement).options].map((option) => option.textContent)).toEqual(['Test', 'Produkcja'])
+    expect([...(by('settings-ksef-env') as HTMLSelectElement).options].map((option) => option.textContent)).toEqual(['Test', 'Demo', 'Produkcja'])
     expect(container.textContent).not.toContain('Keycloak')
   })
 })
