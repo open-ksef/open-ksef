@@ -334,17 +334,54 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task MissingHwm_StopsWithoutMoving()
+    public async Task MissingHwm_CoversEveryWindow_StopsBehindNow_NoteClears_NextRunRereadsFromThere()
     {
         await MigrateAndSeedExistingTenantAsync();
         _issued = _ => Page([]);
+        var before = DateTime.UtcNow;
+
+        await using (var db = NewContext())
+            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+
+        Assert.InRange(_issuedQueries.Count, 4, 5);
+        foreach (var (previous, next) in _issuedQueries.Zip(_issuedQueries.Skip(1)))
+            Assert.Equal(previous.DateTo, next.DateFrom);
+        Assert.NotEmpty(Logged(LogLevel.Warning, "no issued invoice HWM"));
+
+        DateTime continuation;
+        await using (var db = NewContext())
+        {
+            var state = await db.SyncStates.SingleAsync();
+            continuation = state.IssuedContinuationAt!.Value;
+            Assert.InRange(continuation, before.AddMinutes(-11), DateTime.UtcNow.AddMinutes(-9));
+            Assert.False(state.IssuedFetchIncomplete());
+            state.IssuedContinuationAt = continuation.AddHours(-1);
+            await db.SaveChangesAsync();
+        }
+
+        _issuedQueries.Clear();
+        await using (var db = NewContext())
+            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+
+        Assert.Equal(continuation.AddHours(-1), _issuedQueries.Single().DateFrom!.Value, TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
+    public async Task MissingHwmOnATruncatedPage_StopsWithoutMoving_NoteStays()
+    {
+        await MigrateAndSeedExistingTenantAsync();
+        _issued = _ => Page([], truncated: true);
 
         await using (var db = NewContext())
             await SyncService(db).SyncTenantAsync(_tenantId, UserId);
 
         Assert.Single(_issuedQueries);
         await using (var db = NewContext())
-            Assert.Null((await db.SyncStates.SingleAsync()).IssuedContinuationAt);
+        {
+            var state = await db.SyncStates.SingleAsync();
+            Assert.Null(state.IssuedContinuationAt);
+            Assert.True(state.IssuedFetchIncomplete());
+        }
     }
 
     [Fact]
