@@ -5,7 +5,7 @@ The admin setup wizard automates first-time system configuration. Instead of cop
 ## Prerequisites
 
 - Docker and Docker Compose v2 installed
-- Ports 8080, 8081, 8082, 8083 and 5432 free, or changed in `.env`: `docker-compose.yml` publishes all of them
+- Port 8080 free, or `APP_HOST_PORT` set in `.env`: `docker-compose.yml` publishes only the gateway
 - `.env` next to `docker-compose.yml` with `POSTGRES_USER`, `POSTGRES_PASSWORD`, `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD` and `ENCRYPTION_KEY`, see [Encryption key](#encryption-key). `docker compose` refuses to run without them
 
 ## Quick Start
@@ -266,6 +266,61 @@ A row that goes bad while the hosts run does not stop them. The Worker keeps run
 
 The API also stops at start when it cannot read `SystemConfigs` after 5 attempts, rather than running on `KSEF_BASE_URL`. Check Postgres and start it again.
 
+## Upgrade: ports and Keycloak admin
+
+Read this before you pull a release whose `docker-compose.yml` publishes only the gateway. Nothing is deleted: the database volume and all data stay. What changes is how you reach the services from outside Docker.
+
+| Before | Now |
+|---|---|
+| Gateway on `APP_HOST_PORT` (8080) | Unchanged |
+| API on 8081, Keycloak on 8082, portal on 8083, Postgres on 5432 (`API_HOST_PORT`, `KEYCLOAK_HOST_PORT`, `PORTAL_WEB_HOST_PORT`, `POSTGRES_HOST_PORT`) | Not published. The variables are ignored |
+| `/auth/admin` open through the gateway | 403 unless `KEYCLOAK_ADMIN_ALLOW` lists the client address |
+| Images `:latest` | Images `:${OPENKSEF_VERSION}`. The compose attached to a release defaults to that release |
+| No restart policy | `restart: unless-stopped` on every service. The Worker starts after the API is healthy |
+
+Portal, API and login keep working through the gateway, and so does the setup wizard: it calls Keycloak inside the Docker network. Check what used the other ports before you upgrade: a backup script that connects to `localhost:5432`, a monitor that calls `:8081/health`, a bookmark to `:8082/auth/admin`.
+
+**Postgres.** Use `docker exec`, as all procedures on this page do: `docker exec -it openksef-postgres sh -c 'psql -U "$POSTGRES_USER" -d openksef'`, or `docker exec openksef-postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d openksef' > openksef.sql` for a backup. A tool that needs a TCP port gets one bound to the host loopback only, through `docker-compose.override.yml` next to `docker-compose.yml` (`docker compose` reads it on its own):
+
+```yaml
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+  keycloak:
+    ports:
+      - "127.0.0.1:8082:8080"
+```
+
+Then run `docker compose up -d`.
+
+**Keycloak admin console, SSH tunnel (recommended).** With the `keycloak` entry of the override above, run on your computer `ssh -L 8082:127.0.0.1:8082 user@your-server` and open <http://localhost:8082/auth/admin>. The console is not reachable from any network, and the gateway stays at 403.
+
+**Keycloak admin console, allow-list.** Set `KEYCLOAK_ADMIN_ALLOW` in `.env` to the addresses that may open `/auth/admin` through the gateway, comma separated, IP or CIDR, for example `KEYCLOAK_ADMIN_ALLOW=192.168.88.0/24,10.8.0.5`. Then run `docker compose up -d`. Empty or unset means 403 for everyone. nginx checks the address of the connection it receives. Behind a reverse proxy or Cloudflare, that is the proxy's address, not the browser's. Listing it opens the console to every visitor, so use the SSH tunnel there. An invalid entry stops the gateway at start: see [Start failures and restart loops](#start-failures-and-restart-loops).
+
+**Image version.** `OPENKSEF_VERSION` in `.env` picks the tag of `api`, `worker`, `portal-web` and `gateway`, for example `OPENKSEF_VERSION=v1.2.3`. Leave it unset to use the release the compose came with. Upgrade: change it (or take the new compose), then `docker compose pull && docker compose up -d`. Roll back: set the previous tag and run the same commands. Migrations are not rolled back, so read the release notes first. A `docker-compose.yml` from v0.0.11 or older names `:latest`, which points to the newest release. Taking that file back restores the old ports, not the old images.
+
+## Start failures and restart loops
+
+Every service has `restart: unless-stopped`. When API or Worker exits at start, Docker starts it again after a short, growing delay, without end. You see a loop, not a stopped container. Causes that exit at start:
+
+- a bad `ksef_environment` row or `KSEF_BASE_URL` (`Unknown KSeF environment`), see [KSeF environment: upgrade](#ksef-environment-upgrade)
+- `KSeF:ForbidProduction` set on a stack whose environment is production
+- `SystemConfigs` unreadable after 5 attempts (Postgres down or broken)
+- the gateway with an invalid `KEYCLOAK_ADMIN_ALLOW` entry
+
+API and Worker log one `FTL` line with the reason. The KSeF environment refusals exit with code 1. How to see the loop and the reason:
+
+```bash
+docker compose ps                     # STATUS "Restarting (1) ..." for the looping service
+docker inspect -f '{{.RestartCount}} {{.State.ExitCode}}' openksef-api
+docker compose logs --tail 50 api     # the reason; use worker or gateway for the others
+```
+
+`docker compose up -d` waits for the API health check before it starts the Worker. If the API loops, `up -d` ends with `dependency failed to start: container openksef-api is unhealthy` and the Worker stays down. That is expected.
+
+Fix the cause. A container that already runs needs nothing more for a fixed database row: the next automatic restart starts it normally. Then run `docker compose up -d` once, so a Worker that a failed `up -d` never started comes up too. A fixed `.env` value needs `docker compose up -d`, because a restart keeps the old environment. Stop a loop while you work on it with `docker compose stop api worker`.
+
 ## Architecture
 
 ### Configuration Storage
@@ -303,7 +358,8 @@ The portal checks `/api/system/setup-status` on every protected page load. If `i
 | Redirect loop after setup | Clear browser cache/cookies. The portal caches setup status for 60 seconds. |
 | Need to re-run wizard | Only if the query from [upgrade step 1](#upgrade-from-v007-or-earlier) returns 0: delete all rows from the `SystemConfigs` table and restart the API container. |
 | Wizard reports no valid encryption key | Generate a key, set `ENCRYPTION_KEY`, keep a copy outside the database and run `docker compose up -d`. Then click **Dalej** (Next) and go through the wizard again. Entered data is kept. |
-| `docker compose` reports a missing `ENCRYPTION_KEY`, `POSTGRES_USER` or another required variable | The new `docker-compose.yml` requires the key. On an existing installation first run the row count query in its `docker exec` form from the [upgrade](#upgrade-from-v007-or-earlier). Result 1: follow the upgrade, because setting the key alone skips stopping the hosts and the backup. Result 0: the stack has adopted, so restore the previous `ENCRYPTION_KEY` value and do not generate a new one, because a new key does not decrypt the stored data. If you have no copy, the containers still hold it: `docker inspect openksef-api \| grep '"ENCRYPTION_KEY='`. This command prints a secret to the terminal. No value: see upgrade step 1. Do not run `docker compose up -d` before that. Other variables: restore them from the old `.env` before `up -d`. `docker inspect openksef-postgres \| grep POSTGRES_` and `docker inspect openksef-keycloak \| grep -E 'KEYCLOAK_ADMIN\|KC_DB_'` print them, including secrets. Do the same for the optional values, because `up -d` removes this copy: `docker inspect openksef-api --format '{{range .Config.Env}}{{println .}}{{end}}' \| grep -E 'Auth__PublicAuthority\|KSeF__BaseUrl\|Auth__ServiceAccount__ClientSecret\|Firebase__CredentialsJson'`. This command prints secrets too. In `.env` they are `APP_EXTERNAL_BASE_URL` (`Auth__PublicAuthority` without `/auth/realms/openksef`), `KSEF_BASE_URL`, `API_CLIENT_SECRET` and `FIREBASE_CREDENTIALS_JSON`. `docker ps` shows custom host ports. In `.env` they are `APP_HOST_PORT`, `API_HOST_PORT`, `KEYCLOAK_HOST_PORT`, `PORTAL_WEB_HOST_PORT` and `POSTGRES_HOST_PORT`. |
+| `docker compose` reports a missing `ENCRYPTION_KEY`, `POSTGRES_USER` or another required variable | The new `docker-compose.yml` requires the key. On an existing installation first run the row count query in its `docker exec` form from the [upgrade](#upgrade-from-v007-or-earlier). Result 1: follow the upgrade, because setting the key alone skips stopping the hosts and the backup. Result 0: the stack has adopted, so restore the previous `ENCRYPTION_KEY` value and do not generate a new one, because a new key does not decrypt the stored data. If you have no copy, the containers still hold it: `docker inspect openksef-api \| grep '"ENCRYPTION_KEY='`. This command prints a secret to the terminal. No value: see upgrade step 1. Do not run `docker compose up -d` before that. Other variables: restore them from the old `.env` before `up -d`. `docker inspect openksef-postgres \| grep POSTGRES_` and `docker inspect openksef-keycloak \| grep -E 'KEYCLOAK_ADMIN\|KC_DB_'` print them, including secrets. Do the same for the optional values, because `up -d` removes this copy: `docker inspect openksef-api --format '{{range .Config.Env}}{{println .}}{{end}}' \| grep -E 'Auth__PublicAuthority\|KSeF__BaseUrl\|Auth__ServiceAccount__ClientSecret\|Firebase__CredentialsJson'`. This command prints secrets too. In `.env` they are `APP_EXTERNAL_BASE_URL` (`Auth__PublicAuthority` without `/auth/realms/openksef`), `KSEF_BASE_URL`, `API_CLIENT_SECRET` and `FIREBASE_CREDENTIALS_JSON`. `docker ps` shows custom host ports. Only `APP_HOST_PORT` is still read; for the others see [Upgrade: ports and Keycloak admin](#upgrade-ports-and-keycloak-admin). |
+| A container shows `Restarting` | See [Start failures and restart loops](#start-failures-and-restart-loops). |
 | API or Worker stops with `Unknown KSeF environment` | The stored or configured value is not a known environment. See [KSeF environment: upgrade](#ksef-environment-upgrade). |
 | Critical: `The configured encryption key does not decrypt` | The configured key does not match the ciphertext. Restore the key that encrypted it. |
 | Critical: `The configured encryption key cannot be used` | The row is gone and `ENCRYPTION_KEY` is empty or malformed. Login and invoice reads work. Adding credentials, sync and send do not. Restore the key. |

@@ -115,9 +115,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
             var needsCredentialWipe = false;
             if (requestedEnv != null)
             {
-                var currentEnv = DependencyInjection.NormalizeKSeFEnvironmentKey(
-                    _systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
-                    ?? _systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl));
+                var currentEnv = StoredKSeFEnvironmentForDisplay();
 
                 if (!string.Equals(currentEnv, requestedEnv, StringComparison.OrdinalIgnoreCase))
                 {

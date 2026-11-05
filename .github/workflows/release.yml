@@ -64,11 +64,16 @@ jobs:
             docker compose up -d
             ```
 
+            The attached compose pins every image to `${{ github.ref_name }}`; set `OPENKSEF_VERSION` in `.env` to run another release.
+
+            Upgrade from a compose that published ports 5432, 8081, 8082 or 8083: only the gateway port (`APP_HOST_PORT`, default 8080) is published now, and the gateway answers 403 on `/auth/admin` unless `KEYCLOAK_ADMIN_ALLOW` is set. Read [Upgrade: ports and Keycloak admin](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/docs/admin-setup.md#upgrade-ports-and-keycloak-admin) before you pull: it shows how to reach Postgres and the Keycloak admin console (SSH tunnel or allow-list).
+
             Images pushed to GHCR:
             - `ghcr.io/${{ github.repository_owner }}/openksef-api:${{ github.ref_name }}`
             - `ghcr.io/${{ github.repository_owner }}/openksef-worker:${{ github.ref_name }}`
             - `ghcr.io/${{ github.repository_owner }}/openksef-portal-web:${{ github.ref_name }}`
             - `ghcr.io/${{ github.repository_owner }}/openksef-gateway:${{ github.ref_name }}`
+            - `ghcr.io/${{ github.repository_owner }}/openksef-push-relay:${{ github.ref_name }}` (team-hosted relay, `docker-compose.push-relay.yml`)
 
             ---
 
@@ -136,6 +141,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build & push Push Relay
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src/OpenKSeF.PushRelay
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-push-relay:${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Pin docker-compose.yml to this release
+        run: |
+          sed -i "s/\${OPENKSEF_VERSION:-latest}/\${OPENKSEF_VERSION:-$GITHUB_REF_NAME}/" docker-compose.yml
+          if grep -n 'latest' docker-compose.yml; then exit 1; fi
+
       - name: Attach docker-compose.yml to release
         uses: softprops/action-gh-release@v2
         with:
@@ -146,7 +165,7 @@ jobs:
         env:
           OWNER: ${{ github.repository_owner }}
         run: |
-          for image in api worker portal-web gateway; do
+          for image in api worker portal-web gateway push-relay; do
             docker buildx imagetools create \
               -t "ghcr.io/$OWNER/openksef-$image:latest" \
               "ghcr.io/$OWNER/openksef-$image:$GITHUB_REF_NAME"

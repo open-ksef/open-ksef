@@ -355,7 +355,16 @@ var ksefEnv = systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
 if (!string.IsNullOrEmpty(ksefEnv))
 {
     var ksefOptions = app.Services.GetRequiredService<KSeF.Client.DI.KSeFClientOptions>();
-    ksefOptions.BaseUrl = OpenKSeF.Sync.DependencyInjection.ResolveStartupKSeFEnvironment(ksefEnv, app.Configuration);
+    try
+    {
+        ksefOptions.BaseUrl = OpenKSeF.Sync.DependencyInjection.ResolveStartupKSeFEnvironment(ksefEnv, app.Configuration);
+    }
+    catch (InvalidOperationException ex)
+    {
+        Log.Fatal("{Message}", ex.Message);
+        await Log.CloseAndFlushAsync();
+        return 1;
+    }
 }
 
 // Trust forwarded headers from nginx proxy (X-Forwarded-For, X-Forwarded-Proto)

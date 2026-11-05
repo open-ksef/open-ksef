@@ -6,7 +6,8 @@
 #   docker compose -f docker-compose.push-relay.yml up -d --build
 #
 # Usage (prod, pull from GHCR):
-#   Set PUSH_RELAY_IMAGE=ghcr.io/open-ksef/openksef-push-relay:latest in .env
+#   Set PUSH_RELAY_IMAGE=ghcr.io/open-ksef/openksef-push-relay:<release tag, e.g. v1.2.3> in .env
+#   (:latest follows the newest release; both exist from the first release that ships the relay)
 #   docker compose -f docker-compose.push-relay.yml up -d
 
 services:

@@ -74,15 +74,7 @@ Details: [setup wizard](docs/admin-setup.md), [site guide in Polish](https://ope
 
 ### Ports
 
-`docker-compose.yml` publishes five ports on all interfaces. All of them can be changed in `.env`:
-
-| Port | Service | `.env` variable |
-|------|---------|-----------------|
-| 8080 | Gateway: portal at `/`, API at `/api/`, Keycloak at `/auth/` | `APP_HOST_PORT` |
-| 8081 | API | `API_HOST_PORT` |
-| 8082 | Keycloak | `KEYCLOAK_HOST_PORT` |
-| 8083 | Portal | `PORTAL_WEB_HOST_PORT` |
-| 5432 | PostgreSQL | `POSTGRES_HOST_PORT` |
+`docker-compose.yml` publishes one port, the gateway: portal at `/`, API at `/api/`, Keycloak at `/auth/`. Change it with `APP_HOST_PORT` in `.env` (default 8080). The gateway answers 403 on `/auth/admin` unless `KEYCLOAK_ADMIN_ALLOW` lists your address. To reach Postgres or the Keycloak admin console, see [Upgrade: ports and Keycloak admin](docs/admin-setup.md#upgrade-ports-and-keycloak-admin).
 
 From the internet, expose only the gateway, behind your own HTTPS reverse proxy. Set `APP_EXTERNAL_BASE_URL` when you reach the instance by another address than `http://localhost:8080`.
 

@@ -205,6 +205,21 @@ public class SystemSettingsApiTests : IAsyncLifetime
                 builder.UseSetting(key, value);
         });
 
+    private int RunProgram(params (string Key, string Value)[] settings)
+    {
+        (string Key, string Value)[] host =
+        [
+            ("ConnectionStrings:Db", new NpgsqlConnectionStringBuilder(_fixture.PostgresConnectionString) { Database = _database }.ConnectionString),
+            ("Auth:Authority", _fixture.KeycloakAuthority),
+            ("Auth:PublicAuthority", _fixture.KeycloakAuthority),
+            ("Auth:RequireHttpsMetadata", "false"),
+            ("KSeF:Environment", "test"),
+            ("ENCRYPTION_KEY", OpenKSeFWebApplicationFactory.TestEncryptionKey),
+        ];
+        string[] args = [.. host.Concat(settings).Select(s => $"--{s.Key}={s.Value}")];
+        return (int)typeof(Program).Assembly.EntryPoint!.Invoke(null, [args])!;
+    }
+
     [Theory]
     [InlineData("tset")]
     [InlineData("https://ksef.mf.gov.pl/api")]
@@ -222,6 +237,17 @@ public class SystemSettingsApiTests : IAsyncLifetime
 
         await using var restarted = RestartedHost();
         Assert.Equal(KsefEnvironmentsUris.PROD, restarted.Services.GetRequiredService<KSeFClientOptions>().BaseUrl);
+    }
+
+    [Fact]
+    public async Task UnknownStoredRow_SaveTest_Is200_AndStoresTest()
+    {
+        await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = "tset" });
+
+        var response = await PutSettingsAsync(EnvironmentPut("test"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("test", StoredEnvironment());
     }
 
     [Theory]
@@ -258,10 +284,7 @@ public class SystemSettingsApiTests : IAsyncLifetime
         await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = "production" });
         var before = KSeFProductionGuard.Blocked;
 
-        await using var restarted = RestartedHost((DependencyInjection.ForbidProductionKey, "true"));
-        var error = Assert.ThrowsAny<Exception>(() => restarted.Services);
-
-        Assert.Contains(DependencyInjection.ForbidProductionKey, error.Message);
+        Assert.Equal(1, RunProgram((DependencyInjection.ForbidProductionKey, "true")));
         Assert.Equal(before, KSeFProductionGuard.Blocked);
     }
 
@@ -296,14 +319,11 @@ public class SystemSettingsApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task HostStart_UnknownStoredEnvironment_Throws()
+    public async Task HostStart_UnknownStoredEnvironment_ExitsWith1()
     {
         await SetConfigAsync(new() { [SystemConfigKeys.KSeFEnvironment] = "tset" });
 
-        await using var restarted = RestartedHost();
-        var error = Assert.ThrowsAny<Exception>(() => restarted.Services);
-
-        Assert.Contains("Unknown KSeF environment 'tset'", error.Message);
+        Assert.Equal(1, RunProgram());
     }
 
     [Theory]
