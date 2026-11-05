@@ -170,7 +170,8 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         {
             var result = await SyncService(db).SyncTenantAsync(_tenantId, UserId);
             Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
-            Assert.Equal(0, result.NewInvoices);
+            Assert.Equal((3, 1), (result.IssuedFetchedInvoices, result.IssuedNewInvoices));
+            Assert.Equal((3, 1), (result.FetchedInvoices, result.NewInvoices));
         }
 
         await using (var db = NewContext())

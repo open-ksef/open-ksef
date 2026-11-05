@@ -223,15 +223,17 @@ public sealed class TenantSyncService : ITenantSyncService
 
             await _db.SaveChangesAsync(cancellationToken);
 
-            await SyncIssuedInvoicesAsync(tenant, session, syncState, now, cancellationToken);
+            var issued = await SyncIssuedInvoicesAsync(tenant, session, syncState, now, cancellationToken);
 
             return new TenantSyncResult(
                 TenantId: tenant.Id,
                 Nip: tenant.Nip,
                 Outcome: TenantSyncOutcome.Success,
-                FetchedInvoices: totalFetched,
-                NewInvoices: totalNew,
-                SyncedAtUtc: now);
+                FetchedInvoices: totalFetched + issued.Fetched,
+                NewInvoices: totalNew + issued.New,
+                SyncedAtUtc: now,
+                IssuedFetchedInvoices: issued.Fetched,
+                IssuedNewInvoices: issued.New);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
@@ -383,15 +385,17 @@ public sealed class TenantSyncService : ITenantSyncService
             entry.State = EntityState.Detached;
     }
 
-    private async Task SyncIssuedInvoicesAsync(
+    private async Task<(int Fetched, int New)> SyncIssuedInvoicesAsync(
         Tenant tenant, KSeFSession session, SyncState syncState, DateTime now, CancellationToken cancellationToken)
     {
+        var fetched = 0;
+        var created = 0;
         if (syncState.IssuedFetchIsRecent(now))
         {
             _logger.LogInformation(
                 "Issued invoice sync skipped for tenant {TenantId}: continuation {ContinuationAt} is recent",
                 tenant.Id, syncState.IssuedContinuationAt);
-            return;
+            return (fetched, created);
         }
 
         try
@@ -419,7 +423,7 @@ public sealed class TenantSyncService : ITenantSyncService
                                 tenant.Id, MaxIssuedQueriesPerRun, continuationAtStart);
                         }
 
-                        return;
+                        return (fetched, created);
                     }
 
                     result = await _gateway.QueryInvoicesAsync(session, new KSeFQueryCriteria(
@@ -434,8 +438,9 @@ public sealed class TenantSyncService : ITenantSyncService
                         .Where(i => !(i.BuyerIdType == nameof(KSeF.Client.Core.Models.Invoices.BuyerIdentifierType.Nip) && i.BuyerNip == tenant.Nip))
                         .Select(i => ToDto(i, InvoiceDirection.Issued))
                         .ToList();
+                    fetched += sales.Count;
                     if (sales.Count > 0)
-                        await _invoiceService.UpsertInvoicesAsync(tenant.Id, sales, notify: false);
+                        created += (await _invoiceService.UpsertInvoicesAsync(tenant.Id, sales, notify: false)).Count;
 
                     if (result.IsTruncated || result.Invoices.Count < _syncOptions.BatchSize)
                         break;
@@ -455,7 +460,7 @@ public sealed class TenantSyncService : ITenantSyncService
                     _logger.LogWarning(
                         "Issued invoice continuation did not advance past {WindowStart} for tenant {TenantId}",
                         windowStart, tenant.Id);
-                    return;
+                    return (fetched, created);
                 }
 
                 if (next > windowEnd)
@@ -465,7 +470,7 @@ public sealed class TenantSyncService : ITenantSyncService
                 await _db.SaveChangesAsync(cancellationToken);
 
                 if (windowEnd == now && !result.IsTruncated)
-                    return;
+                    return (fetched, created);
 
                 windowStart = next;
             }
@@ -475,6 +480,8 @@ public sealed class TenantSyncService : ITenantSyncService
             _logger.LogWarning(ex, "Issued invoice sync failed for tenant {TenantId}", tenant.Id);
             DetachPendingChanges();
         }
+
+        return (fetched, created);
     }
 
     private static InvoiceDto ToDto(KSeFInvoiceHeader i, InvoiceDirection direction) => new(
