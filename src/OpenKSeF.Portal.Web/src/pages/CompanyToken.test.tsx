@@ -187,18 +187,51 @@ describe('Firma, Token KSeF i pobieranie', () => {
     expect(forceFullResync).toHaveBeenCalledExactlyOnceWith('a')
   })
 
-  it('full resync with failed downloads reports the count, not success', async () => {
-    vi.mocked(forceFullResync).mockResolvedValue({ fetchedInvoices: 5, newInvoices: 0, failedDownloads: 2 } as never)
+  async function fullResync(result: object): Promise<void> {
+    vi.mocked(forceFullResync).mockResolvedValue({ fetchedInvoices: 5, newInvoices: 0, ...result } as never)
     await render()
 
     await act(async () => by('credential-full-resync-button')?.click())
     const dialog = container.querySelector('[role="alertdialog"]')!
     await act(async () => buttonByText(dialog, 'Wykonaj pełną resynchronizację')!.click())
     await settle()
+  }
+
+  it('full resync on an API with only failedDownloads reports the count, not success', async () => {
+    await fullResync({ failedDownloads: 2 })
 
     expect(toast.success).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('(liczba: 2)'))
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Bez szczegółów z KSeF (liczba: 2)'))
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('opłacone przy kolejnej pełnej resynchronizacji'))
+  })
+
+  it('full resync with errored downloads says how many failed', async () => {
+    await fullResync({ failedDownloads: 2, erroredDownloads: 2, queuedDownloads: 0 })
+
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Nie udało się pobrać szczegółów z KSeF (liczba: 2)'))
+    expect(toast.error).not.toHaveBeenCalledWith(expect.stringContaining('w kolejnych cyklach'))
+  })
+
+  it('full resync with errored and queued downloads counts them apart', async () => {
+    await fullResync({ failedDownloads: 6, erroredDownloads: 2, queuedDownloads: 4 })
+
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Nie udało się pobrać szczegółów z KSeF (liczba: 2)'))
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Szczegóły pozostałych faktur (liczba: 4) pobierzemy w kolejnych cyklach'))
+  })
+
+  it('full resync with only queued downloads is a success that names the next cycles', async () => {
+    await fullResync({ failedDownloads: 4, erroredDownloads: 0, queuedDownloads: 4 })
+
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Szczegóły pozostałych faktur (liczba: 4) pobierzemy w kolejnych cyklach'))
+  })
+
+  it('full resync with nothing outstanding reports plain success', async () => {
+    await fullResync({ failedDownloads: 0, erroredDownloads: 0, queuedDownloads: 0 })
+
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(toast.success).toHaveBeenCalledWith('Pełna resynchronizacja zakończona. Pobrane: 5, nowe: 0.')
   })
 
   it('a company without a token has no danger card and no fetch', async () => {
