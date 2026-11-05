@@ -261,7 +261,9 @@ public class CredentialsController : ControllerBase
             FetchedInvoices: result.FetchedInvoices,
             NewInvoices: result.NewInvoices,
             SyncedAtUtc: result.SyncedAtUtc ?? DateTime.UtcNow,
-            FailedDownloads: result.FailedDownloads)),
+            FailedDownloads: result.FailedDownloads,
+            QueuedDownloads: result.QueuedDownloads,
+            ErroredDownloads: result.ErroredDownloads)),
         _ => StatusCode(StatusCodes.Status500InternalServerError, new { error = "Unknown sync outcome." })
     };
 

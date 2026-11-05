@@ -65,7 +65,7 @@ public class IssuedInvoicesController(
         });
 
     [HttpGet("feed")]
-    [ProducesResponseType(typeof(PagedResult<IssuedFeedItemResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(IssuedFeedPageResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public Task<IActionResult> Feed(
@@ -101,7 +101,16 @@ public class IssuedInvoicesController(
                 r.KsefNumber,
                 r.NeedsAttention)).ToList();
 
-            return Ok(new PagedResult<IssuedFeedItemResponse> { Items = items, Page = page, PageSize = pageSize, TotalCount = totalCount });
+            var syncState = await db.SyncStates.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
+
+            return Ok(new IssuedFeedPageResponse
+            {
+                Items = items,
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount,
+                IssuedFetchIncomplete = syncState?.IssuedFetchIncomplete() ?? false
+            });
         });
 
     [HttpGet("exchange-rate")]

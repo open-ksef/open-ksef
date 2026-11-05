@@ -5,4 +5,6 @@ public record TenantManualSyncResponse(
     int FetchedInvoices,
     int NewInvoices,
     DateTime SyncedAtUtc,
-    int FailedDownloads = 0);
+    int FailedDownloads = 0,
+    int QueuedDownloads = 0,
+    int ErroredDownloads = 0);

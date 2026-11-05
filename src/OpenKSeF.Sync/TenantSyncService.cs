@@ -18,7 +18,6 @@ public sealed class TenantSyncService : ITenantSyncService
 {
     private const int IssuedFirstRunMonthsBack = 12;
     private const int MaxIssuedQueriesPerRun = 10;
-    private static readonly TimeSpan IssuedRecentRun = TimeSpan.FromMinutes(15);
     private const int MaxConsecutiveDownloadFailures = 3;
 
     private readonly ApplicationDbContext _db;
@@ -124,9 +123,9 @@ public sealed class TenantSyncService : ITenantSyncService
             if (result.Outcome != TenantSyncOutcome.Success)
                 return result;
 
-            var failedDownloads = await DownloadQueuedXmlAsync(
+            var (queued, errored) = await DownloadQueuedXmlAsync(
                 [tenant], sessions, runStartedAt, _syncOptions.XmlDownloadsPerManualRun, _syncOptions.XmlManualDownloadSpacing, forceFullResync, cancellationToken);
-            return result with { FailedDownloads = failedDownloads };
+            return result with { QueuedDownloads = queued, ErroredDownloads = errored };
         }
         finally
         {
@@ -255,8 +254,8 @@ public sealed class TenantSyncService : ITenantSyncService
         return syncState.ReceivedContinuationAt < overlap ? syncState.ReceivedContinuationAt : overlap;
     }
 
-    /// <returns>Waiting invoices that did not get their XML in this run, including those over the budget.</returns>
-    private async Task<int> DownloadQueuedXmlAsync(
+    /// <returns>Queued: still waiting, not tried or stopped by a 429. Errored: tried in this run and failed.</returns>
+    private async Task<(int Queued, int Errored)> DownloadQueuedXmlAsync(
         IReadOnlyList<Tenant> tenants,
         Dictionary<Guid, KSeFSession?> sessions,
         DateTime runStartedAt,
@@ -274,7 +273,7 @@ public sealed class TenantSyncService : ITenantSyncService
                     || (h.Direction == InvoiceDirection.Received && h.DueDate == null && (!h.IsPaid || fullResync))));
         var waitingCount = await waiting.CountAsync(cancellationToken);
         if (waitingCount == 0)
-            return 0;
+            return (0, 0);
 
         var queue = await waiting
             .OrderBy(h => h.Direction == InvoiceDirection.Received && h.FirstSeenAt >= runStartedAt ? 0
@@ -292,10 +291,11 @@ public sealed class TenantSyncService : ITenantSyncService
         if (_xmlBlocks.IsBlocked(nip))
         {
             _logger.LogInformation("Invoice XML downloads for NIP {Nip} wait for KSeF Retry-After", nip);
-            return waitingCount;
+            return (waitingCount, 0);
         }
 
         var completed = 0;
+        var errored = 0;
         var attempted = 0;
         var failuresInARow = 0;
         foreach (var row in queue)
@@ -313,6 +313,7 @@ public sealed class TenantSyncService : ITenantSyncService
                 if (lines is null)
                 {
                     await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, cancellationToken);
+                    errored++;
                     continue;
                 }
 
@@ -331,13 +332,14 @@ public sealed class TenantSyncService : ITenantSyncService
                 _logger.LogWarning(ex, "Failed to store invoice XML details: {KSeFNumber}", row.KSeFInvoiceNumber);
                 DetachPendingChanges();
                 await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, cancellationToken);
+                errored++;
                 if (++failuresInARow >= MaxConsecutiveDownloadFailures)
                     break;
             }
         }
 
         _logger.LogInformation("Invoice XML queue for NIP {Nip}: {Completed} of {Queued} done", nip, completed, queue.Count);
-        return waitingCount - completed;
+        return (waitingCount - completed - errored, errored);
     }
 
     private async Task<KSeFSession?> CurrentSessionAsync(
@@ -384,12 +386,18 @@ public sealed class TenantSyncService : ITenantSyncService
     private async Task SyncIssuedInvoicesAsync(
         Tenant tenant, KSeFSession session, SyncState syncState, DateTime now, CancellationToken cancellationToken)
     {
-        if (syncState.IssuedContinuationAt > now - IssuedRecentRun)
+        if (syncState.IssuedFetchIsRecent(now))
+        {
+            _logger.LogInformation(
+                "Issued invoice sync skipped for tenant {TenantId}: continuation {ContinuationAt} is recent",
+                tenant.Id, syncState.IssuedContinuationAt);
             return;
+        }
 
         try
         {
-            var windowStart = syncState.IssuedContinuationAt ?? now.AddMonths(-IssuedFirstRunMonthsBack);
+            var continuationAtStart = syncState.IssuedContinuationAt;
+            var windowStart = continuationAtStart ?? now.AddMonths(-IssuedFirstRunMonthsBack);
             var queries = 0;
 
             while (windowStart < now)
@@ -403,7 +411,16 @@ public sealed class TenantSyncService : ITenantSyncService
                 while (true)
                 {
                     if (queries++ == MaxIssuedQueriesPerRun)
+                    {
+                        if (syncState.IssuedContinuationAt == continuationAtStart)
+                        {
+                            _logger.LogWarning(
+                                "Issued invoice sync stalled for tenant {TenantId}: {MaxQueries} queries did not move past {ContinuationAt}",
+                                tenant.Id, MaxIssuedQueriesPerRun, continuationAtStart);
+                        }
+
                         return;
+                    }
 
                     result = await _gateway.QueryInvoicesAsync(session, new KSeFQueryCriteria(
                         SubjectNip: tenant.Nip,

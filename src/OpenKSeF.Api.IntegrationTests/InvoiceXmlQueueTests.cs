@@ -383,6 +383,8 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         Assert.Empty(_downloads);
         Assert.Equal(5, manual.FailedDownloads);
+        Assert.Equal(5, manual.QueuedDownloads);
+        Assert.Equal(0, manual.ErroredDownloads);
     }
 
     [Fact]
@@ -425,6 +427,21 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ManualSync_SeparatesRowsThatFailedFromRowsStillQueued()
+    {
+        for (var n = 0; n < 6; n++)
+            await InsertAsync($"U-{n}");
+        await MigrateAsync();
+        _xml = _ => throw new HttpRequestException("503");
+
+        var manual = await ManualSyncAsync();
+
+        Assert.Equal(3, manual.ErroredDownloads);
+        Assert.Equal(3, manual.QueuedDownloads);
+        Assert.Equal(6, manual.FailedDownloads);
+    }
+
+    [Fact]
     public async Task ParseFailureOrFailedDownload_KeepsLinesDueDateAccountAndPaidFlags_AndRetriesLater()
     {
         await InsertAsync("PARSE-FAILS", daysAgo: 1, isPaid: false, account: Account);
@@ -442,6 +459,8 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         var manual = await ManualSyncAsync();
 
         Assert.Equal(3, manual.FailedDownloads);
+        Assert.Equal(3, manual.ErroredDownloads);
+        Assert.Equal(0, manual.QueuedDownloads);
         Assert.Equal(before, await SnapshotAsync());
 
         _downloads.Clear();
@@ -525,6 +544,8 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         Assert.Equal(15, _downloads.Count);
         Assert.Equal(5, manual.FailedDownloads);
+        Assert.Equal(5, manual.QueuedDownloads);
+        Assert.Equal(0, manual.ErroredDownloads);
         Assert.Equal(TenantSyncOutcome.Success, manual.Outcome);
 
         _downloads.Clear();
@@ -541,6 +562,8 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         Assert.Single(_downloads);
         Assert.Equal(5, stopped.FailedDownloads);
+        Assert.Equal(5, stopped.QueuedDownloads);
+        Assert.Equal(0, stopped.ErroredDownloads);
         Assert.Equal(TenantSyncOutcome.Success, stopped.Outcome);
     }
 

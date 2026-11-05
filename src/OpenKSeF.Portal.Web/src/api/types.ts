@@ -100,6 +100,8 @@ export interface TenantManualSyncResponse {
   newInvoices: number
   syncedAtUtc: string
   failedDownloads?: number
+  queuedDownloads?: number
+  erroredDownloads?: number
 }
 
 export interface DeviceTokenResponse {

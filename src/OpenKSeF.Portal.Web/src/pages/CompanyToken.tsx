@@ -76,10 +76,17 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
   const fullResync = useMutation({
     mutationFn: () => forceFullResync(tenantId),
     onSuccess: async (result) => {
-      if (result.failedDownloads) {
-        toast.error(`Pełna resynchronizacja niepełna. Pobrane: ${result.fetchedInvoices}, nowe: ${result.newInvoices}. Bez szczegółów z KSeF (liczba: ${result.failedDownloads}). Nieopłacone uzupełnimy automatycznie, opłacone przy kolejnej pełnej resynchronizacji.`)
+      const counts = `Pobrane: ${result.fetchedInvoices}, nowe: ${result.newInvoices}.`
+      const later = 'Nieopłacone uzupełnimy automatycznie, opłacone przy kolejnej pełnej resynchronizacji.'
+      const queued = result.queuedDownloads
+        ? ` Szczegóły pozostałych faktur (liczba: ${result.queuedDownloads}) pobierzemy w kolejnych cyklach, a opłaconych przy kolejnej pełnej resynchronizacji.`
+        : ''
+      if (result.erroredDownloads) {
+        toast.error(`Pełna resynchronizacja niepełna. ${counts} Nie udało się pobrać szczegółów z KSeF (liczba: ${result.erroredDownloads}). ${later}${queued}`)
+      } else if (result.erroredDownloads === undefined && result.queuedDownloads === undefined && result.failedDownloads) {
+        toast.error(`Pełna resynchronizacja niepełna. ${counts} Bez szczegółów z KSeF (liczba: ${result.failedDownloads}). ${later}`)
       } else {
-        toast.success(`Pełna resynchronizacja zakończona. Pobrane: ${result.fetchedInvoices}, nowe: ${result.newInvoices}.`)
+        toast.success(`Pełna resynchronizacja zakończona. ${counts}${queued}`)
       }
       await refreshCredentials()
       await queryClient.invalidateQueries({ queryKey: ['invoices'] })

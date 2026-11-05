@@ -83,7 +83,7 @@ describe('Firma, Dane firmy', () => {
     vi.stubGlobal('localStorage', memoryStorage())
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     vi.mocked(listTenants).mockResolvedValue([company('a', 'Firma A', '1111111111'), company('b', 'Firma B', '2222222222')])
-    vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 7, totalPages: 7 })
+    vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 7, totalPages: 7, issuedFetchIncomplete: false })
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -131,7 +131,7 @@ describe('Firma, Dane firmy', () => {
   })
 
   it('says there is nothing to lose when the count is zero', async () => {
-    vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 0, totalPages: 0 })
+    vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 0, totalPages: 0, issuedFetchIncomplete: false })
     await render()
     await openDelete()
     expect(by('tenant-delete-invoices')?.textContent).toBe('Firma nie ma wystawionych faktur ani szkiców.')

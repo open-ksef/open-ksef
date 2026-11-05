@@ -9,4 +9,9 @@ public sealed record TenantSyncResult(
     DateTime? SyncedAtUtc = null,
     string? ErrorMessage = null,
     int? ErrorStatusCode = null,
-    int FailedDownloads = 0);
+    int QueuedDownloads = 0,
+    int ErroredDownloads = 0)
+{
+    // Portal builds before queuedDownloads read this as "run incomplete", so it must keep counting queued rows.
+    public int FailedDownloads => QueuedDownloads + ErroredDownloads;
+}

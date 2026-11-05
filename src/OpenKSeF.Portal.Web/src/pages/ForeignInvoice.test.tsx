@@ -535,6 +535,7 @@ describe('foreign invoices in the portal', () => {
         pageSize: 20,
         totalCount: 1,
         totalPages: 1,
+        issuedFetchIncomplete: false,
       })
       await render('/issued?tenantId=t-1')
       await waitFor(() => container.textContent?.includes('Example Ltd') ?? false)

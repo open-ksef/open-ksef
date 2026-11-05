@@ -95,7 +95,7 @@ public static class MigrationHelper
                     "Waiting for the API to apply {Count} pending migrations",
                     pending);
             }
-            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 logger.LogWarning(ex, "Could not read migration state. Retrying");
             }

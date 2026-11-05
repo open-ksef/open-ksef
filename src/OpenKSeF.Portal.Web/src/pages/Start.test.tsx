@@ -139,7 +139,7 @@ describe('StartPage', () => {
       params?.status === 'Rejected' ? paged(rejected, rejectedTotal) : paged(recent, recentTotal),
     )
     vi.mocked(listIssuedFeed).mockResolvedValue(
-      paged(recent.map((row) => ({ ...row, source: 'OpenKSeF' as const, buyerIdType: null, buyerForeignId: null })), recentTotal),
+      { ...paged(recent.map((row) => ({ ...row, source: 'OpenKSeF' as const, buyerIdType: null, buyerForeignId: null })), recentTotal), issuedFetchIncomplete: false },
     )
   }
 
@@ -235,11 +235,26 @@ describe('StartPage', () => {
       expect(vi.mocked(listIssuedInvoices)).toHaveBeenCalledWith('a', expect.objectContaining({ pageSize: 100 }))
     })
 
+    it('an empty feed with the fetch flag does not claim there are no issued invoices', async () => {
+      useData()
+      vi.mocked(listIssuedFeed).mockResolvedValue({ ...paged([]), issuedFetchIncomplete: true })
+      await render()
+      expect(text()).not.toContain('Nie masz jeszcze wystawionych faktur')
+      expect(text()).toContain('Ostatnie pobieranie faktur sprzedaży z KSeF nie objęło całego okresu.')
+    })
+
+    it('an empty feed without the fetch flag says there are no issued invoices', async () => {
+      useData()
+      await render()
+      expect(text()).toContain('Nie masz jeszcze wystawionych faktur')
+      expect(text()).not.toContain('Ostatnie pobieranie')
+    })
+
     it('lists a sale from another tool in the recent card, opening its details, with no attention item', async () => {
       useData()
       vi.mocked(listIssuedInvoices).mockImplementation(async () => paged([]))
       vi.mocked(listIssuedFeed).mockResolvedValue(
-        paged([{ ...issued({ id: 'x-1', number: 'EXT/1', ksefNumber: '1111111111-20261102-ABC/1' }), source: 'External', dueDate: null, buyerIdType: null, buyerForeignId: null }]),
+        { ...paged([{ ...issued({ id: 'x-1', number: 'EXT/1', ksefNumber: '1111111111-20261102-ABC/1' }), source: 'External', dueDate: null, buyerIdType: null, buyerForeignId: null }]), issuedFetchIncomplete: false },
       )
       await render()
       expect(text()).not.toContain('Nie masz jeszcze wystawionych faktur')

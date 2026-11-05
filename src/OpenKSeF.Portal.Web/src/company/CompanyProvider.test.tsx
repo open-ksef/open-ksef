@@ -71,7 +71,7 @@ describe('CompanyProvider', () => {
     vi.mocked(getDashboardOverview).mockResolvedValue([])
     vi.mocked(listInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 })
     vi.mocked(listIssuedInvoices).mockResolvedValue({ items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 })
-    vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 })
+    vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0, issuedFetchIncomplete: false })
     vi.mocked(getInvoiceByKSeFNumber).mockReturnValue(new Promise(() => {}))
     vi.mocked(getIssuedInvoice).mockReturnValue(new Promise(() => {}))
   })

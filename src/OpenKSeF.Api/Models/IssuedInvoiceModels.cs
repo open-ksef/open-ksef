@@ -1,3 +1,5 @@
+using OpenKSeF.Domain.Models;
+
 namespace OpenKSeF.Api.Models;
 
 public record IssuedInvoiceBuyerModel(
@@ -130,3 +132,8 @@ public record IssuedFeedItemResponse(
     string Currency,
     string? KsefNumber,
     bool NeedsAttention);
+
+public class IssuedFeedPageResponse : PagedResult<IssuedFeedItemResponse>
+{
+    public bool IssuedFetchIncomplete { get; init; }
+}

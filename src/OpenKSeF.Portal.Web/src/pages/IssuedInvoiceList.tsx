@@ -103,7 +103,8 @@ export function IssuedInvoiceListPage(): ReactElement {
   const totalPages = Math.max(listQuery.data?.totalPages ?? 1, 1)
   const unfilteredEmpty = listQuery.isSuccess && rows.length === 0 && !status && !month && !q && page === 1
   const hasCredential = credentialsQuery.data?.find((row) => row.tenantId === tenantId)?.hasCredential
-  const stateCard = unfilteredEmpty && credentialsQuery.isSuccess
+  const incomplete = listQuery.data?.issuedFetchIncomplete ?? false
+  const stateCard = unfilteredEmpty && credentialsQuery.isSuccess && (!incomplete || hasCredential === false)
   const totalCount = listQuery.data?.totalCount ?? 0
   const firstRow = (page - 1) * PAGE_SIZE + 1
   const pastLastPage = listQuery.isSuccess && rows.length === 0 && totalCount > 0 && page > totalPages
@@ -213,6 +214,13 @@ export function IssuedInvoiceListPage(): ReactElement {
         </div>
       )}
 
+      {incomplete ? (
+        <div className="inv-alert inv-alert--info company-note" role="status" data-testid="issued-fetch-incomplete">
+          <Icon name="clock" />
+          <span>Ostatnie pobieranie faktur sprzedaży z KSeF nie objęło całego okresu. Lista może być niepełna.</span>
+        </div>
+      ) : null}
+
       {stateCard ? (
         <EmptyState
           icon="send"
@@ -234,7 +242,7 @@ export function IssuedInvoiceListPage(): ReactElement {
         <AsyncStateView
           isLoading={tenantsQuery.isLoading || listQuery.isLoading || pastLastPage || (unfilteredEmpty && credentialsQuery.isLoading)}
           error={tenantsQuery.error ?? listQuery.error ?? (unfilteredEmpty ? credentialsQuery.error : null)}
-          isEmpty={rows.length === 0}
+          isEmpty={rows.length === 0 && !incomplete}
           emptyTitle="Brak faktur spełniających kryteria"
           emptyMessage="Zmień filtry lub kliknij „Nowa faktura”."
           onRetry={() => {
@@ -242,22 +250,24 @@ export function IssuedInvoiceListPage(): ReactElement {
             void credentialsQuery.refetch()
           }}
         >
-          <section className="received-list" aria-label="Lista faktur">
-            <Table testId="issued-invoice-table" columns={columns} data={rows} onRowClick={onRowClick} />
-            <nav className="ui-pagination" aria-label="Paginacja wystawionych faktur">
-              <span className="ui-pagination-info">
-                {firstRow}–{firstRow + rows.length - 1} z {totalCount} {totalCount === 1 ? 'faktury' : 'faktur'}
-              </span>
-              <div className="ui-pagination-controls">
-                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => update({ page: page - 1 })}>
-                  Poprzednia
-                </Button>
-                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => update({ page: page + 1 })}>
-                  Następna
-                </Button>
-              </div>
-            </nav>
-          </section>
+          {rows.length > 0 ? (
+            <section className="received-list" aria-label="Lista faktur">
+              <Table testId="issued-invoice-table" columns={columns} data={rows} onRowClick={onRowClick} />
+              <nav className="ui-pagination" aria-label="Paginacja wystawionych faktur">
+                <span className="ui-pagination-info">
+                  {firstRow}–{firstRow + rows.length - 1} z {totalCount} {totalCount === 1 ? 'faktury' : 'faktur'}
+                </span>
+                <div className="ui-pagination-controls">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => update({ page: page - 1 })}>
+                    Poprzednia
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => update({ page: page + 1 })}>
+                    Następna
+                  </Button>
+                </div>
+              </nav>
+            </section>
+          ) : null}
         </AsyncStateView>
       )}
     </div>

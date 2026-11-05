@@ -136,7 +136,7 @@ describe('InvoiceListPage', () => {
     vi.mocked(listInvoices).mockResolvedValue({ items: [invoice()], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 })
     vi.mocked(getDashboardOverview).mockResolvedValue([summary({})])
     vi.mocked(listCredentials).mockResolvedValue([credential()])
-    vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 0, totalPages: 0 })
+    vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 0, totalPages: 0, issuedFetchIncomplete: false })
     vi.mocked(forceCredentialSync).mockResolvedValue({
       tenantId: 'tenant-1',
       fetchedInvoices: 3,
