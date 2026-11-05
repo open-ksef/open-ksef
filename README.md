@@ -123,7 +123,7 @@ cd src/OpenKSeF.Portal.Web && npm ci && npm test
 - Releases: [github.com/open-ksef/open-ksef/releases](https://github.com/open-ksef/open-ksef/releases)
 - Mobile app: [open-ksef-mobile](https://github.com/open-ksef/open-ksef-mobile)
 - Documentation source: [open-ksef-doc](https://github.com/open-ksef/open-ksef-doc)
-- Security reports: [SECURITY.md](SECURITY.md). Do not open a public issue.
+- Security reports: [SECURITY.md](SECURITY.md). Do not disclose them publicly.
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License

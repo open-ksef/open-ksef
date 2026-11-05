@@ -80,7 +80,7 @@ npm test
 
 ## Reporting bugs
 
-Use [GitHub Issues](../../issues) with the **Bug report** template. Include:
+E-mail **openksef@proton.me**. Include:
 
 - Steps to reproduce
 - Expected vs actual behavior
@@ -88,7 +88,7 @@ Use [GitHub Issues](../../issues) with the **Bug report** template. Include:
 
 ## Requesting features
 
-Use [GitHub Issues](../../issues) with the **Feature request** template. Describe:
+E-mail **openksef@proton.me**. Describe:
 
 - The problem you're trying to solve
 - Your proposed solution
@@ -96,7 +96,7 @@ Use [GitHub Issues](../../issues) with the **Feature request** template. Describ
 
 ## Security vulnerabilities
 
-**Do NOT open a public issue for security vulnerabilities.** See [SECURITY.md](SECURITY.md) for responsible disclosure instructions.
+**Do NOT disclose security vulnerabilities publicly.** See [SECURITY.md](SECURITY.md) for responsible disclosure instructions.
 
 ## Contributor License Agreement (CLA)
 
