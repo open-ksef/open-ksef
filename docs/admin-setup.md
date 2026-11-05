@@ -296,9 +296,24 @@ Then run `docker compose up -d`.
 
 **Keycloak admin console, SSH tunnel (recommended).** With the `keycloak` entry of the override above, run on your computer `ssh -L 8082:127.0.0.1:8082 user@your-server` and open <http://localhost:8082/auth/admin>. The console is not reachable from any network, and the gateway stays at 403.
 
-**Keycloak admin console, allow-list.** Set `KEYCLOAK_ADMIN_ALLOW` in `.env` to the addresses that may open `/auth/admin` through the gateway, comma separated, IP or CIDR, for example `KEYCLOAK_ADMIN_ALLOW=192.168.88.0/24,10.8.0.5`. Then run `docker compose up -d`. Empty or unset means 403 for everyone. nginx checks the address of the connection it receives. Behind a reverse proxy or Cloudflare, that is the proxy's address, not the browser's. Listing it opens the console to every visitor, so use the SSH tunnel there. An invalid entry stops the gateway at start: see [Start failures and restart loops](#start-failures-and-restart-loops).
+**Keycloak admin console, allow-list.** Set `KEYCLOAK_ADMIN_ALLOW` in `.env` to the addresses that may open `/auth/admin` through the gateway, comma separated, IP or CIDR, for example `KEYCLOAK_ADMIN_ALLOW=192.168.88.0/24,10.8.0.5`. Then run `docker compose up -d`. Empty or unset means 403 for everyone. nginx checks the address of the connection it receives. Behind a reverse proxy or Cloudflare, that is the proxy's address, not the browser's. Listing it opens the console to every visitor, so use the SSH tunnel there. The same applies when Docker's userland proxy forwards the port: on Docker Desktop (Windows, macOS) for every client, on Linux for connections to `localhost` and for all clients when `"iptables": false` is set in `daemon.json`. nginx then sees the Docker bridge gateway, for example `172.18.0.1`, and listing that address opens the console to everyone who reaches the port. Check the address nginx sees with `docker compose logs gateway`. The gateway skips an invalid entry, logs `KEYCLOAK_ADMIN_ALLOW entry '<entry>' is not a valid nginx allow address, skipped` and keeps the other entries.
 
 **Image version.** `OPENKSEF_VERSION` in `.env` picks the tag of `api`, `worker`, `portal-web` and `gateway`, for example `OPENKSEF_VERSION=v1.2.3`. Leave it unset to use the release the compose came with. Upgrade: change it (or take the new compose), then `docker compose pull && docker compose up -d`. Roll back: set the previous tag and run the same commands. Migrations are not rolled back, so read the release notes first. A `docker-compose.yml` from v0.0.11 or older names `:latest`, which points to the newest release. Taking that file back restores the old ports, not the old images.
+
+## Reverse proxy and public URL
+
+Keycloak builds the token issuer (`iss`) and every absolute link (login redirects, email verification, password reset) from what the gateway sends it. The gateway takes the host and port from the `Host` header. It takes the scheme from `APP_EXTERNAL_BASE_URL` when that is set in `.env`, otherwise from `X-Forwarded-Proto`. It ignores `X-Forwarded-Host` and `X-Forwarded-Port` from the client. `Host`, and `X-Forwarded-Proto` when `APP_EXTERNAL_BASE_URL` is not set, must come from a proxy that overwrites them; with direct access, or a proxy that passes the client's value, a request can still change the host or port in its own links, and without `APP_EXTERNAL_BASE_URL` also the scheme. The issuer must equal `APP_EXTERNAL_BASE_URL/auth/realms/openksef` (or the URL saved by the wizard), otherwise the API answers 401.
+
+| Setup | What the gateway needs | Issuer |
+|---|---|---|
+| Direct, `APP_HOST_PORT=18480` | Nothing | `http://<host>:18480/auth/realms/openksef` |
+| Nginx Proxy Manager, HTTPS on 443 | `APP_EXTERNAL_BASE_URL=https://<domain>`. NPM passes a client `X-Forwarded-Proto` through; see below | `https://<domain>/auth/realms/openksef` |
+| ngrok, Cloudflare Tunnel, Caddy, Traefik | Nothing: they keep the public `Host` and send `X-Forwarded-Proto` | `https://<public host>/auth/realms/openksef` |
+| nginx with your own `location` | `proxy_set_header Host $host:$server_port;` and `proxy_set_header X-Forwarded-Proto $scheme;` | public host and port |
+| Apache | `ProxyPreserveHost On`, `RequestHeader set Host "<domain>"` and `RequestHeader set X-Forwarded-Proto https` | public host |
+| Public HTTPS on a port other than 443 | The proxy must send that port in `Host`, for example `Host: example.com:8443` (nginx `$host:$server_port`) | `https://example.com:8443/auth/realms/openksef` |
+
+A proxy that sends its upstream name as `Host` (for example `gateway:8080`) and the public name only in `X-Forwarded-Host` no longer works: set `Host` as above. The proxy must overwrite `X-Forwarded-Proto`. Nginx Proxy Manager passes a client value through, so without `APP_EXTERNAL_BASE_URL` a request can get `http://` links. With `APP_EXTERNAL_BASE_URL` set, every access through the gateway gets its scheme, including a tunnel such as ngrok, so a plain `http://` value there gives `http://` links on an HTTPS tunnel. The gateway reads `APP_EXTERNAL_BASE_URL` only from a `docker-compose.yml` that passes it to the `gateway` service; an older file pulls the new image without it, and the scheme then still comes from `X-Forwarded-Proto`. Check the result with `curl -s https://<domain>/auth/realms/openksef/.well-known/openid-configuration` and compare `issuer` with `APP_EXTERNAL_BASE_URL`.
 
 ## Start failures and restart loops
 
@@ -307,7 +322,6 @@ Every service has `restart: unless-stopped`. When API or Worker exits at start, 
 - a bad `ksef_environment` row or `KSEF_BASE_URL` (`Unknown KSeF environment`), see [KSeF environment: upgrade](#ksef-environment-upgrade)
 - `KSeF:ForbidProduction` set on a stack whose environment is production
 - `SystemConfigs` unreadable after 5 attempts (Postgres down or broken)
-- the gateway with an invalid `KEYCLOAK_ADMIN_ALLOW` entry
 
 API and Worker log one `FTL` line with the reason. The KSeF environment refusals exit with code 1. How to see the loop and the reason:
 

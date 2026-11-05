@@ -154,6 +154,7 @@ jobs:
         run: |
           sed -i "s/\${OPENKSEF_VERSION:-latest}/\${OPENKSEF_VERSION:-$GITHUB_REF_NAME}/" docker-compose.yml
           if grep -n 'latest' docker-compose.yml; then exit 1; fi
+          POSTGRES_USER=x POSTGRES_PASSWORD=x KEYCLOAK_ADMIN=x KEYCLOAK_ADMIN_PASSWORD=x ENCRYPTION_KEY=x docker compose -f docker-compose.yml config -q
 
       - name: Attach docker-compose.yml to release
         uses: softprops/action-gh-release@v2
