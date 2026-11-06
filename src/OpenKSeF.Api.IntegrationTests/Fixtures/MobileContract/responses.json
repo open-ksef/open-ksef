@@ -1,0 +1,104 @@
+{
+  "GET /api/account/me": {
+    "userId": "string",
+    "email": "string|null",
+    "name": "string|null"
+  },
+  "GET /api/account/onboarding-status": {
+    "isComplete": "boolean",
+    "hasTenant": "boolean",
+    "hasCredential": "boolean",
+    "firstTenantId": "string"
+  },
+  "POST /api/tenants": {
+    "id": "string",
+    "nip": "string",
+    "displayName": "string",
+    "notificationEmail": "string",
+    "createdAt": "string"
+  },
+  "GET /api/tenants": {
+    "[].id": "string",
+    "[].nip": "string",
+    "[].displayName": "string|null",
+    "[].notificationEmail": "string|null",
+    "[].createdAt": "string"
+  },
+  "PUT /api/tenants/{id}": {
+    "id": "string",
+    "nip": "string",
+    "displayName": "string",
+    "notificationEmail": "string",
+    "createdAt": "string"
+  },
+  "GET /api/tenants/{id}/invoices": {
+    "items[].id": "string",
+    "items[].ksefInvoiceNumber": "string",
+    "items[].ksefReferenceNumber": "string",
+    "items[].invoiceNumber": "string",
+    "items[].vendorName": "string",
+    "items[].vendorNip": "string",
+    "items[].vendorBankAccount": "string",
+    "items[].buyerName": "string",
+    "items[].buyerNip": "string",
+    "items[].amountNet": "number",
+    "items[].amountVat": "number",
+    "items[].amountGross": "number",
+    "items[].currency": "string",
+    "items[].issueDate": "string",
+    "items[].acquisitionDate": "string",
+    "items[].invoiceType": "string",
+    "items[].firstSeenAt": "string",
+    "items[].isPaid": "boolean",
+    "items[].paidAt": "string",
+    "page": "number",
+    "pageSize": "number",
+    "totalCount": "number"
+  },
+  "GET /api/tenants/{id}/invoices/{invoiceId}": {
+    "id": "string",
+    "ksefInvoiceNumber": "string",
+    "ksefReferenceNumber": "string",
+    "invoiceNumber": "string",
+    "vendorName": "string",
+    "vendorNip": "string",
+    "vendorBankAccount": "string",
+    "buyerName": "string",
+    "buyerNip": "string",
+    "amountNet": "number",
+    "amountVat": "number",
+    "amountGross": "number",
+    "currency": "string",
+    "issueDate": "string",
+    "acquisitionDate": "string",
+    "invoiceType": "string",
+    "firstSeenAt": "string",
+    "isPaid": "boolean",
+    "paidAt": "string",
+    "lines[].lineNumber": "number",
+    "lines[].name": "string",
+    "lines[].unit": "string",
+    "lines[].quantity": "number",
+    "lines[].unitPriceNet": "number",
+    "lines[].unitPriceGross": "number",
+    "lines[].amountNet": "number",
+    "lines[].amountGross": "number",
+    "lines[].amountVat": "number",
+    "lines[].vatRate": "string"
+  },
+  "GET /api/devices": {
+    "[].id": "string",
+    "[].token": "string",
+    "[].platform": "number",
+    "[].tenantId": "string",
+    "[].createdAt": "string",
+    "[].updatedAt": "string"
+  },
+  "SignalR ReceiveNotification": {
+    "target": "string",
+    "arguments[].title": "string",
+    "arguments[].body": "string",
+    "arguments[].data.tenantId": "string",
+    "arguments[].data.invoiceId": "string"
+  }
+}

@@ -123,6 +123,9 @@ public class CredentialsControllerSyncTests : IDisposable
         Assert.Equal(1, payload.ErroredDownloads);
         Assert.Equal(3, payload.IssuedFetchedInvoices);
         Assert.Equal(1, payload.IssuedNewInvoices);
+        var json = JsonSerializer.SerializeToElement(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal(5, json.GetProperty("fetchedInvoices").GetInt32());
+        Assert.Equal(2, json.GetProperty("newInvoices").GetInt32());
     }
 
     public void Dispose() => _db.Dispose();

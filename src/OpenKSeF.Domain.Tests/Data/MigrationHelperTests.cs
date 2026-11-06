@@ -11,6 +11,15 @@ public class MigrationHelperTests : IDisposable
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"openksef-migration-helper-{Guid.NewGuid():N}.db");
 
     [Fact]
+    public void NpgsqlModel_MatchesLatestMigrationSnapshot()
+    {
+        using var context = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql("Host=localhost").Options);
+
+        Assert.False(context.Database.HasPendingModelChanges(), "Model changed without a migration: run dotnet ef migrations add.");
+    }
+
+    [Fact]
     public async Task ApplyMigrationsIdempotentlyAsync_AppliesMigrationsOnFreshDatabase()
     {
         await using var context = CreateContext();
