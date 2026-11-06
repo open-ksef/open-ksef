@@ -228,6 +228,19 @@ describe('Ustawienia', () => {
       expect(lastRequest().kSeFEnvironment).toBeUndefined()
     })
 
+    it('points a locked unknown row to the SQL fix instead of a selection', async () => {
+      act(() => root.unmount())
+      root = createRoot(container)
+      vi.mocked(getSettings).mockResolvedValue({ ...settings, kSeFEnvironment: 'bogus-env', kSeFEnvironmentLocked: true })
+      await render(<SettingsAdminPage />)
+      await login()
+
+      const hint = by('settings-ksef-env-unknown')!
+      expect((by('settings-ksef-env') as HTMLSelectElement).disabled).toBe(true)
+      expect(hint.querySelector('a')?.getAttribute('href')).toBe('https://github.com/open-ksef/open-ksef/blob/main/docs/admin-setup.md#ksef-environment-upgrade')
+      expect(hint.textContent).not.toContain('Wybierz Test, Demo lub Produkcja')
+    })
+
     it('has no serious axe violations', async () => {
       const result = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } })
       expect(result.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([])
