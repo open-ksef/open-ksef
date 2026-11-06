@@ -21,7 +21,7 @@ namespace OpenKSeF.Sync;
 /// </summary>
 public sealed class KSeFGateway : IKSeFGateway
 {
-    private const int NameMaxLength = 500;
+    private const int NameMaxLength = 512;
 
     private readonly CirfmfKSeFClient _client;
     private readonly IAuthCoordinator _authCoordinator;

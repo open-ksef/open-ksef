@@ -106,14 +106,14 @@ public class KSeFGatewayQueryTests
     }
 
     [Fact]
-    public async Task Names_AreCutTo500()
+    public async Task Names_AreCutTo512()
     {
-        var result = await Gateway(Response(Summary(BuyerIdentifierType.Nip, "5261040828", new string('b', 512), new string('s', 512))))
+        var result = await Gateway(Response(Summary(BuyerIdentifierType.Nip, "5261040828", new string('b', 600), new string('s', 600))))
             .QueryInvoicesAsync(Session, Criteria(InvoiceDirection.Issued));
 
         var header = result.Invoices.Single();
-        Assert.Equal(500, header.BuyerName!.Length);
-        Assert.Equal(500, header.VendorName.Length);
+        Assert.Equal(512, header.BuyerName!.Length);
+        Assert.Equal(512, header.VendorName.Length);
     }
 
     [Fact]

@@ -740,7 +740,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         await InsertAsync("GOOD-ROW", daysAgo: 2);
         await MigrateAsync();
         _xml = number => number == "BAD-ROW"
-            ? Encoding.UTF8.GetBytes($"""<Faktura xmlns="{Fa3}"><Fa><FaWiersz><NrWierszaFa>1</NrWierszaFa><P_8A>{new string('u', 60)}</P_8A></FaWiersz></Fa></Faktura>""")
+            ? Encoding.UTF8.GetBytes($"""<Faktura xmlns="{Fa3}"><Fa><FaWiersz><NrWierszaFa>1</NrWierszaFa><P_8A>{new string('u', 300)}</P_8A></FaWiersz></Fa></Faktura>""")
             : Xml("2026-11-20");
 
         var results = await WorkerCycleAsync();
