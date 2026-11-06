@@ -723,7 +723,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         var results = await WorkerCycleAsync();
 
-        Assert.Equal(TenantSyncOutcome.Failed, results.Single(r => r.TenantId == _tenantId).Outcome);
+        Assert.Equal(TenantSyncOutcome.StoreFailed, results.Single(r => r.TenantId == _tenantId).Outcome);
         Assert.Equal(TenantSyncOutcome.Failed, results.Single(r => r.TenantId == timeoutTenant).Outcome);
         Assert.Equal(TenantSyncOutcome.Success, results.Single(r => r.TenantId == okTenant).Outcome);
         Assert.Equal(["KSEF-OK"], _downloads);

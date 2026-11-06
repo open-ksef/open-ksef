@@ -69,7 +69,7 @@ public sealed class TenantSyncService : ITenantSyncService
                 results.Add(await SyncMetadataAsync(tenant, fullResyncWindowStart: null, sessions, cancellationToken));
 
             // Five failed calls in a row open the KSeF.Client breaker for every caller, so XML waits for all metadata.
-            var synced = results.Where(r => r.Outcome == TenantSyncOutcome.Success).Select(r => r.TenantId).ToHashSet();
+            var synced = results.Where(r => r.SyncedAtUtc is not null).Select(r => r.TenantId).ToHashSet();
             foreach (var sameNip in tenants.Where(t => synced.Contains(t.Id)).GroupBy(t => t.Nip))
             {
                 await DownloadQueuedXmlAsync(
@@ -118,7 +118,7 @@ public sealed class TenantSyncService : ITenantSyncService
         try
         {
             var result = await SyncMetadataAsync(tenant, fullResyncWindowStart, sessions, cancellationToken);
-            if (result.Outcome != TenantSyncOutcome.Success)
+            if (result.SyncedAtUtc is null)
                 return result;
 
             var (queued, errored) = await DownloadQueuedXmlAsync(
@@ -222,7 +222,22 @@ public sealed class TenantSyncService : ITenantSyncService
 
             await _db.SaveChangesAsync(cancellationToken);
 
-            var issued = await SyncIssuedInvoicesAsync(tenant, session, syncState, now, cancellationToken);
+            (int Fetched, int New) issued;
+            try
+            {
+                issued = await SyncIssuedInvoicesAsync(tenant, session, syncState, now, cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                return new TenantSyncResult(
+                    TenantId: tenant.Id,
+                    Nip: tenant.Nip,
+                    Outcome: TenantSyncOutcome.StoreFailed,
+                    FetchedInvoices: totalFetched,
+                    NewInvoices: totalNew,
+                    SyncedAtUtc: now,
+                    ErrorMessage: "Issued invoice page could not be stored.");
+            }
 
             return new TenantSyncResult(
                 TenantId: tenant.Id,
@@ -242,8 +257,8 @@ public sealed class TenantSyncService : ITenantSyncService
             return new TenantSyncResult(
                 TenantId: tenant.Id,
                 Nip: tenant.Nip,
-                Outcome: TenantSyncOutcome.Failed,
-                ErrorMessage: ex.Message,
+                Outcome: ex is DbUpdateException ? TenantSyncOutcome.StoreFailed : TenantSyncOutcome.Failed,
+                ErrorMessage: ex is DbUpdateException ? "Invoice data could not be stored." : ex.Message,
                 ErrorStatusCode: statusCode.HasValue ? (int)statusCode.Value : null);
         }
         finally

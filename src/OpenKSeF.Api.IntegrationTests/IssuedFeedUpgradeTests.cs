@@ -271,7 +271,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
             results = await SyncService(db).SyncAllTenantsAsync();
 
         Assert.Equal(2, results.Count);
-        Assert.Equal(TenantSyncOutcome.Failed, results.Single(r => r.Nip == firstSubject).Outcome);
+        Assert.Equal(TenantSyncOutcome.StoreFailed, results.Single(r => r.Nip == firstSubject).Outcome);
         Assert.Equal(TenantSyncOutcome.Success, results.Single(r => r.Nip != firstSubject).Outcome);
 
         await using (var db = NewContext())
@@ -489,7 +489,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         };
 
         await using (var db = NewContext())
-            Assert.Equal(TenantSyncOutcome.Failed, (await SyncService(db).SyncTenantAsync(_tenantId, UserId)).Outcome);
+            Assert.Equal(TenantSyncOutcome.StoreFailed, (await SyncService(db).SyncTenantAsync(_tenantId, UserId)).Outcome);
 
         Assert.Equal(2, _issuedQueries.Count);
         await using (var db = NewContext())

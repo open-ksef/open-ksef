@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -27,10 +28,12 @@ public sealed class SyncIsolationTests : IAsyncLifetime
 
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
     private readonly IKSeFGateway _gateway = Substitute.For<IKSeFGateway>();
+    private readonly ILogger<InvoiceService> _invoiceLogger = Substitute.For<ILogger<InvoiceService>>();
     private readonly Guid _tenantA = Guid.NewGuid();
     private readonly Guid _tenantB = Guid.NewGuid();
 
     private Func<KSeFQueryCriteria, KSeFInvoiceQueryResult> _received = _ => Page([]);
+    private Func<KSeFQueryCriteria, KSeFInvoiceQueryResult> _issued = c => Page([], c.DateTo);
     private Func<string, byte[]> _xml = _ => Xml("Towar nowy", "szt", "1", "100");
 
     public async Task InitializeAsync()
@@ -40,7 +43,7 @@ public sealed class SyncIsolationTests : IAsyncLifetime
             .Returns(call =>
             {
                 var criteria = call.Arg<KSeFQueryCriteria>();
-                return criteria.Direction == InvoiceDirection.Received ? _received(criteria) : Page([], criteria.DateTo);
+                return criteria.Direction == InvoiceDirection.Received ? _received(criteria) : _issued(criteria);
             });
         _gateway.DownloadInvoiceAsync(Arg.Any<KSeFSession>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(call => _xml(call.Arg<string>()));
@@ -55,7 +58,7 @@ public sealed class SyncIsolationTests : IAsyncLifetime
         db,
         _gateway,
         Substitute.For<IEncryptionService>(),
-        new InvoiceService(db, Substitute.For<INotificationService>(), NullLogger<InvoiceService>.Instance),
+        new InvoiceService(db, Substitute.For<INotificationService>(), _invoiceLogger),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions { BatchSize = 2, XmlDownloadSpacing = TimeSpan.Zero }),
         new XmlDownloadBlocks(),
@@ -100,6 +103,11 @@ public sealed class SyncIsolationTests : IAsyncLifetime
     private static byte[] Xml(string name, string unit, string quantity, string unitPrice) => Encoding.UTF8.GetBytes(
         $"""<Faktura xmlns="{Fa3}"><Fa><FaWiersz><NrWierszaFa>1</NrWierszaFa><P_7>{name}</P_7><P_8A>{unit}</P_8A><P_8B>{quantity}</P_8B><P_9A>{unitPrice}</P_9A><P_11>100</P_11><P_12>23</P_12></FaWiersz></Fa></Faktura>""");
 
+    private List<string> LoggedErrors() => _invoiceLogger.ReceivedCalls()
+        .Where(c => c.GetMethodInfo().Name == nameof(ILogger.Log) && (LogLevel)c.GetArguments()[0]! == LogLevel.Error)
+        .Select(c => c.GetArguments()[2]!.ToString()!)
+        .ToList();
+
     private async Task<SyncState?> StateAsync(Guid tenantId)
     {
         await using var db = NewContext();
@@ -128,7 +136,8 @@ public sealed class SyncIsolationTests : IAsyncLifetime
         var results = await SyncService(db).SyncAllTenantsAsync();
 
         Assert.Empty(db.ChangeTracker.Entries());
-        Assert.Equal(TenantSyncOutcome.Failed, results.Single(r => r.TenantId == _tenantA).Outcome);
+        Assert.Equal(TenantSyncOutcome.StoreFailed, results.Single(r => r.TenantId == _tenantA).Outcome);
+        Assert.Contains("A-3, A-BAD", Assert.Single(LoggedErrors()));
         Assert.Equal(TenantSyncOutcome.Success, results.Single(r => r.TenantId == _tenantB).Outcome);
 
         Assert.Equal(["A-1", "A-2"], await NumbersAsync(_tenantA));
@@ -142,6 +151,34 @@ public sealed class SyncIsolationTests : IAsyncLifetime
         var b1 = await check.InvoiceHeaders.Include(i => i.Lines).SingleAsync(i => i.KSeFInvoiceNumber == "B-1");
         Assert.NotNull(b1.XmlFetchedAt);
         Assert.Equal("Towar nowy", Assert.Single(b1.Lines).Name);
+    }
+
+    [Fact]
+    public async Task IssuedPageKeepsFailing_ReceivedXmlStillDownloads_IssuedIncompleteVisible()
+    {
+        await SeedAsync();
+        _received = c => c.SubjectNip == NipA && c.PageOffset == 0 ? Page([Bought("A-1", NipA)]) : Page([]);
+        _issued = c => c.SubjectNip == NipA
+            ? Page([Bought("A-S-1", "9999999999"), Bought("A-S-BAD", "9999999999", vendorName: new string('x', 600))], c.DateTo)
+            : Page([], c.DateTo);
+
+        for (var run = 1; run <= 2; run++)
+        {
+            await using var db = NewContext();
+            var a = (await SyncService(db).SyncAllTenantsAsync()).Single(r => r.TenantId == _tenantA);
+            Assert.Equal(TenantSyncOutcome.StoreFailed, a.Outcome);
+            Assert.NotNull(a.SyncedAtUtc);
+        }
+
+        await using var check = NewContext();
+        var a1 = await check.InvoiceHeaders.Include(i => i.Lines).SingleAsync(i => i.KSeFInvoiceNumber == "A-1");
+        Assert.NotNull(a1.XmlFetchedAt);
+        Assert.Equal("Towar nowy", Assert.Single(a1.Lines).Name);
+        Assert.Equal(["A-1"], await NumbersAsync(_tenantA));
+        var state = await StateAsync(_tenantA);
+        Assert.Null(state!.IssuedContinuationAt);
+        Assert.True(state.IssuedFetchIncomplete());
+        Assert.All(LoggedErrors(), m => Assert.Contains("A-S-1, A-S-BAD", m));
     }
 
     [Fact]

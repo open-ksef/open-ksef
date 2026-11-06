@@ -76,6 +76,20 @@ public class CredentialsControllerSyncTests : IDisposable
     }
 
     [Fact]
+    public async Task SyncNow_ReturnsServerError_NotBadGateway_WhenPageNotStored()
+    {
+        var tenantId = Guid.NewGuid();
+        _tenantSyncService.SyncTenantAsync(tenantId, _userId, cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(new TenantSyncResult(tenantId, "1234567890", TenantSyncOutcome.StoreFailed, ErrorMessage: "Invoice data could not be stored."));
+
+        var controller = CreateController();
+        var result = await controller.SyncNow(tenantId, CancellationToken.None);
+
+        var status = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, status.StatusCode);
+    }
+
+    [Fact]
     public async Task SyncNow_ReturnsResult_WhenSyncSucceeds()
     {
         var tenantId = Guid.NewGuid();

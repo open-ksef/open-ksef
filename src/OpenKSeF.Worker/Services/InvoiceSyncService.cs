@@ -61,7 +61,7 @@ public sealed class InvoiceSyncService : BackgroundService
         var results = await tenantSyncService.SyncAllTenantsAsync(cancellationToken);
 
         var successCount = results.Count(r => r.Outcome == TenantSyncOutcome.Success);
-        var failedCount = results.Count(r => r.Outcome == TenantSyncOutcome.Failed);
+        var failedCount = results.Count(r => r.Outcome is TenantSyncOutcome.Failed or TenantSyncOutcome.StoreFailed);
         _logger.LogInformation("Sync cycle processed {Total} tenants. Success: {Success}, Failed: {Failed}",
             results.Count, successCount, failedCount);
 

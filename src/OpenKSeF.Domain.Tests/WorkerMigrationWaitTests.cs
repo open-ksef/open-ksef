@@ -186,6 +186,31 @@ public sealed class WorkerMigrationWaitTests : IDisposable
     }
 
     [Fact]
+    public async Task SyncLoop_CycleTimesOut_LogsErrorAndKeepsRunning()
+    {
+        await using var services = Services();
+        await MigrateAsync(services);
+        var cycleRan = new TaskCompletionSource();
+        _sync.SyncAllTenantsAsync(Arg.Any<CancellationToken>()).Returns<Task<IReadOnlyList<TenantSyncResult>>>(_ =>
+        {
+            cycleRan.TrySetResult();
+            throw new TaskCanceledException("timeout", new TimeoutException());
+        });
+        var logger = new ListLogger<InvoiceSyncService>();
+        var loop = SyncLoop(services, logger);
+
+        await loop.StartAsync(CancellationToken.None);
+        await cycleRan.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (!logger.Levels.Contains(LogLevel.Error) && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        Assert.False(loop.ExecuteTask!.IsCompleted);
+        await loop.StopAsync(CancellationToken.None);
+        Assert.Contains(logger.Messages, m => m.StartsWith("Unhandled error in sync cycle"));
+    }
+
+    [Fact]
     public async Task SendLoop_PendingMigrations_RunsNoCycle_LogsNoError()
     {
         await using var services = Services();

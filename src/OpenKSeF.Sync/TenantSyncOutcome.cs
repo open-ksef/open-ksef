@@ -6,4 +6,5 @@ public enum TenantSyncOutcome
     TenantNotFound = 1,
     MissingCredential = 2,
     Failed = 3,
+    StoreFailed = 4,
 }
