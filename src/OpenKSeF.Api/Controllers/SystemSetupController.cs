@@ -33,7 +33,9 @@ public class SystemSetupController : ControllerBase
     [ProducesResponseType(typeof(SetupStatusResponse), StatusCodes.Status200OK)]
     public IActionResult GetSetupStatus()
     {
-        return Ok(new SetupStatusResponse(_systemConfig.IsInitialized));
+        return Ok(new SetupStatusResponse(
+            _systemConfig.IsInitialized,
+            !string.Equals(_systemConfig.GetValue(SystemConfigKeys.RegistrationAllowed), "false", StringComparison.OrdinalIgnoreCase)));
     }
 
     [HttpPost("setup/authenticate")]

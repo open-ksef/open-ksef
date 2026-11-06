@@ -157,6 +157,9 @@ public sealed class SystemSettingsService : ISystemSettingsService
             if (requestedEnv != null)
                 configValues[SystemConfigKeys.KSeFEnvironment] = requestedEnv;
 
+            if (request.RegistrationAllowed.HasValue)
+                configValues[SystemConfigKeys.RegistrationAllowed] = request.RegistrationAllowed.Value ? "true" : "false";
+
             if (request.GoogleClientId != null)
                 configValues[SystemConfigKeys.GoogleClientId] = request.GoogleClientId;
             if (request.GoogleClientSecret != null)

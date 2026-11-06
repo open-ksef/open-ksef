@@ -222,6 +222,34 @@ public class AccountRegisterApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Register_RegistrationOffWithoutSecret_Returns403AndMakesNoKeycloakCall()
+    {
+        await SetStoredConfigAsync(SystemConfigKeys.RegistrationAllowed, "false");
+        try
+        {
+            var calls = new List<Uri?>();
+            using var factory = _factory.WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting("Auth:ServiceAccount:ClientSecret", "");
+                builder.ConfigureTestServices(services => services.AddHttpClient("keycloak")
+                    .AddHttpMessageHandler(() => new RecordingHandler(calls)));
+            });
+            using var client = factory.CreateClient();
+
+            var response = await RegisterAsync(client, NewEmail());
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("registration_disabled", body.GetProperty("code").GetString());
+            Assert.Empty(calls);
+        }
+        finally
+        {
+            await SetStoredConfigAsync(SystemConfigKeys.RegistrationAllowed, null);
+        }
+    }
+
+    [Fact]
     public async Task Register_OverPerIpLimit_Returns429WithReadableBody()
     {
         await _fixture.UpdateRealmAsync(new { registrationAllowed = false });

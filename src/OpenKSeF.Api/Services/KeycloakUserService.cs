@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Services;
 
@@ -18,14 +19,17 @@ public class KeycloakUserService : IKeycloakUserService
     private readonly string _adminUsersEndpoint;
     private readonly string _clientId;
     private readonly string _clientSecret;
+    private readonly ISystemConfigService _systemConfig;
     private readonly ILogger<KeycloakUserService> _logger;
 
     public KeycloakUserService(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
+        ISystemConfigService systemConfig,
         ILogger<KeycloakUserService> logger)
     {
         _httpClient = httpClientFactory.CreateClient("keycloak");
+        _systemConfig = systemConfig;
         _logger = logger;
 
         var authority = configuration["Auth:Authority"]?.TrimEnd('/') ?? "";
@@ -53,6 +57,9 @@ public class KeycloakUserService : IKeycloakUserService
     public async Task<CreateUserResult> CreateUserAsync(
         string email, string password, string? firstName, string? lastName)
     {
+        if (string.Equals(_systemConfig.GetValue(SystemConfigKeys.RegistrationAllowed), "false", StringComparison.OrdinalIgnoreCase))
+            return RegistrationDisabled();
+
         if (string.IsNullOrEmpty(_clientSecret))
         {
             _logger.LogWarning("Auth:ServiceAccount:ClientSecret not configured: user registration unavailable.");
@@ -70,10 +77,7 @@ public class KeycloakUserService : IKeycloakUserService
                 return Unavailable();
 
             if (!policy.Value.RegistrationAllowed)
-            {
-                return new CreateUserResult(false, "Rejestracja nowych kont jest wyłączona. Skontaktuj się z administratorem.",
-                    HttpStatusCode.Forbidden, "registration_disabled");
-            }
+                return RegistrationDisabled();
 
             var userPayload = new
             {
@@ -127,6 +131,10 @@ public class KeycloakUserService : IKeycloakUserService
             return Unavailable();
         }
     }
+
+    private static CreateUserResult RegistrationDisabled() => new(
+        false, "Rejestracja nowych kont jest wyłączona. Skontaktuj się z administratorem.",
+        HttpStatusCode.Forbidden, "registration_disabled");
 
     private static CreateUserResult Unavailable() => new(
         false, "Rejestracja nie jest teraz dostępna. Skontaktuj się z administratorem.",

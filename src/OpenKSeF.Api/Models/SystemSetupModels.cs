@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace OpenKSeF.Api.Models;
 
-public record SetupStatusResponse(bool IsInitialized);
+public record SetupStatusResponse(bool IsInitialized, bool RegistrationAllowed = true);
 
 public record SetupAuthenticateRequest(
     [Required] string Username,
