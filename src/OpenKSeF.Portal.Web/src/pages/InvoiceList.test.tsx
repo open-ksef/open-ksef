@@ -687,6 +687,22 @@ describe('InvoiceListPage', () => {
       expect(fetchButton().disabled).toBe(false)
     })
 
+    it('on a JSON 500 says the outcome is unknown and still refreshes the list', async () => {
+      const raw = 'Invoice data could not be stored.'
+      vi.mocked(forceCredentialSync).mockRejectedValue(new ApiError(raw, 500, Response.json({ error: raw }, { status: 500 })))
+      await render('/invoices?tenantId=tenant-1')
+      const before = vi.mocked(listInvoices).mock.calls.length
+
+      await act(async () => fetchButton().click())
+      await settle()
+
+      expect(toast.error).toHaveBeenCalledWith(
+        'Tenant A: Nie mamy potwierdzenia pobrania z KSeF. Część faktur mogła się pobrać. Sprawdź listę i w razie potrzeby spróbuj ponownie.',
+      )
+      expect(vi.mocked(listInvoices).mock.calls.length).toBeGreaterThan(before)
+      expect(vi.mocked(getDashboardOverview).mock.calls.length).toBe(2)
+    })
+
     it.each([
       ['a proxy 504', new ApiError('<html>504</html>', 504, new Response('<html>504</html>', { status: 504, headers: { 'Content-Type': 'text/html' } }))],
       ['a proxy 502', new ApiError('<html>502</html>', 502, new Response('<html>502</html>', { status: 502, headers: { 'Content-Type': 'text/html' } }))],

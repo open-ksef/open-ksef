@@ -178,7 +178,31 @@ public sealed class SyncIsolationTests : IAsyncLifetime
         var state = await StateAsync(_tenantA);
         Assert.Null(state!.IssuedContinuationAt);
         Assert.True(state.IssuedFetchIncomplete());
-        Assert.All(LoggedErrors(), m => Assert.Contains("A-S-1, A-S-BAD", m));
+        var errors = LoggedErrors();
+        Assert.Equal(2, errors.Count);
+        Assert.All(errors, m => Assert.Contains("A-S-1, A-S-BAD", m));
+    }
+
+    [Fact]
+    public async Task ManualSync_IssuedPageFails_ReceivedXmlStillDownloads_StoreFailed()
+    {
+        await SeedAsync();
+        _received = c => c.SubjectNip == NipA && c.PageOffset == 0 ? Page([Bought("A-1", NipA)]) : Page([]);
+        _issued = c => Page([Bought("A-S-BAD", "9999999999", vendorName: new string('x', 600))], c.DateTo);
+
+        await using (var db = NewContext())
+        {
+            var result = await SyncService(db).SyncTenantAsync(_tenantA);
+            Assert.Equal(TenantSyncOutcome.StoreFailed, result.Outcome);
+            Assert.Equal(0, result.QueuedDownloads + result.ErroredDownloads);
+        }
+
+        await using var check = NewContext();
+        var a1 = await check.InvoiceHeaders.Include(i => i.Lines).SingleAsync(i => i.KSeFInvoiceNumber == "A-1");
+        Assert.NotNull(a1.XmlFetchedAt);
+        Assert.Equal("Towar nowy", Assert.Single(a1.Lines).Name);
+        Assert.Equal(["A-1"], await NumbersAsync(_tenantA));
+        Assert.Null((await StateAsync(_tenantA))!.IssuedContinuationAt);
     }
 
     [Fact]

@@ -39,7 +39,7 @@ export function useKsefFetch(tenantId: string): KsefFetch {
   const mutation = useMutation({
     mutationKey: MUTATION_KEY,
     mutationFn: (id: string) => forceCredentialSync(id),
-    onSuccess: () => {
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       void queryClient.invalidateQueries({ queryKey: ['invoices'] })
     },
