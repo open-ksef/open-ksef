@@ -186,6 +186,33 @@ public sealed class WorkerMigrationWaitTests : IDisposable
     }
 
     [Fact]
+    public async Task SyncLoop_StoreFailed_LogsOutcomePerTenant()
+    {
+        await using var services = Services();
+        await MigrateAsync(services);
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        _sync.SyncAllTenantsAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<TenantSyncResult>>(
+        [
+            new TenantSyncResult(tenantA, "1111111111", TenantSyncOutcome.StoreFailed, ErrorMessage: "Invoice data could not be stored."),
+            new TenantSyncResult(tenantB, "2222222222", TenantSyncOutcome.StoreFailed, ErrorMessage: "Invoice data could not be stored."),
+            new TenantSyncResult(Guid.NewGuid(), "3333333333", TenantSyncOutcome.Success)
+        ]));
+        var logger = new ListLogger<InvoiceSyncService>();
+        var loop = SyncLoop(services, logger);
+
+        await loop.StartAsync(CancellationToken.None);
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (!logger.Messages.Any(m => m.StartsWith("Sync cycle complete")) && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+        await loop.StopAsync(CancellationToken.None);
+
+        Assert.Contains("Sync cycle processed 3 tenants. Success: 1, Failed: 2", logger.Messages);
+        Assert.Contains($"Tenant sync outcome StoreFailed for tenant {tenantA} (NIP: 1111111111). Error: Invoice data could not be stored.", logger.Messages);
+        Assert.Contains($"Tenant sync outcome StoreFailed for tenant {tenantB} (NIP: 2222222222). Error: Invoice data could not be stored.", logger.Messages);
+    }
+
+    [Fact]
     public async Task SyncLoop_CycleTimesOut_LogsErrorAndKeepsRunning()
     {
         await using var services = Services();
