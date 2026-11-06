@@ -72,6 +72,7 @@ public class InvoiceServiceTests : IDisposable
             tenantId,
             [first with { InvoiceNumber = "FV/1/K", VendorName = "Vendor 2", AmountGross = 246m, Currency = null, IssueDate = first.IssueDate.AddDays(-3) }],
             notify: true);
+        _db.ChangeTracker.Clear();
 
         Assert.Empty(newIds);
         Assert.Equal(1, _notifications.Count);
