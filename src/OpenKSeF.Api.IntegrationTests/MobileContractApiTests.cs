@@ -1,9 +1,12 @@
 using System.Buffers;
+using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Protocol;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -11,6 +14,7 @@ using OpenKSeF.Api.Hubs;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Api.Push;
+using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
@@ -24,14 +28,20 @@ namespace OpenKSeF.Api.IntegrationTests;
 [Collection(TestcontainersCollection.Name)]
 public class MobileContractApiTests : IDisposable
 {
+    private const string FakeNip = "1111111111";
+
     private readonly TestcontainersFixture _fixture;
-    private readonly OpenKSeFWebApplicationFactory _factory;
+    private readonly OpenKSeFWebApplicationFactory _baseFactory;
+    private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _client;
+    private readonly WhiteListStub _whiteList = new();
 
     public MobileContractApiTests(TestcontainersFixture fixture)
     {
         _fixture = fixture;
-        _factory = new OpenKSeFWebApplicationFactory(fixture);
+        _baseFactory = new OpenKSeFWebApplicationFactory(fixture);
+        _factory = _baseFactory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddHttpClient<WhiteListClient>().ConfigurePrimaryHttpMessageHandler(() => _whiteList)));
         _client = _factory.CreateClient();
     }
 
@@ -39,6 +49,7 @@ public class MobileContractApiTests : IDisposable
     {
         _client.Dispose();
         _factory.Dispose();
+        _baseFactory.Dispose();
     }
 
     [Fact]
@@ -46,9 +57,12 @@ public class MobileContractApiTests : IDisposable
     {
         _client.SetBearerToken(await _fixture.GetAccessTokenAsync());
         var actual = new Dictionary<string, Dictionary<string, HashSet<string>>>();
-        async Task<JsonElement> Read(string key, HttpResponseMessage response)
+        async Task<JsonElement> Read(string key, HttpResponseMessage response, HttpStatusCode? expected = null)
         {
-            response.EnsureSuccessStatusCode();
+            if (expected is null)
+                response.EnsureSuccessStatusCode();
+            else
+                Assert.Equal(expected, response.StatusCode);
             var json = await response.Content.ReadFromJsonAsync<JsonElement>();
             actual[key] = Flatten(json);
             return json;
@@ -78,19 +92,18 @@ public class MobileContractApiTests : IDisposable
         var issued = $"/api/tenants/{sellerId}/issued-invoices";
         var today = IssuedInvoice.PolandDate(DateTimeOffset.UtcNow);
         var draft = await Read("POST /api/tenants/{id}/issued-invoices", await _client.PostAsJsonAsync(issued, new IssuedInvoiceDraftRequest(
-            new IssuedInvoiceBuyerModel("Company", "5261040828", "Nabywca sp. z o.o.", "ul. Krótka 2", "00-002 Warszawa"),
-            today, today, today.AddDays(14), "Transfer", false, null,
-            [new IssuedInvoiceLineRequest("Usługa", "szt.", 1, 100m, "23")])));
+            new IssuedInvoiceBuyerModel("Company", FakeNip, "Nabywca sp. z o.o.", "ul. Krótka 2", "00-002 Warszawa"),
+            today, today, today.AddDays(14), "Transfer", false, new ExemptionBasisModel("Act", "art. 113 ust. 1 ustawy o VAT"),
+            [new IssuedInvoiceLineRequest("Usługa", "szt.", 1, 100m, "23"), new IssuedInvoiceLineRequest("Usługa zwolniona", "szt.", 1, 50m, "zw")])));
         var draftId = draft.GetProperty("id").GetGuid();
         await Read("GET /api/tenants/{id}/issued-invoices/{invoiceId}", await _client.GetAsync($"{issued}/{draftId}"));
         await Read("POST /api/tenants/{id}/issued-invoices/{invoiceId}/copy", await _client.PostAsync($"{issued}/{draftId}/copy", null));
         await Read("POST /api/tenants/{id}/issued-invoices/{invoiceId}/issue", await _client.PostAsync($"{issued}/{draftId}/issue", null));
         await Read("GET /api/tenants/{id}/issued-invoices", await _client.GetAsync($"{issued}?page=1&pageSize=20"));
 
-        var lookupNip = "5261040828";
-        _factory.Services.GetRequiredService<IMemoryCache>().Set($"wl:{lookupNip}:{today:yyyy-MM-dd}",
-            new NipLookupResponse(lookupNip, "Nabywca sp. z o.o.", "ul. Krótka 2", "00-002 Warszawa", "Czynny", ["61109010140000071219812874"]));
-        await Read("GET /api/nip-lookup/{nip}", await _client.GetAsync($"/api/nip-lookup/{lookupNip}"));
+        await Read("GET /api/nip-lookup/{nip}", await _client.GetAsync($"/api/nip-lookup/{FakeNip}"));
+        await Read("GET /api/nip-lookup/{nip} (invalid)", await _client.GetAsync("/api/nip-lookup/1234567890"), HttpStatusCode.BadRequest);
+        Assert.Single(_whiteList.Requests);
 
         (await _client.PostAsJsonAsync("/api/devices/register", new { token = $"mobile-contract-{Guid.NewGuid():N}", platform = 1, tenantId })).EnsureSuccessStatusCode();
         await Read("GET /api/devices", await _client.GetAsync("/api/devices"));
@@ -202,5 +215,23 @@ public class MobileContractApiTests : IDisposable
         }
         Walk(json, "");
         return fields;
+    }
+
+    private sealed class WhiteListStub : HttpMessageHandler
+    {
+        public List<Uri> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request.RequestUri!);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent($$$"""
+                    {"result":{"subject":{"name":"Nabywca sp. z o.o.","nip":"{{{FakeNip}}}","statusVat":"Czynny",
+                    "residenceAddress":null,"workingAddress":"ul. Krótka 2, 00-002 Warszawa",
+                    "accountNumbers":["61109010140000071219812874"]},"requestId":"x"}}
+                    """, Encoding.UTF8, "application/json")
+            });
+        }
     }
 }

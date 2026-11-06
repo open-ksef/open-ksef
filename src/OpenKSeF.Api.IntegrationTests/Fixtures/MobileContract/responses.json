@@ -170,6 +170,8 @@
     "dueDate": "string",
     "paymentMethod": "string",
     "splitPayment": "boolean",
+    "exemptionBasis.kind": "string",
+    "exemptionBasis.text": "string",
     "lines[].lineNo": "number",
     "lines[].name": "string",
     "lines[].unit": "string|null",
@@ -228,6 +230,8 @@
     "dueDate": "string",
     "paymentMethod": "string",
     "splitPayment": "boolean",
+    "exemptionBasis.kind": "string",
+    "exemptionBasis.text": "string",
     "lines[].lineNo": "number",
     "lines[].name": "string",
     "lines[].unit": "string|null",
@@ -286,6 +290,8 @@
     "dueDate": "string",
     "paymentMethod": "string",
     "splitPayment": "boolean",
+    "exemptionBasis.kind": "string",
+    "exemptionBasis.text": "string",
     "lines[].lineNo": "number",
     "lines[].name": "string",
     "lines[].unit": "string|null",
@@ -344,6 +350,8 @@
     "dueDate": "string",
     "paymentMethod": "string",
     "splitPayment": "boolean",
+    "exemptionBasis.kind": "string",
+    "exemptionBasis.text": "string",
     "lines[].lineNo": "number",
     "lines[].name": "string",
     "lines[].unit": "string|null",
@@ -402,6 +410,11 @@
     "addressLine2": "string|null",
     "vatStatus": "string|null",
     "bankAccounts[]": "string"
+  },
+  "GET /api/nip-lookup/{nip} (invalid)": {
+    "errors[].code": "string",
+    "errors[].field": "string|null",
+    "errors[].message": "string"
   },
   "SignalR ReceiveNotification": {
     "target": "string",
