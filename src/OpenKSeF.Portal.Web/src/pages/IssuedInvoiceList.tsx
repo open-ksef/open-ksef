@@ -20,6 +20,7 @@ import { useTenants } from '@/hooks/useTenants'
 import { formatDate, formatMoney } from '@/invoicing/format'
 
 const PAGE_SIZE = 20
+const MAX_ROWS = 10_000
 const SEARCH_DELAY_MS = 300
 
 const tabs: { status: IssuedInvoiceStatus | ''; label: string }[] = [
@@ -37,9 +38,11 @@ function lastPageSearch(current: URLSearchParams, lastPage: number): string {
   return next.toString()
 }
 
+const EXTERNAL_HINT = 'Faktura wystawiona w innym programie, tylko do odczytu'
+
 function ExternalMark({ row }: { row: IssuedFeedItemResponse }): ReactElement | null {
   return row.source === 'External' ? (
-    <span className="received-sub" title="Faktura wystawiona w innym programie, tylko do odczytu">
+    <span className="received-sub" title={EXTERNAL_HINT}>
       Spoza OpenKSeF
     </span>
   ) : null
@@ -101,13 +104,14 @@ export function IssuedInvoiceListPage(): ReactElement {
   const credentialsQuery = useCredentials()
   const tenantQuery = `tenantId=${encodeURIComponent(tenantId)}`
   const rows = listQuery.data?.items ?? []
-  const totalPages = Math.max(listQuery.data?.totalPages ?? 1, 1)
+  const totalPages = Math.max(Math.min(listQuery.data?.totalPages ?? 1, Math.floor(MAX_ROWS / PAGE_SIZE)), 1)
   const unfilteredEmpty = listQuery.isSuccess && rows.length === 0 && !status && !month && !q && page === 1
   const hasCredential = credentialsQuery.data?.find((row) => row.tenantId === tenantId)?.hasCredential
   const incomplete = listQuery.data?.issuedFetchIncomplete ?? false
   const stateCard = unfilteredEmpty && credentialsQuery.isSuccess && (!incomplete || hasCredential === false)
   const totalCount = listQuery.data?.totalCount ?? 0
-  const firstRow = (page - 1) * PAGE_SIZE + 1
+  const shownPage = listQuery.data?.page ?? page
+  const firstRow = (shownPage - 1) * PAGE_SIZE + 1
   const pastLastPage = listQuery.isSuccess && rows.length === 0 && totalCount > 0 && page > totalPages
   const detailsPath = (row: IssuedFeedItemResponse): string =>
     row.source === 'External'
@@ -120,14 +124,15 @@ export function IssuedInvoiceListPage(): ReactElement {
       key: 'buyerName',
       label: 'Nabywca i numer',
       render: (row) => {
-        const number = row.number ?? '— (szkic)'
+        const number = row.number ?? (row.status === 'Draft' ? '— (szkic)' : '—')
+        const external = row.source === 'External' ? `, Spoza OpenKSeF: ${EXTERNAL_HINT}` : ''
         return (
           <>
             <Link
               to={detailsPath(row)}
               className="rowlink"
               title={row.buyerName ?? undefined}
-              aria-label={`${row.buyerName ?? 'Bez nabywcy'}, ${number}`}
+              aria-label={`${row.buyerName ?? 'Bez nabywcy'}, ${number}${external}`}
               onClick={(event) => event.preventDefault()}
               onDoubleClick={selectWordAt}
             >
@@ -265,11 +270,16 @@ export function IssuedInvoiceListPage(): ReactElement {
                 <span className="ui-pagination-info">
                   {firstRow}–{firstRow + rows.length - 1} z {totalCount} {totalCount === 1 ? 'faktury' : 'faktur'}
                 </span>
+                {totalCount > MAX_ROWS ? (
+                  <span className="ui-pagination-info" role="status" data-testid="issued-cap-note">
+                    Pokazujemy pierwsze 10 000 faktur. Zawęź wyniki miesiącem lub wyszukiwaniem.
+                  </span>
+                ) : null}
                 <div className="ui-pagination-controls">
-                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => update({ page: page - 1 })}>
+                  <Button variant="outline" size="sm" disabled={shownPage <= 1} onClick={() => update({ page: shownPage - 1 })}>
                     Poprzednia
                   </Button>
-                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => update({ page: page + 1 })}>
+                  <Button variant="outline" size="sm" disabled={shownPage >= totalPages} onClick={() => update({ page: shownPage + 1 })}>
                     Następna
                   </Button>
                 </div>

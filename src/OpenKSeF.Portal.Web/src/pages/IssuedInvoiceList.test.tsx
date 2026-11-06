@@ -142,4 +142,43 @@ describe('Wystawione faktury, niepełne pobieranie', () => {
     expect(note()).toBeNull()
     expect(table()).not.toBeNull()
   })
+  const rowLink = (index = 0) => container.querySelectorAll('[data-testid="issued-invoice-table"] a.rowlink')[index]
+  const button = (label: string) => [...container.querySelectorAll('button')].find((b) => b.textContent === label) as HTMLButtonElement
+
+  it('labels only a draft without a number as szkic', async () => {
+    const own = { ...invoice, source: 'OpenKSeF', ksefNumber: null, number: null }
+    await render(feed([{ ...own, id: 'd', status: 'Draft' }, { ...own, id: 's', status: 'Sending' }]))
+
+    expect(rowLink(0).getAttribute('aria-label')).toBe('Nabywca, — (szkic)')
+    expect(rowLink(1).getAttribute('aria-label')).toBe('Nabywca, —')
+  })
+
+  it('sends the KSeF number search to the feed', async () => {
+    await render(feed([{ ...invoice, source: 'OpenKSeF' }]), '/issued?tenantId=a&q=1111111111-20261101-ABC')
+
+    expect(listIssuedFeed).toHaveBeenCalledWith('a', expect.objectContaining({ q: '1111111111-20261101-ABC' }))
+  })
+
+  it('names the external origin in the row link for keyboard users', async () => {
+    await render(feed([invoice, { ...invoice, id: 'o', source: 'OpenKSeF' }]))
+
+    expect(rowLink(0).getAttribute('aria-label')).toBe('Nabywca, FV/1, Spoza OpenKSeF: Faktura wystawiona w innym programie, tylko do odczytu')
+    expect(rowLink(1).getAttribute('aria-label')).toBe('Nabywca, FV/1')
+  })
+
+  it('stops at row 10 000 with the clamped page range and a narrowing hint', async () => {
+    const items = Array.from({ length: 20 }, (_, i) => ({ ...invoice, id: `r${i}` }))
+    await render({ items, page: 500, pageSize: 20, totalCount: 12_000, totalPages: 600 }, '/issued?tenantId=a&page=600')
+
+    expect(container.querySelector('.ui-pagination-info')?.textContent).toBe('9981–10000 z 12000 faktur')
+    expect(button('Następna').disabled).toBe(true)
+    expect(button('Poprzednia').disabled).toBe(false)
+    expect(container.querySelector('[data-testid="issued-cap-note"]')?.textContent).toBe('Pokazujemy pierwsze 10 000 faktur. Zawęź wyniki miesiącem lub wyszukiwaniem.')
+  })
+
+  it('shows no narrowing hint up to 10 000 rows', async () => {
+    await render(feed([invoice]))
+
+    expect(container.querySelector('[data-testid="issued-cap-note"]')).toBeNull()
+  })
 })

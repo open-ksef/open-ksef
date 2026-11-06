@@ -238,6 +238,8 @@ describe('Ustawienia', () => {
       const hint = by('settings-ksef-env-unknown')!
       expect((by('settings-ksef-env') as HTMLSelectElement).disabled).toBe(true)
       expect(hint.querySelector('a')?.getAttribute('href')).toBe('https://github.com/open-ksef/open-ksef/blob/main/docs/admin-setup.md#ksef-environment-upgrade')
+      expect(hint.textContent).toContain('Pole jest zablokowane. Popraw wartość w bazie danych: instrukcja SQL.')
+      expect(hint.querySelector('a')?.textContent).toBe('instrukcja SQL')
       expect(hint.textContent).not.toContain('Wybierz Test, Demo lub Produkcja')
     })
 
