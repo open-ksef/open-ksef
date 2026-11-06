@@ -65,6 +65,8 @@ services:
       Auth__ServiceAccount__ClientSecret: ${API_CLIENT_SECRET:-}
       KSeF__BaseUrl: ${KSEF_BASE_URL:-test}
       Firebase__CredentialsJson: ${FIREBASE_CREDENTIALS_JSON:-}
+      ForwardedHeaders__ForwardLimit: ${FORWARD_LIMIT:-1}
+      ForwardedHeaders__KnownNetworks: ${TRUSTED_PROXY_NETWORKS:-}
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET /health HTTP/1.0\r\n\r\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
       interval: 10s

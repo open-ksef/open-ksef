@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Services;
@@ -8,9 +9,14 @@ namespace OpenKSeF.Api.Controllers;
 
 [ApiController]
 [Route("api/system/settings")]
-[Authorize]
+[Authorize(Policy = AdminPolicy)]
+[EnableRateLimiting(RateLimitPolicy)]
 public class SystemSettingsController : ControllerBase
 {
+    public const string AdminPolicy = "openksef-admin";
+    public const string AdminRole = "openksef-admin";
+    public const string RateLimitPolicy = "admin-settings";
+
     private readonly ISystemConfigService _systemConfig;
     private readonly ISystemSetupService _setupService;
     private readonly ISystemSettingsService _settingsService;

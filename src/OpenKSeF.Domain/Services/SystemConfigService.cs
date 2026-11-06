@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -140,12 +141,43 @@ public sealed class SystemConfigService : ISystemConfigService
 
         await EnsureTableExistsAsync(db, cancellationToken);
 
-        var entries = await db.SystemConfigs.AsNoTracking().ToListAsync(cancellationToken);
-        var newCache = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var entry in entries)
-            newCache[entry.Key] = entry.Value;
-        _cache = newCache;
+        _cache = BuildCache(await db.SystemConfigs.AsNoTracking().ToListAsync(cancellationToken));
         _cacheLoaded = true;
+    }
+
+    private ConcurrentDictionary<string, string> BuildCache(List<SystemConfig> entries)
+    {
+        var cache = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        AesGcmEncryptionService? encryption = null;
+        foreach (var entry in entries)
+        {
+            if (!SystemConfigKeys.Secrets.Contains(entry.Key) || !entry.Value.StartsWith(SystemConfigKeys.EncryptedPrefix, StringComparison.Ordinal))
+            {
+                cache[entry.Key] = entry.Value;
+                continue;
+            }
+
+            try
+            {
+                encryption ??= new AesGcmEncryptionService(ResolveKey(entries)
+                    ?? throw new CryptographicException("Encryption key is not configured."));
+                cache[entry.Key] = encryption.Decrypt(entry.Value[SystemConfigKeys.EncryptedPrefix.Length..]);
+            }
+            catch (Exception ex) when (ex is CryptographicException or InvalidOperationException)
+            {
+                _logger.LogCritical("System config {Key} cannot be decrypted and is ignored. {Hint}", entry.Key, EncryptionServiceExtensions.RestoreKeyHint);
+            }
+        }
+
+        return cache;
+    }
+
+    private byte[]? ResolveKey(List<SystemConfig> entries)
+    {
+        var rowKey = entries.FirstOrDefault(e => string.Equals(e.Key, SystemConfigKeys.EncryptionKey, StringComparison.OrdinalIgnoreCase))?.Value;
+        return rowKey is null
+            ? EncryptionServiceExtensions.ReadConfiguredKey(_configuration, EncryptionServiceExtensions.RestoreKeyHint)
+            : EncryptionServiceExtensions.DecodeKey(rowKey, EncryptionServiceExtensions.RestoreKeyHint);
     }
 
     private void EnsureCacheLoaded()
@@ -160,11 +192,7 @@ public sealed class SystemConfigService : ISystemConfigService
 
             EnsureTableExistsAsync(db, CancellationToken.None).GetAwaiter().GetResult();
 
-            var entries = db.SystemConfigs.AsNoTracking().ToList();
-            var newCache = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var entry in entries)
-                newCache[entry.Key] = entry.Value;
-            _cache = newCache;
+            _cache = BuildCache(db.SystemConfigs.AsNoTracking().ToList());
         }
         catch (Exception ex)
         {

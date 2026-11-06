@@ -113,6 +113,13 @@ public class SystemSetupIntegrationTests : IDisposable
         Assert.NotNull(await db.SystemConfigs.FindAsync("api_client_secret"));
 
         Assert.Empty((await _fixture.GetServiceAccountRoleNamesAsync()).Intersect(TestcontainersFixture.RegistrationRoles));
+
+        using var settings = new HttpRequestMessage(HttpMethod.Post, "/api/system/settings")
+        {
+            Content = JsonContent.Create(new { kcAdminUsername = "admin", kcAdminPassword = "admin" }),
+        };
+        settings.Headers.Authorization = new("Bearer", await _fixture.GetAccessTokenAsync(applyRequest.AdminEmail, applyRequest.AdminPassword));
+        Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(settings)).StatusCode);
     }
 
     [Theory]

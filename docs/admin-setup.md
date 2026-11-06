@@ -95,7 +95,7 @@ Review all settings and click "Apply". The wizard:
 4. Enables token-exchange for the service account
 5. Updates client redirect URIs with the external URL
 6. Configures the Keycloak realm (login policy, password policy, SMTP)
-7. Creates the admin user in Keycloak
+7. Creates the admin user in Keycloak, creates the realm role `openksef-admin` and assigns it to that user
 8. Configures Google IdP (if provided)
 9. Stores all configuration in the database
 10. Redirects to the login page
@@ -270,6 +270,17 @@ The API also stops at start when it cannot read `SystemConfigs` after 5 attempts
 
 After the upgrade, open Settings and save once. This stores the registration flag in `SystemConfigs` (`registration_allowed`). Until then the login page shows the register link, and register without a service account secret returns 503. Settings is the only supported toggle for registration: the API does not see changes made in the Keycloak console.
 
+## Settings admin role: upgrade
+
+Do this before you pull a release that requires the `openksef-admin` role, otherwise **Ustawienia** returns 403 for everyone. The settings endpoints accept only users with the realm role `openksef-admin`, checked before the Keycloak admin password. New installs get the role from the wizard.
+
+1. Open the Keycloak admin console (see [Upgrade: ports and Keycloak admin](#upgrade-ports-and-keycloak-admin)), realm `openksef`.
+2. **Realm roles** -> **Create role**, name `openksef-admin`.
+3. **Users** -> your admin user -> **Role mapping** -> **Assign role** -> `openksef-admin`.
+4. Log out of the portal and log in again, so the token carries the role.
+
+The settings endpoints also allow 10 requests per 15 minutes per client address. Over the limit they return 429.
+
 ## Upgrade: ports and Keycloak admin
 
 Read this before you pull a release whose `docker-compose.yml` publishes only the gateway. Nothing is deleted: the database volume and all data stay. What changes is how you reach the services from outside Docker.
@@ -318,6 +329,10 @@ Keycloak builds the token issuer (`iss`) and every absolute link (login redirect
 | Public HTTPS on a port other than 443 | The proxy must send that port in `Host`, for example `Host: example.com:8443` (nginx `$host:$server_port`) | `https://example.com:8443/auth/realms/openksef` |
 
 A proxy that sends its upstream name as `Host` (for example `gateway:8080`) and the public name only in `X-Forwarded-Host` no longer works: set `Host` as above. The proxy must overwrite `X-Forwarded-Proto`. Nginx Proxy Manager passes a client value through, so without `APP_EXTERNAL_BASE_URL` a request can get `http://` links. With `APP_EXTERNAL_BASE_URL` set, every access through the gateway gets its scheme, including a tunnel such as ngrok, so a plain `http://` value there gives `http://` links on an HTTPS tunnel. The gateway then logs `APP_EXTERNAL_BASE_URL is http:// but requests arrive with X-Forwarded-Proto https, links stay http://` once per start, within 10 seconds of the first such request; set `APP_EXTERNAL_BASE_URL` to the `https://` address or unset it. The gateway reads `APP_EXTERNAL_BASE_URL` only from a `docker-compose.yml` that passes it to the `gateway` service; an older file pulls the new image without it, and the scheme then still comes from `X-Forwarded-Proto`. Check the result with `curl -s https://<domain>/auth/realms/openksef/.well-known/openid-configuration` and compare `issuer` with `APP_EXTERNAL_BASE_URL`.
+
+### Client address behind proxies
+
+The API takes the client address from `X-Forwarded-For` for rate limits and logs. `FORWARD_LIMIT` is the number of proxies that append to that header, counting the gateway: gateway only `1` (default), Nginx Proxy Manager in front `2`, Cloudflare and Nginx Proxy Manager `3`. A value higher than the real hop count lets a client choose its own address; a lower one puts all clients behind the proxy into one limit. The API accepts the header only from addresses in `TRUSTED_PROXY_NETWORKS` (comma separated CIDR). Empty means loopback and private networks (`127.0.0.0/8, ::1/128, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16`). Every proxy hop must be in the list, and nothing else: the API walks the header from the right and stops at the first address outside the list, so that address is the client. Never set `0.0.0.0/0` or `::/0`. With `FORWARD_LIMIT` above 1, a client that reaches the gateway port directly could then send its own `X-Forwarded-For` and pick any address, which bypasses every per-IP limit. With Cloudflare in front, list the [Cloudflare ranges](https://www.cloudflare.com/ips/) plus the private ranges above, for example `TRUSTED_PROXY_NETWORKS=127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,173.245.48.0/20,...`, and update the list when Cloudflare changes it. A client inside a trusted private range can still forge the header, so also bind the gateway to the address the proxy uses (`APP_HOST_PORT=127.0.0.1:8080` or a LAN address) and firewall the port from everything except the proxy. Set `FORWARD_LIMIT` in the same deploy as the release that adds it, not later: the rate limit runs before login, so with a wrong value all clients share one limit and 10 requests from anyone block **Ustawienia** for 15 minutes. `X-Forwarded-Host` is never used. Count the hops with `docker compose logs --tail 50 gateway`: the last field of each line is the `X-Forwarded-For` that reached the gateway, and the hop count is its entries plus one.
 
 ## Start failures and restart loops
 

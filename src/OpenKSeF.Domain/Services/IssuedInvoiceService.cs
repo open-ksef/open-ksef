@@ -360,7 +360,7 @@ public class IssuedInvoiceService(
         return true;
     }
 
-    internal static bool IsUniqueViolation(DbUpdateException e) =>
+    public static bool IsUniqueViolation(DbUpdateException e) =>
         e.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
     private void Apply(IssuedInvoice invoice, IssuedInvoiceDraftInput input)

@@ -1,8 +1,10 @@
+using System.Net;
 using System.Text.Json;
 using KSeF.Client.DI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using OpenKSeF.Api.Controllers;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
@@ -118,6 +120,7 @@ public sealed class SystemSetupService : ISystemSetupService
 
             // 1. Create realm + clients if they don't exist yet
             await EnsureRealmExistsAsync(client, kcBase, adminToken, ct);
+            await EnsureAdminRoleAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Keycloak realm verified/created");
 
             await EnsureClientsExistAsync(client, kcBase, adminToken, ct);
@@ -257,6 +260,15 @@ public sealed class SystemSetupService : ISystemSetupService
             $"{kcBase}/admin/realms", adminToken, realmPayload, ct);
 
         _logger.LogInformation("Created realm 'openksef'");
+    }
+
+    private static async Task EnsureAdminRoleAsync(
+        HttpClient client, string kcBase, string adminToken, CancellationToken ct)
+    {
+        var resp = await SendKeycloakJsonAsync(client, HttpMethod.Post, $"{kcBase}/admin/realms/openksef/roles", adminToken,
+            new { name = SystemSettingsController.AdminRole }, ct, throwOnError: false);
+        if (resp.StatusCode != HttpStatusCode.Conflict)
+            resp.EnsureSuccessStatusCode();
     }
 
     private async Task EnsureClientsExistAsync(
@@ -559,6 +571,13 @@ public sealed class SystemSetupService : ISystemSetupService
             await SendKeycloakJsonAsync(client, HttpMethod.Put, passUrl, adminToken,
                 new { type = "password", value = request.AdminPassword, temporary = false }, ct);
         }
+
+        using var roleReq = new HttpRequestMessage(HttpMethod.Get, $"{kcBase}/admin/realms/openksef/roles/{SystemSettingsController.AdminRole}");
+        roleReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+        var roleResp = await client.SendAsync(roleReq, ct);
+        roleResp.EnsureSuccessStatusCode();
+        var adminRole = await roleResp.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+        await SendKeycloakJsonAsync(client, HttpMethod.Post, $"{usersUrl}/{userId}/role-mappings/realm", adminToken, new[] { adminRole }, ct);
 
         // Create first tenant in DB if NIP was provided
         if (!string.IsNullOrWhiteSpace(request.FirstTenantNip))

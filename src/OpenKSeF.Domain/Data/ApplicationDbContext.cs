@@ -119,12 +119,13 @@ public class ApplicationDbContext : DbContext
         {
             entity.HasKey(d => d.Id);
             entity.HasIndex(d => d.UserId);
+            entity.HasIndex(d => d.Token).IsUnique();
             entity.Property(d => d.UserId).IsRequired().HasMaxLength(256);
             entity.Property(d => d.Token).IsRequired().HasMaxLength(512);
             entity.HasOne(d => d.Tenant)
                 .WithMany(t => t.DeviceTokens)
                 .HasForeignKey(d => d.TenantId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // SystemConfig (key-value store for runtime config)

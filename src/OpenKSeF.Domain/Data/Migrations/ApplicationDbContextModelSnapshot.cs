@@ -54,6 +54,9 @@ namespace OpenKSeF.Domain.Data.Migrations
 
                     b.HasIndex("TenantId");
 
+                    b.HasIndex("Token")
+                        .IsUnique();
+
                     b.HasIndex("UserId");
 
                     b.ToTable("DeviceTokens");
@@ -719,7 +722,7 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.HasOne("OpenKSeF.Domain.Entities.Tenant", "Tenant")
                         .WithMany("DeviceTokens")
                         .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("Tenant");
                 });
