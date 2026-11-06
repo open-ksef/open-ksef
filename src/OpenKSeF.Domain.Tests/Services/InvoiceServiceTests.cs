@@ -55,6 +55,50 @@ public class InvoiceServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpsertInvoicesAsync_SameNumberAgain_UpdatesRowInPlace_KeepsIdIssueDateAndPaid_NoNotification()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var tenantId = Guid.NewGuid();
+        var first = CreateInvoice();
+        var ids = await sut.UpsertInvoicesAsync(tenantId, [first], notify: true);
+        var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
+        var firstSeenAt = stored.FirstSeenAt;
+        var paidAt = new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
+        stored.IsPaid = true;
+        stored.PaidAt = paidAt;
+        await _db.SaveChangesAsync();
+
+        var newIds = await sut.UpsertInvoicesAsync(
+            tenantId,
+            [first with { InvoiceNumber = "FV/1/K", VendorName = "Vendor 2", AmountGross = 246m, Currency = null, IssueDate = first.IssueDate.AddDays(-3) }],
+            notify: true);
+
+        Assert.Empty(newIds);
+        Assert.Equal(1, _notifications.Count);
+        var row = await _db.InvoiceHeaders.SingleAsync();
+        Assert.Equal(ids[0], row.Id);
+        Assert.Equal("FV/1/K", row.InvoiceNumber);
+        Assert.Equal("Vendor 2", row.VendorName);
+        Assert.Equal(246m, row.AmountGross);
+        Assert.Equal("PLN", row.Currency);
+        Assert.Equal(first.IssueDate, row.IssueDate);
+        Assert.Equal(firstSeenAt, row.FirstSeenAt);
+        Assert.True(row.IsPaid);
+        Assert.Equal(paidAt, row.PaidAt);
+    }
+
+    [Fact]
+    public async Task UpsertInvoicesAsync_NotificationThrows_RowsStoredAndIdsReturned()
+    {
+        var sut = new InvoiceService(_db, new ThrowingNotificationService(), NullLogger<InvoiceService>.Instance);
+
+        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice(), CreateInvoice() with { Number = "KSEF-2" }], notify: true);
+
+        Assert.Equal(2, ids.Count);
+        Assert.Equal(2, await _db.InvoiceHeaders.CountAsync());
+    }
+
+    [Fact]
     public async Task UpsertInvoicesAsync_OtherDirection_LeavesExistingRowUntouched()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
@@ -161,6 +205,17 @@ public class InvoiceServiceTests : IDisposable
             Count++;
             return Task.CompletedTask;
         }
+
+        public Task NotifyIssuedInvoiceStuckAsync(Guid tenantId, Guid issuedInvoiceId, string? number) => Task.CompletedTask;
+
+        public Task SendConfirmationAsync(string deviceToken, Platform platform) => Task.CompletedTask;
+
+        public Task<bool> SendTestNotificationAsync(string deviceToken, Platform platform) => Task.FromResult(true);
+    }
+
+    private sealed class ThrowingNotificationService : INotificationService
+    {
+        public Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt) => throw new InvalidOperationException("push down");
 
         public Task NotifyIssuedInvoiceStuckAsync(Guid tenantId, Guid issuedInvoiceId, string? number) => Task.CompletedTask;
 
