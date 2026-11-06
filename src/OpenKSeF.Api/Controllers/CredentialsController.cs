@@ -224,6 +224,7 @@ public class CredentialsController : ControllerBase
     [ProducesResponseType(typeof(TenantManualSyncResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<IActionResult> SyncNow(Guid tenantId, CancellationToken cancellationToken)
     {
@@ -239,6 +240,7 @@ public class CredentialsController : ControllerBase
     [ProducesResponseType(typeof(TenantManualSyncResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<IActionResult> FullResync(Guid tenantId, CancellationToken cancellationToken)
     {
@@ -256,6 +258,7 @@ public class CredentialsController : ControllerBase
         TenantSyncOutcome.TenantNotFound => NotFound(),
         TenantSyncOutcome.MissingCredential => Conflict(new { error = result.ErrorMessage }),
         TenantSyncOutcome.Failed => StatusCode(StatusCodes.Status502BadGateway, new { error = result.ErrorMessage }),
+        TenantSyncOutcome.StoreFailed => StatusCode(StatusCodes.Status500InternalServerError, new { error = result.ErrorMessage }),
         TenantSyncOutcome.Success => Ok(new TenantManualSyncResponse(
             TenantId: result.TenantId,
             FetchedInvoices: result.FetchedInvoices,
