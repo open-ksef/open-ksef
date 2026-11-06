@@ -16,6 +16,10 @@ vi.mock('@/auth/useAuth', () => ({
   }),
 }))
 
+const setupStatus = vi.hoisted(() => ({ data: undefined as { isInitialized: boolean; registrationAllowed?: boolean } | undefined }))
+
+vi.mock('@/hooks/useSetupStatus', () => ({ useSetupStatus: () => setupStatus }))
+
 describe('LoginPage', () => {
   let root: Root
   let container: HTMLDivElement
@@ -45,5 +49,23 @@ describe('LoginPage', () => {
     expect(logo?.textContent).toBe('')
     expect(logo?.querySelector('svg path')?.getAttribute('fill')).toBe('currentColor')
     expect(container.textContent).not.toMatch(/\p{Extended_Pictographic}/u)
+  })
+  it.each([
+    [undefined, true],
+    [{ isInitialized: true }, true],
+    [{ isInitialized: true, registrationAllowed: true }, true],
+    [{ isInitialized: true, registrationAllowed: false }, false],
+  ])('register link for setup status %j shown=%s', async (data, shown) => {
+    setupStatus.data = data
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <LoginPage />
+        </MemoryRouter>,
+      )
+    })
+
+    expect(container.querySelector('[data-testid="switch-to-register"]') !== null).toBe(shown)
+    expect(container.textContent?.includes('Nie masz konta?')).toBe(shown)
   })
 })

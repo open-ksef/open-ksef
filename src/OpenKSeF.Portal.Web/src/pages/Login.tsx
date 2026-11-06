@@ -3,12 +3,14 @@ import { Navigate, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '@/auth/useAuth'
 import { BrandMark } from '@/components/BrandMark'
+import { useSetupStatus } from '@/hooks/useSetupStatus'
 
 type AuthTab = 'login' | 'register'
 
 export function LoginPage(): ReactElement {
   const { isAuthenticated, isLoading, loginWithCredentials, loginWithGoogle, register } = useAuth()
   const navigate = useNavigate()
+  const registrationAllowed = useSetupStatus().data?.registrationAllowed !== false
   const [tab, setTab] = useState<AuthTab>('login')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -160,17 +162,19 @@ export function LoginPage(): ReactElement {
               Zaloguj przez Google
             </button>
 
-            <p className="auth-card__footer">
-              Nie masz konta?{' '}
-              <button
-                type="button"
-                className="auth-card__link-btn"
-                onClick={() => switchTab('register')}
-                data-testid="switch-to-register"
-              >
-                Zarejestruj się
-              </button>
-            </p>
+            {registrationAllowed && (
+              <p className="auth-card__footer">
+                Nie masz konta?{' '}
+                <button
+                  type="button"
+                  className="auth-card__link-btn"
+                  onClick={() => switchTab('register')}
+                  data-testid="switch-to-register"
+                >
+                  Zarejestruj się
+                </button>
+              </p>
+            )}
           </>
         ) : (
           <>

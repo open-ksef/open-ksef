@@ -266,6 +266,10 @@ A row that goes bad while the hosts run does not stop them. The Worker keeps run
 
 The API also stops at start when it cannot read `SystemConfigs` after 5 attempts, rather than running on `KSEF_BASE_URL`. Check Postgres and start it again.
 
+## Registration flag: upgrade
+
+After the upgrade, open Settings and save once. This stores the registration flag in `SystemConfigs` (`registration_allowed`). Until then the login page shows the register link, and register without a service account secret returns 503. Settings is the only supported toggle for registration: the API does not see changes made in the Keycloak console.
+
 ## Upgrade: ports and Keycloak admin
 
 Read this before you pull a release whose `docker-compose.yml` publishes only the gateway. Nothing is deleted: the database volume and all data stay. What changes is how you reach the services from outside Docker.

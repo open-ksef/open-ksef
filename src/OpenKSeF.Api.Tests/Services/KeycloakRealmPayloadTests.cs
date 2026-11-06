@@ -233,6 +233,38 @@ public class KeycloakRealmPayloadTests
         Assert.False(realm.TryGetProperty("failureFactor", out _));
     }
 
+    [Fact]
+    public async Task ApplySetup_StoresRegistrationFlag()
+    {
+        _keycloak.RealmJson = "{}";
+        var systemConfig = Substitute.For<ISystemConfigService>();
+
+        var result = await CreateSetupService(systemConfig, ValidKey)
+            .ApplySetupAsync(NewSetupRequest() with { RegistrationAllowed = false }, "token", "admin");
+
+        Assert.True(result.Success, result.Error);
+
+        await systemConfig.Received().SetValuesAsync(
+            Arg.Is<IDictionary<string, string>>(v => v[SystemConfigKeys.RegistrationAllowed] == "false"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(true, "true")]
+    [InlineData(false, "false")]
+    public async Task UpdateSettings_RegistrationToggle_StoresRegistrationFlag(bool allowed, string stored)
+    {
+        var systemConfig = Substitute.For<ISystemConfigService>();
+
+        var result = await CreateSettingsService(systemConfig).UpdateSettingsAsync(
+            new SettingsUpdateRequest { RegistrationAllowed = allowed }, "token");
+
+        Assert.True(result.Success, result.Error);
+        await systemConfig.Received().SetValuesAsync(
+            Arg.Is<IDictionary<string, string>>(v => v[SystemConfigKeys.RegistrationAllowed] == stored),
+            Arg.Any<CancellationToken>());
+    }
+
     private SystemSetupService CreateSetupService(ISystemConfigService systemConfig, string? encryptionKey) => new(
         _httpClientFactory,
         new ConfigurationBuilder()
@@ -290,6 +322,9 @@ public class KeycloakRealmPayloadTests
                 var clientId = url[(url.IndexOf('=') + 1)..];
                 return Json(RealmJson is null ? "[]" : $$"""[{"id":"uuid-{{clientId}}"}]""");
             }
+
+            if (url.Contains("/users?email="))
+                return Json("""[{"id":"admin-1"}]""");
 
             if (url.EndsWith("/available"))
                 return Json("[]");

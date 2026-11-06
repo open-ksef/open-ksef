@@ -51,6 +51,21 @@ public class SystemSetupControllerTests
         Assert.True(response.IsInitialized);
     }
 
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("true", true)]
+    [InlineData("false", false)]
+    public void GetSetupStatus_ReturnsStoredRegistrationFlag(string? stored, bool expected)
+    {
+        _systemConfig.GetValue(SystemConfigKeys.RegistrationAllowed).Returns(stored);
+        var controller = CreateController();
+
+        var result = controller.GetSetupStatus() as OkObjectResult;
+
+        var response = Assert.IsType<SetupStatusResponse>(result!.Value);
+        Assert.Equal(expected, response.RegistrationAllowed);
+    }
+
     [Fact]
     public async Task Authenticate_AlreadyInitialized_Returns403()
     {

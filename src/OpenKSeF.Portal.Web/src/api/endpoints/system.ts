@@ -6,6 +6,7 @@ export const DEFAULT_RELAY_URL = 'https://push.open-ksef.pl'
 
 export interface SetupStatusResponse {
   isInitialized: boolean
+  registrationAllowed?: boolean
 }
 
 export interface SetupAuthenticateRequest {

@@ -167,6 +167,7 @@ public sealed class SystemSetupService : ISystemSetupService
                 [SystemConfigKeys.ApiClientSecret] = apiClientSecret,
                 [SystemConfigKeys.ExternalBaseUrl] = request.ExternalBaseUrl.TrimEnd('/'),
                 [SystemConfigKeys.KSeFEnvironment] = ksefEnv,
+                [SystemConfigKeys.RegistrationAllowed] = request.RegistrationAllowed ? "true" : "false",
                 [SystemConfigKeys.IsInitialized] = "true",
             };
 
