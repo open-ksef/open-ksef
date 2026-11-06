@@ -55,9 +55,8 @@ public sealed class TenantSyncService : ITenantSyncService
 
     public async Task<IReadOnlyList<TenantSyncResult>> SyncAllTenantsAsync(CancellationToken cancellationToken = default)
     {
-        var tenants = await _db.Tenants
+        var tenants = await _db.Tenants.AsNoTracking()
             .Include(t => t.KSeFCredentials)
-            .Include(t => t.SyncState)
             .Where(t => t.KSeFCredentials.Any())
             .ToListAsync(cancellationToken);
 
@@ -91,9 +90,8 @@ public sealed class TenantSyncService : ITenantSyncService
         bool forceFullResync = false,
         CancellationToken cancellationToken = default)
     {
-        var tenant = await _db.Tenants
+        var tenant = await _db.Tenants.AsNoTracking()
             .Include(t => t.KSeFCredentials)
-            .Include(t => t.SyncState)
             .FirstOrDefaultAsync(t => t.Id == tenantId && (userId == null || t.UserId == userId), cancellationToken);
 
         if (tenant is null)
@@ -148,14 +146,15 @@ public sealed class TenantSyncService : ITenantSyncService
 
         try
         {
-            var session = await InitSessionAsync(tenant, credential, cancellationToken);
-            sessions[tenant.Id] = session;
-
-            var syncState = tenant.SyncState ?? new SyncState
+            var storedState = await _db.SyncStates.FirstOrDefaultAsync(s => s.TenantId == tenant.Id, cancellationToken);
+            var syncState = storedState ?? new SyncState
             {
                 Id = Guid.NewGuid(),
                 TenantId = tenant.Id
             };
+
+            var session = await InitSessionAsync(tenant, credential, cancellationToken);
+            sessions[tenant.Id] = session;
 
             var now = DateTime.UtcNow;
             var windowStart = fullResyncWindowStart
@@ -218,7 +217,7 @@ public sealed class TenantSyncService : ITenantSyncService
             syncState.LastSyncedAt = now;
             syncState.LastSuccessfulSync = now;
 
-            if (!await _db.SyncStates.AnyAsync(s => s.TenantId == tenant.Id, cancellationToken))
+            if (storedState is null)
                 _db.SyncStates.Add(syncState);
 
             await _db.SaveChangesAsync(cancellationToken);
@@ -238,7 +237,6 @@ public sealed class TenantSyncService : ITenantSyncService
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "Sync failed for tenant {TenantId}", tenant.Id);
-            DetachPendingChanges();
 
             var statusCode = (ex as KsefApiException)?.StatusCode;
             return new TenantSyncResult(
@@ -247,6 +245,10 @@ public sealed class TenantSyncService : ITenantSyncService
                 Outcome: TenantSyncOutcome.Failed,
                 ErrorMessage: ex.Message,
                 ErrorStatusCode: statusCode.HasValue ? (int)statusCode.Value : null);
+        }
+        finally
+        {
+            _db.ChangeTracker.Clear();
         }
     }
 
@@ -332,7 +334,7 @@ public sealed class TenantSyncService : ITenantSyncService
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 _logger.LogWarning(ex, "Failed to store invoice XML details: {KSeFNumber}", row.KSeFInvoiceNumber);
-                DetachPendingChanges();
+                _db.ChangeTracker.Clear();
                 await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, cancellationToken);
                 errored++;
                 if (++failuresInARow >= MaxConsecutiveDownloadFailures)
@@ -340,6 +342,7 @@ public sealed class TenantSyncService : ITenantSyncService
             }
         }
 
+        _db.ChangeTracker.Clear();
         _logger.LogInformation("Invoice XML queue for NIP {Nip}: {Completed} of {Queued} done", nip, completed, queue.Count);
         return (waitingCount - completed - errored, errored);
     }
@@ -376,13 +379,6 @@ public sealed class TenantSyncService : ITenantSyncService
                 _logger.LogWarning(ex, "Failed to terminate KSeF session for tenant {TenantId}", tenantId);
             }
         }
-    }
-
-    // One context serves all tenants: a failed batch would fail their saves. Clear() would untrack their SyncState.
-    private void DetachPendingChanges()
-    {
-        foreach (var entry in _db.ChangeTracker.Entries().Where(e => e.State != EntityState.Unchanged).ToList())
-            entry.State = EntityState.Detached;
     }
 
     private async Task<(int Fetched, int New)> SyncIssuedInvoicesAsync(
@@ -475,10 +471,10 @@ public sealed class TenantSyncService : ITenantSyncService
                 windowStart = next;
             }
         }
-        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when (ex is not DbUpdateException && !cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "Issued invoice sync failed for tenant {TenantId}", tenant.Id);
-            DetachPendingChanges();
+            _db.ChangeTracker.Clear();
         }
 
         return (fetched, created);

@@ -89,8 +89,8 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasColumnType("character varying(8)");
 
                     b.Property<string>("BuyerName")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
 
                     b.Property<string>("BuyerNip")
                         .HasMaxLength(10)
@@ -155,8 +155,8 @@ namespace OpenKSeF.Domain.Data.Migrations
 
                     b.Property<string>("VendorName")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
 
                     b.Property<string>("VendorNip")
                         .IsRequired()
@@ -208,20 +208,20 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasColumnType("character varying(512)");
 
                     b.Property<decimal?>("Quantity")
-                        .HasPrecision(18, 6)
-                        .HasColumnType("numeric(18,6)");
+                        .HasPrecision(22, 6)
+                        .HasColumnType("numeric(22,6)");
 
                     b.Property<string>("Unit")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
 
                     b.Property<decimal?>("UnitPriceGross")
-                        .HasPrecision(18, 6)
-                        .HasColumnType("numeric(18,6)");
+                        .HasPrecision(22, 6)
+                        .HasColumnType("numeric(22,6)");
 
                     b.Property<decimal?>("UnitPriceNet")
-                        .HasPrecision(18, 6)
-                        .HasColumnType("numeric(18,6)");
+                        .HasPrecision(22, 6)
+                        .HasColumnType("numeric(22,6)");
 
                     b.Property<string>("VatRate")
                         .HasMaxLength(50)

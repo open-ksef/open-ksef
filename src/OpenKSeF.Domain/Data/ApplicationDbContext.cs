@@ -61,9 +61,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(i => i.KSeFInvoiceNumber).IsRequired().HasMaxLength(100);
             entity.Property(i => i.KSeFReferenceNumber).IsRequired().HasMaxLength(100);
             entity.Property(i => i.InvoiceNumber).HasMaxLength(256);
-            entity.Property(i => i.VendorName).IsRequired().HasMaxLength(500);
+            entity.Property(i => i.VendorName).IsRequired().HasMaxLength(512);
             entity.Property(i => i.VendorNip).IsRequired().HasMaxLength(10);
-            entity.Property(i => i.BuyerName).HasMaxLength(500);
+            entity.Property(i => i.BuyerName).HasMaxLength(512);
             entity.Property(i => i.BuyerNip).HasMaxLength(10);
             entity.Property(i => i.BuyerIdType).HasMaxLength(8);
             entity.Property(i => i.BuyerForeignId).HasMaxLength(50);
@@ -89,11 +89,11 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(l => l.Id);
             entity.HasIndex(l => l.InvoiceHeaderId);
             entity.Property(l => l.Name).HasMaxLength(512);
-            entity.Property(l => l.Unit).HasMaxLength(50);
+            entity.Property(l => l.Unit).HasMaxLength(256);
             entity.Property(l => l.VatRate).HasMaxLength(50);
-            entity.Property(l => l.Quantity).HasPrecision(18, 6);
-            entity.Property(l => l.UnitPriceNet).HasPrecision(18, 6);
-            entity.Property(l => l.UnitPriceGross).HasPrecision(18, 6);
+            entity.Property(l => l.Quantity).HasPrecision(22, 6);
+            entity.Property(l => l.UnitPriceNet).HasPrecision(22, 6);
+            entity.Property(l => l.UnitPriceGross).HasPrecision(22, 6);
             entity.Property(l => l.AmountNet).HasPrecision(18, 2);
             entity.Property(l => l.AmountGross).HasPrecision(18, 2);
             entity.Property(l => l.AmountVat).HasPrecision(18, 2);

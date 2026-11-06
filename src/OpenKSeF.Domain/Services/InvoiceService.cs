@@ -34,8 +34,9 @@ public class InvoiceService : IInvoiceService
         var newInvoiceIds = new List<Guid>();
         var newInvoiceEvents = new List<NewInvoiceDetectedEvent>();
         var now = DateTime.UtcNow;
+        var page = invoices.DistinctBy(i => i.Number).ToList();
 
-        foreach (var invoice in invoices)
+        foreach (var invoice in page)
         {
             var existing = await _db.InvoiceHeaders
                 .FirstOrDefaultAsync(i =>
@@ -106,12 +107,21 @@ public class InvoiceService : IInvoiceService
             }
         }
 
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex,
+                "Invoice page not stored for tenant {TenantId}, KSeF numbers: {KSeFNumbers}",
+                tenantId, string.Join(", ", page.Select(i => i.Number)));
+            throw;
+        }
 
         _logger.LogInformation(
             "Upserted {Total} invoices for tenant {TenantId}, {NewCount} new",
-            newInvoiceIds.Count + (invoices.Count() - newInvoiceIds.Count),
-            tenantId, newInvoiceIds.Count);
+            page.Count, tenantId, newInvoiceIds.Count);
 
         if (!notify)
             return newInvoiceIds;
