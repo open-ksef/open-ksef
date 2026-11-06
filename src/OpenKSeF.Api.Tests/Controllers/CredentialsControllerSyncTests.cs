@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -87,6 +88,7 @@ public class CredentialsControllerSyncTests : IDisposable
 
         var status = Assert.IsType<ObjectResult>(result);
         Assert.Equal(500, status.StatusCode);
+        Assert.Equal("""{"error":"Invoice data could not be stored."}""", JsonSerializer.Serialize(status.Value));
     }
 
     [Fact]
