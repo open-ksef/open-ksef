@@ -59,16 +59,9 @@ public class DevicesController : ControllerBase
         }
 
         var now = DateTime.UtcNow;
-        var existing = await _db.DeviceTokens
-            .FirstOrDefaultAsync(d => d.Token == request.Token && d.UserId == userId);
+        var existing = await _db.DeviceTokens.FirstOrDefaultAsync(d => d.Token == request.Token);
 
-        if (existing is not null)
-        {
-            existing.Platform = request.Platform;
-            existing.TenantId = request.TenantId;
-            existing.UpdatedAt = now;
-        }
-        else
+        if (existing is null)
         {
             _db.DeviceTokens.Add(new DeviceToken
             {
@@ -80,9 +73,26 @@ public class DevicesController : ControllerBase
                 CreatedAt = now,
                 UpdatedAt = now
             });
+
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (DbUpdateException e) when (IssuedInvoiceService.IsUniqueViolation(e))
+            {
+                _db.ChangeTracker.Clear();
+                existing = await _db.DeviceTokens.FirstAsync(d => d.Token == request.Token);
+            }
         }
 
-        await _db.SaveChangesAsync();
+        if (existing is not null)
+        {
+            existing.UserId = userId;
+            existing.Platform = request.Platform;
+            existing.TenantId = request.TenantId;
+            existing.UpdatedAt = now;
+            await _db.SaveChangesAsync();
+        }
 
         _ = _notificationService.SendConfirmationAsync(request.Token, request.Platform);
 

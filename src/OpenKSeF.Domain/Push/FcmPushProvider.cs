@@ -1,18 +1,24 @@
 using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
+using Google.Apis.Auth.OAuth2;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Models;
+using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Domain.Push;
 
 public class FcmPushProvider : IPushProvider
 {
+    private static readonly object InitLock = new();
+
+    private readonly ISystemConfigService _systemConfig;
     private readonly ILogger<FcmPushProvider> _logger;
 
-    public FcmPushProvider(ILogger<FcmPushProvider> logger)
+    public FcmPushProvider(ISystemConfigService systemConfig, ILogger<FcmPushProvider> logger)
     {
+        _systemConfig = systemConfig;
         _logger = logger;
     }
 
@@ -21,7 +27,7 @@ public class FcmPushProvider : IPushProvider
         if (platform != Platform.Android)
             return PushResult.Skipped;
 
-        if (FirebaseApp.DefaultInstance is null)
+        if (FirebaseApp.DefaultInstance is null && !TryInitializeFirebase())
         {
             _logger.LogDebug("Firebase is not initialized, skipping direct FCM push");
             return PushResult.Skipped;
@@ -55,6 +61,31 @@ public class FcmPushProvider : IPushProvider
         {
             _logger.LogWarning(ex, "FCM push failed: {ErrorCode}", ex.MessagingErrorCode);
             return PushResult.Failed;
+        }
+    }
+
+    private bool TryInitializeFirebase()
+    {
+        var credentialsJson = _systemConfig.GetValue(SystemConfigKeys.FirebaseCredentialsJson);
+        if (string.IsNullOrEmpty(credentialsJson))
+            return false;
+
+        lock (InitLock)
+        {
+            if (FirebaseApp.DefaultInstance is not null)
+                return true;
+
+            try
+            {
+                FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.FromJson(credentialsJson) });
+                _logger.LogInformation("Firebase initialized");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Firebase credentials cannot be used, skipping direct FCM push: {Error}", ex.GetType().Name);
+                return false;
+            }
         }
     }
 }

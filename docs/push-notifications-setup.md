@@ -130,6 +130,8 @@ The `.csproj` auto-detects this file and enables `FIREBASE_ENABLED`, which compi
 FIREBASE_CREDENTIALS_JSON={"type":"service_account","project_id":"your-project",...}
 ```
 
+The wizard value wins over `FIREBASE_CREDENTIALS_JSON`. API and Worker read it at the first Android push. A changed JSON takes effect after a restart of both.
+
 ---
 
 ## iOS — Apple Push Notification service (APNs)
@@ -164,6 +166,8 @@ Every time a device registers via `POST /api/devices/register`, the API automati
 ## Device Token Behavior
 
 When the mobile app registers a device, it sends the platform push token (FCM for Android, APNs for iOS). If Firebase/APNs is not available (e.g. no `google-services.json` in the build), the app sends a placeholder token in the format `device-<guid>`.
+
+A push token belongs to one account. When another account registers the same token, the device moves to that account. Deleting a company deletes the device subscriptions bound to it.
 
 Devices with `device-*` tokens **only receive SignalR real-time notifications** while the app is connected. Remote push (relay, FCM, APNs) will fail silently for these tokens. This is expected behavior for development builds without Firebase configured.
 

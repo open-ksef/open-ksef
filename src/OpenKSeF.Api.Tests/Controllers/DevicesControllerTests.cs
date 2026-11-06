@@ -122,6 +122,22 @@ public class DevicesControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Register_TokenOfAnotherUser_MovesTheRowToTheCurrentUser()
+    {
+        var now = DateTime.UtcNow;
+        var id = Guid.NewGuid();
+        _db.DeviceTokens.Add(new DeviceToken { Id = id, UserId = "previous-user", Token = "shared-token", Platform = Platform.Android, CreatedAt = now, UpdatedAt = now });
+        await _db.SaveChangesAsync();
+
+        var result = await CreateController().Register(new RegisterDeviceRequest("shared-token", Platform.Android, null));
+
+        Assert.IsType<OkObjectResult>(result);
+        var device = await _db.DeviceTokens.SingleAsync();
+        Assert.Equal(id, device.Id);
+        Assert.Equal(_userId, device.UserId);
+    }
+
+    [Fact]
     public async Task Register_WithInvalidTenantId_ReturnsBadRequest()
     {
         var controller = CreateController();

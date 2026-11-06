@@ -223,4 +223,73 @@ public class SystemConfigServiceTests : IDisposable
 
         Assert.Null(value);
     }
+
+    private static readonly string Key = Convert.ToBase64String(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray());
+
+    private async Task<SystemConfigService> ServiceWithRowsAsync(string? encryptionKey, params (string Key, string Value)[] rows)
+    {
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            foreach (var (key, value) in rows)
+                db.SystemConfigs.Add(new SystemConfig { Key = key, Value = value, UpdatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new SystemConfigService(
+            _serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ENCRYPTION_KEY"] = encryptionKey,
+                ["Auth:ServiceAccount:ClientSecret"] = "env-secret",
+            }).Build(),
+            NullLogger<SystemConfigService>.Instance);
+        await service.LoadCacheAsync(retryDelay: TimeSpan.Zero);
+        return service;
+    }
+
+    private static string Encrypted(string plaintext) =>
+        SystemConfigKeys.EncryptedPrefix + new AesGcmEncryptionService(Convert.FromBase64String(Key)).Encrypt(plaintext);
+
+    [Fact]
+    public async Task EncryptedSecret_ReadsAsPlaintext_PlainSecretReadsAsIs()
+    {
+        var service = await ServiceWithRowsAsync(Key,
+            (SystemConfigKeys.PushRelayApiKey, Encrypted("relay-key")),
+            (SystemConfigKeys.FirebaseCredentialsJson, "{\"type\":\"service_account\"}"));
+
+        Assert.Equal("relay-key", service.GetValue(SystemConfigKeys.PushRelayApiKey));
+        Assert.Equal("{\"type\":\"service_account\"}", service.GetValue(SystemConfigKeys.FirebaseCredentialsJson));
+    }
+
+    [Fact]
+    public async Task EncryptedSecret_UsesTheKeyRow_WhenPresent()
+    {
+        var service = await ServiceWithRowsAsync(null,
+            (SystemConfigKeys.EncryptionKey, Key),
+            (SystemConfigKeys.SetupTokenSigningKey, Encrypted("signing-key")));
+
+        Assert.Equal("signing-key", service.GetValue(SystemConfigKeys.SetupTokenSigningKey));
+    }
+
+    [Theory]
+    [InlineData("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")]
+    [InlineData(null)]
+    public async Task EncryptedSecret_WrongOrMissingKey_IsIgnored_FallsBackToEnv(string? encryptionKey)
+    {
+        var service = await ServiceWithRowsAsync(encryptionKey,
+            (SystemConfigKeys.ApiClientSecret, Encrypted("db-secret")),
+            (SystemConfigKeys.ExternalBaseUrl, "https://example.test"));
+
+        Assert.Equal("env-secret", service.GetValue(SystemConfigKeys.ApiClientSecret));
+        Assert.Equal("https://example.test", service.GetValue(SystemConfigKeys.ExternalBaseUrl));
+    }
+
+    [Fact]
+    public async Task NonSecretWithPrefix_StaysLiteral()
+    {
+        var service = await ServiceWithRowsAsync(Key, (SystemConfigKeys.ExternalBaseUrl, "enc:not-a-secret"));
+
+        Assert.Equal("enc:not-a-secret", service.GetValue(SystemConfigKeys.ExternalBaseUrl));
+    }
 }

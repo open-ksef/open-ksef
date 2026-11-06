@@ -243,6 +243,8 @@ public class KeycloakRealmPayloadTests
             .ApplySetupAsync(NewSetupRequest() with { RegistrationAllowed = false }, "token", "admin");
 
         Assert.True(result.Success, result.Error);
+        Assert.Equal("openksef-admin", _keycloak.Body(HttpMethod.Post, $"{RealmUrl}/roles").GetProperty("name").GetString());
+        Assert.Equal("role-1", _keycloak.Body(HttpMethod.Post, $"{RealmUrl}/users/admin-1/role-mappings/realm")[0].GetProperty("id").GetString());
 
         await systemConfig.Received().SetValuesAsync(
             Arg.Is<IDictionary<string, string>>(v => v[SystemConfigKeys.RegistrationAllowed] == "false"),
@@ -328,6 +330,9 @@ public class KeycloakRealmPayloadTests
 
             if (url.EndsWith("/available"))
                 return Json("[]");
+
+            if (url.EndsWith("/roles/openksef-admin"))
+                return Json("""{"id":"role-1","name":"openksef-admin"}""");
 
             if (url.Contains("/clients/uuid-"))
                 return Json("""{"id":"user-1","value":"client-secret","redirectUris":["/*"],"serviceAccountsEnabled":true}""");

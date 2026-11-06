@@ -19,6 +19,11 @@
   "maxDeltaTimeSeconds": 43200,
   "quickLoginCheckMilliSeconds": 1000,
   "minimumQuickLoginWaitSeconds": 60,
+  "roles": {
+    "realm": [
+      { "name": "openksef-admin" }
+    ]
+  },
   "clients": [
     {
       "clientId": "openksef-api",
@@ -74,6 +79,21 @@
       "username": "testuser",
       "email": "testuser@openksef.test",
       "firstName": "Test",
+      "lastName": "User",
+      "enabled": true,
+      "realmRoles": ["default-roles-openksef", "openksef-admin"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test1234!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "plainuser",
+      "email": "plainuser@openksef.test",
+      "firstName": "Plain",
       "lastName": "User",
       "enabled": true,
       "credentials": [

@@ -1,6 +1,5 @@
+using System.Text.Json;
 using System.Threading.RateLimiting;
-using FirebaseAdmin;
-using Google.Apis.Auth.OAuth2;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
@@ -9,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using OpenKSeF.Api.Controllers;
 using OpenKSeF.Api.Hubs;
 using OpenKSeF.Api.Push;
 using OpenKSeF.Domain.Push;
@@ -133,7 +133,11 @@ builder.Services.AddSingleton<IPostConfigureOptions<JwtBearerOptions>>(sp =>
     });
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options => options.AddPolicy(SystemSettingsController.AdminPolicy, policy =>
+    policy.RequireAssertion(context => context.User.FindAll("realm_access").Any(claim =>
+        JsonDocument.Parse(claim.Value).RootElement.TryGetProperty("roles", out var roles)
+        && roles.ValueKind == JsonValueKind.Array
+        && roles.EnumerateArray().Any(role => role.GetString() == SystemSettingsController.AdminRole)))));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
@@ -183,21 +187,6 @@ builder.Services.AddSingleton<IUserPushProvider, SignalRPushProvider>();
 builder.Services.AddHttpClient("push-relay");
 builder.Services.AddSingleton<IPushProvider, RelayPushProvider>();
 
-// Firebase / Push Notifications (direct FCM -- advanced/opt-in)
-var firebaseCredentialsJson = builder.Configuration["Firebase:CredentialsJson"];
-if (!string.IsNullOrEmpty(firebaseCredentialsJson))
-{
-    FirebaseApp.Create(new AppOptions
-    {
-        Credential = GoogleCredential.FromJson(firebaseCredentialsJson)
-    });
-    Log.Information("Firebase initialized");
-}
-else
-{
-    Log.Information("Firebase:CredentialsJson not configured — using relay for push notifications");
-}
-
 builder.Services.AddSingleton<IPushProvider, FcmPushProvider>();
 builder.Services.AddSingleton<IPushProvider, ApnsPushProvider>(sp =>
 {
@@ -244,7 +233,6 @@ builder.Services.AddRateLimiter(options =>
         });
     });
 
-    // Until T-030 every client behind the gateway shares this bucket: the short window makes a lockout end by itself.
     options.AddPolicy("register", context =>
     {
         var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -252,6 +240,18 @@ builder.Services.AddRateLimiter(options =>
         {
             Window = TimeSpan.FromMinutes(15),
             PermitLimit = 5,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+
+    options.AddPolicy(SystemSettingsController.RateLimitPolicy, context =>
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(15),
+            PermitLimit = 10,
             QueueLimit = 0,
             AutoReplenishment = true
         });
@@ -362,11 +362,18 @@ if (!string.IsNullOrEmpty(ksefEnv))
     }
 }
 
-// Trust forwarded headers from nginx proxy (X-Forwarded-For, X-Forwarded-Proto)
-app.UseForwardedHeaders(new ForwardedHeadersOptions
+var forwardedHeaders = new ForwardedHeadersOptions
 {
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
-});
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    ForwardLimit = app.Configuration.GetValue("ForwardedHeaders:ForwardLimit", 1)
+};
+forwardedHeaders.KnownIPNetworks.Clear();
+forwardedHeaders.KnownProxies.Clear();
+var trustedNetworks = app.Configuration["ForwardedHeaders:KnownNetworks"];
+foreach (var network in (string.IsNullOrWhiteSpace(trustedNetworks) ? "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16" : trustedNetworks)
+    .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+    forwardedHeaders.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
+app.UseForwardedHeaders(forwardedHeaders);
 
 app.UseRateLimiter();
 
