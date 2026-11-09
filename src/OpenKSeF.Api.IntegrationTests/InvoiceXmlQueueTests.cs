@@ -695,6 +695,22 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         Assert.Null((await RowAsync("NET-DOWN")).XmlFailedReads);
         Assert.Equal(before, await SnapshotAsync());
 
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlAttemptedAt" = now() - interval '6 days' WHERE "KSeFInvoiceNumber" = 'BAD-PARSE'""");
+        _downloads.Clear();
+        await WorkerCycleAsync();
+        Assert.DoesNotContain("BAD-PARSE", _downloads);
+
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlAttemptedAt" = now() - interval '8 days' WHERE "KSeFInvoiceNumber" = 'BAD-PARSE'""");
+        await WorkerCycleAsync();
+        Assert.Contains("BAD-PARSE", _downloads);
+        Assert.Equal((short)6, (await RowAsync("BAD-PARSE")).XmlFailedReads);
+        _downloads.Clear();
+        await WorkerCycleAsync();
+        Assert.DoesNotContain("BAD-PARSE", _downloads);
+        Assert.Equal(before, await SnapshotAsync());
+
         _downloads.Clear();
         _xml = _ => Xml("2026-11-20");
         await ManualSyncAsync(fullResync: true);
