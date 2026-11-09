@@ -144,32 +144,28 @@ public sealed class EmailNotificationTests : IAsyncLifetime
         Assert.True(await check.InvoiceHeaders.AnyAsync(i => i.KSeFInvoiceNumber == "A-1"));
     }
 
-    [Theory]
-    [InlineData(6, 1)]
-    [InlineData(8, 0)]
-    public async Task IncrementalSync_AfterGapOverSevenDays_StoresInvoiceWithoutEmailOrPush(int gapDays, int expectedNotifications)
+    [Fact]
+    public async Task SameRun_BadAddressOnTenantA_StillEmailsTenantB()
     {
-        _received = c => c.SubjectNip == NipA && c.PageOffset == 0 ? Page([Bought("A-1")]) : Page([]);
-        var push = Substitute.For<IPushProvider>();
-        push.SendAsync(Arg.Any<string>(), Arg.Any<Platform>(), Arg.Any<PushNotification>()).Returns(PushResult.Sent);
-        var lastSync = DateTime.UtcNow.AddDays(-gapDays);
+        _received = c => c.PageOffset > 0 ? Page([])
+            : c.SubjectNip == NipA ? Page([Bought("A-1")])
+            : Page([Bought("B-1")]);
+        var lastSync = DateTime.UtcNow.AddHours(-4);
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE "Tenants" SET "NotificationEmail" = 'not an address' WHERE "Id" = {_tenantA};
+                INSERT INTO "SyncStates" ("Id", "TenantId", "LastSyncedAt", "LastSuccessfulSync")
+                VALUES ({Guid.NewGuid()}, {_tenantB}, {lastSync}, {lastSync})
+                """);
+
         await using (var db = NewContext())
         {
-            await db.Database.ExecuteSqlInterpolatedAsync($"""
-                UPDATE "SyncStates" SET "LastSyncedAt" = {lastSync}, "LastSuccessfulSync" = {lastSync} WHERE "TenantId" = {_tenantA}
-                """);
-            var now = DateTime.UtcNow;
-            db.DeviceTokens.Add(new DeviceToken { Id = Guid.NewGuid(), UserId = $"user-{NipA}", Token = "fcm-token", Platform = Platform.Android, CreatedAt = now, UpdatedAt = now });
-            await db.SaveChangesAsync();
+            var sut = SyncService(db, MailpitOptions());
+            Assert.Equal(TenantSyncOutcome.Success, (await sut.SyncTenantAsync(_tenantA)).Outcome);
+            Assert.Equal(TenantSyncOutcome.Success, (await sut.SyncTenantAsync(_tenantB)).Outcome);
         }
 
-        await using (var db = NewContext())
-            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db, MailpitOptions(), push).SyncTenantAsync(_tenantA)).Outcome);
-
-        Assert.Equal(expectedNotifications, (await Mailpit.MessagesAsync(_mailpit)).Count);
-        Assert.Equal(expectedNotifications, push.ReceivedCalls().Count());
-        await using var check = NewContext();
-        Assert.Equal(1, await check.InvoiceHeaders.CountAsync(i => i.KSeFInvoiceNumber == "A-1"));
+        Assert.Equal([("Nowa faktura od Dostawca", AddressB)], await Mailpit.MessagesAsync(_mailpit));
     }
 
     [Theory]
@@ -214,11 +210,11 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     private ApplicationDbContext NewContext() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(_postgres.GetConnectionString()).Options);
 
-    private TenantSyncService SyncService(ApplicationDbContext db, EmailOptions email, params IPushProvider[] push)
+    private TenantSyncService SyncService(ApplicationDbContext db, EmailOptions email)
     {
         var notifications = new NotificationService(
             db,
-            push,
+            Array.Empty<IPushProvider>(),
             new EmailService(Options.Create(email), NullLogger<EmailService>.Instance),
             NullLogger<NotificationService>.Instance);
         return new TenantSyncService(

@@ -1,5 +1,7 @@
+using MailKit.Net.Smtp;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using MimeKit;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Enums;
@@ -60,13 +62,17 @@ public class NotificationService : INotificationService
         // Scoped per sync run: a dead SMTP host must not cost a timeout per new invoice.
         if (_emailFailed)
         {
-            _logger.LogDebug("Email skipped after an earlier SMTP failure in this run, tenant {TenantId}, invoice {InvoiceId}", evt.TenantId, evt.InvoiceId);
+            _logger.LogInformation("Email skipped after an earlier SMTP failure in this run, tenant {TenantId}, invoice {InvoiceId}", evt.TenantId, evt.InvoiceId);
             return;
         }
 
         try
         {
             await _emailService.SendNewInvoiceEmailAsync(notificationEmail, evt);
+        }
+        catch (Exception ex) when (ex is ParseException or SmtpCommandException { ErrorCode: SmtpErrorCode.RecipientNotAccepted })
+        {
+            _logger.LogWarning(ex, "Email notification rejected for tenant {TenantId}, invoice {InvoiceId}", evt.TenantId, evt.InvoiceId);
         }
         catch (Exception ex)
         {

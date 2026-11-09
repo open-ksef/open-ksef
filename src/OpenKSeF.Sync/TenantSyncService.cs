@@ -19,7 +19,6 @@ public sealed class TenantSyncService : ITenantSyncService
     private const int IssuedFirstRunMonthsBack = 12;
     private const int MaxIssuedQueriesPerRun = 10;
     private const int MaxConsecutiveDownloadFailures = 3;
-    private static readonly TimeSpan MaxNotifyGap = TimeSpan.FromDays(7);
 
     private readonly ApplicationDbContext _db;
     private readonly IKSeFGateway _gateway;
@@ -161,13 +160,8 @@ public sealed class TenantSyncService : ITenantSyncService
             var windowStart = fullResyncWindowStart
                 ?? ReceivedResumePoint(syncState)
                 ?? now.AddMonths(-_syncOptions.InitialSyncMonthsBack);
-            // Initial sync, forced resync and a catch-up after a long gap import history: store it, don't notify it.
-            var longGap = now - syncState.LastSuccessfulSync > MaxNotifyGap;
-            var notify = fullResyncWindowStart is null && syncState.LastSuccessfulSync is not null && !longGap;
-            if (fullResyncWindowStart is null && longGap)
-                _logger.LogWarning(
-                    "Tenant {TenantId} last synced {LastSuccess:O}, more than {MaxGap} ago: new invoices stored without notifications",
-                    tenant.Id, syncState.LastSuccessfulSync, MaxNotifyGap);
+            // Initial sync and forced resync import history: store it, don't push it.
+            var notify = fullResyncWindowStart is null && syncState.LastSuccessfulSync is not null;
             var totalFetched = 0;
             var totalNew = 0;
 
