@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Sockets;
 using MailKit.Net.Smtp;
 using MailKit.Security;
@@ -259,6 +260,7 @@ public class NotificationServiceTests : IDisposable
     [InlineData("Dostawca Testowy", 1234567.891, "EUR", "Dostawca Testowy: 1 234 567,89 EUR")]
     [InlineData("", 0.5, "PLN", "Nieznany sprzedawca: 0,50 PLN")]
     [InlineData("  ", 999.999, "PLN", "Nieznany sprzedawca: 1 000,00 PLN")]
+    [InlineData(" ACME\r\n  Sp. z o.o.\t\n", 1, "PLN", "ACME Sp. z o.o.: 1,00 PLN")]
     public async Task NotifyNewInvoiceAsync_SendsPolishPush_SameOnSignalRAndDevice(string vendor, double amount, string currency, string body)
     {
         var tenantId = await SeedDeviceAsync("fcm-token-valid");
@@ -276,6 +278,15 @@ public class NotificationServiceTests : IDisposable
             ["invoiceId"] = evt.InvoiceId.ToString()
         }, provider.Last.Data);
         Assert.Same(provider.Last, signalR.Last);
+    }
+
+    [Fact]
+    public void EnsurePolishFormatting_PassesForPolish_ThrowsForInvariant()
+    {
+        NotificationService.EnsurePolishFormatting(CultureInfo.GetCultureInfo("pl-PL"));
+
+        var ex = Assert.Throws<InvalidOperationException>(() => NotificationService.EnsurePolishFormatting(CultureInfo.InvariantCulture));
+        Assert.Contains("1,234.50", ex.Message);
     }
 
     [Fact]

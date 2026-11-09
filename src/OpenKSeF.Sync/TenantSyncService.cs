@@ -164,6 +164,8 @@ public sealed class TenantSyncService : ITenantSyncService
             var notify = fullResyncWindowStart is null && syncState.LastSuccessfulSync is not null;
             var totalFetched = 0;
             var newReceivedIds = new List<Guid>();
+            using var notifyCts = new CancellationTokenSource();
+            using var notifyGrace = cancellationToken.Register(() => notifyCts.CancelAfter(_syncOptions.NotificationGrace));
 
             try
             {
@@ -218,12 +220,12 @@ public sealed class TenantSyncService : ITenantSyncService
             catch
             {
                 if (notify)
-                    await NotifyStoredPagesAsync(tenant.Id, newReceivedIds);
+                    await NotifyStoredPagesAsync(tenant.Id, newReceivedIds, notifyCts.Token);
                 throw;
             }
 
             if (notify)
-                await _invoiceService.NotifyNewInvoicesAsync(tenant.Id, newReceivedIds);
+                await _invoiceService.NotifyNewInvoicesAsync(tenant.Id, newReceivedIds, notifyCts.Token);
 
             syncState.LastSyncedAt = now;
             syncState.LastSuccessfulSync = now;
@@ -278,13 +280,13 @@ public sealed class TenantSyncService : ITenantSyncService
         }
     }
 
-    private async Task NotifyStoredPagesAsync(Guid tenantId, List<Guid> storedIds)
+    private async Task NotifyStoredPagesAsync(Guid tenantId, List<Guid> storedIds, CancellationToken cancellationToken)
     {
         // A failed page stays tracked; a token removal's SaveChanges would re-flush it and abort the e-mails.
         _db.ChangeTracker.Clear();
         try
         {
-            await _invoiceService.NotifyNewInvoicesAsync(tenantId, storedIds);
+            await _invoiceService.NotifyNewInvoicesAsync(tenantId, storedIds, cancellationToken);
         }
         catch (Exception ex)
         {

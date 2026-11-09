@@ -125,7 +125,7 @@ public class InvoiceService : IInvoiceService
         return newInvoiceIds;
     }
 
-    public async Task NotifyNewInvoicesAsync(Guid tenantId, IReadOnlyCollection<Guid> invoiceIds)
+    public async Task NotifyNewInvoicesAsync(Guid tenantId, IReadOnlyCollection<Guid> invoiceIds, CancellationToken cancellationToken = default)
     {
         if (invoiceIds.Count == 0)
             return;
@@ -138,8 +138,13 @@ public class InvoiceService : IInvoiceService
             .Select(i => new NewInvoiceDetectedEvent(i.TenantId, i.Id, i.VendorName, i.InvoiceNumber, i.AmountGross, i.Currency))
             .ToListAsync();
 
+        var sent = 0;
         foreach (var evt in notified)
         {
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            sent++;
             try
             {
                 await _notificationService.NotifyNewInvoiceAsync(evt);
@@ -149,6 +154,12 @@ public class InvoiceService : IInvoiceService
                 _logger.LogWarning(ex,
                     "Failed to send notification for invoice {InvoiceId}", evt.InvoiceId);
             }
+        }
+
+        if (cancellationToken.IsCancellationRequested && invoiceIds.Count > sent)
+        {
+            _logger.LogWarning("Sync cancelled: notifications skipped for {Count} stored invoices, tenant {TenantId}", invoiceIds.Count - sent, tenantId);
+            return;
         }
 
         var rest = invoiceIds.Count - notified.Count;

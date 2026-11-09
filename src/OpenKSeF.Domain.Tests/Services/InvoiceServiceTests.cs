@@ -110,6 +110,26 @@ public class InvoiceServiceTests : IDisposable
         Assert.Equal(paidAt, row.PaidAt);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public async Task NotifyNewInvoicesAsync_SyncCancelled_StopsNotifying_KeepsRows(int sentBeforeCancel)
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var tenantId = Guid.NewGuid();
+        var ids = await sut.UpsertInvoicesAsync(tenantId, Enumerable.Range(0, 12).Select(i => CreateInvoice() with { Number = $"KSEF-{i}" }).ToList());
+        using var cts = new CancellationTokenSource();
+        if (sentBeforeCancel == 0)
+            cts.Cancel();
+        _notifications.AfterNotify = () => { if (_notifications.Count == sentBeforeCancel) cts.Cancel(); };
+
+        await sut.NotifyNewInvoicesAsync(tenantId, ids, cts.Token);
+
+        Assert.Equal(sentBeforeCancel, _notifications.Count);
+        Assert.Empty(_notifications.Summaries);
+        Assert.Equal(12, await _db.InvoiceHeaders.CountAsync(i => i.TenantId == tenantId && !i.IsPaid));
+    }
+
     [Fact]
     public async Task NotifyNewInvoicesAsync_NotificationThrows_TriesEveryInvoiceAndSummary()
     {
@@ -306,9 +326,12 @@ public class InvoiceServiceTests : IDisposable
 
         public int Count => InvoiceIds.Count;
 
+        public Action? AfterNotify { get; set; }
+
         public Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt)
         {
             InvoiceIds.Add(evt.InvoiceId);
+            AfterNotify?.Invoke();
             return Task.CompletedTask;
         }
 
