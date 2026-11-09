@@ -200,11 +200,28 @@ public class InvoiceServiceTests : IDisposable
         var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()], notify: false);
         await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails(null, [], null, SettlementState.Overpaid, 300m));
 
-        await sut.RecordFailedInvoiceXmlAsync(ids[0]);
+        await sut.RecordFailedInvoiceXmlAsync(ids[0], xmlReceived: true);
 
         var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
         Assert.Equal(SettlementState.Overpaid, stored.Settlement);
         Assert.Equal(300m, stored.SettlementAmount);
+    }
+
+    [Fact]
+    public async Task RecordFailedInvoiceXmlAsync_CountsOnlyReceivedXml_ResetOnRead()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()], notify: false);
+
+        await sut.RecordFailedInvoiceXmlAsync(ids[0], xmlReceived: false);
+        Assert.Null((await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == ids[0])).XmlFailedReads);
+
+        await sut.RecordFailedInvoiceXmlAsync(ids[0], xmlReceived: true);
+        await sut.RecordFailedInvoiceXmlAsync(ids[0], xmlReceived: true);
+        Assert.Equal((short)2, (await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == ids[0])).XmlFailedReads);
+
+        await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails(null, [], null));
+        Assert.Null((await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == ids[0])).XmlFailedReads);
     }
 
     private static InvoiceLineDto Line() => new(1, "Towar", "szt", 1m, 100m, 123m, 100m, 123m, 23m, "23");

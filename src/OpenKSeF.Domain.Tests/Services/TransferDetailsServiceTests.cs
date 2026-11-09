@@ -140,9 +140,7 @@ public class TransferDetailsServiceTests
     [Theory]
     [InlineData("Vat")]
     [InlineData("Upr")]
-    [InlineData("VatPef")]
-    [InlineData("VatPefSp")]
-    [InlineData("VatRr")]
+    [InlineData("upr")]
     public void Qr_RegularTypes_EncodeGross(string invoiceType)
     {
         var data = Data(MakeInvoice(vendorBankAccount: ValidAccount, invoiceType: invoiceType));
@@ -150,6 +148,23 @@ public class TransferDetailsServiceTests
         Assert.True(data.QrAvailable);
         Assert.Null(data.QrMessage);
         Assert.Equal("012345", _qr.BuildZbpPayload(data).Split('|')[3]);
+    }
+
+    [Theory]
+    [InlineData("VatRr", ValidAccount, "Faktura VAT RR: kod QR nie jest dostępny dla tego rodzaju faktury. Sprawdź dane do zapłaty na fakturze.")]
+    [InlineData("VatRr", null, "Faktura VAT RR: kod QR nie jest dostępny dla tego rodzaju faktury. Sprawdź dane do zapłaty na fakturze.")]
+    [InlineData("VatPef", null, "Faktura PEF: kod QR nie jest dostępny dla tego rodzaju faktury. Sprawdź dane do zapłaty na fakturze.")]
+    [InlineData("VatPefSp", ValidAccount, "Faktura PEF: kod QR nie jest dostępny dla tego rodzaju faktury. Sprawdź dane do zapłaty na fakturze.")]
+    [InlineData("Xyz", ValidAccount, "Nieznany rodzaj faktury (Xyz): kod QR nie jest dostępny. Sprawdź dane do zapłaty na fakturze.")]
+    public void Qr_TypeOutsideAllowlist_NoQr_TypeMessage_CopyStillWorks(string invoiceType, string? account, string message)
+    {
+        var invoice = MakeInvoice(vendorBankAccount: account, invoiceType: invoiceType);
+
+        var data = Data(invoice);
+
+        Assert.False(data.QrAvailable);
+        Assert.Equal(message, data.QrMessage);
+        Assert.Contains("Tytul: FV/2026/03/001", Text(invoice));
     }
 
     [Theory]
@@ -528,6 +543,18 @@ public class TransferDetailsServiceTests
     }
 
     [Fact]
+    public void Qr_PaidAtIssueWithoutDate_NoQr()
+    {
+        var invoice = MakeInvoice(vendorBankAccount: ValidAccount);
+        invoice.SellerPaidOn = DateOnly.MinValue;
+
+        var data = Data(invoice);
+
+        Assert.False(data.QrAvailable);
+        Assert.Equal("Sprzedawca oznaczył fakturę jako zapłaconą.", data.QrMessage);
+    }
+
+    [Fact]
     public void Qr_PaidInFullInParts_NoQr()
     {
         var invoice = MakeInvoice(vendorBankAccount: ValidAccount);
@@ -569,6 +596,30 @@ public class TransferDetailsServiceTests
         Assert.Equal(FactorNotice, data.QrMessage);
         Assert.Equal($"1111111111|PL|{QrCodeService.SanitizeAccount(FactorAccount)}|123456|Faktor Testowy SA|FV 1/2026|||", _qr.BuildZbpPayload(data));
         Assert.Contains("Odbiorca: Faktor Testowy SA\nNIP: 1111111111\nNr rachunku: " + FactorAccount, Text(invoice));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("   ")]
+    [InlineData("!!!")]
+    public void Qr_FactorWithoutName_NoQr_FactorMessage_NoRecipientLine(string? factorName)
+    {
+        var invoice = MakeInvoice(vendorBankAccount: ValidAccount);
+        invoice.FactorBankAccount = FactorAccount;
+        invoice.FactorNip = "1111111111";
+        invoice.FactorName = factorName;
+
+        var data = Data(invoice);
+        var text = Text(invoice);
+
+        Assert.False(data.QrAvailable);
+        Assert.Equal("Płatność na rachunek faktora, ale faktura nie podaje nazwy faktora: nie można utworzyć kodu QR. Sprawdź odbiorcę przelewu na fakturze.", data.QrMessage);
+        Assert.Equal(FactorAccount, data.RecipientAccount);
+        Assert.Contains("NIP: 1111111111\nNr rachunku: " + FactorAccount, text);
+        if (string.IsNullOrWhiteSpace(factorName))
+            Assert.StartsWith("NIP: 1111111111\n", text);
+        Assert.DoesNotContain(ValidAccount, text);
+        Assert.DoesNotContain("Test Vendor", text);
     }
 
     [Fact]

@@ -35,7 +35,9 @@ public class InvoiceHeader
     public SettlementState? Settlement { get; set; }
     public decimal? SettlementAmount { get; set; }
     public bool? SplitPayment { get; set; }
+    /// <summary><c>DateOnly.MinValue</c>: <c>Zaplacono = 1</c> without a readable <c>DataZaplaty</c>, still paid.</summary>
     public DateOnly? SellerPaidOn { get; set; }
+    public short? XmlFailedReads { get; set; }
     public short? PartialPayment { get; set; }
     public string? FactorBankAccount { get; set; }
     public string? FactorNip { get; set; }

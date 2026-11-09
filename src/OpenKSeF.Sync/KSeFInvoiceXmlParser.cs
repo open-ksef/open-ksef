@@ -114,7 +114,7 @@ public sealed class KSeFInvoiceXmlParser
             settlement,
             settlementAmount,
             fa.Element(ns + "Adnotacje")?.Element(ns + "P_18A")?.Value.Trim() == "1",
-            platnosc?.Element(ns + "Zaplacono")?.Value.Trim() == "1" ? ParseDate(platnosc.Element(ns + "DataZaplaty")?.Value) : null,
+            platnosc?.Element(ns + "Zaplacono")?.Value.Trim() == "1" ? ParseDate(platnosc.Element(ns + "DataZaplaty")?.Value) ?? DateOnly.MinValue : null,
             short.TryParse(platnosc?.Element(ns + "ZnacznikZaplatyCzesciowej")?.Value.Trim(), out var partial) ? partial : null,
             PickAccount(factorAccounts),
             Text(factor?.Element(ns + "NIP")?.Value, 10),

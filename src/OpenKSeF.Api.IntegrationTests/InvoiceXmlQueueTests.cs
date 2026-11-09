@@ -678,6 +678,38 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RowThatAlwaysFailsToRead_SkippedByIncrementalAfterCap_RetriedOnFullResync()
+    {
+        await InsertAsync("BAD-PARSE", daysAgo: 1);
+        await InsertAsync("NET-DOWN", daysAgo: 2);
+        await MigrateAsync();
+        var before = await SnapshotAsync();
+        _xml = number => number == "BAD-PARSE" ? Encoding.UTF8.GetBytes("<not-xml") : throw new HttpRequestException("500");
+
+        for (var cycle = 0; cycle < 7; cycle++)
+            await WorkerCycleAsync();
+
+        Assert.Equal(5, _downloads.Count(n => n == "BAD-PARSE"));
+        Assert.Equal(7, _downloads.Count(n => n == "NET-DOWN"));
+        Assert.Equal((short)5, (await RowAsync("BAD-PARSE")).XmlFailedReads);
+        Assert.Null((await RowAsync("NET-DOWN")).XmlFailedReads);
+        Assert.Equal(before, await SnapshotAsync());
+
+        _downloads.Clear();
+        _xml = _ => Xml("2026-11-20");
+        await ManualSyncAsync(fullResync: true);
+
+        Assert.Contains("BAD-PARSE", _downloads);
+        var row = await RowAsync("BAD-PARSE");
+        Assert.NotNull(row.XmlFetchedAt);
+        Assert.Null(row.XmlFailedReads);
+        Assert.Equal(new DateOnly(2026, 11, 20), row.DueDate);
+        Assert.False(row.IsPaid);
+        Assert.Null(row.PaidAt);
+        Assert.Single(row.Lines);
+    }
+
+    [Fact]
     public async Task ThreeRowsThatAlwaysFailToDownload_DoNotStarveOlderRows()
     {
         for (var n = 1; n <= 3; n++)
