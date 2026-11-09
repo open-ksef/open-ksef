@@ -12,6 +12,9 @@ namespace OpenKSeF.Domain.Services;
 
 public class InvoiceService : IInvoiceService
 {
+    public const int MaxFailedXmlReads = 5;
+    public static readonly TimeSpan CappedXmlRetryAfter = TimeSpan.FromDays(7);
+
     private readonly ApplicationDbContext _db;
     private readonly INotificationService _notificationService;
     private readonly ILogger<InvoiceService> _logger;
@@ -185,6 +188,11 @@ public class InvoiceService : IInvoiceService
         if (xmlReceived)
             invoice.XmlFailedReads = (short)((invoice.XmlFailedReads ?? 0) + 1);
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (xmlReceived && invoice.XmlFailedReads == MaxFailedXmlReads)
+            _logger.LogWarning(
+                "Invoice XML {KSeFNumber} failed to read {Count} times; incremental sync retries it after {RetryAfter}",
+                invoice.KSeFInvoiceNumber, MaxFailedXmlReads, CappedXmlRetryAfter);
     }
 
     private static InvoiceLine MapLine(InvoiceLineDto dto, Guid invoiceHeaderId) => new()

@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OpenKSeF.Domain.Events;
 using OpenKSeF.Domain.Models;
+using NSubstitute;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Domain.Tests.Services;
@@ -65,6 +67,20 @@ public class EmailServiceTests
         Assert.NotNull(exception);
         Assert.True(listener.Pending());
         Assert.InRange(stopwatch.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(12));
+    }
+
+    [Theory]
+    [InlineData(true, false, "user", 1)]
+    [InlineData(true, true, "user", 0)]
+    [InlineData(true, false, "", 0)]
+    [InlineData(false, false, "user", 0)]
+    public void WarnIfPlaintextAuth_WarnsOnlyForEnabledAuthWithoutTls(bool enabled, bool useSsl, string username, int expectedWarnings)
+    {
+        var logger = Substitute.For<ILogger>();
+
+        EmailService.WarnIfPlaintextAuth(new EmailOptions { Enabled = enabled, UseSsl = useSsl, Username = username }, logger);
+
+        Assert.Equal(expectedWarnings, logger.ReceivedCalls().Count(c => c.GetArguments()[0] is LogLevel.Warning));
     }
 
     private static int Port(TcpListener listener) => ((IPEndPoint)listener.LocalEndpoint).Port;

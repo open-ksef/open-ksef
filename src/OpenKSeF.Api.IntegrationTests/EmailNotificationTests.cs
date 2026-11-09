@@ -145,19 +145,53 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(587, "MP_SMTP_REQUIRE_STARTTLS")]
-    [InlineData(465, "MP_SMTP_REQUIRE_TLS")]
-    public async Task SendNewInvoiceEmailAsync_DeliversOverTls(int port, string requireTls)
+    [InlineData(6, 1)]
+    [InlineData(8, 0)]
+    public async Task IncrementalSync_AfterGapOverSevenDays_StoresInvoiceWithoutEmailOrPush(int gapDays, int expectedNotifications)
+    {
+        _received = c => c.SubjectNip == NipA && c.PageOffset == 0 ? Page([Bought("A-1")]) : Page([]);
+        var push = Substitute.For<IPushProvider>();
+        push.SendAsync(Arg.Any<string>(), Arg.Any<Platform>(), Arg.Any<PushNotification>()).Returns(PushResult.Sent);
+        var lastSync = DateTime.UtcNow.AddDays(-gapDays);
+        await using (var db = NewContext())
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE "SyncStates" SET "LastSyncedAt" = {lastSync}, "LastSuccessfulSync" = {lastSync} WHERE "TenantId" = {_tenantA}
+                """);
+            var now = DateTime.UtcNow;
+            db.DeviceTokens.Add(new DeviceToken { Id = Guid.NewGuid(), UserId = $"user-{NipA}", Token = "fcm-token", Platform = Platform.Android, CreatedAt = now, UpdatedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db, MailpitOptions(), push).SyncTenantAsync(_tenantA)).Outcome);
+
+        Assert.Equal(expectedNotifications, (await Mailpit.MessagesAsync(_mailpit)).Count);
+        Assert.Equal(expectedNotifications, push.ReceivedCalls().Count());
+        await using var check = NewContext();
+        Assert.Equal(1, await check.InvoiceHeaders.CountAsync(i => i.KSeFInvoiceNumber == "A-1"));
+    }
+
+    [Theory]
+    [InlineData(false, "MP_SMTP_REQUIRE_STARTTLS")]
+    [InlineData(true, "MP_SMTP_REQUIRE_TLS")]
+    public async Task SendNewInvoiceEmailAsync_DeliversOverTls(bool implicitTls, string requireTls)
     {
         await using var mailpit = Mailpit.Create(
-            port,
+            implicitTls ? 465 : null,
             ("MP_SMTP_TLS_CERT", "sans:localhost"),
             ("MP_SMTP_TLS_KEY", "sans:localhost"),
             (requireTls, "true"));
         await mailpit.StartAsync();
         var tlsNegotiated = false;
         var sut = new EmailService(
-            Options.Create(new EmailOptions { Enabled = true, SmtpHost = mailpit.Hostname, SmtpPort = port, UseSsl = true }),
+            Options.Create(new EmailOptions
+            {
+                Enabled = true,
+                SmtpHost = mailpit.Hostname,
+                SmtpPort = implicitTls ? 465 : mailpit.GetMappedPublicPort(Mailpit.SmtpPort),
+                UseSsl = true
+            }),
             NullLogger<EmailService>.Instance)
         {
             ServerCertificateValidation = (_, _, _, _) => tlsNegotiated = true
@@ -180,11 +214,11 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     private ApplicationDbContext NewContext() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(_postgres.GetConnectionString()).Options);
 
-    private TenantSyncService SyncService(ApplicationDbContext db, EmailOptions email)
+    private TenantSyncService SyncService(ApplicationDbContext db, EmailOptions email, params IPushProvider[] push)
     {
         var notifications = new NotificationService(
             db,
-            Array.Empty<IPushProvider>(),
+            push,
             new EmailService(Options.Create(email), NullLogger<EmailService>.Instance),
             NullLogger<NotificationService>.Instance);
         return new TenantSyncService(

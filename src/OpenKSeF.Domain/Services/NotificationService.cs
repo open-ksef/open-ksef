@@ -15,6 +15,7 @@ public class NotificationService : INotificationService
     private readonly IUserPushProvider? _userPushProvider;
     private readonly IEmailService _emailService;
     private readonly ILogger<NotificationService> _logger;
+    private bool _emailFailed;
 
     public NotificationService(
         ApplicationDbContext db,
@@ -56,13 +57,21 @@ public class NotificationService : INotificationService
         if (string.IsNullOrEmpty(notificationEmail))
             return;
 
+        // Scoped per sync run: a dead SMTP host must not cost a timeout per new invoice.
+        if (_emailFailed)
+        {
+            _logger.LogDebug("Email skipped after an earlier SMTP failure in this run, tenant {TenantId}, invoice {InvoiceId}", evt.TenantId, evt.InvoiceId);
+            return;
+        }
+
         try
         {
             await _emailService.SendNewInvoiceEmailAsync(notificationEmail, evt);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Email notification failed for tenant {TenantId}, invoice {InvoiceId}", evt.TenantId, evt.InvoiceId);
+            _emailFailed = true;
+            _logger.LogWarning(ex, "Email notification failed for tenant {TenantId}, invoice {InvoiceId}; skipping e-mail for the rest of this run", evt.TenantId, evt.InvoiceId);
         }
     }
 

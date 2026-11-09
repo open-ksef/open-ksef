@@ -883,4 +883,25 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         Assert.Null((await RowAsync("BAD-ROW")).XmlFetchedAt);
         Assert.Equal(new DateOnly(2026, 11, 20), (await RowAsync("GOOD-ROW")).DueDate);
     }
+
+    [Fact]
+    public async Task SellerPaidWithoutDate_StoredAsMinValueOnPostgres_PayShowsNoQrAndNoDate()
+    {
+        await InsertAsync("PAID-NODATE", hasLine: false);
+        await MigrateAsync();
+        _xml = _ => Encoding.UTF8.GetBytes(
+            $"""<Faktura xmlns="{Fa3}"><Fa><RodzajFaktury>VAT</RodzajFaktury><Platnosc><Zaplacono>1</Zaplacono><RachunekBankowy><NrRB>{Account}</NrRB></RachunekBankowy></Platnosc><FaWiersz><NrWierszaFa>1</NrWierszaFa><P_7>Towar</P_7><P_11>100</P_11><P_12>23</P_12></FaWiersz></Fa></Faktura>""");
+
+        await WorkerCycleAsync();
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "InvoiceType" = 'Vat' WHERE "KSeFInvoiceNumber" = 'PAID-NODATE'""");
+
+        var row = await RowAsync("PAID-NODATE");
+        Assert.Equal(DateOnly.MinValue, row.SellerPaidOn);
+        Assert.False(row.IsPaid);
+        Assert.Null(row.PaidAt);
+        var data = new TransferDetailsService().BuildTransferData(row, Nip);
+        Assert.False(data.QrAvailable);
+        Assert.Equal("Sprzedawca oznaczył fakturę jako zapłaconą.", data.QrMessage);
+    }
 }

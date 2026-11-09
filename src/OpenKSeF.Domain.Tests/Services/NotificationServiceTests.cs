@@ -189,6 +189,22 @@ public class NotificationServiceTests : IDisposable
         Assert.Equal(LogLevel.Warning, warning.Level);
     }
 
+    [Fact]
+    public async Task NotifyNewInvoiceAsync_AfterEmailFailure_SkipsEmailForRestOfRun_StillPushes()
+    {
+        var tenantId = await SeedDeviceAsync("fcm-token-valid", NotificationEmail);
+        _email.Failure = new TimeoutException("smtp unreachable");
+        var push = new StubPushProvider(PushResult.Sent);
+        var sut = CreateService(push);
+
+        for (var i = 0; i < 3; i++)
+            await sut.NotifyNewInvoiceAsync(CreateEvent(tenantId));
+
+        Assert.Equal(1, _email.Attempts);
+        Assert.Equal(3, push.Calls);
+        Assert.Single(_logger.Entries, e => e.Level >= LogLevel.Warning);
+    }
+
     private NotificationService CreateService(params IPushProvider[] providers) =>
         new(
             _db,

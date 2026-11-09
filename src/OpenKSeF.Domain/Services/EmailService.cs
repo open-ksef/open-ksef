@@ -30,6 +30,12 @@ public class EmailService : IEmailService
 
     internal RemoteCertificateValidationCallback? ServerCertificateValidation { get; set; }
 
+    public static void WarnIfPlaintextAuth(EmailOptions options, ILogger logger)
+    {
+        if (options.Enabled && !options.UseSsl && !string.IsNullOrEmpty(options.Username))
+            logger.LogWarning("Email:UseSsl is false and Email:Username is set: SMTP credentials are sent unencrypted");
+    }
+
     public async Task SendNewInvoiceEmailAsync(string toEmail, NewInvoiceDetectedEvent evt)
     {
         if (!_options.Enabled)
@@ -54,7 +60,7 @@ public class EmailService : IEmailService
                 await client.AuthenticateAsync(_options.Username, _options.Password ?? string.Empty, timeout.Token);
 
             await client.SendAsync(message, timeout.Token);
-            _logger.LogInformation("Email sent to {Email} for invoice from {Vendor}", toEmail, evt.VendorName);
+            _logger.LogInformation("Email sent for tenant {TenantId}, invoice {InvoiceId}", evt.TenantId, evt.InvoiceId);
         }
         finally
         {
