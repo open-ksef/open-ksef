@@ -12,6 +12,7 @@ namespace OpenKSeF.Domain.Push;
 public class FcmPushProvider : IPushProvider
 {
     private static readonly object InitLock = new();
+    private static string? _rejectedCredentials;
 
     private readonly ISystemConfigService _systemConfig;
     private readonly ILogger<FcmPushProvider> _logger;
@@ -64,10 +65,10 @@ public class FcmPushProvider : IPushProvider
         }
     }
 
-    private bool TryInitializeFirebase()
+    internal bool TryInitializeFirebase()
     {
         var credentialsJson = _systemConfig.GetValue(SystemConfigKeys.FirebaseCredentialsJson);
-        if (string.IsNullOrEmpty(credentialsJson))
+        if (string.IsNullOrEmpty(credentialsJson) || credentialsJson == _rejectedCredentials)
             return false;
 
         lock (InitLock)
@@ -83,6 +84,7 @@ public class FcmPushProvider : IPushProvider
             }
             catch (Exception ex)
             {
+                _rejectedCredentials = credentialsJson;
                 _logger.LogWarning("Firebase credentials cannot be used, skipping direct FCM push: {Error}", ex.GetType().Name);
                 return false;
             }

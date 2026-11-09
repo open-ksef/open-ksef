@@ -33,12 +33,14 @@ public sealed class AdminSettingsSecurityTests : IAsyncLifetime
 
     public Task DisposeAsync() => Task.CompletedTask;
 
-    private WebApplicationFactory<Program> Factory(int? forwardLimit = null) => new OpenKSeFWebApplicationFactory(_fixture)
+    private WebApplicationFactory<Program> Factory(int? forwardLimit = null, string? knownNetworks = null) => new OpenKSeFWebApplicationFactory(_fixture)
         .WithWebHostBuilder(builder =>
         {
             builder.UseSetting("ConnectionStrings:Db", _connection);
             if (forwardLimit is not null)
                 builder.UseSetting("ForwardedHeaders:ForwardLimit", forwardLimit.ToString());
+            if (knownNetworks is not null)
+                builder.UseSetting("ForwardedHeaders:KnownNetworks", knownNetworks);
             builder.ConfigureTestServices(services => services.AddSingleton<IStartupFilter, GatewayAddressFilter>());
         });
 
@@ -75,10 +77,12 @@ public sealed class AdminSettingsSecurityTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, admin.StatusCode);
     }
 
-    [Fact]
-    public async Task ForgedForwardedForBeyondTheLimit_SharesThePartition_OtherClientsAreNotLimited()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("0.0.0.0/0,::/0")]
+    public async Task ForgedForwardedForBeyondTheLimit_SharesThePartition_OtherClientsAreNotLimited(string? knownNetworks)
     {
-        await using var factory = Factory();
+        await using var factory = Factory(knownNetworks: knownNetworks);
         using var client = factory.CreateClient();
 
         for (var i = 0; i < 10; i++)

@@ -18,7 +18,6 @@ public class KeycloakUserService : IKeycloakUserService
     private readonly string _adminRealmEndpoint;
     private readonly string _adminUsersEndpoint;
     private readonly string _clientId;
-    private readonly string _clientSecret;
     private readonly ISystemConfigService _systemConfig;
     private readonly ILogger<KeycloakUserService> _logger;
 
@@ -51,7 +50,6 @@ public class KeycloakUserService : IKeycloakUserService
         _adminUsersEndpoint = $"{_adminRealmEndpoint}/users";
 
         _clientId = configuration["Auth:ServiceAccount:ClientId"] ?? "openksef-api";
-        _clientSecret = configuration["Auth:ServiceAccount:ClientSecret"] ?? "";
     }
 
     public async Task<CreateUserResult> CreateUserAsync(
@@ -60,7 +58,8 @@ public class KeycloakUserService : IKeycloakUserService
         if (string.Equals(_systemConfig.GetValue(SystemConfigKeys.RegistrationAllowed), "false", StringComparison.OrdinalIgnoreCase))
             return RegistrationDisabled();
 
-        if (string.IsNullOrEmpty(_clientSecret))
+        var clientSecret = _systemConfig.GetValue(SystemConfigKeys.ApiClientSecret);
+        if (string.IsNullOrEmpty(clientSecret))
         {
             _logger.LogWarning("Auth:ServiceAccount:ClientSecret not configured: user registration unavailable.");
             return Unavailable();
@@ -68,7 +67,7 @@ public class KeycloakUserService : IKeycloakUserService
 
         try
         {
-            var adminToken = await GetServiceAccountTokenAsync();
+            var adminToken = await GetServiceAccountTokenAsync(clientSecret);
             if (adminToken is null)
                 return Unavailable();
 
@@ -181,13 +180,13 @@ public class KeycloakUserService : IKeycloakUserService
         }
     }
 
-    private async Task<string?> GetServiceAccountTokenAsync()
+    private async Task<string?> GetServiceAccountTokenAsync(string clientSecret)
     {
         var formData = new Dictionary<string, string>
         {
             ["grant_type"] = "client_credentials",
             ["client_id"] = _clientId,
-            ["client_secret"] = _clientSecret
+            ["client_secret"] = clientSecret
         };
 
         var response = await _httpClient.PostAsync(_tokenEndpoint, new FormUrlEncodedContent(formData));
