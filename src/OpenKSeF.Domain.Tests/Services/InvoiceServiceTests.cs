@@ -20,17 +20,39 @@ public class InvoiceServiceTests : IDisposable
 
     private readonly RecordingNotificationService _notifications = new();
 
-    [Theory]
-    [InlineData(true, 1)]
-    [InlineData(false, 0)]
-    public async Task UpsertInvoicesAsync_NotifiesNewInvoicesOnlyWhenRequested(bool notify, int expectedNotifications)
+    [Fact]
+    public async Task UpsertInvoicesAsync_StoresWithoutNotifying()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
 
-        var newIds = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()], notify);
+        var newIds = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()]);
 
         Assert.Single(newIds);
-        Assert.Equal(expectedNotifications, _notifications.Count);
+        Assert.Equal(0, _notifications.Count);
+    }
+
+    [Theory]
+    [InlineData(1, 1, null)]
+    [InlineData(10, 10, null)]
+    [InlineData(11, 10, 1)]
+    [InlineData(25, 10, 15)]
+    public async Task NotifyNewInvoicesAsync_NotifiesNewestTenByAcquisitionDate_SummarisesRest(int stored, int expectedSingles, int? expectedSummary)
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var tenantId = Guid.NewGuid();
+        var start = new DateTime(2026, 11, 1, 8, 0, 0, DateTimeKind.Utc);
+        var ids = await sut.UpsertInvoicesAsync(tenantId, Enumerable.Range(0, stored)
+            .Select(i => CreateInvoice() with { Number = $"KSEF-{i}", AcquisitionDate = start.AddHours(i) })
+            .Reverse()
+            .ToList());
+
+        await sut.NotifyNewInvoicesAsync(tenantId, ids);
+
+        Assert.Equal(stored, await _db.InvoiceHeaders.CountAsync());
+        Assert.Equal(expectedSingles, _notifications.Count);
+        var newest = await _db.InvoiceHeaders.OrderByDescending(i => i.AcquisitionDate).Take(expectedSingles).Select(i => i.Id).ToListAsync();
+        Assert.Equal(newest.Order(), _notifications.InvoiceIds.Order());
+        Assert.Equal(expectedSummary is null ? [] : [(tenantId, expectedSummary.Value)], _notifications.Summaries);
     }
 
     [Fact]
@@ -39,7 +61,7 @@ public class InvoiceServiceTests : IDisposable
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
         var tenantId = Guid.NewGuid();
         var paidAt = new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
-        var ids = await sut.UpsertInvoicesAsync(tenantId, [CreateInvoice()], notify: false);
+        var ids = await sut.UpsertInvoicesAsync(tenantId, [CreateInvoice()]);
         var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
         Assert.Null(stored.DueDate);
         stored.IsPaid = true;
@@ -50,7 +72,7 @@ public class InvoiceServiceTests : IDisposable
         Assert.Equal(new DateOnly(2026, 11, 20), stored.DueDate);
         Assert.NotNull(stored.XmlFetchedAt);
 
-        await sut.UpsertInvoicesAsync(tenantId, [CreateInvoice()], notify: false);
+        await sut.UpsertInvoicesAsync(tenantId, [CreateInvoice()]);
         Assert.Equal(new DateOnly(2026, 11, 20), stored.DueDate);
         Assert.True(stored.IsPaid);
         Assert.Equal(paidAt, stored.PaidAt);
@@ -62,7 +84,7 @@ public class InvoiceServiceTests : IDisposable
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
         var tenantId = Guid.NewGuid();
         var first = CreateInvoice();
-        var ids = await sut.UpsertInvoicesAsync(tenantId, [first], notify: true);
+        var ids = await sut.UpsertInvoicesAsync(tenantId, [first]);
         var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
         var firstSeenAt = stored.FirstSeenAt;
         var paidAt = new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
@@ -72,12 +94,10 @@ public class InvoiceServiceTests : IDisposable
 
         var newIds = await sut.UpsertInvoicesAsync(
             tenantId,
-            [first with { InvoiceNumber = "FV/1/K", VendorName = "Vendor 2", AmountGross = 246m, Currency = null, IssueDate = first.IssueDate.AddDays(-3) }],
-            notify: true);
+            [first with { InvoiceNumber = "FV/1/K", VendorName = "Vendor 2", AmountGross = 246m, Currency = null, IssueDate = first.IssueDate.AddDays(-3) }]);
         _db.ChangeTracker.Clear();
 
         Assert.Empty(newIds);
-        Assert.Equal(1, _notifications.Count);
         var row = await _db.InvoiceHeaders.SingleAsync();
         Assert.Equal(ids[0], row.Id);
         Assert.Equal("FV/1/K", row.InvoiceNumber);
@@ -91,14 +111,17 @@ public class InvoiceServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task UpsertInvoicesAsync_NotificationThrows_RowsStoredAndIdsReturned()
+    public async Task NotifyNewInvoicesAsync_NotificationThrows_TriesEveryInvoiceAndSummary()
     {
-        var sut = new InvoiceService(_db, new ThrowingNotificationService(), NullLogger<InvoiceService>.Instance);
+        var throwing = new ThrowingNotificationService();
+        var sut = new InvoiceService(_db, throwing, NullLogger<InvoiceService>.Instance);
+        var tenantId = Guid.NewGuid();
+        var ids = await sut.UpsertInvoicesAsync(tenantId, Enumerable.Range(0, 12).Select(i => CreateInvoice() with { Number = $"KSEF-{i}" }).ToList());
 
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice(), CreateInvoice() with { Number = "KSEF-2" }], notify: true);
+        await sut.NotifyNewInvoicesAsync(tenantId, ids);
 
-        Assert.Equal(2, ids.Count);
-        Assert.Equal(2, await _db.InvoiceHeaders.CountAsync());
+        Assert.Equal(11, throwing.Attempts);
+        Assert.Equal(12, await _db.InvoiceHeaders.CountAsync());
     }
 
     [Fact]
@@ -107,7 +130,7 @@ public class InvoiceServiceTests : IDisposable
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
         var tenantId = Guid.NewGuid();
         var received = CreateInvoice();
-        var ids = await sut.UpsertInvoicesAsync(tenantId, [received], notify: false);
+        var ids = await sut.UpsertInvoicesAsync(tenantId, [received]);
         var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
         stored.DueDate = new DateOnly(2026, 11, 20);
         stored.VendorBankAccount = "PL61109010140000071219812874";
@@ -117,11 +140,9 @@ public class InvoiceServiceTests : IDisposable
 
         var newIds = await sut.UpsertInvoicesAsync(
             tenantId,
-            [CreateInvoice() with { VendorName = "Nadpisane", AmountGross = 1m, Direction = InvoiceDirection.Issued, BuyerIdType = "Other" }],
-            notify: true);
+            [CreateInvoice() with { VendorName = "Nadpisane", AmountGross = 1m, Direction = InvoiceDirection.Issued, BuyerIdType = "Other" }]);
 
         Assert.Empty(newIds);
-        Assert.Equal(0, _notifications.Count);
         Assert.Equal(InvoiceDirection.Received, stored.Direction);
         Assert.Equal(received.VendorName, stored.VendorName);
         Assert.Equal(received.AmountGross, stored.AmountGross);
@@ -136,7 +157,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task ApplyInvoiceXmlAsync_IssuedRow_GetsLinesOnly()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice() with { Direction = InvoiceDirection.Issued }], notify: false);
+        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice() with { Direction = InvoiceDirection.Issued }]);
 
         await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails("PL61109010140000071219812874", [Line()], new DateOnly(2026, 11, 20)));
 
@@ -152,7 +173,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task ApplyInvoiceXmlAsync_KeepsStoredAccountAndLines()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()], notify: false);
+        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()]);
         await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails("PL61109010140000071219812874", [Line()], null));
         var lineId = (await _db.InvoiceLines.SingleAsync()).Id;
 
@@ -168,7 +189,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task ApplyInvoiceXmlAsync_Reread_SetsPaymentFlags_ReplacesInvalidAccount_KeepsLinesAndPaid()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()], notify: false);
+        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()]);
         await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails("DE12000000000000000001", [Line()], null));
         var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
         stored.IsPaid = true;
@@ -199,7 +220,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task RecordFailedInvoiceXmlAsync_KeepsKnownSettlement()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()], notify: false);
+        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()]);
         await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails(null, [], null, SettlementState.Overpaid, 300m));
 
         await sut.RecordFailedInvoiceXmlAsync(ids[0], xmlReceived: true);
@@ -213,7 +234,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task RecordFailedInvoiceXmlAsync_CountsOnlyReceivedXml_ResetOnRead()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()], notify: false);
+        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()]);
 
         await sut.RecordFailedInvoiceXmlAsync(ids[0], xmlReceived: false);
         Assert.Null((await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == ids[0])).XmlFailedReads);
@@ -231,7 +252,7 @@ public class InvoiceServiceTests : IDisposable
     {
         var logger = Substitute.For<ILogger<InvoiceService>>();
         var sut = new InvoiceService(_db, _notifications, logger);
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()], notify: false);
+        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()]);
         logger.ClearReceivedCalls();
 
         for (var i = 0; i < InvoiceService.MaxFailedXmlReads + 2; i++)
@@ -279,11 +300,21 @@ public class InvoiceServiceTests : IDisposable
 
     private sealed class RecordingNotificationService : INotificationService
     {
-        public int Count { get; private set; }
+        public List<Guid> InvoiceIds { get; } = [];
+
+        public List<(Guid TenantId, int Count)> Summaries { get; } = [];
+
+        public int Count => InvoiceIds.Count;
 
         public Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt)
         {
-            Count++;
+            InvoiceIds.Add(evt.InvoiceId);
+            return Task.CompletedTask;
+        }
+
+        public Task NotifyNewInvoicesSummaryAsync(Guid tenantId, int count)
+        {
+            Summaries.Add((tenantId, count));
             return Task.CompletedTask;
         }
 
@@ -296,7 +327,19 @@ public class InvoiceServiceTests : IDisposable
 
     private sealed class ThrowingNotificationService : INotificationService
     {
-        public Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt) => throw new InvalidOperationException("push down");
+        public int Attempts { get; private set; }
+
+        public Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt)
+        {
+            Attempts++;
+            throw new InvalidOperationException("push down");
+        }
+
+        public Task NotifyNewInvoicesSummaryAsync(Guid tenantId, int count)
+        {
+            Attempts++;
+            throw new InvalidOperationException("push down");
+        }
 
         public Task NotifyIssuedInvoiceStuckAsync(Guid tenantId, Guid issuedInvoiceId, string? number) => Task.CompletedTask;
 

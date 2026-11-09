@@ -196,6 +196,7 @@ public class IssuedInvoiceEscalationTests
         }
 
         public Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt) => Task.CompletedTask;
+        public Task NotifyNewInvoicesSummaryAsync(Guid tenantId, int count) => Task.CompletedTask;
         public Task SendConfirmationAsync(string deviceToken, Platform platform) => Task.CompletedTask;
         public Task<bool> SendTestNotificationAsync(string deviceToken, Platform platform) => Task.FromResult(true);
     }

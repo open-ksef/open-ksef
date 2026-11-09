@@ -1,3 +1,4 @@
+using System.Globalization;
 using MailKit.Net.Smtp;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -56,28 +57,57 @@ public class NotificationService : INotificationService
             .Select(t => t.NotificationEmail)
             .FirstOrDefaultAsync();
 
+        await SendEmailAsync(evt.TenantId, evt.InvoiceId, notificationEmail, to => _emailService.SendNewInvoiceEmailAsync(to, evt));
+    }
+
+    public async Task NotifyNewInvoicesSummaryAsync(Guid tenantId, int count)
+    {
+        var tenant = await _db.Tenants
+            .Where(t => t.Id == tenantId)
+            .Select(t => new { t.DisplayName, t.Nip, t.NotificationEmail })
+            .FirstAsync();
+        var company = string.IsNullOrWhiteSpace(tenant.DisplayName) ? $"NIP {tenant.Nip}" : tenant.DisplayName;
+
+        var notification = new PushNotification
+        {
+            Title = "Więcej nowych faktur",
+            Body = $"{company}: pozostałe nowe faktury: {count}. Zobacz je w aplikacji.",
+            Data = new Dictionary<string, string>
+            {
+                ["type"] = "newInvoicesSummary",
+                ["tenantId"] = tenantId.ToString(),
+                ["count"] = count.ToString(CultureInfo.InvariantCulture)
+            }
+        };
+
+        await PushToOwnerDevicesAsync(tenantId, null, notification);
+        await SendEmailAsync(tenantId, null, tenant.NotificationEmail, to => _emailService.SendNewInvoicesSummaryEmailAsync(to, tenantId, company, count));
+    }
+
+    private async Task SendEmailAsync(Guid tenantId, Guid? invoiceId, string? notificationEmail, Func<string, Task> send)
+    {
         if (string.IsNullOrEmpty(notificationEmail))
             return;
 
         // Scoped per sync run: a dead SMTP host must not cost a timeout per new invoice.
         if (_emailFailed)
         {
-            _logger.LogInformation("Email skipped after an earlier SMTP failure in this run, tenant {TenantId}, invoice {InvoiceId}", evt.TenantId, evt.InvoiceId);
+            _logger.LogInformation("Email skipped after an earlier SMTP failure in this run, tenant {TenantId}, invoice {InvoiceId}", tenantId, invoiceId);
             return;
         }
 
         try
         {
-            await _emailService.SendNewInvoiceEmailAsync(notificationEmail, evt);
+            await send(notificationEmail);
         }
         catch (Exception ex) when (ex is ParseException or SmtpCommandException { ErrorCode: SmtpErrorCode.RecipientNotAccepted })
         {
-            _logger.LogWarning(ex, "Email notification rejected for tenant {TenantId}, invoice {InvoiceId}", evt.TenantId, evt.InvoiceId);
+            _logger.LogWarning(ex, "Email notification rejected for tenant {TenantId}, invoice {InvoiceId}", tenantId, invoiceId);
         }
         catch (Exception ex)
         {
             _emailFailed = true;
-            _logger.LogWarning(ex, "Email notification failed for tenant {TenantId}, invoice {InvoiceId}; skipping e-mail for the rest of this run", evt.TenantId, evt.InvoiceId);
+            _logger.LogWarning(ex, "Email notification failed for tenant {TenantId}, invoice {InvoiceId}; skipping e-mail for the rest of this run", tenantId, invoiceId);
         }
     }
 
@@ -98,7 +128,7 @@ public class NotificationService : INotificationService
         await PushToOwnerDevicesAsync(tenantId, issuedInvoiceId, notification);
     }
 
-    private async Task PushToOwnerDevicesAsync(Guid tenantId, Guid invoiceId, PushNotification notification)
+    private async Task PushToOwnerDevicesAsync(Guid tenantId, Guid? invoiceId, PushNotification notification)
     {
         // TenantId == null means "all companies"; a set TenantId is an explicit per-company subscription.
         var deviceTokens = await _db.DeviceTokens

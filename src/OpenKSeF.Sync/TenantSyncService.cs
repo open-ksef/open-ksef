@@ -163,55 +163,62 @@ public sealed class TenantSyncService : ITenantSyncService
             // Initial sync and forced resync import history: store it, don't push it.
             var notify = fullResyncWindowStart is null && syncState.LastSuccessfulSync is not null;
             var totalFetched = 0;
-            var totalNew = 0;
+            var newReceivedIds = new List<Guid>();
 
-            while (windowStart < now)
+            try
             {
-                var windowEnd = windowStart.AddMonths(3);
-                var isLastWindow = windowEnd >= now;
-                if (isLastWindow)
-                    windowEnd = now;
-
-                var pageOffset = 0;
-                KSeFInvoiceQueryResult result;
-                while (true)
+                while (windowStart < now)
                 {
-                    var criteria = new KSeFQueryCriteria(
-                        SubjectNip: tenant.Nip,
-                        DateFrom: windowStart,
-                        DateTo: windowEnd,
-                        PageSize: _syncOptions.BatchSize,
-                        PageOffset: pageOffset);
+                    var windowEnd = windowStart.AddMonths(3);
+                    var isLastWindow = windowEnd >= now;
+                    if (isLastWindow)
+                        windowEnd = now;
 
-                    result = await _gateway.QueryInvoicesAsync(session, criteria, cancellationToken);
+                    var pageOffset = 0;
+                    KSeFInvoiceQueryResult result;
+                    while (true)
+                    {
+                        var criteria = new KSeFQueryCriteria(
+                            SubjectNip: tenant.Nip,
+                            DateFrom: windowStart,
+                            DateTo: windowEnd,
+                            PageSize: _syncOptions.BatchSize,
+                            PageOffset: pageOffset);
 
-                    totalFetched += result.Invoices.Count;
-                    if (result.Invoices.Count == 0)
-                        break;
+                        result = await _gateway.QueryInvoicesAsync(session, criteria, cancellationToken);
 
-                    var newIds = await _invoiceService.UpsertInvoicesAsync(
-                        tenant.Id, result.Invoices.Select(i => ToDto(i, InvoiceDirection.Received)).ToList(), notify);
-                    totalNew += newIds.Count;
+                        totalFetched += result.Invoices.Count;
+                        if (result.Invoices.Count == 0)
+                            break;
 
-                    if (result.IsTruncated || result.Invoices.Count < _syncOptions.BatchSize)
-                        break;
+                        newReceivedIds.AddRange(await _invoiceService.UpsertInvoicesAsync(
+                            tenant.Id, result.Invoices.Select(i => ToDto(i, InvoiceDirection.Received)).ToList()));
 
-                    pageOffset++;
+                        if (result.IsTruncated || result.Invoices.Count < _syncOptions.BatchSize)
+                            break;
+
+                        pageOffset++;
+                    }
+
+                    if (result.IsTruncated)
+                    {
+                        if (result.ContinuationAt is not { } next || next <= windowStart)
+                            throw new InvalidOperationException($"Truncated KSeF result did not advance past {windowStart:O}.");
+
+                        windowStart = next;
+                        continue;
+                    }
+
+                    if (isLastWindow && result.ContinuationAt is not null)
+                        syncState.ReceivedContinuationAt = result.ContinuationAt;
+
+                    windowStart = windowEnd;
                 }
-
-                if (result.IsTruncated)
-                {
-                    if (result.ContinuationAt is not { } next || next <= windowStart)
-                        throw new InvalidOperationException($"Truncated KSeF result did not advance past {windowStart:O}.");
-
-                    windowStart = next;
-                    continue;
-                }
-
-                if (isLastWindow && result.ContinuationAt is not null)
-                    syncState.ReceivedContinuationAt = result.ContinuationAt;
-
-                windowStart = windowEnd;
+            }
+            finally
+            {
+                if (notify)
+                    await _invoiceService.NotifyNewInvoicesAsync(tenant.Id, newReceivedIds);
             }
 
             syncState.LastSyncedAt = now;
@@ -234,7 +241,7 @@ public sealed class TenantSyncService : ITenantSyncService
                     Nip: tenant.Nip,
                     Outcome: TenantSyncOutcome.StoreFailed,
                     FetchedInvoices: totalFetched,
-                    NewInvoices: totalNew,
+                    NewInvoices: newReceivedIds.Count,
                     SyncedAtUtc: now,
                     ErrorMessage: "Issued invoice page could not be stored.");
             }
@@ -244,7 +251,7 @@ public sealed class TenantSyncService : ITenantSyncService
                 Nip: tenant.Nip,
                 Outcome: TenantSyncOutcome.Success,
                 FetchedInvoices: totalFetched + issued.Fetched,
-                NewInvoices: totalNew + issued.New,
+                NewInvoices: newReceivedIds.Count + issued.New,
                 SyncedAtUtc: now,
                 IssuedFetchedInvoices: issued.Fetched,
                 IssuedNewInvoices: issued.New);
@@ -456,7 +463,7 @@ public sealed class TenantSyncService : ITenantSyncService
                         .ToList();
                     fetched += sales.Count;
                     if (sales.Count > 0)
-                        created += (await _invoiceService.UpsertInvoicesAsync(tenant.Id, sales, notify: false)).Count;
+                        created += (await _invoiceService.UpsertInvoicesAsync(tenant.Id, sales)).Count;
 
                     if (result.IsTruncated || result.Invoices.Count < _syncOptions.BatchSize)
                         break;

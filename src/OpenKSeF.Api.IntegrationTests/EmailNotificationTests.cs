@@ -49,6 +49,16 @@ internal static class Mailpit
             .Select(m => (m.GetProperty("Subject").GetString()!, m.GetProperty("To")[0].GetProperty("Address").GetString()!))
             .ToList();
     }
+
+    public static async Task<string> SnippetAsync(IContainer mailpit, string subject)
+    {
+        using var http = new HttpClient();
+        var body = await http.GetFromJsonAsync<JsonElement>(
+            $"http://{mailpit.Hostname}:{mailpit.GetMappedPublicPort(HttpPort)}/api/v1/messages");
+        return body.GetProperty("messages").EnumerateArray()
+            .Single(m => m.GetProperty("Subject").GetString() == subject)
+            .GetProperty("Snippet").GetString()!;
+    }
 }
 
 public sealed class EmailNotificationTests : IAsyncLifetime
@@ -203,6 +213,50 @@ public sealed class EmailNotificationTests : IAsyncLifetime
         Assert.Equal(2, (await Mailpit.MessagesAsync(_mailpit)).Count(m => m.To == AddressA));
     }
 
+    [Theory]
+    [InlineData(10)]
+    [InlineData(25)]
+    public async Task IncrementalSync_NotifiesNewestTen_OneSummaryForRest_StoresAll(int count)
+    {
+        var acquiredAt = DateTime.UtcNow.AddHours(-2);
+        var invoices = Enumerable.Range(0, count).Select(i => Bought($"A-{i:D2}", acquiredAt.AddMinutes(i))).ToList();
+        _received = c => c.SubjectNip == NipA ? Page(invoices.Skip(c.PageOffset * 8).Take(8).ToList()) : Page([]);
+        var push = new RecordingPushProvider();
+        await using (var db = NewContext())
+        {
+            db.DeviceTokens.Add(new DeviceToken { Id = Guid.NewGuid(), UserId = $"user-{NipA}", Token = "fcm-token-a", Platform = Platform.Android, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db, MailpitOptions(), push: push, batchSize: 8).SyncTenantAsync(_tenantA)).Outcome);
+
+        await using var check = NewContext();
+        var stored = await check.InvoiceHeaders.Where(i => i.TenantId == _tenantA).ToListAsync();
+        Assert.Equal(invoices.Select(i => i.KSeFNumber).Order(), stored.Select(i => i.KSeFInvoiceNumber).Order());
+        Assert.All(stored, i => Assert.False(i.IsPaid));
+        Assert.All(stored, i => Assert.Null(i.PaidAt));
+        var newestTen = stored.OrderByDescending(i => i.AcquisitionDate).Take(10).Select(i => i.Id.ToString()).Order();
+        Assert.Equal(newestTen, push.Sent.Where(n => n.Data!.ContainsKey("invoiceId")).Select(n => n.Data!["invoiceId"]).Order());
+        var messages = await Mailpit.MessagesAsync(_mailpit);
+        Assert.Equal(10, messages.Count(m => m == ("Nowa faktura od Dostawca", AddressA)));
+        if (count == 10)
+        {
+            Assert.Equal(10, push.Sent.Count);
+            Assert.Equal(10, messages.Count);
+            return;
+        }
+
+        var summary = Assert.Single(push.Sent, n => !n.Data!.ContainsKey("invoiceId"));
+        Assert.Equal(11, push.Sent.Count);
+        Assert.Equal("Więcej nowych faktur", summary.Title);
+        Assert.Equal("NIP 1111111111: pozostałe nowe faktury: 15. Zobacz je w aplikacji.", summary.Body);
+        Assert.Equal(new Dictionary<string, string> { ["type"] = "newInvoicesSummary", ["tenantId"] = _tenantA.ToString(), ["count"] = "15" }, summary.Data);
+        Assert.Equal(11, messages.Count);
+        Assert.Contains(("Więcej nowych faktur: NIP 1111111111", AddressA), messages);
+        Assert.Contains("Pozostałe nowe faktury: 15. Zobacz je w aplikacji lub w portalu OpenKSeF.", await Mailpit.SnippetAsync(_mailpit, "Więcej nowych faktur: NIP 1111111111"));
+    }
+
     [Fact]
     public async Task SameRun_RecipientRejectedBySmtpOnTenantA_StillEmailsTenantB_NoAddressInLogs()
     {
@@ -274,11 +328,11 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     private ApplicationDbContext NewContext() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(_postgres.GetConnectionString()).Options);
 
-    private TenantSyncService SyncService(ApplicationDbContext db, EmailOptions email, List<(LogLevel Level, string Category, string Text)>? log = null)
+    private TenantSyncService SyncService(ApplicationDbContext db, EmailOptions email, List<(LogLevel Level, string Category, string Text)>? log = null, IPushProvider? push = null, int batchSize = 100)
     {
         var notifications = new NotificationService(
             db,
-            Array.Empty<IPushProvider>(),
+            push is null ? [] : [push],
             new EmailService(Options.Create(email), Logger<EmailService>(log)),
             Logger<NotificationService>(log));
         return new TenantSyncService(
@@ -287,13 +341,24 @@ public sealed class EmailNotificationTests : IAsyncLifetime
             Substitute.For<IEncryptionService>(),
             new InvoiceService(db, notifications, Logger<InvoiceService>(log)),
             new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
-            Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero }),
+            Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero, BatchSize = batchSize }),
             new XmlDownloadBlocks(),
             Logger<TenantSyncService>(log));
     }
 
     private static ILogger<T> Logger<T>(List<(LogLevel, string, string)>? log) =>
         log is null ? NullLogger<T>.Instance : new ListLogger<T>(log);
+
+    private sealed class RecordingPushProvider : IPushProvider
+    {
+        public List<PushNotification> Sent { get; } = [];
+
+        public Task<PushResult> SendAsync(string deviceToken, Platform platform, PushNotification notification)
+        {
+            Sent.Add(notification);
+            return Task.FromResult(PushResult.Sent);
+        }
+    }
 
     private sealed class ListLogger<T>(List<(LogLevel, string, string)> log) : ILogger<T>
     {
@@ -332,8 +397,8 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     private static KSeFInvoiceQueryResult Page(IReadOnlyList<KSeFInvoiceHeader> invoices, DateTime? continuationAt = null) =>
         new(invoices, invoices.Count, 0, 100, continuationAt);
 
-    private static KSeFInvoiceHeader Bought(string number) => new(
-        number, number, "FV 1/2026", "1111111113", "Dostawca", NipA, "Moja firma", 100m, 23m, 123m, "PLN", DateTime.UtcNow.AddDays(-3), DateTime.UtcNow, "Vat",
+    private static KSeFInvoiceHeader Bought(string number, DateTime? acquiredAt = null) => new(
+        number, number, "FV 1/2026", "1111111113", "Dostawca", NipA, "Moja firma", 100m, 23m, 123m, "PLN", DateTime.UtcNow.AddDays(-3), acquiredAt ?? DateTime.UtcNow, "Vat",
         BuyerIdType: "Nip");
 }
 

@@ -14,6 +14,7 @@ public class InvoiceService : IInvoiceService
 {
     public const int MaxFailedXmlReads = 5;
     public static readonly TimeSpan CappedXmlRetryAfter = TimeSpan.FromDays(7);
+    public const int NotificationCap = 10;
 
     private readonly ApplicationDbContext _db;
     private readonly INotificationService _notificationService;
@@ -32,10 +33,9 @@ public class InvoiceService : IInvoiceService
         _logger = logger;
     }
 
-    public async Task<List<Guid>> UpsertInvoicesAsync(Guid tenantId, IEnumerable<InvoiceDto> invoices, bool notify)
+    public async Task<List<Guid>> UpsertInvoicesAsync(Guid tenantId, IEnumerable<InvoiceDto> invoices)
     {
         var newInvoiceIds = new List<Guid>();
-        var newInvoiceEvents = new List<NewInvoiceDetectedEvent>();
         var now = DateTime.UtcNow;
         var page = invoices.DistinctBy(i => i.Number).ToList();
 
@@ -75,10 +75,6 @@ public class InvoiceService : IInvoiceService
 
                 _db.InvoiceHeaders.Add(newInvoice);
                 newInvoiceIds.Add(newInvoice.Id);
-                newInvoiceEvents.Add(new NewInvoiceDetectedEvent(
-                    tenantId, newInvoice.Id, invoice.VendorName,
-                    invoice.InvoiceNumber, invoice.AmountGross,
-                    invoice.Currency ?? "PLN"));
 
                 _logger.LogInformation(
                     "New invoice detected: {KSeFNumber} ({InvoiceNumber}) from {Vendor} for tenant {TenantId}",
@@ -126,11 +122,23 @@ public class InvoiceService : IInvoiceService
             "Upserted {Total} invoices for tenant {TenantId}, {NewCount} new",
             page.Count, tenantId, newInvoiceIds.Count);
 
-        if (!notify)
-            return newInvoiceIds;
+        return newInvoiceIds;
+    }
 
-        // Fire-and-forget notifications for new invoices
-        foreach (var evt in newInvoiceEvents)
+    public async Task NotifyNewInvoicesAsync(Guid tenantId, IReadOnlyCollection<Guid> invoiceIds)
+    {
+        if (invoiceIds.Count == 0)
+            return;
+
+        var notified = await _db.InvoiceHeaders
+            .Where(i => invoiceIds.Contains(i.Id))
+            .OrderByDescending(i => i.AcquisitionDate.HasValue)
+            .ThenByDescending(i => i.AcquisitionDate)
+            .Take(NotificationCap)
+            .Select(i => new NewInvoiceDetectedEvent(i.TenantId, i.Id, i.VendorName, i.InvoiceNumber, i.AmountGross, i.Currency))
+            .ToListAsync();
+
+        foreach (var evt in notified)
         {
             try
             {
@@ -143,7 +151,19 @@ public class InvoiceService : IInvoiceService
             }
         }
 
-        return newInvoiceIds;
+        var rest = invoiceIds.Count - notified.Count;
+        if (rest <= 0)
+            return;
+
+        try
+        {
+            await _notificationService.NotifyNewInvoicesSummaryAsync(tenantId, rest);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to send summary notification for {Count} invoices, tenant {TenantId}", rest, tenantId);
+        }
     }
 
     public async Task ApplyInvoiceXmlAsync(Guid invoiceId, InvoiceXmlDetails details, CancellationToken cancellationToken = default)

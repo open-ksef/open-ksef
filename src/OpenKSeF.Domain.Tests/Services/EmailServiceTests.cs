@@ -42,6 +42,19 @@ public class EmailServiceTests
     }
 
     [Fact]
+    public void BuildNewInvoicesSummaryMessage_UsesReqTexts()
+    {
+        var message = CreateService(new EmailOptions()).BuildNewInvoicesSummaryMessage("owner@example.invalid", "NIP 1111111111", 15);
+
+        Assert.Equal("Więcej nowych faktur: NIP 1111111111", message.Subject);
+        Assert.Equal("owner@example.invalid", message.To.Mailboxes.Single().Address);
+        Assert.Equal(
+            "<p>Pobraliśmy z KSeF więcej nowych faktur zakupowych niż wysyłamy osobnych powiadomień. Pozostałe nowe faktury: 15. Zobacz je w aplikacji lub w portalu OpenKSeF.</p>\n" +
+            "<p><small>Wysłane przez OpenKSeF</small></p>",
+            message.HtmlBody!.ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
     public async Task SendNewInvoiceEmailAsync_DoesNotConnect_WhenDisabled()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
