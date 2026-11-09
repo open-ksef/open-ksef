@@ -338,6 +338,7 @@ using (var scope = app.Services.CreateScope())
         .CreateLogger("OpenKSeF.Api.Migrations");
     await MigrationHelper.ApplyMigrationsIdempotentlyAsync(db, startupLogger);
     await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, app.Configuration, startupLogger);
+    EmailService.WarnIfPlaintextAuth(scope.ServiceProvider.GetRequiredService<IOptions<EmailOptions>>().Value, startupLogger);
 }
 
 // Load system config cache

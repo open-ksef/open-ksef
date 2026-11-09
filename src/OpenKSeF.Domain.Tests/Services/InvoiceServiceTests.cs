@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.DTOs;
@@ -222,6 +224,21 @@ public class InvoiceServiceTests : IDisposable
 
         await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails(null, [], null));
         Assert.Null((await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == ids[0])).XmlFailedReads);
+    }
+
+    [Fact]
+    public async Task RecordFailedInvoiceXmlAsync_WarnsOnceWithKSeFNumber_WhenReadsReachCap()
+    {
+        var logger = Substitute.For<ILogger<InvoiceService>>();
+        var sut = new InvoiceService(_db, _notifications, logger);
+        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()], notify: false);
+        logger.ClearReceivedCalls();
+
+        for (var i = 0; i < InvoiceService.MaxFailedXmlReads + 2; i++)
+            await sut.RecordFailedInvoiceXmlAsync(ids[0], xmlReceived: true);
+
+        var warning = Assert.Single(logger.ReceivedCalls(), c => c.GetArguments()[0] is LogLevel.Warning);
+        Assert.Contains("KSEF-1", warning.GetArguments()[2]!.ToString());
     }
 
     private static InvoiceLineDto Line() => new(1, "Towar", "szt", 1m, 100m, 123m, 100m, 123m, 23m, "23");

@@ -5,6 +5,7 @@ using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -144,20 +145,113 @@ public sealed class EmailNotificationTests : IAsyncLifetime
         Assert.True(await check.InvoiceHeaders.AnyAsync(i => i.KSeFInvoiceNumber == "A-1"));
     }
 
+    [Fact]
+    public async Task SameRun_BadAddressOnTenantA_StillEmailsTenantB()
+    {
+        _received = c => c.PageOffset > 0 ? Page([])
+            : c.SubjectNip == NipA ? Page([Bought("A-1")])
+            : Page([Bought("B-1")]);
+        var lastSync = DateTime.UtcNow.AddHours(-4);
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE "Tenants" SET "NotificationEmail" = 'not an address' WHERE "Id" = {_tenantA};
+                INSERT INTO "SyncStates" ("Id", "TenantId", "LastSyncedAt", "LastSuccessfulSync")
+                VALUES ({Guid.NewGuid()}, {_tenantB}, {lastSync}, {lastSync})
+                """);
+
+        await using (var db = NewContext())
+        {
+            var sut = SyncService(db, MailpitOptions());
+            Assert.Equal(TenantSyncOutcome.Success, (await sut.SyncTenantAsync(_tenantA)).Outcome);
+            Assert.Equal(TenantSyncOutcome.Success, (await sut.SyncTenantAsync(_tenantB)).Outcome);
+        }
+
+        Assert.Equal([("Nowa faktura od Dostawca", AddressB)], await Mailpit.MessagesAsync(_mailpit));
+    }
+
+    [Fact]
+    public async Task DeadSmtpHost_ThreeNewInvoices_OneWarning_RestSkippedAtInformation_AllStored_NoAddressInLogs()
+    {
+        _received = c => c.SubjectNip == NipA && c.PageOffset == 0 ? Page([Bought("A-1"), Bought("A-2"), Bought("A-3")]) : Page([]);
+        var options = new EmailOptions { Enabled = true, SmtpHost = "127.0.0.1", SmtpPort = 9, UseSsl = false };
+        var log = new List<(LogLevel Level, string Category, string Text)>();
+
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db, options, log).SyncTenantAsync(_tenantA)).Outcome);
+
+        var notify = log.Where(e => e.Category == nameof(NotificationService)).ToList();
+        Assert.Single(notify, e => e.Level == LogLevel.Warning);
+        Assert.Equal(2, notify.Count(e => e.Level == LogLevel.Information && e.Text.Contains("Email skipped")));
+        Assert.DoesNotContain(log, e => e.Text.Contains(AddressA));
+        await using var check = NewContext();
+        Assert.Equal(["A-1", "A-2", "A-3"], await check.InvoiceHeaders.Where(i => i.TenantId == _tenantA).Select(i => i.KSeFInvoiceNumber).OrderBy(n => n).ToListAsync());
+    }
+
+    [Fact]
+    public async Task IncrementalSync_AfterThirtyDayGap_EmailsEveryNewInvoice()
+    {
+        _received = c => c.SubjectNip == NipA && c.PageOffset == 0 ? Page([Bought("A-1"), Bought("A-2")]) : Page([]);
+        var lastSync = DateTime.UtcNow.AddDays(-30);
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE "SyncStates" SET "LastSyncedAt" = {lastSync}, "LastSuccessfulSync" = {lastSync} WHERE "TenantId" = {_tenantA}
+                """);
+
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db, MailpitOptions()).SyncTenantAsync(_tenantA)).Outcome);
+
+        Assert.Equal(2, (await Mailpit.MessagesAsync(_mailpit)).Count(m => m.To == AddressA));
+    }
+
+    [Fact]
+    public async Task SameRun_RecipientRejectedBySmtpOnTenantA_StillEmailsTenantB_NoAddressInLogs()
+    {
+        await using var strict = Mailpit.Create(null, ("MP_SMTP_ALLOWED_RECIPIENTS", @"^b@example\.invalid$"));
+        await strict.StartAsync();
+        _received = c => c.PageOffset > 0 ? Page([])
+            : c.SubjectNip == NipA ? Page([Bought("A-1")])
+            : Page([Bought("B-1")]);
+        var lastSync = DateTime.UtcNow.AddHours(-4);
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO "SyncStates" ("Id", "TenantId", "LastSyncedAt", "LastSuccessfulSync")
+                VALUES ({Guid.NewGuid()}, {_tenantB}, {lastSync}, {lastSync})
+                """);
+        var options = new EmailOptions { Enabled = true, SmtpHost = strict.Hostname, SmtpPort = strict.GetMappedPublicPort(Mailpit.SmtpPort), UseSsl = false };
+        var log = new List<(LogLevel Level, string Category, string Text)>();
+
+        await using (var db = NewContext())
+        {
+            var sut = SyncService(db, options, log);
+            Assert.Equal(TenantSyncOutcome.Success, (await sut.SyncTenantAsync(_tenantA)).Outcome);
+            Assert.Equal(TenantSyncOutcome.Success, (await sut.SyncTenantAsync(_tenantB)).Outcome);
+        }
+
+        Assert.Equal([("Nowa faktura od Dostawca", AddressB)], await Mailpit.MessagesAsync(strict));
+        Assert.Single(log, e => e.Category == nameof(NotificationService) && e.Level == LogLevel.Warning && e.Text.Contains("rejected"));
+        Assert.DoesNotContain(log, e => e.Text.Contains(AddressA) || e.Text.Contains(AddressB));
+    }
+
     [Theory]
-    [InlineData(587, "MP_SMTP_REQUIRE_STARTTLS")]
-    [InlineData(465, "MP_SMTP_REQUIRE_TLS")]
-    public async Task SendNewInvoiceEmailAsync_DeliversOverTls(int port, string requireTls)
+    [InlineData(false, "MP_SMTP_REQUIRE_STARTTLS")]
+    [InlineData(true, "MP_SMTP_REQUIRE_TLS")]
+    public async Task SendNewInvoiceEmailAsync_DeliversOverTls(bool implicitTls, string requireTls)
     {
         await using var mailpit = Mailpit.Create(
-            port,
+            implicitTls ? 465 : null,
             ("MP_SMTP_TLS_CERT", "sans:localhost"),
             ("MP_SMTP_TLS_KEY", "sans:localhost"),
             (requireTls, "true"));
         await mailpit.StartAsync();
         var tlsNegotiated = false;
         var sut = new EmailService(
-            Options.Create(new EmailOptions { Enabled = true, SmtpHost = mailpit.Hostname, SmtpPort = port, UseSsl = true }),
+            Options.Create(new EmailOptions
+            {
+                Enabled = true,
+                SmtpHost = mailpit.Hostname,
+                SmtpPort = implicitTls ? 465 : mailpit.GetMappedPublicPort(Mailpit.SmtpPort),
+                UseSsl = true
+            }),
             NullLogger<EmailService>.Instance)
         {
             ServerCertificateValidation = (_, _, _, _) => tlsNegotiated = true
@@ -180,22 +274,33 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     private ApplicationDbContext NewContext() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(_postgres.GetConnectionString()).Options);
 
-    private TenantSyncService SyncService(ApplicationDbContext db, EmailOptions email)
+    private TenantSyncService SyncService(ApplicationDbContext db, EmailOptions email, List<(LogLevel Level, string Category, string Text)>? log = null)
     {
         var notifications = new NotificationService(
             db,
             Array.Empty<IPushProvider>(),
-            new EmailService(Options.Create(email), NullLogger<EmailService>.Instance),
-            NullLogger<NotificationService>.Instance);
+            new EmailService(Options.Create(email), Logger<EmailService>(log)),
+            Logger<NotificationService>(log));
         return new TenantSyncService(
             db,
             _gateway,
             Substitute.For<IEncryptionService>(),
-            new InvoiceService(db, notifications, NullLogger<InvoiceService>.Instance),
+            new InvoiceService(db, notifications, Logger<InvoiceService>(log)),
             new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
             Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero }),
             new XmlDownloadBlocks(),
-            NullLogger<TenantSyncService>.Instance);
+            Logger<TenantSyncService>(log));
+    }
+
+    private static ILogger<T> Logger<T>(List<(LogLevel, string, string)>? log) =>
+        log is null ? NullLogger<T>.Instance : new ListLogger<T>(log);
+
+    private sealed class ListLogger<T>(List<(LogLevel, string, string)> log) : ILogger<T>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            log.Add((logLevel, typeof(T).Name, $"{formatter(state, exception)} {exception}"));
     }
 
     private async Task SeedAsync()

@@ -1,3 +1,7 @@
+using System.Net.Sockets;
+using MailKit.Net.Smtp;
+using MailKit.Security;
+using MimeKit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
@@ -187,6 +191,45 @@ public class NotificationServiceTests : IDisposable
         Assert.Equal(1, _email.Attempts);
         var warning = Assert.Single(_logger.Entries, e => e.Level >= LogLevel.Warning);
         Assert.Equal(LogLevel.Warning, warning.Level);
+    }
+
+    [Fact]
+    public async Task NotifyNewInvoiceAsync_AfterEmailFailure_SkipsEmailForRestOfRun_StillPushes()
+    {
+        var tenantId = await SeedDeviceAsync("fcm-token-valid", NotificationEmail);
+        _email.Failure = new TimeoutException("smtp unreachable");
+        var push = new StubPushProvider(PushResult.Sent);
+        var sut = CreateService(push);
+
+        for (var i = 0; i < 3; i++)
+            await sut.NotifyNewInvoiceAsync(CreateEvent(tenantId));
+
+        Assert.Equal(1, _email.Attempts);
+        Assert.Equal(3, push.Calls);
+        Assert.Single(_logger.Entries, e => e.Level >= LogLevel.Warning);
+    }
+
+    [Theory]
+    [InlineData("parse", 2)]
+    [InlineData("recipient", 2)]
+    [InlineData("auth", 1)]
+    [InlineData("connect", 1)]
+    public async Task NotifyNewInvoiceAsync_SkipsLaterEmails_OnlyAfterHostLevelFailure(string failure, int expectedAttempts)
+    {
+        var tenantId = await SeedTenantAsync("user-1", NotificationEmail);
+        _email.Failure = failure switch
+        {
+            "parse" => new ParseException("bad address", 0, 0),
+            "recipient" => new SmtpCommandException(SmtpErrorCode.RecipientNotAccepted, SmtpStatusCode.MailboxUnavailable, new MailboxAddress("", NotificationEmail), "rejected"),
+            "auth" => new AuthenticationException("bad credentials"),
+            _ => new SocketException()
+        };
+        var sut = CreateService();
+
+        await sut.NotifyNewInvoiceAsync(CreateEvent(tenantId));
+        await sut.NotifyNewInvoiceAsync(CreateEvent(tenantId));
+
+        Assert.Equal(expectedAttempts, _email.Attempts);
     }
 
     private NotificationService CreateService(params IPushProvider[] providers) =>

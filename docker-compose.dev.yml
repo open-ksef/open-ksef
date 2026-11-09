@@ -65,6 +65,14 @@ services:
       Sync__InitialSyncMonthsBack: ${SYNC_INITIAL_MONTHS_BACK:-12}
       Auth__ServiceAccount__ClientId: openksef-api
       Auth__ServiceAccount__ClientSecret: ${API_CLIENT_SECRET:-}
+      Email__Enabled: ${EMAIL_ENABLED:-false}
+      Email__SmtpHost: ${EMAIL_SMTP_HOST:-}
+      Email__SmtpPort: ${EMAIL_SMTP_PORT:-587}
+      Email__UseSsl: ${EMAIL_USE_SSL:-true}
+      Email__Username: ${EMAIL_USERNAME:-}
+      Email__Password: ${EMAIL_PASSWORD:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-noreply@openksef.local}
+      Email__FromName: ${EMAIL_FROM_NAME:-OpenKSeF}
     ports:
       - "${API_HOST_PORT:-8081}:8081"
 
@@ -88,6 +96,14 @@ services:
       KSeF__BaseUrl: ${KSEF_BASE_URL:-test}
       KSeF__ForbidProduction: "true"
       Sync__InitialSyncMonthsBack: ${SYNC_INITIAL_MONTHS_BACK:-12}
+      Email__Enabled: ${EMAIL_ENABLED:-false}
+      Email__SmtpHost: ${EMAIL_SMTP_HOST:-}
+      Email__SmtpPort: ${EMAIL_SMTP_PORT:-587}
+      Email__UseSsl: ${EMAIL_USE_SSL:-true}
+      Email__Username: ${EMAIL_USERNAME:-}
+      Email__Password: ${EMAIL_PASSWORD:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-noreply@openksef.local}
+      Email__FromName: ${EMAIL_FROM_NAME:-OpenKSeF}
 
   portal-web:
     image: openksef-portal-web:dev-local

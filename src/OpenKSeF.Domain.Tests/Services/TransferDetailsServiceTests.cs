@@ -13,6 +13,7 @@ public class TransferDetailsServiceTests
     private const string TypeMessage = "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).";
     private const string AccountMessage = "Brak poprawnego numeru rachunku na fakturze.";
     private const string AccountPendingMessage = "Numer rachunku pobieramy jeszcze z KSeF. Sprawdź ponownie za kilka minut.";
+    private const string XmlUnreadableMessage = "Nie udało się odczytać tej faktury z KSeF, więc nie znamy numeru rachunku. Sprawdź dane do zapłaty na fakturze w KSeF. Ponowimy próbę automatycznie w ciągu 7 dni. Możesz też uruchomić pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).";
     private const string NameOrTitleMessage = "Nie można utworzyć kodu QR: brak czytelnej nazwy sprzedawcy lub numeru faktury.";
     private const string ManualMessage = "Zaliczka/rozliczenie: wpisz kwotę ręcznie.";
     private const string MppMessage = "Sprawdź, czy faktura nie wymaga podzielonej płatności (MPP).";
@@ -360,16 +361,21 @@ public class TransferDetailsServiceTests
         Assert.Equal(AccountMessage, data.QrMessage);
     }
 
-    [Fact]
-    public void Qr_XmlNotFetchedYet_SaysAccountIsComing()
+    [Theory]
+    [InlineData(null, AccountPendingMessage)]
+    [InlineData((short)4, AccountPendingMessage)]
+    [InlineData((short)5, XmlUnreadableMessage)]
+    [InlineData((short)6, XmlUnreadableMessage)]
+    public void Qr_XmlNotFetchedYet_AccountComing_UnlessReadsCapped(short? failedReads, string message)
     {
         var invoice = MakeInvoice(vendorBankAccount: null);
         invoice.XmlFetchedAt = null;
+        invoice.XmlFailedReads = failedReads;
 
         var data = Data(invoice);
 
         Assert.False(data.QrAvailable);
-        Assert.Equal(AccountPendingMessage, data.QrMessage);
+        Assert.Equal(message, data.QrMessage);
     }
 
     [Fact]

@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Domain.Data;
+using Microsoft.Extensions.Options;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Worker.Extensions;
 using OpenKSeF.Worker;
@@ -71,6 +73,9 @@ using (var scope = host.Services.CreateScope())
         scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
         builder.Configuration,
         scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("OpenKSeF.Worker.EncryptionKey"));
+    EmailService.WarnIfPlaintextAuth(
+        scope.ServiceProvider.GetRequiredService<IOptions<EmailOptions>>().Value,
+        scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("OpenKSeF.Worker.Email"));
 }
 await systemConfig.RefreshCacheAsync();
 

@@ -115,7 +115,9 @@ public class TransferDetailsService : ITransferDetailsService
         if (invoice.PartialPayment == 2)
             return "Sprzedawca oznaczył fakturę jako zapłaconą w całości, w częściach.";
         if (string.IsNullOrWhiteSpace(invoice.VendorBankAccount) && invoice.XmlFetchedAt is null && invoice.DueDate is null)
-            return "Numer rachunku pobieramy jeszcze z KSeF. Sprawdź ponownie za kilka minut.";
+            return invoice.XmlFailedReads >= InvoiceService.MaxFailedXmlReads
+                ? $"Nie udało się odczytać tej faktury z KSeF, więc nie znamy numeru rachunku. Sprawdź dane do zapłaty na fakturze w KSeF. Ponowimy próbę automatycznie w ciągu {InvoiceService.CappedXmlRetryAfter.Days} dni. Możesz też uruchomić pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie)."
+                : "Numer rachunku pobieramy jeszcze z KSeF. Sprawdź ponownie za kilka minut.";
         if (QrCodeService.SanitizeAccount(data.RecipientAccount).Length == 0)
             return "Brak poprawnego numeru rachunku na fakturze.";
         if (invoice.FactorBankAccount is not null && string.IsNullOrWhiteSpace(QrCodeService.Sanitize(data.RecipientName, QrCodeService.MaxNameLength)))
