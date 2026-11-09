@@ -18,6 +18,7 @@ using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Events;
 using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Services;
@@ -164,6 +165,7 @@ public class MobileContractApiTests : IDisposable
             IssueDate = now,
             AcquisitionDate = now,
             InvoiceType = "Vat",
+            Settlement = SettlementState.None,
             IsPaid = true,
             PaidAt = now,
             FirstSeenAt = now,

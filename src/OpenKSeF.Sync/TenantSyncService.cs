@@ -287,9 +287,10 @@ public sealed class TenantSyncService : ITenantSyncService
         var tenantIds = tenants.Select(t => t.Id).ToList();
         var waiting = _db.InvoiceHeaders.AsNoTracking()
             .Where(h => tenantIds.Contains(h.TenantId)
-                && h.XmlFetchedAt == null
-                && (!h.Lines.Any()
-                    || (h.Direction == InvoiceDirection.Received && h.DueDate == null && (!h.IsPaid || fullResync))));
+                && ((h.XmlFetchedAt == null
+                        && (!h.Lines.Any()
+                            || (h.Direction == InvoiceDirection.Received && h.DueDate == null && (!h.IsPaid || fullResync))))
+                    || (h.Direction == InvoiceDirection.Received && h.Settlement == null && (!h.IsPaid || fullResync))));
         var waitingCount = await waiting.CountAsync(cancellationToken);
         if (waitingCount == 0)
             return (0, 0);
@@ -297,8 +298,9 @@ public sealed class TenantSyncService : ITenantSyncService
         var queue = await waiting
             .OrderBy(h => h.Direction == InvoiceDirection.Received && h.FirstSeenAt >= runStartedAt ? 0
                 : h.Direction == InvoiceDirection.Received && !h.IsPaid && h.DueDate == null ? 1
-                : h.Direction == InvoiceDirection.Issued ? 2
-                : 3)
+                : h.Direction == InvoiceDirection.Received && !h.IsPaid && h.Settlement == null ? 2
+                : h.Direction == InvoiceDirection.Issued ? 3
+                : 4)
             .ThenBy(h => h.XmlAttemptedAt == null ? 0 : 1)
             .ThenBy(h => h.XmlAttemptedAt)
             .ThenByDescending(h => h.IssueDate)
@@ -328,15 +330,15 @@ public sealed class TenantSyncService : ITenantSyncService
                 var xml = await _gateway.DownloadInvoiceAsync(session!, row.KSeFInvoiceNumber, cancellationToken);
                 failuresInARow = 0;
 
-                var (bankAccount, lines, dueDate) = _xmlParser.ExtractInvoiceDetails(xml);
-                if (lines is null)
+                var details = _xmlParser.ExtractInvoiceDetails(xml);
+                if (details.Lines is null)
                 {
                     await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, cancellationToken);
                     errored++;
                     continue;
                 }
 
-                await _invoiceService.ApplyInvoiceXmlAsync(row.Id, bankAccount, lines, dueDate, cancellationToken);
+                await _invoiceService.ApplyInvoiceXmlAsync(row.Id, details, cancellationToken);
                 completed++;
             }
             catch (KsefApiException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)

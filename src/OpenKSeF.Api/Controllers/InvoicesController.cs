@@ -168,6 +168,7 @@ public class InvoicesController : ControllerBase
             return Forbid();
 
         var invoice = await _db.InvoiceHeaders
+            .Include(i => i.Tenant)
             .FirstOrDefaultAsync(i => i.Id == id && i.TenantId == tenantId);
 
         if (invoice is null)
@@ -176,8 +177,8 @@ public class InvoicesController : ControllerBase
         if (invoice.Direction == InvoiceDirection.Issued)
             return Conflict(new { message = "Przelew jest dostępny tylko dla faktur otrzymanych" });
 
-        var transferData = _transferDetails.BuildTransferData(invoice);
-        var transferText = _transferDetails.BuildTransferText(invoice);
+        var transferData = _transferDetails.BuildTransferData(invoice, invoice.Tenant.Nip);
+        var transferText = _transferDetails.BuildTransferText(invoice, invoice.Tenant.Nip);
         var qrBase64 = transferData.QrAvailable
             ? $"data:image/png;base64,{Convert.ToBase64String(_qrCode.GenerateTransferQr(transferData))}"
             : null;

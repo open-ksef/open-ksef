@@ -5,6 +5,7 @@ using OpenKSeF.Api.Controllers;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 
@@ -62,7 +63,8 @@ public class InvoicesControllerTests : IDisposable
             AmountGross = 100m,
             Currency = "PLN",
             IssueDate = issueDate,
-            FirstSeenAt = DateTime.UtcNow
+            FirstSeenAt = DateTime.UtcNow,
+            Settlement = SettlementState.None
         };
 
     [Fact]
@@ -232,12 +234,32 @@ public class InvoicesControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task GetTransferDetails_Gross20000_QrWithMppNotice()
+    public async Task GetTransferDetails_SellerIsTenant_NullQrNullMessage_TextReturned()
+    {
+        var invoice = MakeInvoice("KSEF-TR-005", DateTime.UtcNow.Date);
+        invoice.VendorNip = "1234567890";
+        invoice.VendorBankAccount = ValidAccount;
+        invoice.InvoiceType = "Vat";
+        _db.InvoiceHeaders.Add(invoice);
+        await _db.SaveChangesAsync();
+
+        var result = await CreateController().GetTransferDetails(_tenantId, invoice.Id) as OkObjectResult;
+
+        var response = Assert.IsType<TransferDetailsResponse>(result!.Value);
+        Assert.Null(response.QrCodeBase64);
+        Assert.Null(response.QrMessage);
+        Assert.Contains("Nr rachunku: " + ValidAccount, response.TransferText);
+        _qrCode.DidNotReceive().GenerateTransferQr(Arg.Any<TransferData>());
+    }
+
+    [Fact]
+    public async Task GetTransferDetails_Gross20000_NotReparsed_QrWithMppNotice()
     {
         var invoice = MakeInvoice("KSEF-TR-004", DateTime.UtcNow.Date);
         invoice.VendorBankAccount = ValidAccount;
         invoice.InvoiceType = "Vat";
         invoice.AmountGross = 20000m;
+        invoice.Settlement = null;
         _db.InvoiceHeaders.Add(invoice);
         await _db.SaveChangesAsync();
 
@@ -246,7 +268,7 @@ public class InvoicesControllerTests : IDisposable
 
         var response = Assert.IsType<TransferDetailsResponse>(result!.Value);
         Assert.StartsWith("data:image/png;base64,", response.QrCodeBase64);
-        Assert.Equal("Sprawdź, czy faktura nie wymaga podzielonej płatności (MPP).", response.QrMessage);
+        Assert.EndsWith("Sprawdź, czy faktura nie wymaga podzielonej płatności (MPP).", response.QrMessage);
     }
 
     [Theory]

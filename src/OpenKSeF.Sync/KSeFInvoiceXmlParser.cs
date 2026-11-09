@@ -1,18 +1,24 @@
+using System.Globalization;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.DTOs;
+using OpenKSeF.Domain.Enums;
+using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Sync;
 
 /// <summary>
-/// Extracts payment data and line items from KSeF invoice XML (FA(2) / FA(3)).
+/// Extracts payment data, settlement and line items from KSeF invoice XML (FA(2) / FA(3)).
 /// Uses the CIRFMF library's <c>GetInvoiceAsync</c> output — this is a thin
 /// XML reader, not a custom KSeF client.
 ///
 /// XML paths:
-///   Bank account: Faktura / Fa / Platnosc / RachunekBankowy / NrRB
-///   Due date:     Faktura / Fa / Platnosc / TerminPlatnosci / Termin (earliest of up to 100)
-///   Line items:   Faktura / Fa / FaWiersz
+///   Bank account:  Faktura / Fa / Platnosc / RachunekBankowy / NrRB (first valid PL NRB, else first)
+///   Due date:      Faktura / Fa / Platnosc / TerminPlatnosci / Termin (earliest of up to 100)
+///   Payment flags: Fa / Adnotacje / P_18A, Fa / Platnosc / Zaplacono, DataZaplaty, ZnacznikZaplatyCzesciowej
+///   Factor:        Fa / Platnosc / RachunekBankowyFaktora / NrRB, Faktura / Podmiot3 (Rola = 1) / DaneIdentyfikacyjne
+///   Amount due:    Faktura / Fa / P_15 and Fa / Rozliczenie
+///   Line items:    Faktura / Fa / FaWiersz
 /// Schema reference: ksef-docs/faktury/schemy/FA/
 /// </summary>
 public sealed class KSeFInvoiceXmlParser
@@ -27,8 +33,7 @@ public sealed class KSeFInvoiceXmlParser
         _logger = logger;
     }
 
-    /// <returns>Null <c>Lines</c> when the XML cannot be read as an invoice.</returns>
-    public (string? BankAccount, IReadOnlyList<InvoiceLineDto>? Lines, DateOnly? DueDate) ExtractInvoiceDetails(byte[] invoiceXml)
+    public InvoiceXmlDetails ExtractInvoiceDetails(byte[] invoiceXml)
     {
         try
         {
@@ -39,61 +44,20 @@ public sealed class KSeFInvoiceXmlParser
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to parse invoice XML for details extraction");
-            return (null, null, null);
+            return InvoiceXmlDetails.Unreadable;
         }
     }
 
-    public string? ExtractBankAccount(byte[] invoiceXml)
-    {
-        try
-        {
-            using var stream = new MemoryStream(invoiceXml);
-            var doc = XDocument.Load(stream);
-            return ExtractNrRB(doc);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to parse invoice XML for bank account extraction");
-            return null;
-        }
-    }
-
-    public string? ExtractBankAccount(string invoiceXml)
-    {
-        try
-        {
-            var doc = XDocument.Parse(invoiceXml);
-            return ExtractNrRB(doc);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to parse invoice XML for bank account extraction");
-            return null;
-        }
-    }
-
-    private static (string? BankAccount, IReadOnlyList<InvoiceLineDto>? Lines, DateOnly? DueDate) ExtractDetails(XDocument doc)
+    private static InvoiceXmlDetails ExtractDetails(XDocument doc)
     {
         var root = doc.Root;
-        if (root is null) return (null, null, null);
+        if (root is null) return InvoiceXmlDetails.Unreadable;
 
         var ns = DetectNamespace(root);
-        if (ns is null) return (null, null, null);
+        if (ns is null) return InvoiceXmlDetails.Unreadable;
 
         var fa = root.Descendants(ns + "Fa").FirstOrDefault();
-        if (fa is null) return (null, null, null);
-
-        var bankAccount = root
-            .Descendants(ns + "Platnosc")
-            .Descendants(ns + "RachunekBankowy")
-            .Elements(ns + "NrRB")
-            .FirstOrDefault()
-            ?.Value;
-
-        if (string.IsNullOrWhiteSpace(bankAccount))
-            bankAccount = null;
-        else
-            bankAccount = bankAccount.Trim();
+        if (fa is null) return InvoiceXmlDetails.Unreadable;
 
         var lines = new List<InvoiceLineDto>();
         foreach (var wiersz in fa.Elements(ns + "FaWiersz"))
@@ -125,33 +89,65 @@ public sealed class KSeFInvoiceXmlParser
                 VatRate: vatRate));
         }
 
-        return (bankAccount, lines, ExtractDueDate(root, ns));
+        var platnosc = fa.Element(ns + "Platnosc");
+        var rozliczenie = fa.Element(ns + "Rozliczenie");
+        var (settlement, settlementAmount) = Settlement.Classify(
+            fa.Element(ns + "P_15")?.Value,
+            Amounts(rozliczenie, ns + "Obciazenia", ns),
+            rozliczenie?.Element(ns + "SumaObciazen")?.Value,
+            Amounts(rozliczenie, ns + "Odliczenia", ns),
+            rozliczenie?.Element(ns + "SumaOdliczen")?.Value,
+            rozliczenie?.Element(ns + "DoZaplaty")?.Value,
+            rozliczenie?.Element(ns + "DoRozliczenia")?.Value);
+
+        var factorAccounts = AccountNumbers(platnosc, ns + "RachunekBankowyFaktora");
+        var factor = factorAccounts.Count == 0
+            ? null
+            : root.Elements(ns + "Podmiot3")
+                .FirstOrDefault(p => p.Element(ns + "Rola")?.Value.Trim() == "1")
+                ?.Element(ns + "DaneIdentyfikacyjne");
+
+        return new InvoiceXmlDetails(
+            PickAccount(AccountNumbers(platnosc, ns + "RachunekBankowy")),
+            lines,
+            ExtractDueDate(platnosc, ns),
+            settlement,
+            settlementAmount,
+            fa.Element(ns + "Adnotacje")?.Element(ns + "P_18A")?.Value.Trim() == "1",
+            platnosc?.Element(ns + "Zaplacono")?.Value.Trim() == "1" ? ParseDate(platnosc.Element(ns + "DataZaplaty")?.Value) : null,
+            short.TryParse(platnosc?.Element(ns + "ZnacznikZaplatyCzesciowej")?.Value.Trim(), out var partial) ? partial : null,
+            PickAccount(factorAccounts),
+            Text(factor?.Element(ns + "NIP")?.Value, 10),
+            Text(factor?.Element(ns + "Nazwa")?.Value, 512));
     }
 
-    private static DateOnly? ExtractDueDate(XElement root, XNamespace ns) =>
-        root.Descendants(ns + "Platnosc")
-            .Elements(ns + "TerminPlatnosci")
+    private static DateOnly? ExtractDueDate(XElement? platnosc, XNamespace ns) =>
+        platnosc?.Elements(ns + "TerminPlatnosci")
             .Elements(ns + "Termin")
-            .Select(t => DateOnly.TryParseExact(t.Value.Trim(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var date) ? date : (DateOnly?)null)
+            .Select(t => ParseDate(t.Value))
             .Min();
 
-    private static string? ExtractNrRB(XDocument doc)
+    private static List<string> AccountNumbers(XElement? platnosc, XName accountElement) =>
+        platnosc?.Elements(accountElement)
+            .Select(a => a.Element(accountElement.Namespace + "NrRB")?.Value.Trim())
+            .OfType<string>()
+            .Where(nrb => nrb.Length > 0)
+            .ToList() ?? [];
+
+    private static string? PickAccount(List<string> accounts) =>
+        accounts.FirstOrDefault(a => QrCodeService.SanitizeAccount(a).Length > 0) ?? accounts.FirstOrDefault();
+
+    private static List<string> Amounts(XElement? rozliczenie, XName group, XNamespace ns) =>
+        rozliczenie?.Elements(group).Select(e => e.Element(ns + "Kwota")?.Value ?? string.Empty).ToList() ?? [];
+
+    private static string? Text(string? value, int maxLength)
     {
-        var root = doc.Root;
-        if (root is null) return null;
-
-        var ns = DetectNamespace(root);
-        if (ns is null) return null;
-
-        var nrRb = root
-            .Descendants(ns + "Platnosc")
-            .Descendants(ns + "RachunekBankowy")
-            .Elements(ns + "NrRB")
-            .FirstOrDefault()
-            ?.Value;
-
-        return string.IsNullOrWhiteSpace(nrRb) ? null : nrRb.Trim();
+        var trimmed = value?.Trim();
+        return string.IsNullOrEmpty(trimmed) || trimmed.Length > maxLength ? null : trimmed;
     }
+
+    private static DateOnly? ParseDate(string? value) =>
+        DateOnly.TryParseExact(value?.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : null;
 
     private static XNamespace? DetectNamespace(XElement root)
     {
@@ -167,8 +163,7 @@ public sealed class KSeFInvoiceXmlParser
     private static decimal? ParseDecimal(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
-        return decimal.TryParse(value, System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var result)
+        return decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var result)
             ? result : null;
     }
 
@@ -185,8 +180,7 @@ public sealed class KSeFInvoiceXmlParser
     private static decimal? ParseVatRateMultiplier(string? vatRate)
     {
         if (string.IsNullOrWhiteSpace(vatRate)) return null;
-        return decimal.TryParse(vatRate, System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var rate)
+        return decimal.TryParse(vatRate, NumberStyles.Any, CultureInfo.InvariantCulture, out var rate)
             ? rate / 100m : null;
     }
 
