@@ -205,7 +205,19 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
             var after = await db.Database.SqlQueryRaw<string>("""SELECT "KSeFInvoiceNumber" || "IsPaid" || coalesce("PaidAt"::text, '') || coalesce("DueDate"::text, '') || coalesce("VendorBankAccount", '') AS "Value" FROM "InvoiceHeaders" ORDER BY 1""").ToListAsync();
             Assert.Equal(before, after);
-            Assert.All(await db.InvoiceHeaders.ToListAsync(), r => Assert.Null(r.XmlFetchedAt));
+            Assert.All(await db.InvoiceHeaders.ToListAsync(), r =>
+            {
+                Assert.Null(r.XmlFetchedAt);
+                Assert.Null(r.Settlement);
+                Assert.Null(r.SettlementAmount);
+                Assert.Null(r.SplitPayment);
+                Assert.Null(r.SellerPaidOn);
+                Assert.Null(r.PartialPayment);
+                Assert.Null(r.FactorBankAccount);
+                Assert.Null(r.FactorNip);
+                Assert.Null(r.FactorName);
+            });
+            Assert.Equal(2, await db.InvoiceLines.CountAsync());
         }
     }
 
@@ -219,12 +231,15 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         await InsertAsync("PAID-UNDATED-WITH-LINES", daysAgo: 1, isPaid: true);
         await InsertAsync("PAID-NO-LINES", daysAgo: 1, isPaid: true, hasLine: false);
         await InsertAsync("DATED-WITH-LINES-NO-ACCOUNT", daysAgo: 1, dueDate: new DateOnly(2026, 12, 1));
+        await InsertAsync("UNDATED-ALREADY-READ", daysAgo: 2);
         await MigrateAsync();
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '30 days' WHERE "KSeFInvoiceNumber" = 'UNDATED-ALREADY-READ'""");
         _received = _ => Page([Bought("NEW-RECEIVED")]);
 
         await WorkerCycleAsync();
 
-        Assert.Equal(["NEW-RECEIVED", "UNDATED-RECENT", "UNDATED-OLD", "ISSUED-NO-LINES", "PAID-NO-LINES"], _downloads);
+        Assert.Equal(["NEW-RECEIVED", "UNDATED-RECENT", "UNDATED-OLD", "ISSUED-NO-LINES", "DATED-WITH-LINES-NO-ACCOUNT", "UNDATED-ALREADY-READ", "PAID-NO-LINES"], _downloads);
     }
 
     [Fact]
@@ -333,6 +348,70 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         Assert.Equal(3, _downloads.Count);
         Assert.True(started.Elapsed >= TimeSpan.FromMilliseconds(290), started.Elapsed.ToString());
+    }
+
+    [Fact]
+    public async Task NotReadRow_WithLinesAccountAndMarker_IncrementalRereadsIt_LinesNotDuplicated_PaidUntouched_NoNotification()
+    {
+        await InsertAsync("READ-BEFORE", account: "DE12000000000000000001", dueDate: new DateOnly(2026, 11, 1));
+        await InsertAsync("PAID-READ-BEFORE", isPaid: true, account: Account, dueDate: new DateOnly(2026, 10, 15));
+        await MigrateAsync();
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '30 days' """);
+        var before = await RowAsync("READ-BEFORE");
+        var paidBefore = await RowAsync("PAID-READ-BEFORE");
+        _xml = _ => Encoding.UTF8.GetBytes(
+            $"""<Faktura xmlns="{Fa3}"><Fa><P_15>123.00</P_15><Adnotacje><P_18A>1</P_18A></Adnotacje><Rozliczenie><SumaOdliczen>23.00</SumaOdliczen><DoZaplaty>100.00</DoZaplaty></Rozliczenie><Platnosc><TerminPlatnosci><Termin>2026-12-24</Termin></TerminPlatnosci><RachunekBankowy><NrRB>DE12000000000000000001</NrRB></RachunekBankowy><RachunekBankowy><NrRB>{Account}</NrRB></RachunekBankowy></Platnosc><FaWiersz><NrWierszaFa>1</NrWierszaFa><P_7>Towar nowy</P_7><P_11>100</P_11><P_12>23</P_12></FaWiersz><FaWiersz><NrWierszaFa>2</NrWierszaFa><P_7>Towar drugi</P_7><P_11>1</P_11><P_12>23</P_12></FaWiersz></Fa></Faktura>""");
+
+        await WorkerCycleAsync();
+
+        Assert.Equal(["READ-BEFORE"], _downloads);
+        var row = await RowAsync("READ-BEFORE");
+        Assert.Equal(SettlementState.Confirmed, row.Settlement);
+        Assert.Equal(100m, row.SettlementAmount);
+        Assert.True(row.SplitPayment);
+        Assert.Equal(Account, row.VendorBankAccount);
+        Assert.Equal(new DateOnly(2026, 11, 1), row.DueDate);
+        Assert.Equal(before.Lines.Single().Id, row.Lines.Single().Id);
+        Assert.Equal("Towar stary", row.Lines.Single().Name);
+        Assert.False(row.IsPaid);
+        Assert.Null(row.PaidAt);
+        await _notifications.DidNotReceive().NotifyNewInvoiceAsync(Arg.Any<NewInvoiceDetectedEvent>());
+
+        _downloads.Clear();
+        await WorkerCycleAsync();
+        Assert.Empty(_downloads);
+
+        await ManualSyncAsync(fullResync: true);
+
+        Assert.Equal(["PAID-READ-BEFORE"], _downloads);
+        var paid = await RowAsync("PAID-READ-BEFORE");
+        Assert.Equal(SettlementState.Confirmed, paid.Settlement);
+        Assert.True(paid.IsPaid);
+        Assert.Equal(paidBefore.PaidAt, paid.PaidAt);
+        Assert.Equal(paidBefore.Lines.Single().Id, paid.Lines.Single().Id);
+        await using (var db = NewContext())
+            Assert.Equal(2, await db.InvoiceLines.CountAsync());
+        await _notifications.DidNotReceive().NotifyNewInvoiceAsync(Arg.Any<NewInvoiceDetectedEvent>());
+    }
+
+    [Fact]
+    public async Task NotReadRow_ParseOrDownloadFails_StaysNotRead_NeverNone()
+    {
+        await InsertAsync("PARSE-FAILS", account: Account, dueDate: new DateOnly(2026, 11, 1));
+        await InsertAsync("DOWNLOAD-FAILS", account: Account, dueDate: new DateOnly(2026, 11, 1));
+        await MigrateAsync();
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '30 days' """);
+        var before = await SnapshotAsync();
+        _xml = number => number == "PARSE-FAILS" ? Encoding.UTF8.GetBytes("<not-xml") : throw new HttpRequestException("500");
+
+        await ManualSyncAsync();
+
+        Assert.Equal(2, _downloads.Count);
+        Assert.Null((await RowAsync("PARSE-FAILS")).Settlement);
+        Assert.Null((await RowAsync("DOWNLOAD-FAILS")).Settlement);
+        Assert.Equal(before, await SnapshotAsync());
     }
 
     [Fact]
@@ -516,7 +595,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task FullResync_SkipsDatedRows_FillsUndatedAndReportsFailures()
+    public async Task FullResync_RereadsDatedRowKeepingItsDueDate_FillsUndatedAndReportsFailures()
     {
         await InsertAsync("DATED", dueDate: new DateOnly(2026, 11, 1), account: Account);
         await InsertAsync("UNDATED-OK", daysAgo: 1);
@@ -527,10 +606,17 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         var result = await ManualSyncAsync(fullResync: true);
 
-        Assert.DoesNotContain("DATED", _downloads);
+        Assert.Contains("DATED", _downloads);
         Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
         Assert.Equal(1, result.FailedDownloads);
-        Assert.Equal(new DateOnly(2026, 11, 1), (await RowAsync("DATED")).DueDate);
+        var dated = await RowAsync("DATED");
+        Assert.Equal(new DateOnly(2026, 11, 1), dated.DueDate);
+        Assert.Equal(SettlementState.None, dated.Settlement);
+        Assert.Null((await RowAsync("UNDATED-BAD")).Settlement);
+
+        _downloads.Clear();
+        await ManualSyncAsync(fullResync: true);
+        Assert.Equal(["UNDATED-BAD"], _downloads);
     }
 
     [Fact]

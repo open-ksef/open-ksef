@@ -61,6 +61,14 @@ public partial class QrCodeService : IQrCodeService
 
     internal static string Sanitize(string value, int maxLength)
     {
+        var cleaned = Sanitize(value).TrimStart();
+        return (cleaned.Length <= maxLength ? cleaned : cleaned[..maxLength]).TrimEnd();
+    }
+
+    internal static bool IsTitleTruncated(string value) => Sanitize(value).Trim().Length > MaxTitleLength;
+
+    private static string Sanitize(string value)
+    {
         if (string.IsNullOrEmpty(value))
             return string.Empty;
 
@@ -73,12 +81,10 @@ public partial class QrCodeService : IQrCodeService
                 sb.Append(ch);
         }
 
-        var transliterated = sb.ToString();
-        var cleaned = AllowedCharsRegex().Replace(transliterated, "");
-        return cleaned.Length <= maxLength ? cleaned : cleaned[..maxLength];
+        return AllowedCharsRegex().Replace(sb.ToString(), "");
     }
 
-    internal static string SanitizeAccount(string? account)
+    public static string SanitizeAccount(string? account)
     {
         if (string.IsNullOrWhiteSpace(account))
             return string.Empty;

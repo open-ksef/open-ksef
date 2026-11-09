@@ -77,6 +77,10 @@ public class ApplicationDbContext : DbContext
             entity.Property(i => i.Currency).IsRequired().HasMaxLength(3).HasDefaultValue("PLN");
             entity.Property(i => i.InvoiceType).HasMaxLength(50);
             entity.Property(i => i.VendorBankAccount).HasMaxLength(34);
+            entity.Property(i => i.SettlementAmount).HasPrecision(18, 2);
+            entity.Property(i => i.FactorBankAccount).HasMaxLength(34);
+            entity.Property(i => i.FactorNip).HasMaxLength(10);
+            entity.Property(i => i.FactorName).HasMaxLength(512);
             entity.HasOne(i => i.Tenant)
                 .WithMany(t => t.Invoices)
                 .HasForeignKey(i => i.TenantId)

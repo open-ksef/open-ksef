@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -8,6 +9,7 @@ using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Events;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
@@ -18,6 +20,7 @@ public class TransferAfterFullResyncTests : IDisposable
 {
     private const string UserId = "user-1";
     private const string Account = "PL61 1090 1014 0000 0712 1981 2874";
+    private const string VendorNip = "1111111111";
 
     private readonly ApplicationDbContext _db = new(
         new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -42,6 +45,8 @@ public class TransferAfterFullResyncTests : IDisposable
             "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).",
             before.QrMessage);
 
+        _gateway.DownloadInvoiceAsync(Arg.Any<KSeFSession>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Encoding.UTF8.GetBytes($"""<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/"><Fa><P_15>100.00</P_15><Platnosc><RachunekBankowy><NrRB>{Account}</NrRB></RachunekBankowy></Platnosc></Fa></Faktura>"""));
         _gateway.QueryInvoicesAsync(Arg.Any<KSeFSession>(), Arg.Any<KSeFQueryCriteria>(), Arg.Any<CancellationToken>())
             .Returns(new KSeFInvoiceQueryResult(
                 [Header(invoice.KSeFInvoiceNumber, ksefType), Header("KSEF-NOT-STORED-YET", "Vat")], 2, 0, 100));
@@ -55,6 +60,7 @@ public class TransferAfterFullResyncTests : IDisposable
         var stored = await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == invoice.Id);
         Assert.Equal(ksefType, stored.InvoiceType);
         Assert.Equal(Account, stored.VendorBankAccount);
+        Assert.Equal(SettlementState.None, stored.Settlement);
 
         var after = await GetTransfer(invoice.Id);
         Assert.Equal(hasQr, after.QrCodeBase64 is not null);
@@ -91,7 +97,7 @@ public class TransferAfterFullResyncTests : IDisposable
             KSeFReferenceNumber = "KSEF-OLD-1",
             InvoiceNumber = "FV 1/2026",
             VendorName = "Odbiorca 1",
-            VendorNip = "1234567890",
+            VendorNip = VendorNip,
             AmountGross = 100m,
             Currency = "PLN",
             IssueDate = _issueDate,
@@ -106,7 +112,7 @@ public class TransferAfterFullResyncTests : IDisposable
     }
 
     private KSeFInvoiceHeader Header(string number, string invoiceType) => new(
-        number, number, "FV 1/2026", "1234567890", "Odbiorca 1", null, null,
+        number, number, "FV 1/2026", VendorNip, "Odbiorca 1", null, null,
         81.30m, 18.70m, 100m, "PLN", _issueDate, _issueDate, invoiceType);
 
     private async Task<TransferDetailsResponse> GetTransfer(Guid id)

@@ -32,6 +32,14 @@ public class InvoiceHeader
     public DateTime? PaidAt { get; set; }
     public DateTime? XmlFetchedAt { get; set; }
     public DateTime? XmlAttemptedAt { get; set; }
+    public SettlementState? Settlement { get; set; }
+    public decimal? SettlementAmount { get; set; }
+    public bool? SplitPayment { get; set; }
+    public DateOnly? SellerPaidOn { get; set; }
+    public short? PartialPayment { get; set; }
+    public string? FactorBankAccount { get; set; }
+    public string? FactorNip { get; set; }
+    public string? FactorName { get; set; }
 
     public Tenant Tenant { get; set; } = null!;
     public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();

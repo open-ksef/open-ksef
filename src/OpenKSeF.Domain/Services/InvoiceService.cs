@@ -143,8 +143,7 @@ public class InvoiceService : IInvoiceService
         return newInvoiceIds;
     }
 
-    public async Task ApplyInvoiceXmlAsync(
-        Guid invoiceId, string? bankAccount, IReadOnlyList<InvoiceLineDto> lines, DateOnly? dueDate, CancellationToken cancellationToken = default)
+    public async Task ApplyInvoiceXmlAsync(Guid invoiceId, InvoiceXmlDetails details, CancellationToken cancellationToken = default)
     {
         var invoice = await _db.InvoiceHeaders.FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
         if (invoice is null)
@@ -152,10 +151,21 @@ public class InvoiceService : IInvoiceService
 
         if (invoice.Direction == InvoiceDirection.Received)
         {
-            invoice.VendorBankAccount ??= bankAccount;
-            invoice.DueDate ??= dueDate;
+            if (details.BankAccount is not null
+                && (invoice.VendorBankAccount is null || QrCodeService.SanitizeAccount(details.BankAccount).Length > 0))
+                invoice.VendorBankAccount = details.BankAccount;
+            invoice.DueDate ??= details.DueDate;
+            invoice.Settlement = details.Settlement;
+            invoice.SettlementAmount = details.SettlementAmount;
+            invoice.SplitPayment = details.SplitPayment;
+            invoice.SellerPaidOn = details.SellerPaidOn;
+            invoice.PartialPayment = details.PartialPayment;
+            invoice.FactorBankAccount = details.FactorBankAccount;
+            invoice.FactorNip = details.FactorNip;
+            invoice.FactorName = details.FactorName;
         }
 
+        var lines = details.Lines ?? [];
         if (lines.Count > 0 && !await _db.InvoiceLines.AnyAsync(l => l.InvoiceHeaderId == invoiceId, cancellationToken))
             _db.InvoiceLines.AddRange(lines.Select(l => MapLine(l, invoiceId)));
 

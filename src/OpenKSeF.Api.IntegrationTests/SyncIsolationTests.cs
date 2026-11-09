@@ -288,7 +288,7 @@ public sealed class SyncIsolationTests : IAsyncLifetime
         var rowsBefore = await db.Database.SqlQueryRaw<string>(RowsMd5).SingleAsync();
         var paidBefore = await db.Database.SqlQueryRaw<string>(PaidFlags).SingleAsync();
 
-        await db.Database.MigrateAsync();
+        await db.GetService<IMigrator>().MigrateAsync("20261106101846_AlignSyncColumnsWithKsef");
 
         Assert.Equal(rowsBefore, await db.Database.SqlQueryRaw<string>(RowsMd5).SingleAsync());
         Assert.Equal(paidBefore, await db.Database.SqlQueryRaw<string>(PaidFlags).SingleAsync());

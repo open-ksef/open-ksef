@@ -116,6 +116,18 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<DateOnly?>("DueDate")
                         .HasColumnType("date");
 
+                    b.Property<string>("FactorBankAccount")
+                        .HasMaxLength(34)
+                        .HasColumnType("character varying(34)");
+
+                    b.Property<string>("FactorName")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("FactorNip")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<DateTime>("FirstSeenAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -148,6 +160,22 @@ namespace OpenKSeF.Domain.Data.Migrations
 
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<short?>("PartialPayment")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateOnly?>("SellerPaidOn")
+                        .HasColumnType("date");
+
+                    b.Property<int?>("Settlement")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("SettlementAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<bool?>("SplitPayment")
+                        .HasColumnType("boolean");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
