@@ -135,12 +135,15 @@ public sealed class TenantIsolationTests : IAsyncLifetime
     [Fact]
     public async Task NonMember_GetsForbiddenOrNotFound_OnEveryTenantScopedEndpoint()
     {
+        var routes = ApiRouteCatalog.Discover().Where(IsTenantScoped).ToList();
+        Assert.NotEmpty(routes);
+
         var failures = new List<string>();
-        foreach (var route in ApiRouteCatalog.Discover().Where(IsTenantScoped))
+        foreach (var route in routes)
         {
             var response = await SendAsync(_other, route, _seed.TenantA);
-            if (response.StatusCode is not (HttpStatusCode.Forbidden or HttpStatusCode.NotFound))
-                failures.Add($"{route.Key}: {(int)response.StatusCode}");
+            if (response.StatusCode != HttpStatusCode.Forbidden && !IsActionNotFound(response))
+                failures.Add($"{route.Key}: {(int)response.StatusCode} {response.Content.Headers.ContentType?.MediaType}");
         }
 
         Assert.Empty(failures);
@@ -159,13 +162,16 @@ public sealed class TenantIsolationTests : IAsyncLifetime
     [Fact]
     public async Task ForeignResourceIdUnderOwnTenant_Returns404()
     {
+        var routes = ApiRouteCatalog.Discover().Where(r =>
+            r.Parameters.Contains("tenantId") && (r.Parameters.Contains("id") || r.Parameters.Contains("ksefInvoiceNumber"))).ToList();
+        Assert.NotEmpty(routes);
+
         var failures = new List<string>();
-        foreach (var route in ApiRouteCatalog.Discover().Where(r =>
-                     r.Parameters.Contains("tenantId") && (r.Parameters.Contains("id") || r.Parameters.Contains("ksefInvoiceNumber"))))
+        foreach (var route in routes)
         {
             var response = await SendAsync(_other, route, _seed.TenantB);
-            if (response.StatusCode != HttpStatusCode.NotFound)
-                failures.Add($"{route.Key}: {(int)response.StatusCode}");
+            if (!IsActionNotFound(response))
+                failures.Add($"{route.Key}: {(int)response.StatusCode} {response.Content.Headers.ContentType?.MediaType}");
         }
 
         Assert.Empty(failures);
@@ -177,6 +183,8 @@ public sealed class TenantIsolationTests : IAsyncLifetime
             .Replace("{tenantId}", tenantId.ToString())
             .Replace("{ksefInvoiceNumber}", _seed.KsefNumber)
             .Replace("{id}", ResourceId(route.Template).ToString());
+        if (path.Contains('{'))
+            throw new InvalidOperationException($"Unfilled route parameter in {route.Key}");
         if (route.Parameters.Contains("tenantId") && !route.Template.Contains("{tenantId}"))
             path += $"?tenantId={tenantId}";
 
@@ -185,6 +193,10 @@ public sealed class TenantIsolationTests : IAsyncLifetime
             request.Content = JsonContent.Create(body);
         return client.SendAsync(request);
     }
+
+    private static bool IsActionNotFound(HttpResponseMessage response) =>
+        response.StatusCode == HttpStatusCode.NotFound
+        && response.Content.Headers.ContentType?.MediaType == "application/problem+json";
 
     private Guid ResourceId(string template) => template switch
     {
