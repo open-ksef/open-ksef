@@ -105,6 +105,20 @@
       ]
     },
     {
+      "username": "otheruser",
+      "email": "otheruser@openksef.test",
+      "firstName": "Other",
+      "lastName": "User",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test1234!",
+          "temporary": false
+        }
+      ]
+    },
+    {
       "username": "service-account-openksef-api",
       "enabled": true,
       "serviceAccountClientId": "openksef-api",

@@ -181,10 +181,15 @@ public class AccountRegisterApiTests : IAsyncLifetime
         }
     }
 
-    [Fact]
-    public async Task Register_ClientSecretOnlyInSystemConfig_Returns503AndCreatesNoUser()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Register_ClientSecretOnlyInSystemConfig_CreatesUser(bool encrypted)
     {
-        await SetStoredConfigAsync(SystemConfigKeys.ApiClientSecret, "test-api-client-secret");
+        var secret = encrypted
+            ? SystemConfigKeys.EncryptedPrefix + new AesGcmEncryptionService(Convert.FromBase64String(OpenKSeFWebApplicationFactory.TestEncryptionKey)).Encrypt("test-api-client-secret")
+            : "test-api-client-secret";
+        await SetStoredConfigAsync(SystemConfigKeys.ApiClientSecret, secret);
         try
         {
             using var factory = _factory.WithWebHostBuilder(builder =>
@@ -194,8 +199,8 @@ public class AccountRegisterApiTests : IAsyncLifetime
 
             var response = await RegisterAsync(client, email);
 
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-            Assert.Null(await _fixture.FindUserAsync(email));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.NotNull(await _fixture.FindUserAsync(email));
         }
         finally
         {
