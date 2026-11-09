@@ -297,9 +297,9 @@ public sealed class TenantSyncService : ITenantSyncService
 
         var queue = await waiting
             .OrderBy(h => h.Direction == InvoiceDirection.Received && h.FirstSeenAt >= runStartedAt ? 0
-                : h.Direction == InvoiceDirection.Received && !h.IsPaid && h.DueDate == null ? 1
-                : h.Direction == InvoiceDirection.Received && !h.IsPaid && h.Settlement == null ? 2
-                : h.Direction == InvoiceDirection.Issued ? 3
+                : h.Direction == InvoiceDirection.Received && !h.IsPaid && h.DueDate == null && h.XmlFetchedAt == null ? 1
+                : h.Direction == InvoiceDirection.Issued ? 2
+                : h.Direction == InvoiceDirection.Received && !h.IsPaid && h.Settlement == null ? 3
                 : 4)
             .ThenBy(h => h.XmlAttemptedAt == null ? 0 : 1)
             .ThenBy(h => h.XmlAttemptedAt)

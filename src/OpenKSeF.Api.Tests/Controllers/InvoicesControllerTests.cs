@@ -268,7 +268,9 @@ public class InvoicesControllerTests : IDisposable
 
         var response = Assert.IsType<TransferDetailsResponse>(result!.Value);
         Assert.StartsWith("data:image/png;base64,", response.QrCodeBase64);
-        Assert.EndsWith("Sprawdź, czy faktura nie wymaga podzielonej płatności (MPP).", response.QrMessage);
+        Assert.Equal(
+            "Nie odczytano jeszcze rozliczeń z tej faktury: wpisz kwotę ręcznie, sprawdź ją na fakturze. Aby uzyskać kwotę w kodzie QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie). Sprawdź, czy faktura nie wymaga podzielonej płatności (MPP).",
+            response.QrMessage);
     }
 
     [Theory]

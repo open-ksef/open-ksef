@@ -231,12 +231,15 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         await InsertAsync("PAID-UNDATED-WITH-LINES", daysAgo: 1, isPaid: true);
         await InsertAsync("PAID-NO-LINES", daysAgo: 1, isPaid: true, hasLine: false);
         await InsertAsync("DATED-WITH-LINES-NO-ACCOUNT", daysAgo: 1, dueDate: new DateOnly(2026, 12, 1));
+        await InsertAsync("UNDATED-ALREADY-READ", daysAgo: 2);
         await MigrateAsync();
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '30 days' WHERE "KSeFInvoiceNumber" = 'UNDATED-ALREADY-READ'""");
         _received = _ => Page([Bought("NEW-RECEIVED")]);
 
         await WorkerCycleAsync();
 
-        Assert.Equal(["NEW-RECEIVED", "UNDATED-RECENT", "UNDATED-OLD", "DATED-WITH-LINES-NO-ACCOUNT", "ISSUED-NO-LINES", "PAID-NO-LINES"], _downloads);
+        Assert.Equal(["NEW-RECEIVED", "UNDATED-RECENT", "UNDATED-OLD", "ISSUED-NO-LINES", "DATED-WITH-LINES-NO-ACCOUNT", "UNDATED-ALREADY-READ", "PAID-NO-LINES"], _downloads);
     }
 
     [Fact]
