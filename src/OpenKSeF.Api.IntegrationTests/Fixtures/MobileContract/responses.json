@@ -421,6 +421,7 @@
     "arguments[].title": "string",
     "arguments[].body": "string",
     "arguments[].data.tenantId": "string",
-    "arguments[].data.invoiceId": "string"
+    "arguments[].data.invoiceId": "string",
+    "arguments[].nativePush": "boolean"
   }
 }

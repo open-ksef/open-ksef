@@ -133,7 +133,7 @@ public class MobileContractApiTests : IDisposable
                 [],
                 Substitute.For<IEmailService>(),
                 NullLogger<NotificationService>.Instance,
-                new SignalRPushProvider(hub, NullLogger<SignalRPushProvider>.Instance))
+                new SignalRPushProvider(hub, _factory.Services.GetRequiredService<ISystemConfigService>(), NullLogger<SignalRPushProvider>.Instance))
                 .NotifyNewInvoiceAsync(new NewInvoiceDetectedEvent(tenantId, invoiceId, "Vendor", "FV/1/2026", 123m, "PLN"));
         }
         var call = proxy.ReceivedCalls().Single().GetArguments();

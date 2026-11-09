@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.SignalR;
 using OpenKSeF.Api.Hubs;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Models;
+using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Push;
 
@@ -13,11 +14,13 @@ namespace OpenKSeF.Api.Push;
 public class SignalRPushProvider : IUserPushProvider
 {
     private readonly IHubContext<NotificationHub> _hubContext;
+    private readonly ISystemConfigService _systemConfig;
     private readonly ILogger<SignalRPushProvider> _logger;
 
-    public SignalRPushProvider(IHubContext<NotificationHub> hubContext, ILogger<SignalRPushProvider> logger)
+    public SignalRPushProvider(IHubContext<NotificationHub> hubContext, ISystemConfigService systemConfig, ILogger<SignalRPushProvider> logger)
     {
         _hubContext = hubContext;
+        _systemConfig = systemConfig;
         _logger = logger;
     }
 
@@ -29,7 +32,8 @@ public class SignalRPushProvider : IUserPushProvider
             {
                 notification.Title,
                 notification.Body,
-                notification.Data
+                notification.Data,
+                NativePush = NativePushConfigured()
             });
 
             _logger.LogDebug("SignalR notification sent to user {UserId}", userId);
@@ -41,4 +45,9 @@ public class SignalRPushProvider : IUserPushProvider
             return false;
         }
     }
+
+    private bool NativePushConfigured() =>
+        (!string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.PushRelayUrl))
+            && !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey)))
+        || !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.FirebaseCredentialsJson));
 }
