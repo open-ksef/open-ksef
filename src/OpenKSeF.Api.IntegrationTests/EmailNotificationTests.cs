@@ -257,6 +257,39 @@ public sealed class EmailNotificationTests : IAsyncLifetime
         Assert.Contains("Pozostałe nowe faktury: 15. Zobacz je w aplikacji lub w portalu OpenKSeF.", await Mailpit.SnippetAsync(_mailpit, "Więcej nowych faktur: NIP 1111111111"));
     }
 
+    [Theory]
+    [InlineData(PushResult.Sent)]
+    [InlineData(PushResult.InvalidToken)]
+    public async Task IncrementalSync_PageTwoFailsToStore_StoredPageStillNotifies_RetryNotifiesRest(PushResult pushResult)
+    {
+        var page1 = Enumerable.Range(0, 8).Select(i => Bought($"A-1{i}")).ToList();
+        var page2 = Enumerable.Range(0, 8).Select(i => Bought($"A-2{i}")).ToList();
+        var failing = page2.Select(i => i with { VendorNip = "11111111130" }).ToList();
+        var pages = new[] { page1, failing };
+        _received = c => c.SubjectNip == NipA && c.PageOffset < 2 ? Page(pages[c.PageOffset]) : Page([]);
+        var push = new RecordingPushProvider(pushResult);
+        await using (var db = NewContext())
+        {
+            db.DeviceTokens.Add(new DeviceToken { Id = Guid.NewGuid(), UserId = $"user-{NipA}", Token = "fcm-token-a", Platform = Platform.Android, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.StoreFailed, (await SyncService(db, MailpitOptions(), push: push, batchSize: 8).SyncTenantAsync(_tenantA)).Outcome);
+
+        Assert.Equal(8, (await Mailpit.MessagesAsync(_mailpit)).Count);
+        await using (var check = NewContext())
+            Assert.Equal(pushResult == PushResult.InvalidToken ? 0 : 1, await check.DeviceTokens.CountAsync());
+
+        pages[1] = page2;
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db, MailpitOptions(), push: push, batchSize: 8).SyncTenantAsync(_tenantA)).Outcome);
+
+        Assert.Equal(16, (await Mailpit.MessagesAsync(_mailpit)).Count);
+        await using var stored = NewContext();
+        Assert.Equal(page1.Concat(page2).Select(i => i.KSeFNumber).Order(), (await stored.InvoiceHeaders.Where(i => i.TenantId == _tenantA).Select(i => i.KSeFInvoiceNumber).ToListAsync()).Order());
+    }
+
     [Fact]
     public async Task SameRun_RecipientRejectedBySmtpOnTenantA_StillEmailsTenantB_NoAddressInLogs()
     {
@@ -349,14 +382,14 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     private static ILogger<T> Logger<T>(List<(LogLevel, string, string)>? log) =>
         log is null ? NullLogger<T>.Instance : new ListLogger<T>(log);
 
-    private sealed class RecordingPushProvider : IPushProvider
+    private sealed class RecordingPushProvider(PushResult result = PushResult.Sent) : IPushProvider
     {
         public List<PushNotification> Sent { get; } = [];
 
         public Task<PushResult> SendAsync(string deviceToken, Platform platform, PushNotification notification)
         {
             Sent.Add(notification);
-            return Task.FromResult(PushResult.Sent);
+            return Task.FromResult(result);
         }
     }
 

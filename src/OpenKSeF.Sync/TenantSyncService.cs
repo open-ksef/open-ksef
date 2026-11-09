@@ -215,11 +215,15 @@ public sealed class TenantSyncService : ITenantSyncService
                     windowStart = windowEnd;
                 }
             }
-            finally
+            catch
             {
                 if (notify)
-                    await _invoiceService.NotifyNewInvoicesAsync(tenant.Id, newReceivedIds);
+                    await NotifyStoredPagesAsync(tenant.Id, newReceivedIds);
+                throw;
             }
+
+            if (notify)
+                await _invoiceService.NotifyNewInvoicesAsync(tenant.Id, newReceivedIds);
 
             syncState.LastSyncedAt = now;
             syncState.LastSuccessfulSync = now;
@@ -271,6 +275,20 @@ public sealed class TenantSyncService : ITenantSyncService
         finally
         {
             _db.ChangeTracker.Clear();
+        }
+    }
+
+    private async Task NotifyStoredPagesAsync(Guid tenantId, List<Guid> storedIds)
+    {
+        // A failed page stays tracked; a token removal's SaveChanges would re-flush it and abort the e-mails.
+        _db.ChangeTracker.Clear();
+        try
+        {
+            await _invoiceService.NotifyNewInvoicesAsync(tenantId, storedIds);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Notifications for stored pages failed after a sync error, tenant {TenantId}", tenantId);
         }
     }
 
