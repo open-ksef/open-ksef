@@ -36,7 +36,13 @@ public class EmailService : IEmailService
             logger.LogWarning("Email:UseSsl is false and Email:Username is set: SMTP credentials are sent unencrypted");
     }
 
-    public async Task SendNewInvoiceEmailAsync(string toEmail, NewInvoiceDetectedEvent evt)
+    public Task SendNewInvoiceEmailAsync(string toEmail, NewInvoiceDetectedEvent evt) =>
+        SendAsync(() => BuildNewInvoiceMessage(toEmail, evt), evt.TenantId, evt.InvoiceId);
+
+    public Task SendNewInvoicesSummaryEmailAsync(string toEmail, Guid tenantId, string company, int count) =>
+        SendAsync(() => BuildNewInvoicesSummaryMessage(toEmail, company, count), tenantId, null);
+
+    private async Task SendAsync(Func<MimeMessage> build, Guid tenantId, Guid? invoiceId)
     {
         if (!_options.Enabled)
         {
@@ -44,7 +50,7 @@ public class EmailService : IEmailService
             return;
         }
 
-        var message = BuildNewInvoiceMessage(toEmail, evt);
+        var message = build();
 
         using var timeout = new CancellationTokenSource(SendTimeout);
         using var client = new SmtpClient
@@ -60,7 +66,7 @@ public class EmailService : IEmailService
                 await client.AuthenticateAsync(_options.Username, _options.Password ?? string.Empty, timeout.Token);
 
             await client.SendAsync(message, timeout.Token);
-            _logger.LogInformation("Email sent for tenant {TenantId}, invoice {InvoiceId}", evt.TenantId, evt.InvoiceId);
+            _logger.LogInformation("Email sent for tenant {TenantId}, invoice {InvoiceId}", tenantId, invoiceId);
         }
         finally
         {
@@ -84,6 +90,22 @@ public class EmailService : IEmailService
                     <li><strong>Numer faktury:</strong> {WebUtility.HtmlEncode(evt.InvoiceNumber ?? "-")}</li>
                     <li><strong>Kwota:</strong> {evt.Amount.ToString("N2", PolishCulture)} {WebUtility.HtmlEncode(evt.Currency)}</li>
                 </ul>
+                <p><small>Wysłane przez OpenKSeF</small></p>
+                """
+        };
+        return message;
+    }
+
+    internal MimeMessage BuildNewInvoicesSummaryMessage(string toEmail, string company, int count)
+    {
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
+        message.To.Add(MailboxAddress.Parse(toEmail));
+        message.Subject = $"Więcej nowych faktur: {company}";
+        message.Body = new TextPart("html")
+        {
+            Text = $"""
+                <p>Pobraliśmy z KSeF więcej nowych faktur zakupowych niż wysyłamy osobnych powiadomień. Pozostałe nowe faktury: {count}. Zobacz je w aplikacji lub w portalu OpenKSeF.</p>
                 <p><small>Wysłane przez OpenKSeF</small></p>
                 """
         };

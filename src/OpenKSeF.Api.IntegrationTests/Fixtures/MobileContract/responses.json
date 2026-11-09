@@ -423,5 +423,14 @@
     "arguments[].data.tenantId": "string",
     "arguments[].data.invoiceId": "string",
     "arguments[].nativePush": "boolean"
+  },
+  "SignalR ReceiveNotification (newInvoicesSummary)": {
+    "target": "string",
+    "arguments[].title": "string",
+    "arguments[].body": "string",
+    "arguments[].data.type": "string",
+    "arguments[].data.tenantId": "string",
+    "arguments[].data.count": "string",
+    "arguments[].nativePush": "boolean"
   }
 }

@@ -108,7 +108,8 @@ public class MobileContractApiTests : IDisposable
 
         (await _client.PostAsJsonAsync("/api/devices/register", new { token = $"mobile-contract-{Guid.NewGuid():N}", platform = 1, tenantId })).EnsureSuccessStatusCode();
         await Read("GET /api/devices", await _client.GetAsync("/api/devices"));
-        actual["SignalR ReceiveNotification"] = Flatten(await HubFrameAsync(tenantId, invoiceId));
+        actual["SignalR ReceiveNotification"] = Flatten(await HubFrameAsync(n => n.NotifyNewInvoiceAsync(new NewInvoiceDetectedEvent(tenantId, invoiceId, "Vendor", "FV/1/2026", 123m, "PLN"))));
+        actual["SignalR ReceiveNotification (newInvoicesSummary)"] = Flatten(await HubFrameAsync(n => n.NotifyNewInvoicesSummaryAsync(tenantId, 15)));
         (await _client.DeleteAsync($"/api/tenants/{tenantId}")).EnsureSuccessStatusCode();
 
         var golden = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(
@@ -121,20 +122,19 @@ public class MobileContractApiTests : IDisposable
         Assert.True(broken.Count == 0, string.Join(Environment.NewLine, broken));
     }
 
-    private async Task<JsonElement> HubFrameAsync(Guid tenantId, Guid invoiceId)
+    private async Task<JsonElement> HubFrameAsync(Func<NotificationService, Task> notify)
     {
         var proxy = Substitute.For<IClientProxy>();
         var hub = Substitute.For<IHubContext<NotificationHub>>();
         hub.Clients.User(Arg.Any<string>()).Returns(proxy);
         using (var scope = _factory.Services.CreateScope())
         {
-            await new NotificationService(
+            await notify(new NotificationService(
                 scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
                 [],
                 Substitute.For<IEmailService>(),
                 NullLogger<NotificationService>.Instance,
-                new SignalRPushProvider(hub, _factory.Services.GetRequiredService<ISystemConfigService>(), NullLogger<SignalRPushProvider>.Instance))
-                .NotifyNewInvoiceAsync(new NewInvoiceDetectedEvent(tenantId, invoiceId, "Vendor", "FV/1/2026", 123m, "PLN"));
+                new SignalRPushProvider(hub, _factory.Services.GetRequiredService<ISystemConfigService>(), NullLogger<SignalRPushProvider>.Instance)));
         }
         var call = proxy.ReceivedCalls().Single().GetArguments();
         var protocol = _factory.Services.GetServices<IHubProtocol>().Single(p => p.Name == "json");

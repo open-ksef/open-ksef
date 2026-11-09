@@ -232,6 +232,58 @@ public class NotificationServiceTests : IDisposable
         Assert.Equal(expectedAttempts, _email.Attempts);
     }
 
+    [Theory]
+    [InlineData("Biuro Testowe", "Biuro Testowe")]
+    [InlineData(null, "NIP 1111111111")]
+    [InlineData(" ", "NIP 1111111111")]
+    public async Task NotifyNewInvoicesSummaryAsync_SendsPolishSummaryPushAndEmail(string? displayName, string company)
+    {
+        var tenantId = await SeedDeviceAsync("fcm-token-valid", NotificationEmail, displayName);
+        var provider = new StubPushProvider(PushResult.Sent);
+
+        await CreateService(provider).NotifyNewInvoicesSummaryAsync(tenantId, 15);
+
+        Assert.Equal(1, provider.Calls);
+        Assert.Equal("Więcej nowych faktur", provider.Last!.Title);
+        Assert.Equal($"{company}: pozostałe nowe faktury: 15. Zobacz je w aplikacji.", provider.Last.Body);
+        Assert.Equal(new Dictionary<string, string>
+        {
+            ["type"] = "newInvoicesSummary",
+            ["tenantId"] = tenantId.ToString(),
+            ["count"] = "15"
+        }, provider.Last.Data);
+        Assert.Equal([(NotificationEmail, tenantId, company, 15)], _email.Summaries);
+    }
+
+    [Fact]
+    public async Task NotifyNewInvoicesSummaryAsync_SendsEmail_WithoutDevice_AndPush_WithoutAddress()
+    {
+        var noDevice = await SeedTenantAsync("user-2", NotificationEmail);
+        var noAddress = await SeedDeviceAsync("fcm-token-valid");
+        var provider = new StubPushProvider(PushResult.Sent);
+        var sut = CreateService(provider);
+
+        await sut.NotifyNewInvoicesSummaryAsync(noDevice, 3);
+        await sut.NotifyNewInvoicesSummaryAsync(noAddress, 4);
+
+        Assert.Equal(1, provider.Calls);
+        Assert.Equal("4", provider.Last!.Data!["count"]);
+        Assert.Equal([(NotificationEmail, noDevice, "NIP 1111111111", 3)], _email.Summaries);
+    }
+
+    [Fact]
+    public async Task NotifyNewInvoicesSummaryAsync_SkipsEmail_AfterHostFailureInRun()
+    {
+        var tenantId = await SeedTenantAsync("user-1", NotificationEmail);
+        _email.Failure = new SocketException();
+        var sut = CreateService();
+
+        await sut.NotifyNewInvoiceAsync(CreateEvent(tenantId));
+        await sut.NotifyNewInvoicesSummaryAsync(tenantId, 5);
+
+        Assert.Equal(1, _email.Attempts);
+    }
+
     private NotificationService CreateService(params IPushProvider[] providers) =>
         new(
             _db,
@@ -239,7 +291,7 @@ public class NotificationServiceTests : IDisposable
             _email,
             _logger);
 
-    private async Task<Guid> SeedTenantAsync(string userId, string? notificationEmail = null)
+    private async Task<Guid> SeedTenantAsync(string userId, string? notificationEmail = null, string? displayName = null)
     {
         var tenantId = Guid.NewGuid();
         var now = DateTime.UtcNow;
@@ -248,6 +300,7 @@ public class NotificationServiceTests : IDisposable
             Id = tenantId,
             UserId = userId,
             Nip = "1111111111",
+            DisplayName = displayName,
             NotificationEmail = notificationEmail,
             CreatedAt = now,
             UpdatedAt = now
@@ -256,9 +309,9 @@ public class NotificationServiceTests : IDisposable
         return tenantId;
     }
 
-    private async Task<Guid> SeedDeviceAsync(string token, string? notificationEmail = null)
+    private async Task<Guid> SeedDeviceAsync(string token, string? notificationEmail = null, string? displayName = null)
     {
-        var tenantId = await SeedTenantAsync("user-1", notificationEmail);
+        var tenantId = await SeedTenantAsync("user-1", notificationEmail, displayName);
         var now = DateTime.UtcNow;
 
         _db.DeviceTokens.Add(new DeviceToken
@@ -316,12 +369,23 @@ public class NotificationServiceTests : IDisposable
 
         public Exception? Failure { get; set; }
 
+        public List<(string To, Guid TenantId, string Company, int Count)> Summaries { get; } = [];
+
         public Task SendNewInvoiceEmailAsync(string toEmail, NewInvoiceDetectedEvent evt)
         {
             Attempts++;
             if (Failure is not null)
                 return Task.FromException(Failure);
             Sent.Add((toEmail, evt.InvoiceId));
+            return Task.CompletedTask;
+        }
+
+        public Task SendNewInvoicesSummaryEmailAsync(string toEmail, Guid tenantId, string company, int count)
+        {
+            Attempts++;
+            if (Failure is not null)
+                return Task.FromException(Failure);
+            Summaries.Add((toEmail, tenantId, company, count));
             return Task.CompletedTask;
         }
     }
