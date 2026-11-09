@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using MailKit.Net.Smtp;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -38,12 +39,19 @@ public class NotificationService : INotificationService
         _userPushProvider = userPushProvider;
     }
 
+    public static void EnsurePolishFormatting(CultureInfo culture)
+    {
+        var formatted = 1234.5m.ToString("N2", culture);
+        if (formatted != "1\u00a0234,50")
+            throw new InvalidOperationException($"pl-PL formatting unavailable (ICU missing or invariant globalization): N2 of 1234.5 gave '{formatted}'.");
+    }
+
     public async Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt)
     {
         var notification = new PushNotification
         {
             Title = "Nowa faktura",
-            Body = $"{(string.IsNullOrWhiteSpace(evt.VendorName) ? "Nieznany sprzedawca" : evt.VendorName)}: {evt.Amount.ToString("N2", PolishCulture)} {evt.Currency}",
+            Body = $"{(string.IsNullOrWhiteSpace(evt.VendorName) ? "Nieznany sprzedawca" : Regex.Replace(evt.VendorName.Trim(), @"\s+", " "))}: {evt.Amount.ToString("N2", PolishCulture)} {evt.Currency}",
             Data = new Dictionary<string, string>
             {
                 ["tenantId"] = evt.TenantId.ToString(),

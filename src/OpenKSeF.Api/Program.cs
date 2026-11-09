@@ -29,6 +29,8 @@ Log.Logger = new LoggerConfiguration()
         "[{Timestamp:HH:mm:ss} {Level:u3}] {CorrelationId} {Message:lj}{NewLine}{Exception}")
     .CreateBootstrapLogger();
 
+NotificationService.EnsurePolishFormatting(System.Globalization.CultureInfo.GetCultureInfo("pl-PL"));
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration)
