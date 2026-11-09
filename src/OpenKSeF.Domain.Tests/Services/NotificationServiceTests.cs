@@ -255,6 +255,29 @@ public class NotificationServiceTests : IDisposable
         Assert.Equal([(NotificationEmail, tenantId, company, 15)], _email.Summaries);
     }
 
+    [Theory]
+    [InlineData("Dostawca Testowy", 1234567.891, "EUR", "Dostawca Testowy: 1 234 567,89 EUR")]
+    [InlineData("", 0.5, "PLN", "Nieznany sprzedawca: 0,50 PLN")]
+    [InlineData("  ", 999.999, "PLN", "Nieznany sprzedawca: 1 000,00 PLN")]
+    public async Task NotifyNewInvoiceAsync_SendsPolishPush_SameOnSignalRAndDevice(string vendor, double amount, string currency, string body)
+    {
+        var tenantId = await SeedDeviceAsync("fcm-token-valid");
+        var provider = new StubPushProvider(PushResult.Sent);
+        var signalR = new StubUserPushProvider();
+        var evt = new NewInvoiceDetectedEvent(tenantId, Guid.NewGuid(), vendor, "FV/1", (decimal)amount, currency);
+
+        await new NotificationService(_db, [provider], _email, _logger, signalR).NotifyNewInvoiceAsync(evt);
+
+        Assert.Equal("Nowa faktura", provider.Last!.Title);
+        Assert.Equal(body, provider.Last.Body);
+        Assert.Equal(new Dictionary<string, string>
+        {
+            ["tenantId"] = tenantId.ToString(),
+            ["invoiceId"] = evt.InvoiceId.ToString()
+        }, provider.Last.Data);
+        Assert.Same(provider.Last, signalR.Last);
+    }
+
     [Fact]
     public async Task NotifyNewInvoicesSummaryAsync_SendsEmail_WithoutDevice_AndPush_WithoutAddress()
     {
@@ -358,6 +381,17 @@ public class NotificationServiceTests : IDisposable
             Calls++;
             Last = notification;
             return _exception is null ? Task.FromResult(_result) : Task.FromException<PushResult>(_exception);
+        }
+    }
+
+    private sealed class StubUserPushProvider : IUserPushProvider
+    {
+        public PushNotification? Last { get; private set; }
+
+        public Task<bool> SendToUserAsync(string userId, PushNotification notification)
+        {
+            Last = notification;
+            return Task.FromResult(true);
         }
     }
 
