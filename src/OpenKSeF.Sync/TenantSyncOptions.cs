@@ -31,4 +31,9 @@ public class TenantSyncOptions
     /// Pause between Worker XML downloads. KSeF allows 16 per minute per NIP and IP.
     /// </summary>
     public TimeSpan XmlDownloadSpacing { get; set; } = TimeSpan.FromSeconds(4);
+
+    /// <summary>
+    /// How long notifications keep sending after the sync is cancelled; fits Docker's 10 s stop window.
+    /// </summary>
+    public TimeSpan NotificationGrace { get; set; } = TimeSpan.FromSeconds(5);
 }

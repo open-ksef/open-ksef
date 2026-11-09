@@ -164,6 +164,8 @@ public sealed class TenantSyncService : ITenantSyncService
             var notify = fullResyncWindowStart is null && syncState.LastSuccessfulSync is not null;
             var totalFetched = 0;
             var newReceivedIds = new List<Guid>();
+            using var notifyCts = new CancellationTokenSource();
+            using var notifyGrace = cancellationToken.Register(() => notifyCts.CancelAfter(_syncOptions.NotificationGrace));
 
             try
             {
@@ -218,12 +220,12 @@ public sealed class TenantSyncService : ITenantSyncService
             catch
             {
                 if (notify)
-                    await NotifyStoredPagesAsync(tenant.Id, newReceivedIds, cancellationToken);
+                    await NotifyStoredPagesAsync(tenant.Id, newReceivedIds, notifyCts.Token);
                 throw;
             }
 
             if (notify)
-                await _invoiceService.NotifyNewInvoicesAsync(tenant.Id, newReceivedIds, cancellationToken);
+                await _invoiceService.NotifyNewInvoicesAsync(tenant.Id, newReceivedIds, notifyCts.Token);
 
             syncState.LastSyncedAt = now;
             syncState.LastSuccessfulSync = now;

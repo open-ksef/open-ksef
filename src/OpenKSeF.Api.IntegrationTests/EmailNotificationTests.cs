@@ -290,6 +290,44 @@ public sealed class EmailNotificationTests : IAsyncLifetime
         Assert.Equal(page1.Concat(page2).Select(i => i.KSeFNumber).Order(), (await stored.InvoiceHeaders.Where(i => i.TenantId == _tenantA).Select(i => i.KSeFInvoiceNumber).ToListAsync()).Order());
     }
 
+    [Theory]
+    [InlineData(60_000, 4)]
+    [InlineData(1_500, 2)]
+    public async Task IncrementalSync_CancelledDuringNotify_SendsWithinGrace_SkipsRest_StoresAll(int graceMs, int expectedSent)
+    {
+        var invoices = Enumerable.Range(0, 4).Select(i => Bought($"A-{i}")).ToList();
+        _received = c => c.SubjectNip == NipA && c.PageOffset == 0 ? Page(invoices) : Page([]);
+        using var stop = new CancellationTokenSource();
+        var push = new RecordingPushProvider(onSend: async () =>
+        {
+            stop.Cancel();
+            await Task.Delay(1_000);
+        });
+        var log = new List<(LogLevel Level, string Category, string Text)>();
+        await using (var db = NewContext())
+        {
+            db.DeviceTokens.Add(new DeviceToken { Id = Guid.NewGuid(), UserId = $"user-{NipA}", Token = "fcm-token-a", Platform = Platform.Android, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                SyncService(db, MailpitOptions(), log, push, notificationGrace: TimeSpan.FromMilliseconds(graceMs)).SyncTenantAsync(_tenantA, cancellationToken: stop.Token));
+
+        Assert.Equal(expectedSent, push.Sent.Count);
+        Assert.Equal(expectedSent, (await Mailpit.MessagesAsync(_mailpit)).Count);
+        var skipped = log.Where(e => e.Category == nameof(InvoiceService) && e.Text.Contains("notifications skipped")).ToList();
+        if (expectedSent == invoices.Count)
+            Assert.Empty(skipped);
+        else
+            Assert.Contains($"skipped for {invoices.Count - expectedSent} stored invoices", Assert.Single(skipped).Text);
+        await using var check = NewContext();
+        var stored = await check.InvoiceHeaders.Where(i => i.TenantId == _tenantA).ToListAsync();
+        Assert.Equal(invoices.Select(i => i.KSeFNumber).Order(), stored.Select(i => i.KSeFInvoiceNumber).Order());
+        Assert.All(stored, i => Assert.False(i.IsPaid));
+        Assert.All(stored, i => Assert.Null(i.PaidAt));
+    }
+
     [Fact]
     public async Task SameRun_RecipientRejectedBySmtpOnTenantA_StillEmailsTenantB_NoAddressInLogs()
     {
@@ -361,7 +399,7 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     private ApplicationDbContext NewContext() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(_postgres.GetConnectionString()).Options);
 
-    private TenantSyncService SyncService(ApplicationDbContext db, EmailOptions email, List<(LogLevel Level, string Category, string Text)>? log = null, IPushProvider? push = null, int batchSize = 100)
+    private TenantSyncService SyncService(ApplicationDbContext db, EmailOptions email, List<(LogLevel Level, string Category, string Text)>? log = null, IPushProvider? push = null, int batchSize = 100, TimeSpan? notificationGrace = null)
     {
         var notifications = new NotificationService(
             db,
@@ -374,7 +412,7 @@ public sealed class EmailNotificationTests : IAsyncLifetime
             Substitute.For<IEncryptionService>(),
             new InvoiceService(db, notifications, Logger<InvoiceService>(log)),
             new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
-            Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero, BatchSize = batchSize }),
+            Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero, BatchSize = batchSize, NotificationGrace = notificationGrace ?? TimeSpan.FromSeconds(5) }),
             new XmlDownloadBlocks(),
             Logger<TenantSyncService>(log));
     }
@@ -382,14 +420,16 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     private static ILogger<T> Logger<T>(List<(LogLevel, string, string)>? log) =>
         log is null ? NullLogger<T>.Instance : new ListLogger<T>(log);
 
-    private sealed class RecordingPushProvider(PushResult result = PushResult.Sent) : IPushProvider
+    private sealed class RecordingPushProvider(PushResult result = PushResult.Sent, Func<Task>? onSend = null) : IPushProvider
     {
         public List<PushNotification> Sent { get; } = [];
 
-        public Task<PushResult> SendAsync(string deviceToken, Platform platform, PushNotification notification)
+        public async Task<PushResult> SendAsync(string deviceToken, Platform platform, PushNotification notification)
         {
             Sent.Add(notification);
-            return Task.FromResult(result);
+            if (onSend is not null)
+                await onSend();
+            return result;
         }
     }
 
