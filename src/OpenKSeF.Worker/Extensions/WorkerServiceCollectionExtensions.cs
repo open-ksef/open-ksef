@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Push;
 using OpenKSeF.Domain.Services;
 
@@ -10,7 +11,8 @@ public static class WorkerServiceCollectionExtensions
     public static IServiceCollection AddWorkerDomainServices(this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddScoped<IEmailService, NoOpEmailService>();
+        services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
+        services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IInvoiceService, InvoiceService>();
         services.AddScoped<IssuedInvoiceEscalationService>();

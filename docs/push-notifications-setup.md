@@ -7,7 +7,7 @@ Push notifications let the mobile app receive real-time alerts when new invoices
 | **1. SignalR (local push)** | Direct WebSocket connection | App is connected to the API | None (always on) |
 | **2. Relay (team-operated)** | HTTP POST to relay server | App is in background, any network | Toggle ON in admin wizard (default) |
 | **3. Direct FCM/APNs** | Firebase / Apple push | App is in background, own Firebase | Advanced: paste Firebase JSON |
-| **4. Email** | SMTP | Manual sync only | Off by default: set `Email__*` on the API, see [Layer 4](#layer-4-email) |
+| **4. Email** | SMTP | Every new invoice, API and Worker, with or without devices | Off by default: set `EMAIL_*` in `.env`, see [Layer 4](#layer-4-email) |
 
 Most self-hosted admins only need **Layer 1 + Layer 2** which require no Firebase setup at all.
 
@@ -25,7 +25,7 @@ New invoice synced from KSeF
     │
     ├─ 3. Direct FCM/APNs: if own Firebase configured, send directly
     │
-    └─ 4. Email: manual sync only, to the tenant notification address, when enabled
+    └─ 4. Email: to the company notification address, when enabled (independent of 1-3)
 ```
 
 ### Layer 1: SignalR (local push)
@@ -55,7 +55,20 @@ See the [Firebase setup section](#android--firebase-cloud-messaging-fcm) below.
 
 ### Layer 4: Email
 
-Off by default (`Email__Enabled`). It needs `Email__*` variables in the `api` service environment: `.env` alone does not pass them, and SMTP from the wizard is for Keycloak only. When enabled, a manual sync emails the tenant notification address. The Worker never sends email.
+An independent channel, not a fallback. One e-mail per new purchase invoice goes to the company notification address, from the Worker (scheduled sync) and the API (manual sync), whether or not the owner has a device. First sync and full resync send none. SMTP from the wizard configures Keycloak only and has no effect here.
+
+Set in `.env`; `docker-compose.yml` passes them to `api` and `worker` as `Email__*`:
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `EMAIL_ENABLED` | `false` | `true` turns e-mail on |
+| `EMAIL_SMTP_HOST` | empty | SMTP server |
+| `EMAIL_SMTP_PORT` | `587` | `587` STARTTLS, `465` SSL on connect |
+| `EMAIL_USE_SSL` | `true` | `false`: plain SMTP, no TLS |
+| `EMAIL_USERNAME`, `EMAIL_PASSWORD` | empty | SMTP login; no login when the username is empty |
+| `EMAIL_FROM_ADDRESS`, `EMAIL_FROM_NAME` | `noreply@openksef.local`, `OpenKSeF` | Sender |
+
+Message: subject `Nowa faktura od {sprzedawca}`, body with seller, invoice number and amount (pl-PL), footer `Wysłane przez OpenKSeF`. A failed send is logged as one warning and not retried; each attempt gives up after 10 s. The invoice is stored before the send, so an SMTP outage never loses data or fails the sync.
 
 ---
 
@@ -178,7 +191,7 @@ Devices with `device-*` tokens **only receive SignalR real-time notifications** 
 The Worker process handles background KSeF synchronization. When new invoices are discovered during sync, the Worker sends push notifications:
 
 - **Relay** → FCM → APNs (no SignalR, since the Worker has no hub connection)
-- No email
+- Email, when `EMAIL_ENABLED=true` (see [Layer 4](#layer-4-email))
 
 The Worker reads push configuration from the same database (`SystemConfig` table) and supports the same `Firebase__CredentialsJson` environment variable as the API.
 

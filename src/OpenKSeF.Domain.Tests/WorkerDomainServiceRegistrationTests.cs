@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using OpenKSeF.Domain.Abstractions;
-using OpenKSeF.Domain.Events;
+using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Push;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Worker.Extensions;
@@ -15,14 +15,26 @@ public class WorkerDomainServiceRegistrationTests
         new ConfigurationBuilder().Build();
 
     [Fact]
-    public void AddWorkerDomainServices_RegistersNoOpEmailService()
+    public void AddWorkerDomainServices_RegistersEmailServiceWithEmailOptions()
     {
         var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Email:Enabled"] = "true",
+                ["Email:SmtpHost"] = "smtp.example.invalid",
+                ["Email:SmtpPort"] = "465"
+            })
+            .Build();
 
-        services.AddWorkerDomainServices(EmptyConfiguration);
+        services.AddWorkerDomainServices(configuration);
 
         var descriptor = Assert.Single(services.Where(d => d.ServiceType == typeof(IEmailService)));
-        Assert.Equal(typeof(NoOpEmailService), descriptor.ImplementationType);
+        Assert.Equal(typeof(EmailService), descriptor.ImplementationType);
+        var options = services.BuildServiceProvider().GetRequiredService<IOptions<EmailOptions>>().Value;
+        Assert.True(options.Enabled);
+        Assert.Equal("smtp.example.invalid", options.SmtpHost);
+        Assert.Equal(465, options.SmtpPort);
     }
 
     [Fact]
@@ -36,22 +48,5 @@ public class WorkerDomainServiceRegistrationTests
         Assert.Equal(3, pushProviders.Count);
         Assert.Contains(pushProviders, d => d.ImplementationType == typeof(RelayPushProvider));
         Assert.Contains(pushProviders, d => d.ImplementationType == typeof(FcmPushProvider));
-    }
-
-    [Fact]
-    public async Task NoOpEmailService_SendNewInvoiceEmailAsync_CompletesSuccessfully()
-    {
-        var sut = new NoOpEmailService(NullLogger<NoOpEmailService>.Instance);
-        var evt = new NewInvoiceDetectedEvent(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            "Vendor",
-            "FV/2026/001",
-            123.45m,
-            "PLN");
-
-        var exception = await Record.ExceptionAsync(() => sut.SendNewInvoiceEmailAsync("tenant@example.com", evt));
-
-        Assert.Null(exception);
     }
 }
