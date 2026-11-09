@@ -106,6 +106,19 @@ describe('Firma, Dane firmy', () => {
     expect(updateTenant).toHaveBeenCalledExactlyOnceWith('b', { displayName: 'Nowa B', notificationEmail: 'a@b.pl' })
   })
 
+  it('says the notification e-mail needs server mail, in details and in the add dialog', async () => {
+    await render()
+    expect(container.querySelector('#company-email-hint')?.textContent).toBe('E-mail wysyłamy tylko wtedy, gdy administrator serwera skonfigurował pocztę.')
+    expect(by('company-notification-email')?.getAttribute('aria-describedby')).toBe('company-email-hint')
+
+    await act(async () => by('company-card')?.click())
+    await settle()
+    await act(async () => by('company-add')?.click())
+    await settle()
+    expect(container.querySelector('#tenant-form-notification-email-hint')?.textContent).toBe('E-mail wysyłamy tylko wtedy, gdy administrator serwera skonfigurował pocztę.')
+    expect(by('tenant-form-notification-email')?.getAttribute('aria-describedby')).toBe('tenant-form-notification-email-hint')
+  })
+
   it('names the company, the issued invoice count and the loss in the delete dialog', async () => {
     vi.mocked(deleteTenant).mockResolvedValue(undefined)
     await render()

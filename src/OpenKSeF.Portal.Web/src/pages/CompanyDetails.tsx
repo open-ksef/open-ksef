@@ -143,11 +143,13 @@ function DetailsTab({ company }: { company: TenantResponse }): ReactElement {
             <label htmlFor="company-email">E-mail do powiadomień</label>
             <input
               id="company-email"
+              aria-describedby="company-email-hint"
               data-testid="company-notification-email"
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
             />
+            <span className="ui-form-hint" id="company-email-hint">E-mail wysyłamy tylko wtedy, gdy administrator serwera skonfigurował pocztę.</span>
           </div>
           <p className="ui-form-hint">Data dodania: {formatWarsawDate(company.createdAt)}</p>
           {formError ? (
@@ -277,11 +279,13 @@ function AddCompanyDialog({ onClose }: { onClose: () => void }): ReactElement {
             <label htmlFor="tenant-form-notification-email">E-mail do powiadomień</label>
             <input
               id="tenant-form-notification-email"
+              aria-describedby="tenant-form-notification-email-hint"
               data-testid="tenant-form-notification-email"
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
             />
+            <span className="ui-form-hint" id="tenant-form-notification-email-hint">E-mail wysyłamy tylko wtedy, gdy administrator serwera skonfigurował pocztę.</span>
           </div>
           {formError ? (
             <div className="ui-form-error" role="alert">

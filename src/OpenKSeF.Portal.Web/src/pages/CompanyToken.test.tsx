@@ -238,6 +238,14 @@ describe('Firma, Token KSeF i pobieranie', () => {
     expect(toast.success).toHaveBeenCalledWith('Pełna resynchronizacja zakończona. Pobrane: 5, nowe: 0.')
   })
 
+  it('full resync drops cached transfer details of the company', async () => {
+    const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries')
+    await fullResync({ failedDownloads: 0, erroredDownloads: 0, queuedDownloads: 0 })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['transfer-details', 'a'] })
+    invalidate.mockRestore()
+  })
+
   it('a company without a token has no danger card and no fetch', async () => {
     vi.mocked(listCredentials).mockResolvedValue([row('a', { hasCredential: false, credentialType: null, lastUpdatedAt: null })])
     await render()

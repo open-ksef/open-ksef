@@ -79,6 +79,12 @@ describe('Onboarding', () => {
     expect(createTenant).not.toHaveBeenCalled()
   })
 
+  it('says the notification e-mail needs server mail', () => {
+    const hint = container.querySelector('#onboarding-email-hint')
+    expect(hint?.textContent).toBe('E-mail wysyłamy tylko wtedy, gdy administrator serwera skonfigurował pocztę.')
+    expect(by('onboarding-email')?.getAttribute('aria-describedby')).toBe('onboarding-email-hint')
+  })
+
   it('step 2 shows only the token form, with the permissions and the MF tool', async () => {
     await toStep2()
 
