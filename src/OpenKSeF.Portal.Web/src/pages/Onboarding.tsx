@@ -164,11 +164,13 @@ export function OnboardingPage(): ReactElement {
                 <label htmlFor="onboarding-email">E-mail do powiadomień (opcjonalnie)</label>
                 <input
                   id="onboarding-email"
+                  aria-describedby="onboarding-email-hint"
                   data-testid="onboarding-email"
                   type="email"
                   value={form.notificationEmail}
                   onChange={(e) => setForm((f) => ({ ...f, notificationEmail: e.target.value }))}
                 />
+                <span className="ui-form-hint" id="onboarding-email-hint">E-mail wysyłamy tylko wtedy, gdy administrator serwera skonfigurował pocztę.</span>
               </div>
 
               {validationError && (

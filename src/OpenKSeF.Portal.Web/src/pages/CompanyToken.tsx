@@ -91,6 +91,7 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
       }
       await refreshCredentials()
       await queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      await queryClient.invalidateQueries({ queryKey: ['transfer-details', tenantId] })
     },
     onError: (mutationError) => notifyMutationError('save', 'Credential', mutationError),
     onSettled: () => setPending(null),
