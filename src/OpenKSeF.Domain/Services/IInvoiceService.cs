@@ -10,5 +10,5 @@ public interface IInvoiceService
     /// <remarks>Never writes <c>IsPaid</c>/<c>PaidAt</c>; adds lines only when the invoice has none.</remarks>
     Task ApplyInvoiceXmlAsync(Guid invoiceId, InvoiceXmlDetails details, CancellationToken cancellationToken = default);
 
-    Task RecordFailedInvoiceXmlAsync(Guid invoiceId, CancellationToken cancellationToken = default);
+    Task RecordFailedInvoiceXmlAsync(Guid invoiceId, bool xmlReceived, CancellationToken cancellationToken = default);
 }

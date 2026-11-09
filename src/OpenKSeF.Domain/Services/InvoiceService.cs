@@ -170,17 +170,20 @@ public class InvoiceService : IInvoiceService
             _db.InvoiceLines.AddRange(lines.Select(l => MapLine(l, invoiceId)));
 
         invoice.XmlFetchedAt = DateTime.UtcNow;
+        invoice.XmlFailedReads = null;
         invoice.LastUpdatedAt = invoice.XmlFetchedAt.Value;
         await _db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task RecordFailedInvoiceXmlAsync(Guid invoiceId, CancellationToken cancellationToken = default)
+    public async Task RecordFailedInvoiceXmlAsync(Guid invoiceId, bool xmlReceived, CancellationToken cancellationToken = default)
     {
         var invoice = await _db.InvoiceHeaders.FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
         if (invoice is null)
             return;
 
         invoice.XmlAttemptedAt = DateTime.UtcNow;
+        if (xmlReceived)
+            invoice.XmlFailedReads = (short)((invoice.XmlFailedReads ?? 0) + 1);
         await _db.SaveChangesAsync(cancellationToken);
     }
 

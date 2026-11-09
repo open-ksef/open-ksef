@@ -69,6 +69,14 @@ public class KSeFInvoiceXmlParserTests
     }
 
     [Theory]
+    [InlineData("")]
+    [InlineData("<DataZaplaty>05.03.2026</DataZaplaty>")]
+    public void ExtractInvoiceDetails_PaidWithoutReadableDate_StaysPaid(string date)
+    {
+        Assert.Equal(DateOnly.MinValue, Details(Fa3Namespace, $"<Platnosc><Zaplacono>1</Zaplacono>{date}</Platnosc>").SellerPaidOn);
+    }
+
+    [Theory]
     [InlineData("2", false)]
     [InlineData("1", true)]
     public void ExtractInvoiceDetails_P18A(string value, bool expected)

@@ -9,14 +9,15 @@ public class TransferDetailsService : ITransferDetailsService
 {
     private const decimal MppNoticeThreshold = 15000m;
     private static readonly CultureInfo PolishCulture = CultureInfo.GetCultureInfo("pl-PL");
+    private static readonly string[] QrTypes = ["Vat", "Zal", "Roz", "Upr"];
 
     public string BuildTransferText(InvoiceHeader invoice, string tenantNip)
     {
         var data = BuildTransferData(invoice, tenantNip);
-        var lines = new List<string>
-        {
-            $"Odbiorca: {data.RecipientName}"
-        };
+        var lines = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(data.RecipientName))
+            lines.Add($"Odbiorca: {data.RecipientName}");
 
         if (!string.IsNullOrWhiteSpace(data.RecipientNip))
             lines.Add($"NIP: {data.RecipientNip}");
@@ -94,12 +95,21 @@ public class TransferDetailsService : ITransferDetailsService
             return "Faktura korygująca: kwota to różnica. Sprawdź, czy jest coś do zapłaty.";
         if (string.IsNullOrWhiteSpace(invoice.InvoiceType))
             return "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).";
+        if (!QrTypes.Any(t => IsType(invoice, t)))
+            return invoice.InvoiceType.ToUpperInvariant() switch
+            {
+                "VATRR" => "Faktura VAT RR: kod QR nie jest dostępny dla tego rodzaju faktury. Sprawdź dane do zapłaty na fakturze.",
+                "VATPEF" or "VATPEFSP" => "Faktura PEF: kod QR nie jest dostępny dla tego rodzaju faktury. Sprawdź dane do zapłaty na fakturze.",
+                _ => $"Nieznany rodzaj faktury ({invoice.InvoiceType}): kod QR nie jest dostępny. Sprawdź dane do zapłaty na fakturze."
+            };
         if (invoice.Settlement == SettlementState.Overpaid)
             return $"Faktura wykazuje nadpłatę {Money(invoice.SettlementAmount ?? 0m)} {invoice.Currency} do rozliczenia lub zwrotu: nie ma kwoty do zapłaty.";
         if ((invoice.SettlementAmount ?? invoice.AmountGross) <= 0m)
             return "Brak kwoty do zapłaty.";
         if (invoice.SplitPayment == true)
             return $"Faktura z mechanizmem podzielonej płatności: zapłać przelewem MPP w banku. Kwota VAT: {Money(invoice.AmountVat)} PLN, NIP sprzedawcy: {invoice.VendorNip}, numer faktury: {data.Title}.";
+        if (invoice.SellerPaidOn == DateOnly.MinValue)
+            return "Sprzedawca oznaczył fakturę jako zapłaconą.";
         if (invoice.SellerPaidOn is { } paidOn)
             return $"Sprzedawca oznaczył fakturę jako zapłaconą ({paidOn.ToString("dd.MM.yyyy", PolishCulture)}).";
         if (invoice.PartialPayment == 2)
@@ -108,6 +118,8 @@ public class TransferDetailsService : ITransferDetailsService
             return "Numer rachunku pobieramy jeszcze z KSeF. Sprawdź ponownie za kilka minut.";
         if (QrCodeService.SanitizeAccount(data.RecipientAccount).Length == 0)
             return "Brak poprawnego numeru rachunku na fakturze.";
+        if (invoice.FactorBankAccount is not null && string.IsNullOrWhiteSpace(QrCodeService.Sanitize(data.RecipientName, QrCodeService.MaxNameLength)))
+            return "Płatność na rachunek faktora, ale faktura nie podaje nazwy faktora: nie można utworzyć kodu QR. Sprawdź odbiorcę przelewu na fakturze.";
         if (string.IsNullOrWhiteSpace(QrCodeService.Sanitize(data.RecipientName, QrCodeService.MaxNameLength))
             || string.IsNullOrWhiteSpace(QrCodeService.Sanitize(data.Title, QrCodeService.MaxTitleLength)))
             return "Nie można utworzyć kodu QR: brak czytelnej nazwy sprzedawcy lub numeru faktury.";

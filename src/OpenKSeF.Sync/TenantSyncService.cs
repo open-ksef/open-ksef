@@ -19,6 +19,8 @@ public sealed class TenantSyncService : ITenantSyncService
     private const int IssuedFirstRunMonthsBack = 12;
     private const int MaxIssuedQueriesPerRun = 10;
     private const int MaxConsecutiveDownloadFailures = 3;
+    private const int MaxFailedXmlReads = 5;
+    private static readonly TimeSpan CappedXmlRetryAfter = TimeSpan.FromDays(7);
 
     private readonly ApplicationDbContext _db;
     private readonly IKSeFGateway _gateway;
@@ -285,8 +287,10 @@ public sealed class TenantSyncService : ITenantSyncService
     {
         var nip = tenants[0].Nip;
         var tenantIds = tenants.Select(t => t.Id).ToList();
+        var cappedRetryBefore = runStartedAt - CappedXmlRetryAfter;
         var waiting = _db.InvoiceHeaders.AsNoTracking()
             .Where(h => tenantIds.Contains(h.TenantId)
+                && (fullResync || h.XmlFailedReads == null || h.XmlFailedReads < MaxFailedXmlReads || h.XmlAttemptedAt < cappedRetryBefore)
                 && ((h.XmlFetchedAt == null
                         && (!h.Lines.Any()
                             || (h.Direction == InvoiceDirection.Received && h.DueDate == null && (!h.IsPaid || fullResync))))
@@ -324,16 +328,17 @@ public sealed class TenantSyncService : ITenantSyncService
             if (attempted++ > 0 && spacing > TimeSpan.Zero)
                 await Task.Delay(spacing, cancellationToken);
 
+            byte[]? xml = null;
             try
             {
                 var session = await CurrentSessionAsync(tenants.First(t => t.Id == row.TenantId), sessions, cancellationToken);
-                var xml = await _gateway.DownloadInvoiceAsync(session!, row.KSeFInvoiceNumber, cancellationToken);
+                xml = await _gateway.DownloadInvoiceAsync(session!, row.KSeFInvoiceNumber, cancellationToken);
                 failuresInARow = 0;
 
                 var details = _xmlParser.ExtractInvoiceDetails(xml);
                 if (details.Lines is null)
                 {
-                    await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, cancellationToken);
+                    await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, xmlReceived: true, cancellationToken);
                     errored++;
                     continue;
                 }
@@ -352,7 +357,7 @@ public sealed class TenantSyncService : ITenantSyncService
             {
                 _logger.LogWarning(ex, "Failed to store invoice XML details: {KSeFNumber}", row.KSeFInvoiceNumber);
                 _db.ChangeTracker.Clear();
-                await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, cancellationToken);
+                await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, xml is not null, cancellationToken);
                 errored++;
                 if (++failuresInARow >= MaxConsecutiveDownloadFailures)
                     break;

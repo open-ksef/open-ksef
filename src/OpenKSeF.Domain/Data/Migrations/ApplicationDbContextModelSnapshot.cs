@@ -197,6 +197,9 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<DateTime?>("XmlAttemptedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<short?>("XmlFailedReads")
+                        .HasColumnType("smallint");
+
                     b.Property<DateTime?>("XmlFetchedAt")
                         .HasColumnType("timestamp with time zone");
 
