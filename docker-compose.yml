@@ -67,6 +67,14 @@ services:
       Firebase__CredentialsJson: ${FIREBASE_CREDENTIALS_JSON:-}
       ForwardedHeaders__ForwardLimit: ${FORWARD_LIMIT:-1}
       ForwardedHeaders__KnownNetworks: ${TRUSTED_PROXY_NETWORKS:-}
+      Email__Enabled: ${EMAIL_ENABLED:-false}
+      Email__SmtpHost: ${EMAIL_SMTP_HOST:-}
+      Email__SmtpPort: ${EMAIL_SMTP_PORT:-587}
+      Email__UseSsl: ${EMAIL_USE_SSL:-true}
+      Email__Username: ${EMAIL_USERNAME:-}
+      Email__Password: ${EMAIL_PASSWORD:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-noreply@openksef.local}
+      Email__FromName: ${EMAIL_FROM_NAME:-OpenKSeF}
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET /health HTTP/1.0\r\n\r\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
       interval: 10s
@@ -90,6 +98,14 @@ services:
       ENCRYPTION_KEY: "${ENCRYPTION_KEY:?Existing installation: do not generate a key, follow docs/admin-setup.md. New installation: openssl rand -base64 32}"
       KSeF__BaseUrl: ${KSEF_BASE_URL:-test}
       Firebase__CredentialsJson: ${FIREBASE_CREDENTIALS_JSON:-}
+      Email__Enabled: ${EMAIL_ENABLED:-false}
+      Email__SmtpHost: ${EMAIL_SMTP_HOST:-}
+      Email__SmtpPort: ${EMAIL_SMTP_PORT:-587}
+      Email__UseSsl: ${EMAIL_USE_SSL:-true}
+      Email__Username: ${EMAIL_USERNAME:-}
+      Email__Password: ${EMAIL_PASSWORD:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-noreply@openksef.local}
+      Email__FromName: ${EMAIL_FROM_NAME:-OpenKSeF}
 
   portal-web:
     image: ghcr.io/open-ksef/openksef-portal-web:${OPENKSEF_VERSION:-latest}

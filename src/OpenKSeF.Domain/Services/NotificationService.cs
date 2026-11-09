@@ -46,25 +46,23 @@ public class NotificationService : INotificationService
             }
         };
 
-        if (!await PushToOwnerDevicesAsync(evt.TenantId, evt.InvoiceId, notification))
-            return;
+        await PushToOwnerDevicesAsync(evt.TenantId, evt.InvoiceId, notification);
 
-        // Layer 4: Email fallback
-        var tenant = await _db.Tenants
+        var notificationEmail = await _db.Tenants
             .Where(t => t.Id == evt.TenantId)
-            .Select(t => new { t.NotificationEmail })
+            .Select(t => t.NotificationEmail)
             .FirstOrDefaultAsync();
 
-        if (!string.IsNullOrEmpty(tenant?.NotificationEmail))
+        if (string.IsNullOrEmpty(notificationEmail))
+            return;
+
+        try
         {
-            try
-            {
-                await _emailService.SendNewInvoiceEmailAsync(tenant.NotificationEmail, evt);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Email fallback failed for tenant {TenantId}", evt.TenantId);
-            }
+            await _emailService.SendNewInvoiceEmailAsync(notificationEmail, evt);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Email notification failed for tenant {TenantId}, invoice {InvoiceId}", evt.TenantId, evt.InvoiceId);
         }
     }
 
@@ -85,7 +83,7 @@ public class NotificationService : INotificationService
         await PushToOwnerDevicesAsync(tenantId, issuedInvoiceId, notification);
     }
 
-    private async Task<bool> PushToOwnerDevicesAsync(Guid tenantId, Guid invoiceId, PushNotification notification)
+    private async Task PushToOwnerDevicesAsync(Guid tenantId, Guid invoiceId, PushNotification notification)
     {
         // TenantId == null means "all companies"; a set TenantId is an explicit per-company subscription.
         var deviceTokens = await _db.DeviceTokens
@@ -97,7 +95,7 @@ public class NotificationService : INotificationService
         if (deviceTokens.Count == 0)
         {
             _logger.LogDebug("No device tokens for tenant {TenantId}", tenantId);
-            return false;
+            return;
         }
 
         // Layer 1: SignalR (in-app, API process only). Says nothing about remote delivery.
@@ -145,8 +143,6 @@ public class NotificationService : INotificationService
             await _db.SaveChangesAsync();
             _logger.LogInformation("Removed {Count} invalid device tokens", tokensToRemove.Count);
         }
-
-        return true;
     }
 
     public async Task SendConfirmationAsync(string deviceToken, Platform platform)

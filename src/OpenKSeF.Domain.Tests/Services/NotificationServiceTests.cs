@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
@@ -12,7 +12,11 @@ namespace OpenKSeF.Domain.Tests.Services;
 
 public class NotificationServiceTests : IDisposable
 {
+    private const string NotificationEmail = "owner@example.invalid";
+
     private readonly ApplicationDbContext _db;
+    private readonly StubEmailService _email = new();
+    private readonly ListLogger _logger = new();
 
     public NotificationServiceTests()
     {
@@ -125,14 +129,74 @@ public class NotificationServiceTests : IDisposable
         Assert.False(provider.Last.Data.ContainsKey("invoiceId"));
     }
 
+    [Fact]
+    public async Task NotifyNewInvoiceAsync_SendsEmail_WhenOwnerHasNoDevice()
+    {
+        var tenantId = await SeedTenantAsync("user-1", NotificationEmail);
+        var provider = new StubPushProvider(PushResult.Sent);
+        var evt = CreateEvent(tenantId);
+
+        await CreateService(provider).NotifyNewInvoiceAsync(evt);
+
+        Assert.Equal(0, provider.Calls);
+        Assert.Equal([(NotificationEmail, evt.InvoiceId)], _email.Sent);
+    }
+
+    [Fact]
+    public async Task NotifyNewInvoiceAsync_SendsOnePushAndOneEmail_WhenDeviceAndAddressSet()
+    {
+        var tenantId = await SeedDeviceAsync("fcm-token-valid", NotificationEmail);
+        var provider = new StubPushProvider(PushResult.Sent);
+
+        await CreateService(provider).NotifyNewInvoiceAsync(CreateEvent(tenantId));
+
+        Assert.Equal(1, provider.Calls);
+        Assert.Single(_email.Sent);
+    }
+
+    [Fact]
+    public async Task NotifyNewInvoiceAsync_SendsEmail_WhenEveryPushProviderFails()
+    {
+        var tenantId = await SeedDeviceAsync("fcm-token-valid", NotificationEmail);
+
+        await CreateService(new StubPushProvider(PushResult.Failed), new StubPushProvider(new InvalidOperationException("down")))
+            .NotifyNewInvoiceAsync(CreateEvent(tenantId));
+
+        Assert.Single(_email.Sent);
+    }
+
+    [Fact]
+    public async Task NotifyNewInvoiceAsync_DoesNotAttemptEmail_WithoutNotificationAddress()
+    {
+        var tenantId = await SeedDeviceAsync("fcm-token-valid");
+
+        await CreateService(new StubPushProvider(PushResult.Sent)).NotifyNewInvoiceAsync(CreateEvent(tenantId));
+
+        Assert.Empty(_email.Sent);
+        Assert.Equal(0, _email.Attempts);
+    }
+
+    [Fact]
+    public async Task NotifyNewInvoiceAsync_LogsOneWarning_WhenEmailFails()
+    {
+        var tenantId = await SeedTenantAsync("user-1", NotificationEmail);
+        _email.Failure = new TimeoutException("smtp unreachable");
+
+        await CreateService().NotifyNewInvoiceAsync(CreateEvent(tenantId));
+
+        Assert.Equal(1, _email.Attempts);
+        var warning = Assert.Single(_logger.Entries, e => e.Level >= LogLevel.Warning);
+        Assert.Equal(LogLevel.Warning, warning.Level);
+    }
+
     private NotificationService CreateService(params IPushProvider[] providers) =>
         new(
             _db,
             providers,
-            new StubEmailService(),
-            NullLogger<NotificationService>.Instance);
+            _email,
+            _logger);
 
-    private async Task<Guid> SeedTenantAsync(string userId)
+    private async Task<Guid> SeedTenantAsync(string userId, string? notificationEmail = null)
     {
         var tenantId = Guid.NewGuid();
         var now = DateTime.UtcNow;
@@ -140,7 +204,8 @@ public class NotificationServiceTests : IDisposable
         {
             Id = tenantId,
             UserId = userId,
-            Nip = "1234567890",
+            Nip = "1111111111",
+            NotificationEmail = notificationEmail,
             CreatedAt = now,
             UpdatedAt = now
         });
@@ -148,9 +213,9 @@ public class NotificationServiceTests : IDisposable
         return tenantId;
     }
 
-    private async Task<Guid> SeedDeviceAsync(string token)
+    private async Task<Guid> SeedDeviceAsync(string token, string? notificationEmail = null)
     {
-        var tenantId = await SeedTenantAsync("user-1");
+        var tenantId = await SeedTenantAsync("user-1", notificationEmail);
         var now = DateTime.UtcNow;
 
         _db.DeviceTokens.Add(new DeviceToken
@@ -202,7 +267,31 @@ public class NotificationServiceTests : IDisposable
 
     private sealed class StubEmailService : IEmailService
     {
-        public Task SendNewInvoiceEmailAsync(string toEmail, NewInvoiceDetectedEvent evt) =>
-            Task.CompletedTask;
+        public List<(string To, Guid InvoiceId)> Sent { get; } = [];
+
+        public int Attempts { get; private set; }
+
+        public Exception? Failure { get; set; }
+
+        public Task SendNewInvoiceEmailAsync(string toEmail, NewInvoiceDetectedEvent evt)
+        {
+            Attempts++;
+            if (Failure is not null)
+                return Task.FromException(Failure);
+            Sent.Add((toEmail, evt.InvoiceId));
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ListLogger : ILogger<NotificationService>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Entries.Add((logLevel, formatter(state, exception)));
     }
 }

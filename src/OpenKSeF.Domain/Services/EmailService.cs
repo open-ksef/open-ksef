@@ -1,4 +1,8 @@
+using System.Globalization;
+using System.Net;
+using System.Net.Security;
 using MailKit.Net.Smtp;
+using MailKit.Security;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MimeKit;
@@ -10,6 +14,9 @@ namespace OpenKSeF.Domain.Services;
 
 public class EmailService : IEmailService
 {
+    internal static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(10);
+    private static readonly CultureInfo PolishCulture = CultureInfo.GetCultureInfo("pl-PL");
+
     private readonly EmailOptions _options;
     private readonly ILogger<EmailService> _logger;
 
@@ -21,6 +28,8 @@ public class EmailService : IEmailService
         _logger = logger;
     }
 
+    internal RemoteCertificateValidationCallback? ServerCertificateValidation { get; set; }
+
     public async Task SendNewInvoiceEmailAsync(string toEmail, NewInvoiceDetectedEvent evt)
     {
         if (!_options.Enabled)
@@ -29,42 +38,54 @@ public class EmailService : IEmailService
             return;
         }
 
-        var message = new MimeMessage();
-        message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
-        message.To.Add(MailboxAddress.Parse(toEmail));
-        message.Subject = $"New invoice from {evt.VendorName}";
-        message.Body = new TextPart("html")
-        {
-            Text = $"""
-                <p>New invoice received:</p>
-                <ul>
-                    <li><strong>Vendor:</strong> {System.Net.WebUtility.HtmlEncode(evt.VendorName)}</li>
-                    <li><strong>Amount:</strong> {evt.Amount:N2} {System.Net.WebUtility.HtmlEncode(evt.Currency)}</li>
-                </ul>
-                <p><small>Sent by OpenKSeF</small></p>
-                """
-        };
+        var message = BuildNewInvoiceMessage(toEmail, evt);
 
-        using var client = new SmtpClient();
+        using var timeout = new CancellationTokenSource(SendTimeout);
+        using var client = new SmtpClient
+        {
+            Timeout = (int)SendTimeout.TotalMilliseconds,
+            ServerCertificateValidationCallback = ServerCertificateValidation
+        };
         try
         {
-            await client.ConnectAsync(_options.SmtpHost, _options.SmtpPort, _options.UseSsl);
+            await client.ConnectAsync(_options.SmtpHost, _options.SmtpPort, SocketOptions(), timeout.Token);
 
             if (!string.IsNullOrEmpty(_options.Username))
-                await client.AuthenticateAsync(_options.Username, _options.Password);
+                await client.AuthenticateAsync(_options.Username, _options.Password ?? string.Empty, timeout.Token);
 
-            await client.SendAsync(message);
+            await client.SendAsync(message, timeout.Token);
             _logger.LogInformation("Email sent to {Email} for invoice from {Vendor}", toEmail, evt.VendorName);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send email to {Email}", toEmail);
-            throw;
         }
         finally
         {
             if (client.IsConnected)
-                await client.DisconnectAsync(true);
+                await client.DisconnectAsync(true, CancellationToken.None);
         }
     }
+
+    internal MimeMessage BuildNewInvoiceMessage(string toEmail, NewInvoiceDetectedEvent evt)
+    {
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
+        message.To.Add(MailboxAddress.Parse(toEmail));
+        message.Subject = $"Nowa faktura od {evt.VendorName}";
+        message.Body = new TextPart("html")
+        {
+            Text = $"""
+                <p>Otrzymano nową fakturę:</p>
+                <ul>
+                    <li><strong>Sprzedawca:</strong> {WebUtility.HtmlEncode(evt.VendorName)}</li>
+                    <li><strong>Numer faktury:</strong> {WebUtility.HtmlEncode(evt.InvoiceNumber ?? "-")}</li>
+                    <li><strong>Kwota:</strong> {evt.Amount.ToString("N2", PolishCulture)} {WebUtility.HtmlEncode(evt.Currency)}</li>
+                </ul>
+                <p><small>Wysłane przez OpenKSeF</small></p>
+                """
+        };
+        return message;
+    }
+
+    private SecureSocketOptions SocketOptions() =>
+        !_options.UseSsl ? SecureSocketOptions.None
+        : _options.SmtpPort == 465 ? SecureSocketOptions.SslOnConnect
+        : SecureSocketOptions.StartTls;
 }

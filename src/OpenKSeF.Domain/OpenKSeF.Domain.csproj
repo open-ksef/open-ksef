@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="OpenKSeF.Domain.Tests" />
+    <InternalsVisibleTo Include="OpenKSeF.Api.IntegrationTests" />
   </ItemGroup>
 
   <ItemGroup>
