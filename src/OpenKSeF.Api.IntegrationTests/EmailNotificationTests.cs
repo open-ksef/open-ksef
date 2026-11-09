@@ -103,6 +103,35 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task IncrementalSync_TwoNewInvoices_SendsExactlyTwoEmails()
+    {
+        _received = c => c.SubjectNip == NipA && c.PageOffset == 0 ? Page([Bought("A-1"), Bought("A-2")]) : Page([]);
+
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db, MailpitOptions()).SyncTenantAsync(_tenantA)).Outcome);
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db, MailpitOptions()).SyncTenantAsync(_tenantA)).Outcome);
+
+        Assert.Equal(
+            [("Nowa faktura od Dostawca", AddressA), ("Nowa faktura od Dostawca", AddressA)],
+            await Mailpit.MessagesAsync(_mailpit));
+    }
+
+    [Fact]
+    public async Task EmailDisabledByDefault_NoConnection_SyncSucceeds()
+    {
+        _received = c => c.SubjectNip == NipA && c.PageOffset == 0 ? Page([Bought("A-1")]) : Page([]);
+        var options = new EmailOptions { SmtpHost = _mailpit.Hostname, SmtpPort = _mailpit.GetMappedPublicPort(Mailpit.SmtpPort), UseSsl = false };
+
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db, options).SyncTenantAsync(_tenantA)).Outcome);
+
+        Assert.Empty(await Mailpit.MessagesAsync(_mailpit));
+        await using var check = NewContext();
+        Assert.True(await check.InvoiceHeaders.AnyAsync(i => i.KSeFInvoiceNumber == "A-1"));
+    }
+
+    [Fact]
     public async Task UnreachableSmtp_InvoiceStored_SyncSucceeds()
     {
         _received = c => c.SubjectNip == NipA && c.PageOffset == 0 ? Page([Bought("A-1")]) : Page([]);
