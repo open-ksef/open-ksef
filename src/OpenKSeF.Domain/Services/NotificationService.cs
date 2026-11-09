@@ -13,6 +13,7 @@ namespace OpenKSeF.Domain.Services;
 
 public class NotificationService : INotificationService
 {
+    private static readonly CultureInfo PolishCulture = CultureInfo.GetCultureInfo("pl-PL");
     private readonly ApplicationDbContext _db;
     private readonly IEnumerable<IPushProvider> _pushProviders;
     private readonly IUserPushProvider? _userPushProvider;
@@ -41,8 +42,8 @@ public class NotificationService : INotificationService
     {
         var notification = new PushNotification
         {
-            Title = "New invoice received",
-            Body = $"New invoice from '{evt.VendorName}' — Amount: {evt.Amount:N2} {evt.Currency}",
+            Title = "Nowa faktura",
+            Body = $"{(string.IsNullOrWhiteSpace(evt.VendorName) ? "Nieznany sprzedawca" : evt.VendorName)}: {evt.Amount.ToString("N2", PolishCulture)} {evt.Currency}",
             Data = new Dictionary<string, string>
             {
                 ["tenantId"] = evt.TenantId.ToString(),
