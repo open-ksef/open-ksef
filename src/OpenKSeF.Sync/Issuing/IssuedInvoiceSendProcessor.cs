@@ -15,6 +15,8 @@ namespace OpenKSeF.Sync.Issuing;
 /// <summary>
 /// One send cycle over the IssuedInvoices outbox. Write-ahead: session ref and SendStartedAt are saved before the send,
 /// the element ref right after it, so a crash in between is recovered by hash lookup in the session, or by posting the stored bytes again.
+/// KSeF calls of one tenant share TenantBudget (2 min) plus CloseCap (10 s) for the session close, so a hung tenant holds others back at most 2 min 10 s;
+/// DB writes use the host token so a timed-out tenant still saves its retry.
 /// </summary>
 public sealed class IssuedInvoiceSendProcessor(
     ApplicationDbContext db,
@@ -24,6 +26,8 @@ public sealed class IssuedInvoiceSendProcessor(
     ILogger<IssuedInvoiceSendProcessor> logger)
 {
     public const int BatchSize = 50;
+    public static readonly TimeSpan TenantBudget = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan CloseCap = TimeSpan.FromSeconds(10);
     public const string UnavailableMessage = "KSeF nie odpowiada, ponowimy wysyłkę";
     public const string RateLimitedMessage = "KSeF ogranicza liczbę żądań, ponowimy wysyłkę";
     public const string NoWritePermissionMessage = "Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy.";
@@ -55,9 +59,11 @@ public sealed class IssuedInvoiceSendProcessor(
 
         foreach (var batch in due.GroupBy(i => i.TenantId))
         {
+            using var budget = new CancellationTokenSource(TenantBudget, time);
+            using var ksef = CancellationTokenSource.CreateLinkedTokenSource(ct, budget.Token);
             try
             {
-                await ProcessTenantAsync(batch.Key, batch.ToList(), DependencyInjection.NormalizeKSeFEnvironmentKey(currentEnvironment), ct);
+                await ProcessTenantAsync(batch.Key, batch.ToList(), DependencyInjection.NormalizeKSeFEnvironmentKey(currentEnvironment), ksef.Token, ct);
             }
             catch (Exception e) when (!ct.IsCancellationRequested)
             {
@@ -68,7 +74,7 @@ public sealed class IssuedInvoiceSendProcessor(
         }
     }
 
-    private async Task ProcessTenantAsync(Guid tenantId, List<IssuedInvoice> invoices, string environment, CancellationToken ct)
+    private async Task ProcessTenantAsync(Guid tenantId, List<IssuedInvoice> invoices, string environment, CancellationToken ksef, CancellationToken ct)
     {
         foreach (var invoice in invoices.Where(i => DependencyInjection.NormalizeKSeFEnvironmentKey(i.KsefEnvironment) != environment).ToList())
         {
@@ -94,8 +100,8 @@ public sealed class IssuedInvoiceSendProcessor(
         string accessToken;
         try
         {
-            using var loginCap = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            loginCap.CancelAfter(LoginCap);
+            using var loginTimeout = new CancellationTokenSource(LoginCap, time);
+            using var loginCap = CancellationTokenSource.CreateLinkedTokenSource(ksef, loginTimeout.Token);
             accessToken = await submitter.LoginAsync(tenant.Nip, encryption.Decrypt(credential.EncryptedToken!), loginCap.Token);
         }
         catch (KSeFAuthRejectedException e)
@@ -124,7 +130,7 @@ public sealed class IssuedInvoiceSendProcessor(
                 var invoice = invoices[index];
                 try
                 {
-                    session = await ProcessInvoiceAsync(invoice, accessToken, session, ct);
+                    session = await ProcessInvoiceAsync(invoice, accessToken, session, ksef, ct);
                 }
                 catch (Exception e) when (IsTransient(e, ct))
                 {
@@ -151,11 +157,11 @@ public sealed class IssuedInvoiceSendProcessor(
         }
     }
 
-    private async Task<KSeFOnlineSession?> ProcessInvoiceAsync(IssuedInvoice invoice, string accessToken, KSeFOnlineSession? session, CancellationToken ct)
+    private async Task<KSeFOnlineSession?> ProcessInvoiceAsync(IssuedInvoice invoice, string accessToken, KSeFOnlineSession? session, CancellationToken ksef, CancellationToken ct)
     {
         if (invoice.Status == IssuedInvoiceStatus.Accepted)
         {
-            await FetchUpoAsync(invoice, accessToken, ct);
+            await FetchUpoAsync(invoice, accessToken, ksef, ct);
             return session;
         }
 
@@ -168,20 +174,20 @@ public sealed class IssuedInvoiceSendProcessor(
 
         if (invoice.KsefElementRef is not null)
         {
-            await ApplyStatusAsync(invoice, await submitter.GetInvoiceAsync(accessToken, invoice.KsefSessionRef!, invoice.KsefElementRef, ct), accessToken, ct);
+            await ApplyStatusAsync(invoice, await submitter.GetInvoiceAsync(accessToken, invoice.KsefSessionRef!, invoice.KsefElementRef, ksef), accessToken, ksef, ct);
             return session;
         }
 
         if (invoice.SendStartedAt is not null && invoice.KsefSessionRef is not null)
         {
             var hash = Convert.ToBase64String(SHA256.HashData(invoice.SentXml));
-            var match = (await ListOwnSessionAsync(invoice, accessToken, ct)).FirstOrDefault(s => s.InvoiceHash == hash && s.Code < 400);
+            var match = (await ListOwnSessionAsync(invoice, accessToken, ksef)).FirstOrDefault(s => s.InvoiceHash == hash && s.Code < 400);
             if (match is not null)
             {
                 logger.LogInformation("Issued invoice {InvoiceId} recovered from session {SessionRef}", invoice.Id, invoice.KsefSessionRef);
                 invoice.RecordElementRef(match.ElementRef, Now());
                 await db.SaveChangesAsync(ct);
-                await ApplyStatusAsync(invoice, match, accessToken, ct);
+                await ApplyStatusAsync(invoice, match, accessToken, ksef, ct);
                 return session;
             }
         }
@@ -190,10 +196,10 @@ public sealed class IssuedInvoiceSendProcessor(
         string elementRef;
         try
         {
-            session ??= await submitter.OpenSessionAsync(accessToken, ct);
+            session ??= await submitter.OpenSessionAsync(accessToken, ksef);
             invoice.MarkSendStarted(session.ReferenceNumber, Now());
             await db.SaveChangesAsync(ct);
-            elementRef = await submitter.SendAsync(session, invoice.SentXml, ct);
+            elementRef = await submitter.SendAsync(session, invoice.SentXml, ksef);
         }
         catch (KsefApiException e) when (!IsTransient(e, ct))
         {
@@ -212,19 +218,19 @@ public sealed class IssuedInvoiceSendProcessor(
         return session;
     }
 
-    private async Task ApplyStatusAsync(IssuedInvoice invoice, KSeFSentInvoice? status, string accessToken, CancellationToken ct)
+    private async Task ApplyStatusAsync(IssuedInvoice invoice, KSeFSentInvoice? status, string accessToken, CancellationToken ksef, CancellationToken ct)
     {
         if (status is { Code: KSeFSentInvoice.Accepted, KsefNumber: not null })
         {
             invoice.MarkAccepted(status.KsefNumber, (status.AcceptedAt ?? time.GetUtcNow()).UtcDateTime, status.Code, status.Description, Now());
             await db.SaveChangesAsync(ct);
-            await FetchUpoAsync(invoice, accessToken, ct);
+            await FetchUpoAsync(invoice, accessToken, ksef, ct);
             return;
         }
 
         if (status is { Code: KSeFSentInvoice.Duplicate })
         {
-            await ResolveDuplicateAsync(invoice, status, accessToken, ct);
+            await ResolveDuplicateAsync(invoice, status, accessToken, ksef, ct);
             return;
         }
 
@@ -254,9 +260,9 @@ public sealed class IssuedInvoiceSendProcessor(
     /// A 440 means the number exists in KSeF, either as our own earlier attempt whose response was lost, or as another document.
     /// AttemptCount is saved before each POST, so with one attempt no earlier copy of ours can exist.
     /// </summary>
-    private async Task ResolveDuplicateAsync(IssuedInvoice invoice, KSeFSentInvoice duplicate, string accessToken, CancellationToken ct)
+    private async Task ResolveDuplicateAsync(IssuedInvoice invoice, KSeFSentInvoice duplicate, string accessToken, CancellationToken ksef, CancellationToken ct)
     {
-        var listed = duplicate.OriginalSessionRef is null ? [] : await ListOriginalSessionAsync(invoice, accessToken, duplicate.OriginalSessionRef, ct);
+        var listed = duplicate.OriginalSessionRef is null ? [] : await ListOriginalSessionAsync(invoice, accessToken, duplicate.OriginalSessionRef, ksef, ct);
         var hash = Convert.ToBase64String(SHA256.HashData(invoice.SentXml!));
         var original = listed.FirstOrDefault(s => s is { Code: KSeFSentInvoice.Accepted, KsefNumber: not null } && s.InvoiceHash == hash);
         if (original is not null)
@@ -265,7 +271,7 @@ public sealed class IssuedInvoiceSendProcessor(
             invoice.MarkSendStarted(duplicate.OriginalSessionRef!, Now());
             invoice.RecordElementRef(original.ElementRef, Now());
             await db.SaveChangesAsync(ct);
-            await ApplyStatusAsync(invoice, original, accessToken, ct);
+            await ApplyStatusAsync(invoice, original, accessToken, ksef, ct);
             return;
         }
 
@@ -294,11 +300,11 @@ public sealed class IssuedInvoiceSendProcessor(
             : Join([.. duplicate.Details, $"Numer KSeF: {number}"]);
     }
 
-    private async Task<IReadOnlyList<KSeFSentInvoice>> ListOwnSessionAsync(IssuedInvoice invoice, string accessToken, CancellationToken ct)
+    private async Task<IReadOnlyList<KSeFSentInvoice>> ListOwnSessionAsync(IssuedInvoice invoice, string accessToken, CancellationToken ksef)
     {
         try
         {
-            return await submitter.ListInvoicesAsync(accessToken, invoice.KsefSessionRef!, ct);
+            return await submitter.ListInvoicesAsync(accessToken, invoice.KsefSessionRef!, ksef);
         }
         catch (KsefApiException e) when (e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound)
         {
@@ -307,11 +313,11 @@ public sealed class IssuedInvoiceSendProcessor(
         }
     }
 
-    private async Task<IReadOnlyList<KSeFSentInvoice>> ListOriginalSessionAsync(IssuedInvoice invoice, string accessToken, string sessionRef, CancellationToken ct)
+    private async Task<IReadOnlyList<KSeFSentInvoice>> ListOriginalSessionAsync(IssuedInvoice invoice, string accessToken, string sessionRef, CancellationToken ksef, CancellationToken ct)
     {
         try
         {
-            return await submitter.ListInvoicesAsync(accessToken, sessionRef, ct);
+            return await submitter.ListInvoicesAsync(accessToken, sessionRef, ksef);
         }
         catch (KsefApiException e) when (e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound || (invoice.AttemptCount == 1 && !IsTransient(e, ct)))
         {
@@ -323,9 +329,9 @@ public sealed class IssuedInvoiceSendProcessor(
     private TimeSpan PollDelay(IssuedInvoice invoice) =>
         TimeSpan.FromTicks(Math.Clamp((Now() - invoice.SendStartedAt!.Value).Ticks / 4, MinPoll.Ticks, MaxPoll.Ticks));
 
-    private async Task FetchUpoAsync(IssuedInvoice invoice, string accessToken, CancellationToken ct)
+    private async Task FetchUpoAsync(IssuedInvoice invoice, string accessToken, CancellationToken ksef, CancellationToken ct)
     {
-        var upo = await submitter.GetUpoAsync(accessToken, invoice.KsefSessionRef!, invoice.KsefElementRef!, ct);
+        var upo = await submitter.GetUpoAsync(accessToken, invoice.KsefSessionRef!, invoice.KsefElementRef!, ksef);
         if (upo is null)
             invoice.ScheduleRetry(UpoPendingMessage, Now().Add(UpoRetry), Now());
         else
@@ -396,11 +402,12 @@ public sealed class IssuedInvoiceSendProcessor(
 
     private async Task CloseQuietlyAsync(KSeFOnlineSession session)
     {
+        using var closeCap = new CancellationTokenSource(CloseCap, time);
         try
         {
-            await submitter.CloseSessionAsync(session, CancellationToken.None);
+            await submitter.CloseSessionAsync(session, closeCap.Token);
         }
-        catch (Exception e) when (e is KsefApiException or HttpRequestException or TaskCanceledException)
+        catch (Exception e) when (e is KsefApiException or HttpRequestException or OperationCanceledException)
         {
             logger.LogWarning("Closing KSeF session {SessionRef} failed: {Error}", session.ReferenceNumber, e.Message);
         }
