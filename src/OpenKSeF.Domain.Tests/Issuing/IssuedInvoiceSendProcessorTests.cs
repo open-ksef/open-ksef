@@ -1180,6 +1180,45 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Fact]
+    public async Task HungSend_OtherTenantSendsWithinTenantBudget_HungInvoiceResumesWithoutSecondPost()
+    {
+        var first = await SeedAsync();
+        var second = await SeedAsync(tenant: Guid.NewGuid());
+        var hangStarted = new TaskCompletionSource();
+        _submitter.OnSend = () =>
+        {
+            if (_submitter.Sends > 1)
+                return Task.FromResult("el-ok");
+            hangStarted.SetResult();
+            return new TaskCompletionSource<string>().Task;
+        };
+
+        var run = RunAsync();
+        await hangStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        _time.Advance(IssuedInvoiceSendProcessor.TenantBudget - TimeSpan.FromSeconds(1));
+        Assert.False(run.IsCompleted);
+        _time.Advance(TimeSpan.FromSeconds(1));
+        await run.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var invoices = new[] { await LoadAsync(first), await LoadAsync(second) };
+        var sent = Assert.Single(invoices, i => i.KsefElementRef == "el-ok");
+        var hung = Assert.Single(invoices, i => i.KsefElementRef is null);
+        Assert.Equal(IssuedInvoiceStatus.Sending, sent.Status);
+        Assert.Equal((IssuedInvoiceStatus.Sending, "sess-1", 1), (hung.Status, hung.KsefSessionRef, hung.AttemptCount));
+        Assert.Equal(IssuedInvoiceSendProcessor.UnavailableMessage, hung.LastError);
+        Assert.True(hung.NextAttemptAt > _time.UtcNow);
+        Assert.Equal(2, _submitter.Sends);
+
+        _time.Advance(TimeSpan.FromMinutes(1));
+        _submitter.OnList = _ => [Status(KSeFSentInvoice.Accepted, "KSEF-1", elementRef: "el-hung")];
+        await RunAsync();
+
+        var resumed = await LoadAsync(hung.Id);
+        Assert.Equal((IssuedInvoiceStatus.Accepted, "el-hung", "KSEF-1"), (resumed.Status, resumed.KsefElementRef, resumed.KsefNumber));
+        Assert.Equal(2, _submitter.Sends);
+    }
+
+    [Fact]
     public async Task LegacyInvoiceEnvironment_MatchesCurrentAndSends()
     {
         var id = await SeedAsync(environment: "https://api.ksef.mf.gov.pl/v2");
@@ -1250,7 +1289,7 @@ public class IssuedInvoiceSendProcessorTests
             Sends++;
             SentBytes.Add(invoiceXml);
             Assert.Equal(Xml, invoiceXml);
-            return OnSend();
+            return OnSend().WaitAsync(ct);
         }
 
         public Task<KSeFSentInvoice?> GetInvoiceAsync(string accessToken, string sessionRef, string elementRef, CancellationToken ct = default)
@@ -1277,10 +1316,57 @@ public class IssuedInvoiceSendProcessorTests
 
     private sealed class FixedTime(DateTimeOffset now) : TimeProvider
     {
+        private readonly List<FakeTimer> _timers = [];
         private DateTimeOffset _now = now;
         public DateTime UtcNow => _now.UtcDateTime;
-        public void Advance(TimeSpan by) => _now += by;
         public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan by)
+        {
+            _now += by;
+            List<FakeTimer> due;
+            lock (_timers)
+                due = _timers.Where(t => t.DueAt <= _now).ToList();
+            foreach (var timer in due)
+            {
+                timer.DueAt = DateTimeOffset.MaxValue;
+                timer.Callback(timer.State);
+            }
+        }
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new FakeTimer(this, callback, state);
+            timer.Change(dueTime, period);
+            lock (_timers)
+                _timers.Add(timer);
+            return timer;
+        }
+
+        private sealed class FakeTimer(FixedTime owner, TimerCallback callback, object? state) : ITimer
+        {
+            public TimerCallback Callback => callback;
+            public object? State => state;
+            public DateTimeOffset DueAt = DateTimeOffset.MaxValue;
+
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                DueAt = dueTime == Timeout.InfiniteTimeSpan ? DateTimeOffset.MaxValue : owner._now + dueTime;
+                return true;
+            }
+
+            public void Dispose()
+            {
+                lock (owner._timers)
+                    owner._timers.Remove(this);
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
     }
 
     private sealed class ListLogger
