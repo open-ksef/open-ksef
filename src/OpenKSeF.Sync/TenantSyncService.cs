@@ -1,6 +1,4 @@
 using System.Net;
-using System.Security.Cryptography.X509Certificates;
-using KSeF.Client.Api.Services;
 using KSeF.Client.Core.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -22,7 +20,6 @@ public sealed class TenantSyncService : ITenantSyncService
 
     private readonly ApplicationDbContext _db;
     private readonly IKSeFGateway _gateway;
-    private readonly IEncryptionService _encryption;
     private readonly IInvoiceService _invoiceService;
     private readonly KSeFInvoiceXmlParser _xmlParser;
     private readonly TenantSyncOptions _syncOptions;
@@ -33,7 +30,6 @@ public sealed class TenantSyncService : ITenantSyncService
     public TenantSyncService(
         ApplicationDbContext db,
         IKSeFGateway gateway,
-        IEncryptionService encryption,
         IInvoiceService invoiceService,
         KSeFInvoiceXmlParser xmlParser,
         IOptions<TenantSyncOptions> syncOptions,
@@ -43,7 +39,6 @@ public sealed class TenantSyncService : ITenantSyncService
     {
         _db = db;
         _gateway = gateway;
-        _encryption = encryption;
         _invoiceService = invoiceService;
         _xmlParser = xmlParser;
         _syncOptions = syncOptions.Value;
@@ -156,7 +151,7 @@ public sealed class TenantSyncService : ITenantSyncService
                 TenantId = tenant.Id
             };
 
-            var session = await InitSessionAsync(tenant, credential, cancellationToken);
+            var session = await _gateway.InitSessionAsync(tenant.Nip, credential, cancellationToken);
             sessions[tenant.Id] = session;
 
             var now = DateTime.UtcNow;
@@ -408,15 +403,8 @@ public sealed class TenantSyncService : ITenantSyncService
         if (sessions.TryGetValue(tenant.Id, out var session) && session?.ExpiresAtUtc > DateTime.UtcNow.AddMinutes(1))
             return session;
 
-        return sessions[tenant.Id] = await InitSessionAsync(tenant, tenant.KSeFCredentials.First(), cancellationToken);
+        return sessions[tenant.Id] = await _gateway.InitSessionAsync(tenant.Nip, tenant.KSeFCredentials.First(), cancellationToken);
     }
-
-    private Task<KSeFSession> InitSessionAsync(Tenant tenant, KSeFCredential credential, CancellationToken cancellationToken) =>
-        credential.Type switch
-        {
-            CredentialType.Certificate => InitCertificateSessionAsync(tenant.Nip, credential, cancellationToken),
-            _ => InitTokenSessionAsync(tenant.Nip, credential, cancellationToken),
-        };
 
     private async Task TerminateSessionsAsync(Dictionary<Guid, KSeFSession?> sessions, CancellationToken cancellationToken)
     {
@@ -553,33 +541,4 @@ public sealed class TenantSyncService : ITenantSyncService
         Direction: direction,
         BuyerIdType: i.BuyerIdType,
         BuyerForeignId: i.BuyerForeignId);
-
-    private async Task<KSeFSession> InitTokenSessionAsync(
-        string nip, KSeFCredential credential, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(credential.EncryptedToken))
-            throw new InvalidOperationException("Token credential is missing encrypted token data.");
-
-        var authToken = _encryption.Decrypt(credential.EncryptedToken);
-        return await _gateway.InitSessionAsync(nip, authToken, ct);
-    }
-
-    private async Task<KSeFSession> InitCertificateSessionAsync(
-        string nip, KSeFCredential credential, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(credential.EncryptedCertificateData) ||
-            string.IsNullOrEmpty(credential.CertificateFingerprint))
-            throw new InvalidOperationException("Certificate credential is missing certificate data or fingerprint.");
-
-        var certBase64 = _encryption.Decrypt(credential.EncryptedCertificateData);
-        var pfxBytes = Convert.FromBase64String(certBase64);
-        using var cert = X509CertificateLoader.LoadPkcs12(pfxBytes, null);
-        var fingerprint = credential.CertificateFingerprint;
-
-        return await _gateway.InitSignedSessionAsync(
-            nip,
-            challengeXml => Task.FromResult(SignatureService.Sign(challengeXml, cert)),
-            fingerprint,
-            ct);
-    }
 }

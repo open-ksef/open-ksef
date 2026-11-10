@@ -1,10 +1,12 @@
+using OpenKSeF.Domain.Entities;
+
 namespace OpenKSeF.Domain.Abstractions;
 
-/// <summary>KSeF token login and online session operations for sending issued invoices.</summary>
+/// <summary>KSeF login and online session operations for sending issued invoices.</summary>
 public interface IKSeFInvoiceSubmitter
 {
-    /// <summary>Returns the access token. Throws <see cref="KSeFAuthRejectedException"/> when KSeF refuses the token.</summary>
-    Task<string> LoginAsync(string nip, string ksefToken, CancellationToken ct = default);
+    /// <summary>Returns the access token. Throws <see cref="KSeFAuthRejectedException"/> when KSeF refuses the token or certificate.</summary>
+    Task<string> LoginAsync(string nip, KSeFCredential credential, CancellationToken ct = default);
 
     Task<KSeFOnlineSession> OpenSessionAsync(string accessToken, CancellationToken ct = default);
 
@@ -37,7 +39,7 @@ public sealed record KSeFSentInvoice(
     public const int Duplicate = 440;
 }
 
-/// <summary>KSeF answered the login with a final refusal (invalid, revoked or inactive token), as opposed to being unavailable.</summary>
+/// <summary>KSeF answered the login with a final refusal (invalid, revoked or inactive token or certificate), as opposed to being unavailable.</summary>
 public sealed class KSeFAuthRejectedException(int code, string reason) : Exception(reason)
 {
     public int Code { get; } = code;

@@ -4,11 +4,12 @@ using KSeF.Client.Core.Exceptions;
 using KSeF.Client.Core.Interfaces;
 using KSeF.Client.Core.Interfaces.Clients;
 using KSeF.Client.Core.Interfaces.Services;
-using KSeF.Client.Core.Models.Authorization;
 using KSeF.Client.Core.Models.Invoices;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
+using OpenKSeF.Domain.Services;
 
 using CirfmfKSeFClient = KSeF.Client.Core.Interfaces.Clients.IKSeFClient;
 
@@ -26,54 +27,31 @@ public sealed class KSeFGateway : IKSeFGateway
     private readonly CirfmfKSeFClient _client;
     private readonly IAuthCoordinator _authCoordinator;
     private readonly ICryptographyService _cryptography;
+    private readonly IEncryptionService _encryption;
     private readonly ILogger<KSeFGateway> _logger;
 
     public KSeFGateway(
         CirfmfKSeFClient client,
         IAuthCoordinator authCoordinator,
         ICryptographyService cryptography,
+        IEncryptionService encryption,
         ILogger<KSeFGateway> logger)
     {
         _client = client;
         _authCoordinator = authCoordinator;
         _cryptography = cryptography;
+        _encryption = encryption;
         _logger = logger;
     }
 
     public async Task<KSeFSession> InitSessionAsync(
-        string nip, string authToken, CancellationToken ct = default)
+        string nip, KSeFCredential credential, CancellationToken ct = default)
     {
-        var authResult = await _authCoordinator.AuthKsefTokenAsync(
-            AuthenticationTokenContextIdentifierType.Nip,
-            nip,
-            authToken,
-            _cryptography,
-            EncryptionMethodEnum.Rsa,
-            cancellationToken: ct);
+        var authResult = await _authCoordinator.LoginAsync(nip, credential, _encryption, _cryptography, ct);
 
         _logger.LogInformation(
-            "KSeF token session initiated for NIP {Nip}, valid until {ValidUntil}",
-            nip, authResult.AccessToken.ValidUntil);
-
-        return new KSeFSession(
-            Token: authResult.AccessToken.Token,
-            ReferenceNumber: string.Empty,
-            ExpiresAtUtc: authResult.AccessToken.ValidUntil.UtcDateTime);
-    }
-
-    public async Task<KSeFSession> InitSignedSessionAsync(
-        string nip, Func<string, Task<string>> xmlSigner, string fingerprint, CancellationToken ct = default)
-    {
-        var authResult = await _authCoordinator.AuthAsync(
-            AuthenticationTokenContextIdentifierType.Nip,
-            nip,
-            AuthenticationTokenSubjectIdentifierTypeEnum.CertificateSubject,
-            xmlSigner: xmlSigner,
-            cancellationToken: ct);
-
-        _logger.LogInformation(
-            "KSeF signed session initiated for NIP {Nip}, valid until {ValidUntil}",
-            nip, authResult.AccessToken.ValidUntil);
+            "KSeF {CredentialType} session initiated for NIP {Nip}, valid until {ValidUntil}",
+            credential.Type, nip, authResult.AccessToken.ValidUntil);
 
         return new KSeFSession(
             Token: authResult.AccessToken.Token,

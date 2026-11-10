@@ -127,7 +127,6 @@ public class TransferAfterFullResyncTests : IDisposable
     private TenantSyncService CreateSyncService() => new(
         _db,
         _gateway,
-        Substitute.For<IEncryptionService>(),
         new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions()),

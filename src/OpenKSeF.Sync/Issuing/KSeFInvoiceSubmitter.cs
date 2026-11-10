@@ -9,16 +9,17 @@ using KSeF.Client.Core.Models;
 using KSeF.Client.Core.Models.Authorization;
 using KSeF.Client.Core.Models.Sessions;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Sync.Issuing;
 
 /// <summary>Online-session send of FA(3) invoices through CIRFMF KSeF.Client.</summary>
-public sealed class KSeFInvoiceSubmitter(IKSeFClient client, ICryptographyService cryptography) : IKSeFInvoiceSubmitter
+public sealed class KSeFInvoiceSubmitter(IKSeFClient client, ICryptographyService cryptography, IEncryptionService encryption) : IKSeFInvoiceSubmitter
 {
-    public async Task<string> LoginAsync(string nip, string ksefToken, CancellationToken ct = default)
+    public async Task<string> LoginAsync(string nip, KSeFCredential credential, CancellationToken ct = default)
     {
-        var login = await new AuthCoordinator(new RejectionAwareAuthClient(client)).AuthKsefTokenAsync(
-            AuthenticationTokenContextIdentifierType.Nip, nip, ksefToken, cryptography, EncryptionMethodEnum.Rsa, cancellationToken: ct);
+        var login = await new AuthCoordinator(new RejectionAwareAuthClient(client)).LoginAsync(nip, credential, encryption, cryptography, ct);
         return login.AccessToken.Token;
     }
 

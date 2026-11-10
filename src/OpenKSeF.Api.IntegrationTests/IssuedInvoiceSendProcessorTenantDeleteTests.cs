@@ -93,7 +93,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
     private async Task RunAsync()
     {
         await using var db = NewContext();
-        var processor = new IssuedInvoiceSendProcessor(db, _submitter, _encryption, _time, _logs);
+        var processor = new IssuedInvoiceSendProcessor(db, _submitter, _time, _logs);
         await processor.ProcessAsync("test", CancellationToken.None);
     }
 
@@ -188,7 +188,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
         public Func<string, Task<byte[]?>> OnUpo = _ => Task.FromResult<byte[]?>(null);
         public List<string> Posted { get; } = [];
 
-        public Task<string> LoginAsync(string nip, string ksefToken, CancellationToken ct = default) => Task.FromResult("access-token");
+        public Task<string> LoginAsync(string nip, KSeFCredential credential, CancellationToken ct = default) => Task.FromResult("access-token");
 
         public async Task<KSeFOnlineSession> OpenSessionAsync(string accessToken, CancellationToken ct = default)
         {

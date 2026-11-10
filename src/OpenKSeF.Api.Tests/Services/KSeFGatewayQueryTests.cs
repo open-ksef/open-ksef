@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Enums;
+using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
 
 using CirfmfKSeFClient = KSeF.Client.Core.Interfaces.Clients.IKSeFClient;
@@ -31,7 +32,7 @@ public class KSeFGatewayQueryTests
                 Arg.Any<CancellationToken>())
             .Returns(response);
 
-        return new KSeFGateway(_client, Substitute.For<IAuthCoordinator>(), Substitute.For<ICryptographyService>(), NullLogger<KSeFGateway>.Instance);
+        return new KSeFGateway(_client, Substitute.For<IAuthCoordinator>(), Substitute.For<ICryptographyService>(), Substitute.For<IEncryptionService>(), NullLogger<KSeFGateway>.Instance);
     }
 
     private static PagedInvoiceResponse Response(params InvoiceSummary[] invoices) => new() { Invoices = invoices.ToList() };

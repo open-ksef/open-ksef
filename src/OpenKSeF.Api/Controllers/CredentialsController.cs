@@ -67,6 +67,9 @@ public class CredentialsController : ControllerBase
     private readonly ILogger<CredentialsController> _logger;
     private readonly bool _onRowKey;
 
+    public const string MissingPrivateKeyMessage = "Certyfikat nie zawiera klucza prywatnego. Wgraj certyfikat razem z kluczem prywatnym.";
+    public const string ExpiredCertificateMessage = "Certyfikat wygasł. Wgraj aktualny certyfikat KSeF.";
+
     public CredentialsController(
         ApplicationDbContext db,
         ICurrentUserService currentUser,
@@ -211,13 +214,31 @@ public class CredentialsController : ControllerBase
 
         var credential = await _db.KSeFCredentials
             .Where(c => c.TenantId == tenantId)
-            .Select(c => new { c.Type, c.UpdatedAt })
+            .Select(c => new { c.Type, c.UpdatedAt, c.EncryptedCertificateData })
             .FirstOrDefaultAsync();
 
         return Ok(new CredentialStatusResponse(
             Exists: credential is not null,
             CredentialType: credential?.Type,
-            UpdatedAt: credential?.UpdatedAt));
+            UpdatedAt: credential?.UpdatedAt,
+            CertificateValidTo: CertificateValidTo(credential?.Type == CredentialType.Certificate ? credential.EncryptedCertificateData : null)));
+    }
+
+    private DateTime? CertificateValidTo(string? encryptedCertificateData)
+    {
+        if (encryptedCertificateData is null)
+            return null;
+
+        try
+        {
+            using var cert = X509CertificateLoader.LoadPkcs12(Convert.FromBase64String(_encryption.Decrypt(encryptedCertificateData)), null);
+            return cert.NotAfter.ToUniversalTime();
+        }
+        catch (CryptographicException)
+        {
+            // Older PFX uploads were stored password-protected and cannot be read.
+            return null;
+        }
     }
 
     [HttpPost("sync")]
@@ -287,43 +308,42 @@ public class CredentialsController : ControllerBase
         if (!hasPem && !hasPfx)
             throw new ArgumentException("Provide CertificatePem + PrivateKeyPem, or CertificateBase64.");
 
-        if (hasPem)
-            return LoadFromPem(request.CertificatePem!, request.PrivateKeyPem!, request.CertificatePassword);
+        var cert = hasPem
+            ? LoadFromPem(request.CertificatePem!, request.PrivateKeyPem!, request.CertificatePassword)
+            : LoadFromPfx(request.CertificateBase64!, request.CertificatePassword);
+        try
+        {
+            if (!cert.HasPrivateKey)
+                throw new ArgumentException(MissingPrivateKeyMessage);
+            if (cert.NotAfter.ToUniversalTime() <= DateTime.UtcNow)
+                throw new ArgumentException(ExpiredCertificateMessage);
 
-        return LoadFromPfx(request.CertificateBase64!, request.CertificatePassword);
+            return (cert, Convert.ToBase64String(cert.Export(X509ContentType.Pfx)));
+        }
+        catch
+        {
+            cert.Dispose();
+            throw;
+        }
     }
 
-    private static (X509Certificate2 cert, string base64ForStorage) LoadFromPem(
-        string certPem, string keyPem, string? password)
+    private static X509Certificate2 LoadFromPem(string certPem, string keyPem, string? password)
     {
-        X509Certificate2 cert;
-        bool isEncryptedKey = keyPem.Contains("ENCRYPTED PRIVATE KEY", StringComparison.Ordinal);
+        if (!keyPem.Contains("ENCRYPTED PRIVATE KEY", StringComparison.Ordinal))
+            return X509Certificate2.CreateFromPem(certPem, keyPem);
 
-        if (isEncryptedKey)
-        {
-            if (string.IsNullOrWhiteSpace(password))
-                throw new ArgumentException("CertificatePassword is required for encrypted private keys.");
+        if (string.IsNullOrWhiteSpace(password))
+            throw new ArgumentException("CertificatePassword is required for encrypted private keys.");
 
-            cert = X509Certificate2.CreateFromEncryptedPem(certPem, keyPem, password);
-        }
-        else
-        {
-            cert = X509Certificate2.CreateFromPem(certPem, keyPem);
-        }
-
-        var pfxBytes = cert.Export(X509ContentType.Pfx);
-        return (cert, Convert.ToBase64String(pfxBytes));
+        return X509Certificate2.CreateFromEncryptedPem(certPem, keyPem, password);
     }
 
-    private static (X509Certificate2 cert, string base64ForStorage) LoadFromPfx(
-        string certificateBase64, string? password)
+    private static X509Certificate2 LoadFromPfx(string certificateBase64, string? password)
     {
         if (string.IsNullOrWhiteSpace(password))
             throw new ArgumentException("CertificatePassword is required for PFX certificates.");
 
-        var pfxBytes = Convert.FromBase64String(certificateBase64);
-        var cert = X509CertificateLoader.LoadPkcs12(pfxBytes, password);
-        return (cert, certificateBase64);
+        return X509CertificateLoader.LoadPkcs12(Convert.FromBase64String(certificateBase64), password, X509KeyStorageFlags.Exportable);
     }
 
     private static string ComputeSha256Fingerprint(X509Certificate2 cert)

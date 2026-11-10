@@ -71,7 +71,6 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
     private TenantSyncService SyncService(ApplicationDbContext db) => new(
         db,
         _gateway,
-        Substitute.For<IEncryptionService>(),
         new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero }),
