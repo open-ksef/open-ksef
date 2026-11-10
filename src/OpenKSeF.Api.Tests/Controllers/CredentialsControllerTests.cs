@@ -260,7 +260,7 @@ public class CredentialsControllerCrudTests : IDisposable
 
         var result = await controller.AddOrUpdate(_tenantId, request);
 
-        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(CredentialsController.UnreadableCertificateMessage, Error(result));
     }
 
     [Fact]
@@ -274,7 +274,17 @@ public class CredentialsControllerCrudTests : IDisposable
 
         var result = await controller.AddOrUpdate(_tenantId, request);
 
-        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(CredentialsController.UnreadableCertificateMessage, Error(result));
+    }
+
+    [Fact]
+    public async Task AddOrUpdate_Pfx_MissingPassword_ReturnsPolishError()
+    {
+        var result = await CreateController().AddOrUpdate(_tenantId, new AddCredentialRequest(
+            Type: CredentialType.Certificate,
+            CertificateBase64: GenerateTestPfxBase64("Test1234!")));
+
+        Assert.Equal(CredentialsController.MissingCertificatePasswordMessage, Error(result));
     }
 
     [Fact]

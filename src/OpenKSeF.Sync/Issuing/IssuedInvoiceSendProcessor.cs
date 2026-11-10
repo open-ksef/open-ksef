@@ -29,13 +29,13 @@ public sealed class IssuedInvoiceSendProcessor(
     public static readonly TimeSpan CloseCap = TimeSpan.FromSeconds(10);
     public const string UnavailableMessage = "KSeF nie odpowiada, ponowimy wysyłkę";
     public const string RateLimitedMessage = "KSeF ogranicza liczbę żądań, ponowimy wysyłkę";
-    public const string NoWritePermissionMessage = "Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy.";
+    public const string NoWritePermissionMessage = "Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie do zapisu.";
     public const string EnvironmentChangedMessage = "Środowisko KSeF zmienione";
     public const string InvalidTokenMessage = "KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.";
     public const string InvalidCertificateMessage = "KSeF odrzucił certyfikat (nieprawidłowy, wygasły lub unieważniony). Wgraj nowy certyfikat KSeF w ustawieniach firmy.";
     public const string NumberTakenMessage = "Ten numer faktury jest już użyty w KSeF. Sprawdź tę fakturę w KSeF, zanim wystawisz ją pod nowym numerem.";
     public const string DuplicateUnresolvedMessage = "Nie można jeszcze potwierdzić wyniku wysyłki w KSeF. Wcześniejsza próba mogła zostać przyjęta, więc faktura czeka na wyjaśnienie i sprawdzimy ją ponownie.";
-    public const string MissingTokenMessage = "Wysyłka faktur wymaga tokenu KSeF w ustawieniach firmy";
+    public const string MissingTokenMessage = "Wysyłka faktur wymaga tokenu lub certyfikatu KSeF w ustawieniach firmy";
     public const string MissingXmlMessage = "Brak zapisanego XML faktury";
     public const string UpoPendingMessage = "UPO jeszcze niedostępne, ponowimy pobranie";
 

@@ -67,8 +67,10 @@ public class CredentialsController : ControllerBase
     private readonly ILogger<CredentialsController> _logger;
     private readonly bool _onRowKey;
 
-    public const string MissingPrivateKeyMessage = "Certyfikat nie zawiera klucza prywatnego. Wgraj certyfikat razem z kluczem prywatnym.";
-    public const string ExpiredCertificateMessage = "Certyfikat wygasł. Wgraj aktualny certyfikat KSeF.";
+    public const string MissingPrivateKeyMessage = "Plik nie zawiera klucza prywatnego. Wgraj plik .pfx/.p12 z kluczem albo parę .crt + .key.";
+    public const string ExpiredCertificateMessage = "Certyfikat wygasł. Wygeneruj nowy w Aplikacji Podatnika KSeF i wgraj go.";
+    public const string UnreadableCertificateMessage = "Nie udało się odczytać certyfikatu. Sprawdź hasło i czy wybrany plik jest właściwy.";
+    public const string MissingCertificatePasswordMessage = "Podaj hasło do certyfikatu.";
 
     public CredentialsController(
         ApplicationDbContext db,
@@ -128,11 +130,11 @@ public class CredentialsController : ControllerBase
                 }
                 catch (CryptographicException)
                 {
-                    return BadRequest(new { error = "Invalid certificate or password." });
+                    return BadRequest(new { error = UnreadableCertificateMessage });
                 }
                 catch (FormatException)
                 {
-                    return BadRequest(new { error = "CertificateBase64 is not valid base64." });
+                    return BadRequest(new { error = UnreadableCertificateMessage });
                 }
                 break;
 
@@ -333,7 +335,7 @@ public class CredentialsController : ControllerBase
             return X509Certificate2.CreateFromPem(certPem, keyPem);
 
         if (string.IsNullOrWhiteSpace(password))
-            throw new ArgumentException("CertificatePassword is required for encrypted private keys.");
+            throw new ArgumentException(MissingCertificatePasswordMessage);
 
         return X509Certificate2.CreateFromEncryptedPem(certPem, keyPem, password);
     }
@@ -341,7 +343,7 @@ public class CredentialsController : ControllerBase
     private static X509Certificate2 LoadFromPfx(string certificateBase64, string? password)
     {
         if (string.IsNullOrWhiteSpace(password))
-            throw new ArgumentException("CertificatePassword is required for PFX certificates.");
+            throw new ArgumentException(MissingCertificatePasswordMessage);
 
         return X509CertificateLoader.LoadPkcs12(Convert.FromBase64String(certificateBase64), password, X509KeyStorageFlags.Exportable);
     }
