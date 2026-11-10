@@ -13,9 +13,11 @@ import { Button } from '@/components/Button'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Skeleton } from '@/components/Skeleton'
 import { formatWarsawDate } from '@/invoicing/format'
+import { isValidNip } from '@/invoicing/nip'
 import { notifyMutationError, notifyMutationSuccess } from '@/notifications'
 
 const NIP_ERROR = 'NIP musi zawierać dokładnie 10 cyfr'
+const NIP_CHECKSUM_ERROR = 'Nieprawidłowy NIP: sprawdź cyfry (błędna suma kontrolna)'
 const EMAIL_ERROR = 'Adres e-mail do powiadomień jest nieprawidłowy'
 const isBadEmail = (email: string): boolean => Boolean(email) && !/^\S+@\S+\.\S+$/.test(email)
 
@@ -232,7 +234,7 @@ function AddCompanyDialog({ onClose }: { onClose: () => void }): ReactElement {
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    const error = !/^\d{10}$/.test(nip) ? NIP_ERROR : isBadEmail(email) ? EMAIL_ERROR : null
+    const error = !/^\d{10}$/.test(nip) ? NIP_ERROR : !isValidNip(nip) ? NIP_CHECKSUM_ERROR : isBadEmail(email) ? EMAIL_ERROR : null
     setFormError(error)
     if (!error) create.mutate({ nip, displayName: displayName || null, notificationEmail: email || null })
   }

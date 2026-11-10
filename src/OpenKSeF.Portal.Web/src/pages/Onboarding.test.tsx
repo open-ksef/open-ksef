@@ -79,6 +79,13 @@ describe('Onboarding', () => {
     expect(createTenant).not.toHaveBeenCalled()
   })
 
+  it('blocks a NIP with a wrong checksum', async () => {
+    await type('onboarding-nip', '1234567890')
+    await next()
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Nieprawidłowy NIP: sprawdź cyfry (błędna suma kontrolna)')
+    expect(createTenant).not.toHaveBeenCalled()
+  })
+
   it('says the notification e-mail needs server mail', () => {
     const hint = container.querySelector('#onboarding-email-hint')
     expect(hint?.textContent).toBe('E-mail wysyłamy tylko wtedy, gdy administrator serwera skonfigurował pocztę.')
