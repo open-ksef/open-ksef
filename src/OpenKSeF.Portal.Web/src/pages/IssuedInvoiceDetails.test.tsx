@@ -529,9 +529,11 @@ describe('issue and detail pages', () => {
   })
 
   it.each([
-    ['no write permission', 403, 'Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy.'],
+    ['no write permission', 403, 'Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie do zapisu.'],
     ['invalid token', 450, 'KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.'],
-    ['missing token', null, 'Wysyłka faktur wymaga tokenu KSeF w ustawieniach firmy'],
+    ['missing token', null, 'Wysyłka faktur wymaga tokenu lub certyfikatu KSeF w ustawieniach firmy'],
+    ['rejected certificate', 450, 'KSeF odrzucił certyfikat (nieprawidłowy, wygasły lub unieważniony). Wgraj nowy certyfikat KSeF w ustawieniach firmy.'],
+    ['missing token before T-652', null, 'Wysyłka faktur wymaga tokenu KSeF w ustawieniach firmy'],
   ])('Rejected by %s: the next action is the token, editing is not offered', async (_name, statusCode, statusMessage) => {
     vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Rejected', ksef: { ...ksef, statusCode, statusMessage } }))
     await render('/issued/i-1?tenantId=t-1')

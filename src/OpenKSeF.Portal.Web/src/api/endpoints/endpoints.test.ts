@@ -85,6 +85,24 @@ describe('credentials endpoints', () => {
     expect(apiClientMock.post).toHaveBeenCalledWith('/tenants/tenant-1/credentials', { type: 'Token', token: 'secret-token' })
     expect(apiClientMock.delete).toHaveBeenCalledWith('/tenants/tenant-1/credentials')
   })
+
+  it('posts a .pfx as base64 and a .crt + .key as PEM, as JSON', async () => {
+    const { addOrUpdateCertificate } = await import('./credentials')
+    const pem = '-----BEGIN CERTIFICATE-----\nAAA=\n-----END CERTIFICATE-----\n'
+
+    await addOrUpdateCertificate('tenant-1', { file: new File([new Uint8Array([1, 2, 255])], 'a.pfx'), key: null, password: 'p' })
+    await addOrUpdateCertificate('tenant-1', { file: new File([pem], 'a.crt'), key: new File(['KEY'], 'a.key'), password: 'p' })
+    await addOrUpdateCertificate('tenant-1', { file: new File([new Uint8Array([1, 2, 255])], 'a.crt'), key: new File(['KEY'], 'a.key'), password: 'p' })
+
+    expect(apiClientMock.post).toHaveBeenNthCalledWith(1, '/tenants/tenant-1/credentials', { type: 'Certificate', certificateBase64: 'AQL/', certificatePassword: 'p' })
+    expect(apiClientMock.post).toHaveBeenNthCalledWith(2, '/tenants/tenant-1/credentials', { type: 'Certificate', certificatePem: pem, privateKeyPem: 'KEY', certificatePassword: 'p' })
+    expect(apiClientMock.post).toHaveBeenNthCalledWith(3, '/tenants/tenant-1/credentials', {
+      type: 'Certificate',
+      certificatePem: '-----BEGIN CERTIFICATE-----\nAQL/\n-----END CERTIFICATE-----\n',
+      privateKeyPem: 'KEY',
+      certificatePassword: 'p',
+    })
+  })
 })
 
 describe('devices endpoints', () => {

@@ -78,10 +78,10 @@ describe('Firma routes', () => {
 
     expect(tabs.map((tab) => [tab.textContent, tab.getAttribute('href')])).toEqual([
       ['Dane do faktur', '/company/invoice-data'],
-      ['Token KSeF i pobieranie', '/company/token'],
+      ['Dostęp do KSeF i pobieranie', '/company/token'],
       ['Dane firmy', '/company/details'],
     ])
-    expect(tabs.filter((tab) => tab.getAttribute('aria-current') === 'page').map((tab) => tab.textContent)).toEqual(['Token KSeF i pobieranie'])
+    expect(tabs.filter((tab) => tab.getAttribute('aria-current') === 'page').map((tab) => tab.textContent)).toEqual(['Dostęp do KSeF i pobieranie'])
     expect(container.querySelector('.company-head__sub')?.textContent).toContain('NIP 1111111111')
   })
 })

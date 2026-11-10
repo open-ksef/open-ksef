@@ -20,6 +20,7 @@ interface EntityInfo {
 const entityPl: Record<string, EntityInfo> = {
   Tenant: { name: 'Firma', gender: 'f' },
   Credential: { name: 'Token KSeF', gender: 'm' },
+  Certificate: { name: 'Certyfikat KSeF', gender: 'm' },
   Device: { name: 'Urządzenie', gender: 'n' },
 }
 

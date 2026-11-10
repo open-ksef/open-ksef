@@ -9,6 +9,6 @@ const stored = (name: string): string | undefined => processor.match(new RegExp(
 
 describe('token rejection texts', () => {
   it('match the messages the send processor stores', () => {
-    expect(TOKEN_REJECTIONS).toEqual(['NoWritePermissionMessage', 'InvalidTokenMessage', 'MissingTokenMessage'].map(stored))
+    expect(TOKEN_REJECTIONS.slice(0, 4)).toEqual(['NoWritePermissionMessage', 'InvalidTokenMessage', 'MissingTokenMessage', 'InvalidCertificateMessage'].map(stored))
   })
 })

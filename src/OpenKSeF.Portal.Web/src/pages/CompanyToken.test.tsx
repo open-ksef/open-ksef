@@ -7,10 +7,12 @@ import { RouterProvider, createMemoryRouter, useLocation } from 'react-router-do
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  addOrUpdateCertificate,
   addOrUpdateCredential,
   deleteCredential,
   forceCredentialSync,
   forceFullResync,
+  getCredentialStatus,
   listCredentials,
 } from '@/api/endpoints/credentials'
 import { getDashboardOverview } from '@/api/endpoints/dashboard'
@@ -20,12 +22,15 @@ import type { TenantCredentialStatusResponse } from '@/api/types'
 import { CompanyCard } from '@/company/CompanyCard'
 import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
+import { formatWarsawDate } from '@/invoicing/format'
 import { CompanyLayoutPage } from './CompanyLayout'
 import { CompanyTokenPage } from './CompanyToken'
 
 vi.mock('@/api/endpoints/credentials', () => ({
   listCredentials: vi.fn(),
+  getCredentialStatus: vi.fn(),
   addOrUpdateCredential: vi.fn(),
+  addOrUpdateCertificate: vi.fn(),
   deleteCredential: vi.fn(),
   forceCredentialSync: vi.fn(),
   forceFullResync: vi.fn(),
@@ -51,7 +56,7 @@ function Location(): ReactElement {
   return <output data-testid="location">{pathname + search}</output>
 }
 
-describe('Firma, Token KSeF i pobieranie', () => {
+describe('Firma, Dostęp do KSeF i pobieranie', () => {
   let root: Root
   let container: HTMLDivElement
   const by = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
@@ -93,6 +98,30 @@ describe('Firma, Token KSeF i pobieranie', () => {
     })
   }
 
+  async function chooseFile(id: string, name: string): Promise<File> {
+    const file = new File(['x'], name)
+    const input = by(id) as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [file], configurable: true })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    return file
+  }
+
+  async function typePassword(value: string): Promise<void> {
+    const input = by('credential-certificate-password') as HTMLInputElement
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+
+  async function chooseCertificate(): Promise<void> {
+    await act(async () => by('credential-method-certificate')?.click())
+  }
+
+  const certificateStatus = (certificateValidTo: string | null) =>
+    vi.mocked(getCredentialStatus).mockResolvedValue({ exists: true, credentialType: 'Certificate', updatedAt: '2026-09-14T10:00:00Z', certificateValidTo })
+  const inDays = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString()
+
   async function switchTo(id: string): Promise<void> {
     await act(async () => by('company-card')?.click())
     await settle()
@@ -109,6 +138,7 @@ describe('Firma, Token KSeF i pobieranie', () => {
     vi.mocked(getDashboardOverview).mockResolvedValue([])
     vi.mocked(getSellerProfile).mockResolvedValue({ ksefEnvironment: 'test' } as never)
     vi.mocked(addOrUpdateCredential).mockResolvedValue({ message: 'ok' })
+    vi.mocked(addOrUpdateCertificate).mockResolvedValue({ message: 'ok' })
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -119,13 +149,15 @@ describe('Firma, Token KSeF i pobieranie', () => {
     container.remove()
   })
 
-  it('shows the token form only, and the first fetch starts with one click', async () => {
+  it('token is the default way, and the first fetch starts with one click', async () => {
     vi.mocked(forceCredentialSync).mockResolvedValue({ tenantId: 'a', fetchedInvoices: 3, newInvoices: 1 } as never)
     await render()
 
     expect(by('credential-token-input')).not.toBeNull()
     expect(container.querySelector('input[type="file"]')).toBeNull()
-    expect(container.textContent).not.toContain('PFX')
+    expect((by('credential-method-token') as HTMLInputElement).checked).toBe(true)
+    expect(container.querySelector('legend')?.textContent).toBe('Sposób logowania do KSeF')
+    expect(container.querySelector('#token-title')?.textContent).toBe('Dostęp do KSeF')
     expect(by('credential-token-help')?.textContent).toContain('odczytu i zapisu')
     expect(by('credential-token-help')?.textContent).toContain('Aplikacji Podatnika KSeF')
 
@@ -152,13 +184,104 @@ describe('Firma, Token KSeF i pobieranie', () => {
     expect(addOrUpdateCredential).not.toHaveBeenCalled()
   })
 
-  it('an existing certificate keeps its badge and hint, and stays deletable', async () => {
+  it('a token company never asks for the certificate status', async () => {
+    await render()
+    expect(getCredentialStatus).not.toHaveBeenCalled()
+    expect(by('certificate-validity')).toBeNull()
+  })
+
+  it('uploads a .pfx with its password, then clears the fields and confirms', async () => {
+    await render()
+    await chooseCertificate()
+    expect(by('credential-token-input')).toBeNull()
+    expect(by('credential-certificate-help')?.textContent).toBe('Certyfikat typu Uwierzytelnianie z Aplikacji Podatnika KSeF 2.0. Użyj go, gdy nie masz tokenu.')
+    const file = await chooseFile('credential-certificate-file', 'firma.pfx')
+    expect(by('credential-key-file')).toBeNull()
+    await typePassword('tajne')
+    await act(async () => buttonByText(container, 'Zapisz certyfikat')!.click())
+    await settle()
+
+    expect(addOrUpdateCertificate).toHaveBeenCalledExactlyOnceWith('a', { file, key: null, password: 'tajne' })
+    expect(addOrUpdateCredential).not.toHaveBeenCalled()
+    expect(toast.success).toHaveBeenCalledWith('Certyfikat KSeF zapisany pomyślnie')
+    expect((by('credential-certificate-password') as HTMLInputElement).value).toBe('')
+    expect(container.textContent).not.toContain('tajne')
+  })
+
+  it('a .crt needs its private key', async () => {
+    await render()
+    await chooseCertificate()
+    const file = await chooseFile('credential-certificate-file', 'firma.crt')
+    await typePassword('tajne')
+    await act(async () => buttonByText(container, 'Zapisz certyfikat')!.click())
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Do pliku .crt dodaj klucz prywatny (.key)')
+
+    const key = await chooseFile('credential-key-file', 'firma.key')
+    await act(async () => buttonByText(container, 'Zapisz certyfikat')!.click())
+    await settle()
+    expect(addOrUpdateCertificate).toHaveBeenCalledExactlyOnceWith('a', { file, key, password: 'tajne' })
+  })
+
+  it('refuses a certificate without a file or a password', async () => {
+    vi.mocked(listCredentials).mockResolvedValue([row('a', { hasCredential: false, credentialType: null, lastUpdatedAt: null })])
+    await render()
+    await chooseCertificate()
+    await act(async () => buttonByText(container, 'Dodaj certyfikat')!.click())
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Wybierz plik certyfikatu')
+
+    await chooseFile('credential-certificate-file', 'firma.p12')
+    await act(async () => buttonByText(container, 'Dodaj certyfikat')!.click())
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Hasło jest wymagane')
+    expect(addOrUpdateCertificate).not.toHaveBeenCalled()
+  })
+
+  it('shows the API reason when the certificate is refused', async () => {
+    vi.mocked(addOrUpdateCertificate).mockRejectedValue(new Error('Certyfikat wygasł. Wygeneruj nowy w Aplikacji Podatnika KSeF i wgraj go.'))
+    await render()
+    await chooseCertificate()
+    await chooseFile('credential-certificate-file', 'firma.pfx')
+    await typePassword('tajne')
+    await act(async () => buttonByText(container, 'Zapisz certyfikat')!.click())
+    await settle()
+
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Certyfikat wygasł. Wygeneruj nowy'))
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['valid', 200, 'company-muted', 'Certyfikat ważny do '],
+    ['expiring', 10, 'inv-alert--warning', 'Certyfikat wygasa '],
+    ['expired', -1, 'inv-alert--error', 'Certyfikat wygasł '],
+  ])('a %s certificate shows its date', async (_name, days, className, text) => {
+    const validTo = inDays(days)
+    certificateStatus(validTo)
+    vi.mocked(listCredentials).mockResolvedValue([row('a', { credentialType: 'Certificate' })])
+    await render()
+
+    const box = by('certificate-validity')!
+    expect(getCredentialStatus).toHaveBeenCalledWith('a')
+    expect(box.className).toContain(className)
+    expect(box.textContent).toContain(text + formatWarsawDate(validTo))
+  })
+
+  it('an unreadable stored certificate asks for a new upload', async () => {
+    certificateStatus(null)
+    vi.mocked(listCredentials).mockResolvedValue([row('a', { credentialType: 'Certificate' })])
+    await render()
+
+    expect(by('certificate-validity')?.textContent).toBe('Nie można odczytać zapisanego certyfikatu. Wgraj go ponownie.')
+    expect(by('credential-delete-button')).not.toBeNull()
+  })
+
+  it('an existing certificate keeps its badge and stays deletable', async () => {
+    certificateStatus(inDays(200))
     vi.mocked(listCredentials).mockResolvedValue([row('a', { credentialType: 'Certificate' })])
     vi.mocked(deleteCredential).mockResolvedValue(undefined)
     await render()
 
     expect(by('credential-type-badge')?.textContent).toBe('Certyfikat')
-    expect(by('credential-certificate-hint')?.textContent).toContain('wysyłka faktur do KSeF wymaga tokenu')
+    expect(container.textContent).not.toContain('w portalu nie wgrasz go ponownie')
+    expect(container.querySelector('.danger-list')?.textContent).toContain('do czasu dodania nowego tokenu lub certyfikatu.')
     expect(deleteCredential).not.toHaveBeenCalled()
 
     await act(async () => by('credential-delete-button')?.click())
@@ -253,6 +376,8 @@ describe('Firma, Token KSeF i pobieranie', () => {
     expect(by('credential-delete-button')).toBeNull()
     expect((by('invoice-fetch-button') as HTMLButtonElement).disabled).toBe(true)
     expect(container.textContent).toContain('Dodaj token')
+    expect(container.textContent).toContain('Brak tokenu ani certyfikatu dla tej firmy.')
+    expect(container.textContent).toContain('Pobieranie ruszy po dodaniu tokenu lub certyfikatu.')
   })
 
   it('after a token save from a rejected invoice it links back to that invoice', async () => {

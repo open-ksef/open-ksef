@@ -84,6 +84,7 @@ export interface CredentialStatusResponse {
   exists: boolean
   credentialType: CredentialType | null
   updatedAt: string | null
+  certificateValidTo?: string | null
 }
 
 export interface TenantCredentialStatusResponse {
