@@ -123,18 +123,19 @@ public sealed class IssuedInvoiceSendProcessor(
         }
 
         KSeFOnlineSession? session = null;
+        Func<Task<KSeFOnlineSession>> openSession = async () => session ??= await submitter.OpenSessionAsync(accessToken, ksef);
         try
         {
-            for (var index = 0; index < invoices.Count; index++)
+            for (var index = 0; index < invoices.Count && !ksef.IsCancellationRequested; index++)
             {
                 var invoice = invoices[index];
                 try
                 {
-                    session = await ProcessInvoiceAsync(invoice, accessToken, session, ksef, ct);
+                    await ProcessInvoiceAsync(invoice, accessToken, openSession, ksef, ct);
                 }
                 catch (Exception e) when (IsTransient(e, ct))
                 {
-                    await RetryAllAsync(invoices.Skip(index), e, ct);
+                    await RetryAllAsync(ksef.IsCancellationRequested ? [invoice] : invoices.Skip(index), e, ct);
                     return;
                 }
                 catch (KsefApiException e)
@@ -157,25 +158,25 @@ public sealed class IssuedInvoiceSendProcessor(
         }
     }
 
-    private async Task<KSeFOnlineSession?> ProcessInvoiceAsync(IssuedInvoice invoice, string accessToken, KSeFOnlineSession? session, CancellationToken ksef, CancellationToken ct)
+    private async Task ProcessInvoiceAsync(IssuedInvoice invoice, string accessToken, Func<Task<KSeFOnlineSession>> openSession, CancellationToken ksef, CancellationToken ct)
     {
         if (invoice.Status == IssuedInvoiceStatus.Accepted)
         {
             await FetchUpoAsync(invoice, accessToken, ksef, ct);
-            return session;
+            return;
         }
 
         if (invoice.SentXml is null)
         {
             invoice.MarkRejected(null, MissingXmlMessage, null, Now());
             await db.SaveChangesAsync(ct);
-            return session;
+            return;
         }
 
         if (invoice.KsefElementRef is not null)
         {
             await ApplyStatusAsync(invoice, await submitter.GetInvoiceAsync(accessToken, invoice.KsefSessionRef!, invoice.KsefElementRef, ksef), accessToken, ksef, ct);
-            return session;
+            return;
         }
 
         if (invoice.SendStartedAt is not null && invoice.KsefSessionRef is not null)
@@ -188,15 +189,16 @@ public sealed class IssuedInvoiceSendProcessor(
                 invoice.RecordElementRef(match.ElementRef, Now());
                 await db.SaveChangesAsync(ct);
                 await ApplyStatusAsync(invoice, match, accessToken, ksef, ct);
-                return session;
+                return;
             }
         }
 
         var alreadyStarted = invoice.SendStartedAt is not null;
+        KSeFOnlineSession session;
         string elementRef;
         try
         {
-            session ??= await submitter.OpenSessionAsync(accessToken, ksef);
+            session = await openSession();
             invoice.MarkSendStarted(session.ReferenceNumber, Now());
             await db.SaveChangesAsync(ct);
             elementRef = await submitter.SendAsync(session, invoice.SentXml, ksef);
@@ -209,13 +211,12 @@ public sealed class IssuedInvoiceSendProcessor(
             else
                 invoice.MarkRejected(code, description, details, Now());
             await db.SaveChangesAsync(ct);
-            return session;
+            return;
         }
 
         invoice.RecordElementRef(elementRef, Now());
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Issued invoice {InvoiceId} sent in session {SessionRef} as {ElementRef}", invoice.Id, session.ReferenceNumber, elementRef);
-        return session;
     }
 
     private async Task ApplyStatusAsync(IssuedInvoice invoice, KSeFSentInvoice? status, string accessToken, CancellationToken ksef, CancellationToken ct)

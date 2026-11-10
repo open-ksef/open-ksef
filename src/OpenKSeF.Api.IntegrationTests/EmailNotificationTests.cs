@@ -18,6 +18,7 @@ using OpenKSeF.Domain.Events;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Push;
 using OpenKSeF.Domain.Services;
+using OpenKSeF.Domain.Tests;
 using OpenKSeF.Sync;
 using Testcontainers.PostgreSql;
 
@@ -73,6 +74,7 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     private readonly IKSeFGateway _gateway = Substitute.For<IKSeFGateway>();
     private readonly Guid _tenantA = Guid.NewGuid();
     private readonly Guid _tenantB = Guid.NewGuid();
+    private readonly FixedTime _time = new(DateTimeOffset.UtcNow);
 
     private Func<KSeFQueryCriteria, KSeFInvoiceQueryResult> _received = _ => Page([]);
 
@@ -291,28 +293,25 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(60_000, 4)]
-    [InlineData(1_500, 2)]
-    public async Task IncrementalSync_CancelledDuringNotify_SendsWithinGrace_SkipsRest_StoresAll(int graceMs, int expectedSent)
+    [InlineData(60, 4)]
+    [InlineData(5, 2)]
+    public async Task IncrementalSync_CancelledDuringNotify_SendsWithinGrace_SkipsRest_NextRunSendsNothing(int graceSeconds, int expectedSent)
     {
         var invoices = Enumerable.Range(0, 4).Select(i => Bought($"A-{i}")).ToList();
         _received = c => c.SubjectNip == NipA && c.PageOffset == 0 ? Page(invoices) : Page([]);
         using var stop = new CancellationTokenSource();
-        var push = new RecordingPushProvider(onSend: async () =>
+        var push = new RecordingPushProvider(onSend: () =>
         {
             stop.Cancel();
-            await Task.Delay(1_000);
+            _time.Advance(TimeSpan.FromSeconds(4));
+            return Task.CompletedTask;
         });
         var log = new List<(LogLevel Level, string Category, string Text)>();
-        await using (var db = NewContext())
-        {
-            db.DeviceTokens.Add(new DeviceToken { Id = Guid.NewGuid(), UserId = $"user-{NipA}", Token = "fcm-token-a", Platform = Platform.Android, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-            await db.SaveChangesAsync();
-        }
+        await AddDeviceAsync();
 
         await using (var db = NewContext())
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-                SyncService(db, MailpitOptions(), log, push, notificationGrace: TimeSpan.FromMilliseconds(graceMs)).SyncTenantAsync(_tenantA, cancellationToken: stop.Token));
+                SyncService(db, MailpitOptions(), log, push, notificationGrace: TimeSpan.FromSeconds(graceSeconds)).SyncTenantAsync(_tenantA, cancellationToken: stop.Token));
 
         Assert.Equal(expectedSent, push.Sent.Count);
         Assert.Equal(expectedSent, (await Mailpit.MessagesAsync(_mailpit)).Count);
@@ -321,11 +320,71 @@ public sealed class EmailNotificationTests : IAsyncLifetime
             Assert.Empty(skipped);
         else
             Assert.Contains($"skipped for {invoices.Count - expectedSent} stored invoices", Assert.Single(skipped).Text);
+        await using (var check = NewContext())
+        {
+            var stored = await check.InvoiceHeaders.Where(i => i.TenantId == _tenantA).ToListAsync();
+            Assert.Equal(invoices.Select(i => i.KSeFNumber).Order(), stored.Select(i => i.KSeFInvoiceNumber).Order());
+            Assert.All(stored, i => Assert.False(i.IsPaid));
+            Assert.All(stored, i => Assert.Null(i.PaidAt));
+        }
+
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db, MailpitOptions(), log, push).SyncTenantAsync(_tenantA)).Outcome);
+
+        Assert.Equal(expectedSent, push.Sent.Count);
+        Assert.Equal(expectedSent, (await Mailpit.MessagesAsync(_mailpit)).Count);
+    }
+
+    [Fact]
+    public async Task IncrementalSync_CancelledDuringFetchAfterOnePage_PageNotifiedWithinGrace_NextRunNotifiesOnlyNewPage()
+    {
+        var page1 = Enumerable.Range(0, 8).Select(i => Bought($"A-1{i}")).ToList();
+        var page2 = Enumerable.Range(0, 8).Select(i => Bought($"A-2{i}")).ToList();
+        using var stop = new CancellationTokenSource();
+        _received = c =>
+        {
+            if (c.SubjectNip != NipA || c.PageOffset > 1)
+                return Page([]);
+            if (c.PageOffset == 0)
+                return Page(page1);
+            stop.Cancel();
+            throw new OperationCanceledException(stop.Token);
+        };
+        var push = new RecordingPushProvider(onSend: () =>
+        {
+            _time.Advance(TimeSpan.FromSeconds(1));
+            return Task.CompletedTask;
+        });
+        var log = new List<(LogLevel Level, string Category, string Text)>();
+        await AddDeviceAsync();
+
+        await using (var db = NewContext())
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                SyncService(db, MailpitOptions(), log, push, batchSize: 8).SyncTenantAsync(_tenantA, cancellationToken: stop.Token));
+
+        Assert.Equal(5, push.Sent.Count);
+        Assert.Equal(5, (await Mailpit.MessagesAsync(_mailpit)).Count);
+        Assert.Contains("skipped for 3 stored invoices", Assert.Single(log, e => e.Category == nameof(InvoiceService) && e.Text.Contains("notifications skipped")).Text);
+
+        _received = c => c.SubjectNip == NipA && c.PageOffset < 2 ? Page(c.PageOffset == 0 ? page1 : page2) : Page([]);
+        await using (var db = NewContext())
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db, MailpitOptions(), log, push, batchSize: 8).SyncTenantAsync(_tenantA)).Outcome);
+
         await using var check = NewContext();
-        var stored = await check.InvoiceHeaders.Where(i => i.TenantId == _tenantA).ToListAsync();
-        Assert.Equal(invoices.Select(i => i.KSeFNumber).Order(), stored.Select(i => i.KSeFInvoiceNumber).Order());
-        Assert.All(stored, i => Assert.False(i.IsPaid));
-        Assert.All(stored, i => Assert.Null(i.PaidAt));
+        var numbers = await check.InvoiceHeaders.Where(i => i.TenantId == _tenantA).ToDictionaryAsync(i => i.Id.ToString(), i => i.KSeFInvoiceNumber);
+        Assert.Equal(page1.Concat(page2).Select(i => i.KSeFNumber).Order(), numbers.Values.Order());
+        var pushed = push.Sent.Select(n => numbers[n.Data["invoiceId"]]).ToList();
+        Assert.Equal(pushed.Count, pushed.Distinct().Count());
+        Assert.Equal(5, pushed.Count(n => page1.Any(i => i.KSeFNumber == n)));
+        Assert.Equal(page2.Select(i => i.KSeFNumber).Order(), pushed.Where(n => page2.Any(i => i.KSeFNumber == n)).Order());
+        Assert.Equal(13, (await Mailpit.MessagesAsync(_mailpit)).Count);
+    }
+
+    private async Task AddDeviceAsync()
+    {
+        await using var db = NewContext();
+        db.DeviceTokens.Add(new DeviceToken { Id = Guid.NewGuid(), UserId = $"user-{NipA}", Token = "fcm-token-a", Platform = Platform.Android, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync();
     }
 
     [Fact]
@@ -414,6 +473,7 @@ public sealed class EmailNotificationTests : IAsyncLifetime
             new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
             Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero, BatchSize = batchSize, NotificationGrace = notificationGrace ?? TimeSpan.FromSeconds(5) }),
             new XmlDownloadBlocks(),
+            _time,
             Logger<TenantSyncService>(log));
     }
 

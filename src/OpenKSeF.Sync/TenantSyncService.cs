@@ -27,6 +27,7 @@ public sealed class TenantSyncService : ITenantSyncService
     private readonly KSeFInvoiceXmlParser _xmlParser;
     private readonly TenantSyncOptions _syncOptions;
     private readonly XmlDownloadBlocks _xmlBlocks;
+    private readonly TimeProvider _time;
     private readonly ILogger<TenantSyncService> _logger;
 
     public TenantSyncService(
@@ -37,6 +38,7 @@ public sealed class TenantSyncService : ITenantSyncService
         KSeFInvoiceXmlParser xmlParser,
         IOptions<TenantSyncOptions> syncOptions,
         XmlDownloadBlocks xmlBlocks,
+        TimeProvider time,
         ILogger<TenantSyncService> logger)
     {
         _db = db;
@@ -50,6 +52,7 @@ public sealed class TenantSyncService : ITenantSyncService
             _syncOptions.BatchSize = 100;
         }
         _xmlBlocks = xmlBlocks;
+        _time = time;
         _logger = logger;
     }
 
@@ -164,7 +167,7 @@ public sealed class TenantSyncService : ITenantSyncService
             var notify = fullResyncWindowStart is null && syncState.LastSuccessfulSync is not null;
             var totalFetched = 0;
             var newReceivedIds = new List<Guid>();
-            using var notifyCts = new CancellationTokenSource();
+            using var notifyCts = new CancellationTokenSource(Timeout.InfiniteTimeSpan, _time);
             using var notifyGrace = cancellationToken.Register(() => notifyCts.CancelAfter(_syncOptions.NotificationGrace));
 
             try
