@@ -45,7 +45,7 @@ public class IssuedInvoicesApiTests : IDisposable
     private async Task<Guid> CreateTenantAsync(string? nip = null, bool withProfile = true, int? nextNumber = null, string? nextNumberPeriod = null)
     {
         _client.SetBearerToken(await _fixture.GetAccessTokenAsync());
-        nip ??= $"521{Random.Shared.Next(1_000_000, 9_999_999)}";
+        nip ??= TestNip.New();
         var response = await _client.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Issued invoices test" });
         response.EnsureSuccessStatusCode();
         var tenantId = (await response.Content.ReadFromJsonAsync<TenantIdDto>())!.Id;
@@ -385,7 +385,7 @@ public class IssuedInvoicesApiTests : IDisposable
     [Fact]
     public async Task Issue_XsdFailureFromRealWriter_Returns422_AndRollsBackNumber()
     {
-        var tenantId = await CreateTenantAsync(nip: $"012{Random.Shared.Next(1_000_000, 9_999_999)}");
+        var tenantId = await CreateTenantAsync(nip: TestNip.New("012"));
         var draft = await CreateDraftAsync(tenantId);
 
         var envelope = await ReadEnvelopeAsync(await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null), HttpStatusCode.UnprocessableEntity);

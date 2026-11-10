@@ -38,7 +38,7 @@ public class InvoiceListFiltersApiTests : IDisposable
     private async Task<Guid> CreateTenantAsync()
     {
         _client.SetBearerToken(await _fixture.GetAccessTokenAsync());
-        var nip = Random.Shared.NextInt64(1_000_000_000, 9_999_999_999).ToString();
+        var nip = TestNip.New();
         var response = await _client.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Invoice list test" });
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<TenantIdDto>())!.Id;

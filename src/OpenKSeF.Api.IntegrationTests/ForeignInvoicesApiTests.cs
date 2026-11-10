@@ -42,7 +42,7 @@ public class ForeignInvoicesApiTests : IDisposable
     private async Task<Guid> CreateTenantAsync()
     {
         _client.SetBearerToken(await _fixture.GetAccessTokenAsync());
-        var nip = $"521{Random.Shared.Next(1_000_000, 9_999_999)}";
+        var nip = TestNip.New();
         var response = await _client.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Foreign invoices test" });
         response.EnsureSuccessStatusCode();
         var tenantId = (await response.Content.ReadFromJsonAsync<TenantIdDto>())!.Id;

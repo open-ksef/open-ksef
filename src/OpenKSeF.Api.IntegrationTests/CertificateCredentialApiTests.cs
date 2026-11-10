@@ -16,7 +16,6 @@ public class CertificateCredentialApiTests : IDisposable
 
     private const string TestKeyPassword = "OpenKSeF-selfsigned-test-key";
     private static readonly (string CertPem, string KeyPem) TestCertificate = CreateTestCertificate();
-    private const string TestNip = "2684494832";
 
     public CertificateCredentialApiTests(TestcontainersFixture fixture)
     {
@@ -44,11 +43,11 @@ public class CertificateCredentialApiTests : IDisposable
         _client.SetBearerToken(token);
     }
 
-    private async Task<Guid> CreateTestTenantAsync(string nip = TestNip)
+    private async Task<Guid> CreateTestTenantAsync()
     {
         var response = await _client.PostAsJsonAsync("/api/tenants", new
         {
-            nip,
+            nip = TestNip.New(),
             displayName = $"Cert Test {Guid.NewGuid():N}"
         });
         response.EnsureSuccessStatusCode();
@@ -84,7 +83,7 @@ public class CertificateCredentialApiTests : IDisposable
     public async Task AddPemCertificate_CredentialStatus_ShowsCertificate()
     {
         await AuthenticateAsync();
-        var tenantId = await CreateTestTenantAsync("3542187690");
+        var tenantId = await CreateTestTenantAsync();
 
         var certPem = TestCertificate.CertPem;
         var keyPem = TestCertificate.KeyPem;
@@ -114,7 +113,7 @@ public class CertificateCredentialApiTests : IDisposable
     public async Task AddPemCertificate_ListCredentials_ShowsCertificateType()
     {
         await AuthenticateAsync();
-        var tenantId = await CreateTestTenantAsync("4618793205");
+        var tenantId = await CreateTestTenantAsync();
 
         var certPem = TestCertificate.CertPem;
         var keyPem = TestCertificate.KeyPem;
@@ -147,7 +146,7 @@ public class CertificateCredentialApiTests : IDisposable
     public async Task AddPemCertificate_WrongPassword_Returns400()
     {
         await AuthenticateAsync();
-        var tenantId = await CreateTestTenantAsync("1234563218");
+        var tenantId = await CreateTestTenantAsync();
 
         var certPem = TestCertificate.CertPem;
         var keyPem = TestCertificate.KeyPem;
@@ -169,7 +168,7 @@ public class CertificateCredentialApiTests : IDisposable
     public async Task AddPemCertificate_MissingPassword_Returns400()
     {
         await AuthenticateAsync();
-        var tenantId = await CreateTestTenantAsync("5252344078");
+        var tenantId = await CreateTestTenantAsync();
 
         var certPem = TestCertificate.CertPem;
         var keyPem = TestCertificate.KeyPem;
@@ -190,7 +189,7 @@ public class CertificateCredentialApiTests : IDisposable
     public async Task AddPemCertificate_MissingKeyFile_Returns400()
     {
         await AuthenticateAsync();
-        var tenantId = await CreateTestTenantAsync("8943217650");
+        var tenantId = await CreateTestTenantAsync();
 
         var certPem = TestCertificate.CertPem;
 
@@ -210,7 +209,7 @@ public class CertificateCredentialApiTests : IDisposable
     public async Task AddPemCertificate_InvalidPem_Returns400()
     {
         await AuthenticateAsync();
-        var tenantId = await CreateTestTenantAsync("1928374650");
+        var tenantId = await CreateTestTenantAsync();
 
         var response = await _client.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/credentials",
@@ -231,7 +230,7 @@ public class CertificateCredentialApiTests : IDisposable
     public async Task AddPemCertificate_OverwritesExistingTokenCredential()
     {
         await AuthenticateAsync();
-        var tenantId = await CreateTestTenantAsync("5270103391");
+        var tenantId = await CreateTestTenantAsync();
 
         var tokenResponse = await _client.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/credentials",
@@ -266,7 +265,7 @@ public class CertificateCredentialApiTests : IDisposable
     public async Task DeleteCertificateCredential_Returns204()
     {
         await AuthenticateAsync();
-        var tenantId = await CreateTestTenantAsync("9442190348");
+        var tenantId = await CreateTestTenantAsync();
 
         var certPem = TestCertificate.CertPem;
         var keyPem = TestCertificate.KeyPem;

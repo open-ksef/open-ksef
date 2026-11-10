@@ -8,6 +8,7 @@ import { createTenant } from '@/api/endpoints/tenants'
 import { BrandMark } from '@/components/BrandMark'
 import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
+import { isValidNip } from '@/invoicing/nip'
 
 type Step = 1 | 2 | 3
 
@@ -74,6 +75,11 @@ export function OnboardingPage(): ReactElement {
 
     if (!/^\d{10}$/.test(form.nip)) {
       setValidationError('NIP musi zawierać dokładnie 10 cyfr')
+      return
+    }
+
+    if (!isValidNip(form.nip)) {
+      setValidationError('Nieprawidłowy NIP: sprawdź cyfry (błędna suma kontrolna)')
       return
     }
 

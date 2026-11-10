@@ -71,13 +71,27 @@ public class TenantsApiTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateTenant_ChecksumInvalidNip_Returns400()
+    {
+        await AuthenticateAsync();
+
+        var response = await _client.PostAsJsonAsync("/api/tenants", new
+        {
+            nip = "1111111112",
+            displayName = "Bad Checksum Co"
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task GetTenant_AfterCreate_ReturnsTenant()
     {
         await AuthenticateAsync();
 
         var createResponse = await _client.PostAsJsonAsync("/api/tenants", new
         {
-            nip = "5261040828",
+            nip = TestNip.New(),
             displayName = "Get Test Co",
             notificationEmail = "get@example.com"
         });
@@ -102,7 +116,7 @@ public class TenantsApiTests : IDisposable
 
         var createResponse = await _client.PostAsJsonAsync("/api/tenants", new
         {
-            nip = "7811904565",
+            nip = TestNip.New(),
             displayName = "Delete Test Co"
         });
 
@@ -118,17 +132,17 @@ public class TenantsApiTests : IDisposable
     }
 
     [Theory]
-    [InlineData("6100000001", """{"displayName":"Renamed"}""", "keep@example.com")]
-    [InlineData("6100000002", """{"displayName":"Renamed","notificationEmail":null}""", null)]
-    [InlineData("6100000003", """{"displayName":"Renamed","notificationEmail":""}""", null)]
-    [InlineData("6100000004", """{"displayName":"Renamed","notificationEmail":"new@example.com"}""", "new@example.com")]
-    public async Task UpdateTenant_NotificationEmail_AbsentKeepsOtherwiseApplies(string nip, string body, string? expectedEmail)
+    [InlineData("""{"displayName":"Renamed"}""", "keep@example.com")]
+    [InlineData("""{"displayName":"Renamed","notificationEmail":null}""", null)]
+    [InlineData("""{"displayName":"Renamed","notificationEmail":""}""", null)]
+    [InlineData("""{"displayName":"Renamed","notificationEmail":"new@example.com"}""", "new@example.com")]
+    public async Task UpdateTenant_NotificationEmail_AbsentKeepsOtherwiseApplies(string body, string? expectedEmail)
     {
         await AuthenticateAsync();
 
         var createResponse = await _client.PostAsJsonAsync("/api/tenants", new
         {
-            nip,
+            nip = TestNip.New(),
             displayName = "Update Test Co",
             notificationEmail = "keep@example.com"
         });
@@ -154,7 +168,7 @@ public class TenantsApiTests : IDisposable
 
         var createResponse = await _client.PostAsJsonAsync("/api/tenants", new
         {
-            nip = "6100000005",
+            nip = TestNip.New(),
             displayName = "Invalid Email Co",
             notificationEmail = "keep@example.com"
         });

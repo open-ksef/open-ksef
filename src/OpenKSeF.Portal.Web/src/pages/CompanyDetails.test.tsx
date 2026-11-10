@@ -193,6 +193,11 @@ describe('Firma, Dane firmy', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toBe('NIP musi zawierać dokładnie 10 cyfr')
     expect(createTenant).not.toHaveBeenCalled()
 
+    await type('tenant-form-nip', '1234567890')
+    await act(async () => by('tenant-form-submit')?.click())
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Nieprawidłowy NIP: sprawdź cyfry (błędna suma kontrolna)')
+    expect(createTenant).not.toHaveBeenCalled()
+
     await type('tenant-form-nip', '3333333333')
     await act(async () => by('tenant-form-submit')?.click())
     await settle()
