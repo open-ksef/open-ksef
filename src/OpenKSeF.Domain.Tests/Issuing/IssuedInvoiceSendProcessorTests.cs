@@ -36,22 +36,23 @@ public class IssuedInvoiceSendProcessorTests
     private ApplicationDbContext NewDb() =>
         new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(_dbName).Options);
 
-    private async Task<Guid> SeedAsync(Action<IssuedInvoice>? arrange = null, string environment = "test", bool tokenCredential = true, Guid? tenant = null)
+    private async Task<Guid> SeedAsync(Action<IssuedInvoice>? arrange = null, string environment = "test", bool tokenCredential = true, Guid? tenant = null, bool addTenant = true)
     {
         var tenantId = tenant ?? _tenantId;
         await using var db = NewDb();
-        db.Tenants.Add(new Tenant
-        {
-            Id = tenantId,
-            UserId = "u1",
-            Nip = "5260250274",
-            KSeFCredentials =
-            [
-                tokenCredential
-                    ? new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, Type = CredentialType.Token, EncryptedToken = _encryption.Encrypt(Token) }
-                    : new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, Type = CredentialType.Certificate, EncryptedCertificateData = "x", CertificateFingerprint = "f" }
-            ]
-        });
+        if (addTenant)
+            db.Tenants.Add(new Tenant
+            {
+                Id = tenantId,
+                UserId = "u1",
+                Nip = "5260250274",
+                KSeFCredentials =
+                [
+                    tokenCredential
+                        ? new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, Type = CredentialType.Token, EncryptedToken = _encryption.Encrypt(Token) }
+                        : new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, Type = CredentialType.Certificate, EncryptedCertificateData = "x", CertificateFingerprint = "f" }
+                ]
+            });
         var invoice = Fa3InvoiceWriterTests.Issued(i => i.AddLine("Usługa", null, 1, 100m, VatRate.Rate23), tenantId: tenantId);
         invoice.AttachSentXml(Xml, Convert.ToHexString(SHA256.HashData(Xml)), environment, null);
         arrange?.Invoke(invoice);
@@ -314,6 +315,59 @@ public class IssuedInvoiceSendProcessorTests
         await RunAsync();
 
         Assert.Equal(0, (await LoadAsync(id)).AttemptCount);
+    }
+
+    [Fact]
+    public async Task SendFails_SessionClosedWithinCloseCap()
+    {
+        var id = await SeedAsync();
+        var closeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _submitter.OnSend = () => throw new HttpRequestException("connection reset");
+        _submitter.OnClose = () =>
+        {
+            closeStarted.SetResult();
+            return new TaskCompletionSource().Task;
+        };
+
+        var run = RunAsync();
+        await closeStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        _time.Advance(IssuedInvoiceSendProcessor.CloseCap - TimeSpan.FromSeconds(1));
+        Assert.False(run.IsCompleted);
+        _time.Advance(TimeSpan.FromSeconds(1));
+        await run.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal((1, 1, 1), (_submitter.Opens, _submitter.Sends, _submitter.Closes));
+        var invoice = await LoadAsync(id);
+        Assert.Equal((IssuedInvoiceStatus.Sending, "sess-1", 1, IssuedInvoiceSendProcessor.UnavailableMessage), (invoice.Status, invoice.KsefSessionRef, invoice.AttemptCount, invoice.LastError));
+    }
+
+    [Fact]
+    public async Task BudgetRunsOut_SessionClosed_UntriedInvoiceKeepsStatusAttemptsAndSchedule()
+    {
+        var ids = new[] { await SeedAsync(), await SeedAsync(addTenant: false) };
+        var before = new[] { await LoadAsync(ids[0]), await LoadAsync(ids[1]) };
+        var hangStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _submitter.OnSend = () =>
+        {
+            hangStarted.SetResult();
+            return new TaskCompletionSource<string>().Task;
+        };
+
+        var run = RunAsync();
+        await hangStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        _time.Advance(IssuedInvoiceSendProcessor.TenantBudget);
+        await run.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal((1, 1, 1), (_submitter.Opens, _submitter.Sends, _submitter.Closes));
+        var after = new[] { await LoadAsync(ids[0]), await LoadAsync(ids[1]) };
+        var tried = Assert.Single(after, i => i.AttemptCount == 1);
+        Assert.Equal((IssuedInvoiceStatus.Sending, IssuedInvoiceSendProcessor.UnavailableMessage), (tried.Status, tried.LastError));
+        var untried = Assert.Single(after, i => i.AttemptCount == 0);
+        var untriedBefore = before.Single(i => i.Id == untried.Id);
+        Assert.Equal(
+            (untriedBefore.Status, untriedBefore.LastError, untriedBefore.NextAttemptAt, untriedBefore.UpdatedAt, untriedBefore.KsefSessionRef),
+            (untried.Status, untried.LastError, untried.NextAttemptAt, untried.UpdatedAt, untried.KsefSessionRef));
+        Assert.Equal(IssuedInvoiceStatus.Queued, untried.Status);
     }
 
     [Theory]
@@ -1210,7 +1264,7 @@ public class IssuedInvoiceSendProcessorTests
         await closeStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
         _time.Advance(IssuedInvoiceSendProcessor.CloseCap - TimeSpan.FromSeconds(1));
         Assert.False(run.IsCompleted);
-        Assert.Equal(2, _submitter.Sends);
+        Assert.Equal(1, _submitter.Sends);
         _time.Advance(TimeSpan.FromSeconds(1));
         await run.WaitAsync(TimeSpan.FromSeconds(10));
 
@@ -1222,6 +1276,7 @@ public class IssuedInvoiceSendProcessorTests
         Assert.Equal(IssuedInvoiceSendProcessor.UnavailableMessage, hung.LastError);
         Assert.Equal(hung.UpdatedAt.AddSeconds(10), hung.NextAttemptAt);
         Assert.Equal(3, _submitter.Sends);
+        Assert.Equal((3, 3), (_submitter.Opens, _submitter.Closes));
 
         _time.Advance(TimeSpan.FromMinutes(1));
         _submitter.OnList = _ => [Status(KSeFSentInvoice.Accepted, "KSEF-1", elementRef: "el-hung")];
@@ -1326,61 +1381,6 @@ public class IssuedInvoiceSendProcessorTests
         {
             Closes++;
             return OnClose().WaitAsync(ct);
-        }
-    }
-
-    private sealed class FixedTime(DateTimeOffset now) : TimeProvider
-    {
-        private readonly List<FakeTimer> _timers = [];
-        private DateTimeOffset _now = now;
-        public DateTime UtcNow => _now.UtcDateTime;
-        public override DateTimeOffset GetUtcNow() => _now;
-
-        public void Advance(TimeSpan by)
-        {
-            _now += by;
-            List<FakeTimer> due;
-            lock (_timers)
-                due = _timers.Where(t => t.DueAt <= _now).ToList();
-            foreach (var timer in due)
-            {
-                timer.DueAt = DateTimeOffset.MaxValue;
-                timer.Callback(timer.State);
-            }
-        }
-
-        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
-        {
-            var timer = new FakeTimer(this, callback, state);
-            timer.Change(dueTime, period);
-            lock (_timers)
-                _timers.Add(timer);
-            return timer;
-        }
-
-        private sealed class FakeTimer(FixedTime owner, TimerCallback callback, object? state) : ITimer
-        {
-            public TimerCallback Callback => callback;
-            public object? State => state;
-            public DateTimeOffset DueAt = DateTimeOffset.MaxValue;
-
-            public bool Change(TimeSpan dueTime, TimeSpan period)
-            {
-                DueAt = dueTime == Timeout.InfiniteTimeSpan ? DateTimeOffset.MaxValue : owner._now + dueTime;
-                return true;
-            }
-
-            public void Dispose()
-            {
-                lock (owner._timers)
-                    owner._timers.Remove(this);
-            }
-
-            public ValueTask DisposeAsync()
-            {
-                Dispose();
-                return ValueTask.CompletedTask;
-            }
         }
     }
 
