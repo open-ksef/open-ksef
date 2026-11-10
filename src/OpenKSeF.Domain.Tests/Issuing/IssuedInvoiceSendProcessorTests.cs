@@ -1180,11 +1180,20 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Fact]
-    public async Task HungSend_OtherTenantSendsWithinTenantBudget_HungInvoiceResumesWithoutSecondPost()
+    public async Task HungSendAndClose_OtherTenantSendsWithinBudgetPlusCloseCap_HungInvoiceResumesWithoutSecondPost()
     {
         var first = await SeedAsync();
         var second = await SeedAsync(tenant: Guid.NewGuid());
-        var hangStarted = new TaskCompletionSource();
+        var third = await SeedAsync(tenant: Guid.NewGuid());
+        var hangStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _submitter.OnClose = () =>
+        {
+            if (_submitter.Closes > 1)
+                return Task.CompletedTask;
+            closeStarted.SetResult();
+            return new TaskCompletionSource().Task;
+        };
         _submitter.OnSend = () =>
         {
             if (_submitter.Sends > 1)
@@ -1198,16 +1207,21 @@ public class IssuedInvoiceSendProcessorTests
         _time.Advance(IssuedInvoiceSendProcessor.TenantBudget - TimeSpan.FromSeconds(1));
         Assert.False(run.IsCompleted);
         _time.Advance(TimeSpan.FromSeconds(1));
+        await closeStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        _time.Advance(IssuedInvoiceSendProcessor.CloseCap - TimeSpan.FromSeconds(1));
+        Assert.False(run.IsCompleted);
+        Assert.Equal(2, _submitter.Sends);
+        _time.Advance(TimeSpan.FromSeconds(1));
         await run.WaitAsync(TimeSpan.FromSeconds(10));
 
-        var invoices = new[] { await LoadAsync(first), await LoadAsync(second) };
-        var sent = Assert.Single(invoices, i => i.KsefElementRef == "el-ok");
+        var invoices = new[] { await LoadAsync(first), await LoadAsync(second), await LoadAsync(third) };
+        Assert.All(invoices.Where(i => i.KsefElementRef == "el-ok"), i => Assert.Equal(IssuedInvoiceStatus.Sending, i.Status));
+        Assert.Equal(2, invoices.Count(i => i.KsefElementRef == "el-ok"));
         var hung = Assert.Single(invoices, i => i.KsefElementRef is null);
-        Assert.Equal(IssuedInvoiceStatus.Sending, sent.Status);
         Assert.Equal((IssuedInvoiceStatus.Sending, "sess-1", 1), (hung.Status, hung.KsefSessionRef, hung.AttemptCount));
         Assert.Equal(IssuedInvoiceSendProcessor.UnavailableMessage, hung.LastError);
-        Assert.True(hung.NextAttemptAt > _time.UtcNow);
-        Assert.Equal(2, _submitter.Sends);
+        Assert.Equal(hung.UpdatedAt.AddSeconds(10), hung.NextAttemptAt);
+        Assert.Equal(3, _submitter.Sends);
 
         _time.Advance(TimeSpan.FromMinutes(1));
         _submitter.OnList = _ => [Status(KSeFSentInvoice.Accepted, "KSEF-1", elementRef: "el-hung")];
@@ -1215,7 +1229,7 @@ public class IssuedInvoiceSendProcessorTests
 
         var resumed = await LoadAsync(hung.Id);
         Assert.Equal((IssuedInvoiceStatus.Accepted, "el-hung", "KSEF-1"), (resumed.Status, resumed.KsefElementRef, resumed.KsefNumber));
-        Assert.Equal(2, _submitter.Sends);
+        Assert.Equal(3, _submitter.Sends);
     }
 
     [Fact]
@@ -1265,6 +1279,7 @@ public class IssuedInvoiceSendProcessorTests
         public Func<string, KSeFSentInvoice?> OnGet = _ => null;
         public Func<string, IReadOnlyList<KSeFSentInvoice>> OnList = _ => [];
         public Func<byte[]?> OnUpo = () => null;
+        public Func<Task> OnClose = () => Task.CompletedTask;
         public int Logins, Opens, Sends, Gets, Closes;
         public List<(string SessionRef, string ElementRef)> UpoRequests = [];
         public List<byte[]> SentBytes = [];
@@ -1310,7 +1325,7 @@ public class IssuedInvoiceSendProcessorTests
         public Task CloseSessionAsync(KSeFOnlineSession session, CancellationToken ct = default)
         {
             Closes++;
-            return Task.CompletedTask;
+            return OnClose().WaitAsync(ct);
         }
     }
 

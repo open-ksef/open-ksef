@@ -15,7 +15,8 @@ namespace OpenKSeF.Sync.Issuing;
 /// <summary>
 /// One send cycle over the IssuedInvoices outbox. Write-ahead: session ref and SendStartedAt are saved before the send,
 /// the element ref right after it, so a crash in between is recovered by hash lookup in the session, or by posting the stored bytes again.
-/// KSeF calls of one tenant share TenantBudget, so a hung tenant cannot hold others back; DB writes use the host token so a timed-out tenant still saves its retry.
+/// KSeF calls of one tenant share TenantBudget (2 min) plus CloseCap (10 s) for the session close, so a hung tenant holds others back at most 2 min 10 s;
+/// DB writes use the host token so a timed-out tenant still saves its retry.
 /// </summary>
 public sealed class IssuedInvoiceSendProcessor(
     ApplicationDbContext db,
@@ -26,6 +27,7 @@ public sealed class IssuedInvoiceSendProcessor(
 {
     public const int BatchSize = 50;
     public static readonly TimeSpan TenantBudget = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan CloseCap = TimeSpan.FromSeconds(10);
     public const string UnavailableMessage = "KSeF nie odpowiada, ponowimy wysyłkę";
     public const string RateLimitedMessage = "KSeF ogranicza liczbę żądań, ponowimy wysyłkę";
     public const string NoWritePermissionMessage = "Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy.";
@@ -98,8 +100,8 @@ public sealed class IssuedInvoiceSendProcessor(
         string accessToken;
         try
         {
-            using var loginCap = CancellationTokenSource.CreateLinkedTokenSource(ksef);
-            loginCap.CancelAfter(LoginCap);
+            using var loginTimeout = new CancellationTokenSource(LoginCap, time);
+            using var loginCap = CancellationTokenSource.CreateLinkedTokenSource(ksef, loginTimeout.Token);
             accessToken = await submitter.LoginAsync(tenant.Nip, encryption.Decrypt(credential.EncryptedToken!), loginCap.Token);
         }
         catch (KSeFAuthRejectedException e)
@@ -400,11 +402,12 @@ public sealed class IssuedInvoiceSendProcessor(
 
     private async Task CloseQuietlyAsync(KSeFOnlineSession session)
     {
+        using var closeCap = new CancellationTokenSource(CloseCap, time);
         try
         {
-            await submitter.CloseSessionAsync(session, CancellationToken.None);
+            await submitter.CloseSessionAsync(session, closeCap.Token);
         }
-        catch (Exception e) when (e is KsefApiException or HttpRequestException or TaskCanceledException)
+        catch (Exception e) when (e is KsefApiException or HttpRequestException or OperationCanceledException)
         {
             logger.LogWarning("Closing KSeF session {SessionRef} failed: {Error}", session.ReferenceNumber, e.Message);
         }
