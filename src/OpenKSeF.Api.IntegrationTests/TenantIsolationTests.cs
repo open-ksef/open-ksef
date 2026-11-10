@@ -210,17 +210,9 @@ public sealed class TenantIsolationTests : IAsyncLifetime
 
     private static async Task<Guid> CreateTenantAsync(HttpClient client)
     {
-        var response = await client.PostAsJsonAsync("/api/tenants", new { nip = ChecksumInvalidNip(), displayName = "Isolation test" });
+        var response = await client.PostAsJsonAsync("/api/tenants", new { nip = TestNip.New(), displayName = "Isolation test" });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<IdDto>())!.Id;
-    }
-
-    private static string ChecksumInvalidNip()
-    {
-        int[] weights = [6, 5, 7, 2, 3, 4, 5, 6, 7];
-        var digits = Enumerable.Range(0, 9).Select(_ => Random.Shared.Next(10)).ToArray();
-        var checksum = digits.Zip(weights, (d, w) => d * w).Sum() % 11;
-        return string.Concat(digits) + (checksum + 1) % 10;
     }
 
     private async Task WithDbAsync(Func<ApplicationDbContext, Task> action)

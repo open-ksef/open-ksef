@@ -274,7 +274,12 @@ public sealed class TenantSyncService : ITenantSyncService
                 TenantId: tenant.Id,
                 Nip: tenant.Nip,
                 Outcome: ex is DbUpdateException ? TenantSyncOutcome.StoreFailed : TenantSyncOutcome.Failed,
-                ErrorMessage: ex is DbUpdateException ? "Invoice data could not be stored." : ex.Message,
+                ErrorMessage: ex switch
+                {
+                    DbUpdateException => "Invoice data could not be stored.",
+                    KsefApiException => ex.Message,
+                    _ => "Synchronization failed. Details are in the server log.",
+                },
                 ErrorStatusCode: statusCode.HasValue ? (int)statusCode.Value : null);
         }
         finally

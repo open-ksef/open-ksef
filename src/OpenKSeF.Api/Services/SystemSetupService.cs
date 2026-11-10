@@ -243,7 +243,7 @@ public sealed class SystemSetupService : ISystemSetupService
             ["realm"] = "openksef",
             ["enabled"] = true,
             ["displayName"] = "openksef",
-            ["sslRequired"] = "none",
+            ["sslRequired"] = "external",
             ["accessTokenLifespan"] = 1800,
             ["ssoSessionIdleTimeout"] = 1800,
             ["ssoSessionMaxLifespan"] = 36000,

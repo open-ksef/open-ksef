@@ -57,8 +57,8 @@ public class TenantsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Create([FromBody] CreateTenantRequest request)
     {
-        if (!NipValidator.IsValid(request.Nip))
-            return BadRequest(new { error = "Invalid NIP format. Must be 10 digits." });
+        if (!NipValidator.HasValidChecksum(request.Nip))
+            return BadRequest(new { error = "Invalid NIP. Must be 10 digits with a valid checksum." });
 
         var normalizedNip = NipValidator.Normalize(request.Nip);
         var now = DateTime.UtcNow;

@@ -47,8 +47,8 @@ public static class MigrationHelper
             if (schemaExistsButHistoryMissing)
             {
                 logger.LogWarning(
-                    "Detected existing schema with empty migration history. Rebuilding migration history table.");
-                await SeedMigrationHistoryAsync(db, allMigrations, cancellationToken);
+                    "Detected existing schema with empty migration history. Marking only the initial migration as applied.");
+                await SeedMigrationHistoryAsync(db, allMigrations.Take(1), cancellationToken);
                 pendingMigrations = (await db.Database.GetPendingMigrationsAsync(cancellationToken)).ToArray();
             }
 

@@ -69,7 +69,7 @@ public class MobileContractApiTests : IDisposable
             return json;
         }
 
-        var nip = Random.Shared.NextInt64(1_000_000_000, 9_999_999_999).ToString();
+        var nip = TestNip.New();
         var tenant = await Read("POST /api/tenants", await _client.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Mobile contract", notificationEmail = "mobile@example.com" }));
         var tenantId = tenant.GetProperty("id").GetGuid();
         var invoiceId = await SeedInvoiceAsync(tenantId, "PLN");
@@ -84,7 +84,7 @@ public class MobileContractApiTests : IDisposable
         await Read("GET /api/tenants/{id}/invoices/{invoiceId}/transfer", await _client.GetAsync($"/api/tenants/{tenantId}/invoices/{invoiceId}/transfer"));
         await Read("GET /api/tenants/{id}/invoices/{invoiceId}/transfer (QR blocked)", await _client.GetAsync($"/api/tenants/{tenantId}/invoices/{eurInvoiceId}/transfer"));
 
-        var sellerResponse = await _client.PostAsJsonAsync("/api/tenants", new { nip = $"521{Random.Shared.Next(1_000_000, 9_999_999)}", displayName = "Mobile contract seller" });
+        var sellerResponse = await _client.PostAsJsonAsync("/api/tenants", new { nip = TestNip.New(), displayName = "Mobile contract seller" });
         var sellerId = (await sellerResponse.EnsureSuccessStatusCode().Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         await Read("PUT /api/tenants/{id}/seller-profile", await _client.PutAsJsonAsync($"/api/tenants/{sellerId}/seller-profile", new SellerProfileRequest(
             "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, "FV/{nr}/{MM}/{RRRR}")));

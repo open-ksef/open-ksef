@@ -1,6 +1,8 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenKSeF.Domain.Data;
 
@@ -32,24 +34,24 @@ public class MigrationHelperTests : IDisposable
     }
 
     [Fact]
-    public async Task ApplyMigrationsIdempotentlyAsync_RepairsMissingHistoryWhenSchemaAlreadyExists()
+    public async Task ApplyMigrationsIdempotentlyAsync_BaselinesOnlyInitialSchema_RunsTheRest()
     {
         await using (var setupContext = CreateContext())
         {
-            await setupContext.Database.MigrateAsync();
+            var initialSchema = setupContext.Database.GetMigrations().First();
+            await setupContext.GetService<IMigrator>().MigrateAsync(initialSchema);
             await setupContext.Database.ExecuteSqlRawAsync("DELETE FROM \"__EFMigrationsHistory\"");
         }
 
         await using var context = CreateContext();
 
-        var appliedBefore = await context.Database.GetAppliedMigrationsAsync();
-        Assert.Empty(appliedBefore);
-
         await MigrationHelper.ApplyMigrationsIdempotentlyAsync(context, NullLogger.Instance);
 
-        var appliedAfter = await context.Database.GetAppliedMigrationsAsync();
-        var expected = context.Database.GetMigrations();
-        Assert.Equal(expected, appliedAfter);
+        Assert.Equal(context.Database.GetMigrations(), await context.Database.GetAppliedMigrationsAsync());
+        var notificationEmailColumns = await context.Database
+            .SqlQueryRaw<int>("SELECT COUNT(*) AS \"Value\" FROM pragma_table_info('Tenants') WHERE name = 'NotificationEmail'")
+            .SingleAsync();
+        Assert.Equal(1, notificationEmailColumns);
     }
 
     public void Dispose()

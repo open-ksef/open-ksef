@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using KSeF.Client.Core.Exceptions;
 using Microsoft.EntityFrameworkCore;
@@ -792,6 +793,25 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         Assert.Equal(TenantSyncOutcome.Failed, result.Outcome);
         await using var db = NewContext();
         Assert.Equal(LastSync, (await db.SyncStates.SingleAsync()).LastSuccessfulSync!.Value, TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
+    public async Task FailedSync_ReturnsMappedMessage_KeepsKsefMessage()
+    {
+        await MigrateAsync();
+        _received = _ => throw new InvalidOperationException("Host=db;Password=internal");
+
+        var internalFailure = await ManualSyncAsync();
+
+        Assert.Equal(TenantSyncOutcome.Failed, internalFailure.Outcome);
+        Assert.Equal("Synchronization failed. Details are in the server log.", internalFailure.ErrorMessage);
+
+        _received = _ => throw new KsefApiException("rate limited", HttpStatusCode.TooManyRequests);
+
+        var ksefFailure = await ManualSyncAsync();
+
+        Assert.Equal("rate limited", ksefFailure.ErrorMessage);
+        Assert.Equal(429, ksefFailure.ErrorStatusCode);
     }
 
     [Fact]
