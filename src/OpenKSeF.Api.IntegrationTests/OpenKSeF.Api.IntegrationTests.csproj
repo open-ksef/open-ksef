@@ -28,6 +28,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\OpenKSeF.Domain.Tests\FixedTime.cs" Link="FixedTime.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="realm-test.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

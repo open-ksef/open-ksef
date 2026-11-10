@@ -81,6 +81,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions { XmlDownloadSpacing = spacing ?? TimeSpan.Zero, XmlDownloadsPerCycle = budget }),
         _blocks,
+        TimeProvider.System,
         NullLogger<TenantSyncService>.Instance);
 
     private async Task MigrateAsync()

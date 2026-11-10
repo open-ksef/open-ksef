@@ -76,6 +76,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero }),
         new XmlDownloadBlocks(),
+        TimeProvider.System,
         _logger);
 
     private List<string> Logged(LogLevel level, string text) => _logger.ReceivedCalls()

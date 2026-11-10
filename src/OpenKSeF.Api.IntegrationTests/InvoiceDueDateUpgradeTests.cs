@@ -72,6 +72,7 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero }),
         new XmlDownloadBlocks(),
+        TimeProvider.System,
         NullLogger<TenantSyncService>.Instance);
 
     private static byte[] XmlWithDueDate(string date) => Encoding.UTF8.GetBytes(

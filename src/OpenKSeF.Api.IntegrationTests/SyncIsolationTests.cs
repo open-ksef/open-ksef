@@ -62,6 +62,7 @@ public sealed class SyncIsolationTests : IAsyncLifetime
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions { BatchSize = 2, XmlDownloadSpacing = TimeSpan.Zero }),
         new XmlDownloadBlocks(),
+        TimeProvider.System,
         NullLogger<TenantSyncService>.Instance);
 
     private async Task SeedAsync(string? migration = null)
