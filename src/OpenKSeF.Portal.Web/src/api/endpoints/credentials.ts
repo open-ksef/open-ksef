@@ -20,6 +20,8 @@ export function addOrUpdateCredential(tenantId: string, token: string): Promise<
   })
 }
 
+const MAX_REQUEST_BYTES = 64 * 1024
+
 export interface CertificateUpload {
   file: File
   key: File | null
@@ -31,6 +33,7 @@ export async function addOrUpdateCertificate(tenantId: string, { file, key, pass
   const body = key
     ? { type: 'Certificate', certificatePem: toPem(bytes), privateKeyPem: await key.text(), certificatePassword: password }
     : { type: 'Certificate', certificateBase64: toBase64(bytes), certificatePassword: password }
+  if (new TextEncoder().encode(JSON.stringify(body)).length > MAX_REQUEST_BYTES) throw new Error('Plik jest za duży. Maksymalny rozmiar to 64 KB.')
   return apiClient.post<MessageResponse>(`/tenants/${encodeURIComponent(tenantId)}/credentials`, body)
 }
 

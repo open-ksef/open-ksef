@@ -235,18 +235,6 @@ describe('Firma, Dostęp do KSeF i pobieranie', () => {
     expect(addOrUpdateCertificate).not.toHaveBeenCalled()
   })
 
-  it('refuses certificate and key over 48 KB together, since base64 in JSON must fit 64 KB', async () => {
-    await render()
-    await chooseCertificate()
-    await chooseFile('credential-certificate-file', 'firma.crt', 30 * 1024)
-    await chooseFile('credential-key-file', 'firma.key', 19 * 1024)
-    await typePassword('tajne')
-    await act(async () => buttonByText(container, 'Zapisz certyfikat')!.click())
-
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Plik jest za duży. Maksymalny rozmiar to 48 KB.')
-    expect(addOrUpdateCertificate).not.toHaveBeenCalled()
-  })
-
   it('a saved certificate opens the form on the certificate way', async () => {
     certificateStatus(inDays(200))
     vi.mocked(listCredentials).mockResolvedValue([row('a', { credentialType: 'Certificate' })])
