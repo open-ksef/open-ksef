@@ -11,6 +11,7 @@ import {
   getCredentialStatus,
   type CertificateUpload,
 } from '@/api/endpoints/credentials'
+import { ApiError } from '@/api/errors'
 import type { TenantResponse } from '@/api/types'
 import { CompanyBox } from '@/company/CompanyBox'
 import { useCompany } from '@/company/useCompany'
@@ -91,7 +92,10 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
       setSaved(true)
       await refreshCredentials()
     },
-    onError: (mutationError, input) => notifyMutationError('save', typeof input === 'string' ? 'Credential' : 'Certificate', mutationError),
+    onError: (mutationError, input) => {
+      if (typeof input !== 'string' && !(mutationError instanceof ApiError)) setFormError(mutationError.message)
+      else notifyMutationError('save', typeof input === 'string' ? 'Credential' : 'Certificate', mutationError)
+    },
   })
 
   const remove = useMutation({

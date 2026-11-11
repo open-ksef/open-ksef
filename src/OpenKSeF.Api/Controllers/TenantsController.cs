@@ -58,7 +58,7 @@ public class TenantsController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateTenantRequest request)
     {
         if (!NipValidator.HasValidChecksum(request.Nip))
-            return BadRequest(new { error = "Invalid NIP. Must be 10 digits with a valid checksum." });
+            return BadRequest(new { error = "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną." });
 
         var normalizedNip = NipValidator.Normalize(request.Nip);
         var now = DateTime.UtcNow;
@@ -82,7 +82,7 @@ public class TenantsController : ControllerBase
         }
         catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
         {
-            return Conflict(new { error = "A tenant with this NIP already exists for your account." });
+            return Conflict(new { error = "Ta firma (NIP) jest już dodana do Twojego konta." });
         }
 
         var response = new TenantResponse(tenant.Id, tenant.Nip, tenant.DisplayName, tenant.NotificationEmail, tenant.CreatedAt);

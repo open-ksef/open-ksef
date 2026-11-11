@@ -82,6 +82,21 @@ public class TenantsApiTests : IDisposable
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("""{"error":"Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną."}""", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task CreateTenant_DuplicateNip_Returns409()
+    {
+        await AuthenticateAsync();
+        var nip = TestNip.New();
+
+        var first = await _client.PostAsJsonAsync("/api/tenants", new { nip, displayName = "First Co" });
+        var second = await _client.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Second Co" });
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Equal("""{"error":"Ta firma (NIP) jest już dodana do Twojego konta."}""", await second.Content.ReadAsStringAsync());
     }
 
     [Fact]

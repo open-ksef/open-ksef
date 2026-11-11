@@ -116,7 +116,7 @@ public sealed class SystemSetupService : ISystemSetupService
             var ksefEnv = DependencyInjection.NormalizeKSeFEnvironmentKey(request.KSeFBaseUrl);
 
             if (!string.IsNullOrWhiteSpace(request.FirstTenantNip) && !NipValidator.HasValidChecksum(request.FirstTenantNip))
-                return new SetupApplyResponse(false, "Niepoprawny NIP");
+                return new SetupApplyResponse(false, "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.");
 
             var client = _httpClientFactory.CreateClient("keycloak");
             var kcBase = KeycloakInternalBaseUrl;
