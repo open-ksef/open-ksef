@@ -131,7 +131,9 @@ public class CredentialsControllerSyncTests : IDisposable
         var result = Assert.IsType<ObjectResult>(await CreateController().SyncNow(_tenantId, CancellationToken.None));
 
         Assert.Equal(status, result.StatusCode);
-        Assert.Equal($$"""{"error":"{{error}}"}""", JsonSerializer.Serialize(result.Value));
+        var body = JsonSerializer.SerializeToElement(result.Value);
+        Assert.Equal(error, Assert.Single(body.EnumerateObject(), p => p.Name == "error").Value.GetString());
+        Assert.Single(body.EnumerateObject());
     }
 
     [Fact]
