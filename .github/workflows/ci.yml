@@ -103,10 +103,12 @@ jobs:
           docker run -d --name gateway -p 8080:8080 openksef-gateway:ci
           for i in $(seq 1 20); do curl -s -o /dev/null http://localhost:8080/ && break; sleep 0.5; done
           head -c 2097152 /dev/zero > body.bin
-          result=$(curl -s -o out.json -w '%{http_code} %{content_type}' -X POST --data-binary @body.bin http://localhost:8080/api/tenants)
-          echo "$result"; cat out.json
+          result=$(curl -s -D headers.txt -o out.json -w '%{http_code} %{content_type}' -X POST --data-binary @body.bin http://localhost:8080/api/tenants)
+          echo "$result"; cat headers.txt out.json
           test "$result" = "413 application/json; charset=utf-8"
           test "$(cat out.json)" = '{"error":"Żądanie jest za duże."}'
+          grep -qi '^x-content-type-options: nosniff' headers.txt
+          grep -qi '^content-security-policy:' headers.txt
 
   # ─────────────────────────────────────────────────────────────────
   # Push :dev images to GHCR on every commit to main.
