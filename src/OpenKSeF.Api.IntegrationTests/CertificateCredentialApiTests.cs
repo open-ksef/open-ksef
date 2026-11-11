@@ -1,8 +1,12 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 
 namespace OpenKSeF.Api.IntegrationTests;
@@ -341,7 +345,10 @@ public class CertificateCredentialApiTests : IDisposable
     {
         await AuthenticateAsync();
         var tenantId = await CreateTestTenantAsync();
-        using var kestrel = new OpenKSeFWebApplicationFactory(_fixture);
+        var errors = new ErrorLog();
+        using var baseFactory = new OpenKSeFWebApplicationFactory(_fixture);
+        using var kestrel = baseFactory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+            s.AddSingleton<ILoggerFactory>(new LoggerFactory([errors]))));
         kestrel.UseKestrel(0);
         kestrel.StartServer();
         using var client = kestrel.CreateClient();
@@ -355,6 +362,9 @@ public class CertificateCredentialApiTests : IDisposable
         });
 
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<ErrorDto>();
+        Assert.Equal("Plik jest za duży. Maksymalny rozmiar to 64 KB.", body!.Error);
+        Assert.Empty(errors.Entries);
         var status = await _client.GetFromJsonAsync<CredentialStatusDto>($"/api/tenants/{tenantId}/credentials/status");
         Assert.False(status!.Exists);
     }
@@ -379,6 +389,22 @@ public class CertificateCredentialApiTests : IDisposable
     {
         _client.Dispose();
         _factory.Dispose();
+    }
+
+    private sealed record ErrorDto([property: JsonPropertyName("error")] string Error);
+
+    private sealed class ErrorLog : ILoggerProvider, ILogger
+    {
+        public ConcurrentQueue<string> Entries { get; } = new();
+        public ILogger CreateLogger(string categoryName) => this;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Error;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (IsEnabled(logLevel))
+                Entries.Enqueue($"{formatter(state, exception)} {exception}");
+        }
+        public void Dispose() { }
     }
 
     private sealed record TenantDto(
