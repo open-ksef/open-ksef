@@ -1,5 +1,6 @@
 import { apiClient } from '../client'
-import type { CredentialStatusResponse, TenantCredentialStatusResponse, TenantManualSyncResponse } from '../types'
+import { ApiError, normalizeError } from '../errors'
+import type { CredentialStatusResponse, TenantCredentialStatusResponse, TenantManualSyncResponse, TenantSyncStatusResponse } from '../types'
 
 interface MessageResponse {
   message: string
@@ -53,10 +54,35 @@ export function deleteCredential(tenantId: string): Promise<void> {
   return apiClient.delete<void>(`/tenants/${encodeURIComponent(tenantId)}/credentials`)
 }
 
+const SYNC_POLL_INTERVAL_MS = 3000
+const SYNC_POLL_CAP_MS = 15 * 60 * 1000
+const SYNC_ALREADY_RUNNING = 'Trwa już synchronizacja. Uruchom pełną resynchronizację po jej zakończeniu.'
+
 export function forceCredentialSync(tenantId: string): Promise<TenantManualSyncResponse> {
-  return apiClient.post<TenantManualSyncResponse>(`/tenants/${encodeURIComponent(tenantId)}/credentials/sync`)
+  return runSync(tenantId, 'sync', false)
 }
 
 export function forceFullResync(tenantId: string): Promise<TenantManualSyncResponse> {
-  return apiClient.post<TenantManualSyncResponse>(`/tenants/${encodeURIComponent(tenantId)}/credentials/full-resync`)
+  return runSync(tenantId, 'full-resync', true)
+}
+
+async function runSync(tenantId: string, action: string, fullResync: boolean): Promise<TenantManualSyncResponse> {
+  const base = `/tenants/${encodeURIComponent(tenantId)}/credentials`
+  let status = await apiClient.post<TenantSyncStatusResponse>(`${base}/${action}`, undefined, { headers: { Prefer: 'respond-async' } })
+  if (fullResync && !status.fullResync) throw new ApiError(SYNC_ALREADY_RUNNING, 409)
+
+  const deadline = Date.now() + SYNC_POLL_CAP_MS
+  while (status.state === 'waiting' || status.state === 'running') {
+    if (Date.now() >= deadline) throw await normalizeError(new Response(null, { status: 408 }))
+    await new Promise((resolve) => setTimeout(resolve, SYNC_POLL_INTERVAL_MS))
+    status = await apiClient.get<TenantSyncStatusResponse>(`${base}/sync`)
+  }
+
+  if (status.state === 'succeeded' && status.result) return status.result
+  if (status.state !== 'failed') throw await normalizeError(new Response(null, { status: 408 }))
+  // A real Response keeps the hooks' error mapping, which reads the status and the JSON content type.
+  throw await normalizeError(new Response(JSON.stringify({ error: status.error }), {
+    status: status.errorStatus ?? 500,
+    headers: { 'Content-Type': 'application/json' },
+  }))
 }

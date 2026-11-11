@@ -3,8 +3,10 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
+using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
@@ -63,11 +65,12 @@ public class CredentialsController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IEncryptionService _encryption;
-    private readonly ITenantSyncService _tenantSyncService;
+    private readonly ManualSyncJobs _syncJobs;
     private readonly ISystemConfigService _systemConfig;
     private readonly ILogger<CredentialsController> _logger;
     private readonly bool _onRowKey;
 
+    public const string ManualSyncRateLimitPolicy = "manual-sync";
     public const string MissingPrivateKeyMessage = "Plik nie zawiera klucza prywatnego. Wgraj plik .pfx/.p12 z kluczem albo parę .crt + .key.";
     public const string ExpiredCertificateMessage = "Certyfikat wygasł. Wygeneruj nowy w Aplikacji Podatnika KSeF i wgraj go.";
     public const string UnreadableCertificateMessage = "Nie udało się odczytać certyfikatu. Sprawdź hasło i czy wybrany plik jest właściwy.";
@@ -85,14 +88,14 @@ public class CredentialsController : ControllerBase
         ApplicationDbContext db,
         ICurrentUserService currentUser,
         IEncryptionService encryption,
-        ITenantSyncService tenantSyncService,
+        ManualSyncJobs syncJobs,
         ISystemConfigService systemConfig,
         ILogger<CredentialsController> logger)
     {
         _db = db;
         _currentUser = currentUser;
         _encryption = encryption;
-        _tenantSyncService = tenantSyncService;
+        _syncJobs = syncJobs;
         _systemConfig = systemConfig;
         _logger = logger;
         // Read here, not in the action: binding awaits the request body after _encryption is resolved.
@@ -256,56 +259,109 @@ public class CredentialsController : ControllerBase
     }
 
     [HttpPost("sync")]
+    [EnableRateLimiting(ManualSyncRateLimitPolicy)]
     [ProducesResponseType(typeof(TenantManualSyncResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(TenantSyncStatusResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
-    public async Task<IActionResult> SyncNow(Guid tenantId, CancellationToken cancellationToken)
-    {
-        var result = await _tenantSyncService.SyncTenantAsync(
-            tenantId,
-            _currentUser.UserId,
-            cancellationToken: cancellationToken);
-
-        return MapSyncResult(result);
-    }
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public Task<IActionResult> SyncNow(Guid tenantId, CancellationToken cancellationToken) =>
+        StartSync(tenantId, fullResync: false, cancellationToken);
 
     [HttpPost("full-resync")]
+    [EnableRateLimiting(ManualSyncRateLimitPolicy)]
     [ProducesResponseType(typeof(TenantManualSyncResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(TenantSyncStatusResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
-    public async Task<IActionResult> FullResync(Guid tenantId, CancellationToken cancellationToken)
-    {
-        var result = await _tenantSyncService.SyncTenantAsync(
-            tenantId,
-            _currentUser.UserId,
-            forceFullResync: true,
-            cancellationToken: cancellationToken);
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public Task<IActionResult> FullResync(Guid tenantId, CancellationToken cancellationToken) =>
+        StartSync(tenantId, fullResync: true, cancellationToken);
 
-        return MapSyncResult(result);
+    [HttpGet("sync")]
+    [ProducesResponseType(typeof(TenantSyncStatusResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> SyncStatus(Guid tenantId)
+    {
+        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
+            return Forbid();
+
+        return Ok(await StatusAsync(tenantId, _syncJobs.Find(tenantId)));
     }
+
+    private async Task<IActionResult> StartSync(Guid tenantId, bool fullResync, CancellationToken cancellationToken)
+    {
+        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
+            return Forbid();
+
+        if (!await _db.KSeFCredentials.AnyAsync(c => c.TenantId == tenantId, cancellationToken))
+            return Conflict(new { error = TenantSyncService.MissingCredentialMessage });
+
+        var job = _syncJobs.Start(tenantId, _currentUser.UserId, fullResync);
+        var statusUrl = $"/api/tenants/{tenantId}/credentials/sync";
+        if (Request.Headers["Prefer"].Any(p => p?.Contains("respond-async", StringComparison.OrdinalIgnoreCase) == true))
+            return Accepted(statusUrl, await StatusAsync(tenantId, job));
+
+        // Mobile v1.0.7 sends no Prefer: an empty 202 shows its existing "try later" text while the job finishes.
+        var result = await _syncJobs.WaitAsync(job, cancellationToken);
+        return result is null ? Accepted(statusUrl) : MapSyncResult(result);
+    }
+
+    private async Task<TenantSyncStatusResponse> StatusAsync(Guid tenantId, ManualSyncJobs.Job? job)
+    {
+        var lastSuccessfulSync = await _db.SyncStates
+            .Where(s => s.TenantId == tenantId)
+            .Select(s => s.LastSuccessfulSync)
+            .FirstOrDefaultAsync();
+
+        if (job is null)
+            return new TenantSyncStatusResponse(tenantId, "idle", false, null, null, null, null, null, lastSuccessfulSync);
+
+        if (!job.Completion.IsCompleted)
+            return new TenantSyncStatusResponse(tenantId, job.Running ? "running" : "waiting", job.FullResync, job.StartedAtUtc, null, null, null, null, lastSuccessfulSync);
+
+        var result = job.Completion.Result;
+        return result.Outcome == TenantSyncOutcome.Success
+            ? new TenantSyncStatusResponse(tenantId, "succeeded", job.FullResync, job.StartedAtUtc, job.FinishedAtUtc, ToResponse(result), null, null, lastSuccessfulSync)
+            : new TenantSyncStatusResponse(tenantId, "failed", job.FullResync, job.StartedAtUtc, job.FinishedAtUtc, null, ErrorStatus(result.Outcome), result.ErrorMessage, lastSuccessfulSync);
+    }
+
+    private static int ErrorStatus(TenantSyncOutcome outcome) => outcome switch
+    {
+        TenantSyncOutcome.TenantNotFound => StatusCodes.Status404NotFound,
+        TenantSyncOutcome.MissingCredential => StatusCodes.Status409Conflict,
+        TenantSyncOutcome.Failed => StatusCodes.Status502BadGateway,
+        TenantSyncOutcome.Busy => StatusCodes.Status503ServiceUnavailable,
+        _ => StatusCodes.Status500InternalServerError,
+    };
 
     private IActionResult MapSyncResult(TenantSyncResult result) => result.Outcome switch
     {
+        TenantSyncOutcome.Success => Ok(ToResponse(result)),
         TenantSyncOutcome.TenantNotFound => NotFound(),
-        TenantSyncOutcome.MissingCredential => Conflict(new { error = result.ErrorMessage }),
-        TenantSyncOutcome.Failed => StatusCode(StatusCodes.Status502BadGateway, new { error = result.ErrorMessage }),
-        TenantSyncOutcome.StoreFailed => StatusCode(StatusCodes.Status500InternalServerError, new { error = result.ErrorMessage }),
-        TenantSyncOutcome.Success => Ok(new TenantManualSyncResponse(
-            TenantId: result.TenantId,
-            FetchedInvoices: result.FetchedInvoices,
-            NewInvoices: result.NewInvoices,
-            SyncedAtUtc: result.SyncedAtUtc ?? DateTime.UtcNow,
-            FailedDownloads: result.FailedDownloads,
-            QueuedDownloads: result.QueuedDownloads,
-            ErroredDownloads: result.ErroredDownloads,
-            IssuedFetchedInvoices: result.IssuedFetchedInvoices,
-            IssuedNewInvoices: result.IssuedNewInvoices)),
+        TenantSyncOutcome.StoreFailed or TenantSyncOutcome.MissingCredential or TenantSyncOutcome.Failed or TenantSyncOutcome.Busy =>
+            StatusCode(ErrorStatus(result.Outcome), new { error = result.ErrorMessage }),
         _ => StatusCode(StatusCodes.Status500InternalServerError, new { error = "Unknown sync outcome." })
     };
+
+    private static TenantManualSyncResponse ToResponse(TenantSyncResult result) => new(
+        TenantId: result.TenantId,
+        FetchedInvoices: result.FetchedInvoices,
+        NewInvoices: result.NewInvoices,
+        SyncedAtUtc: result.SyncedAtUtc ?? DateTime.UtcNow,
+        FailedDownloads: result.FailedDownloads,
+        QueuedDownloads: result.QueuedDownloads,
+        ErroredDownloads: result.ErroredDownloads,
+        IssuedFetchedInvoices: result.IssuedFetchedInvoices,
+        IssuedNewInvoices: result.IssuedNewInvoices);
 
     private static (X509Certificate2 cert, string base64ForStorage) LoadCertificate(AddCredentialRequest request)
     {

@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { ApiError } from '../errors'
 
 const apiClientMock = {
   get: vi.fn(),
@@ -227,5 +229,88 @@ describe('issuing endpoints', () => {
     expect(apiClientMock.put).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1', draft, { query: { version: 7 } })
     expect(apiClientMock.delete).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1', { query: { version: 7 } })
     expect(apiClientMock.post).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1/issue', undefined, { query: { version: 7 } })
+  })
+})
+
+describe('manual sync endpoints', () => {
+  const result = { tenantId: 'tenant-1', fetchedInvoices: 3, newInvoices: 1, syncedAtUtc: '2026-11-11T08:00:00Z' }
+  const status = (state: string, extra: Record<string, unknown> = {}) => ({
+    tenantId: 'tenant-1',
+    state,
+    fullResync: false,
+    startedAtUtc: '2026-11-11T08:00:00Z',
+    finishedAtUtc: null,
+    result: null,
+    errorStatus: null,
+    error: null,
+    lastSuccessfulSyncUtc: null,
+    ...extra,
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('asks for async, polls the status every 3 s and resolves with the result', async () => {
+    const { forceCredentialSync } = await import('./credentials')
+    apiClientMock.post.mockResolvedValueOnce(status('waiting'))
+    apiClientMock.get.mockResolvedValueOnce(status('running')).mockResolvedValueOnce(status('succeeded', { result }))
+
+    const sync = forceCredentialSync('tenant-1')
+    await vi.advanceTimersByTimeAsync(6000)
+
+    await expect(sync).resolves.toEqual(result)
+    expect(apiClientMock.post).toHaveBeenCalledWith('/tenants/tenant-1/credentials/sync', undefined, { headers: { Prefer: 'respond-async' } })
+    expect(apiClientMock.get).toHaveBeenCalledTimes(2)
+    expect(apiClientMock.get).toHaveBeenCalledWith('/tenants/tenant-1/credentials/sync')
+  })
+
+  it('throws an ApiError with the failed status and a JSON Response, so the hooks keep their mapping', async () => {
+    const { forceCredentialSync } = await import('./credentials')
+    apiClientMock.post.mockResolvedValueOnce(status('failed', { errorStatus: 502, error: 'KSeF unavailable.' }))
+
+    const error = await forceCredentialSync('tenant-1').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).status).toBe(502)
+    expect((error as ApiError).message).toBe('KSeF unavailable.')
+    expect(((error as ApiError).originalError as Response).headers.get('Content-Type')).toContain('json')
+  })
+
+  it('maps a failed run with errorStatus 409 to ApiError 409', async () => {
+    const { forceCredentialSync } = await import('./credentials')
+    apiClientMock.post.mockResolvedValueOnce(status('failed', { errorStatus: 409, error: 'No credential configured for this tenant.' }))
+
+    await expect(forceCredentialSync('tenant-1')).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('gives up after 15 minutes with an outcome-unknown status', async () => {
+    const { forceCredentialSync } = await import('./credentials')
+    apiClientMock.post.mockResolvedValueOnce(status('running'))
+    apiClientMock.get.mockResolvedValue(status('running'))
+
+    const sync = forceCredentialSync('tenant-1').catch((e: unknown) => e)
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000 + 3000)
+
+    const error = await sync
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).status).toBe(408)
+  })
+
+  it('refuses a full resync that attached to a running incremental run', async () => {
+    const { forceFullResync } = await import('./credentials')
+    apiClientMock.post.mockResolvedValueOnce(status('running', { fullResync: false }))
+
+    const error = await forceFullResync('tenant-1').catch((e: unknown) => e)
+
+    expect((error as ApiError).status).toBe(409)
+    expect((error as ApiError).message).toBe('Trwa już synchronizacja. Uruchom pełną resynchronizację po jej zakończeniu.')
+    expect(apiClientMock.post).toHaveBeenCalledWith('/tenants/tenant-1/credentials/full-resync', undefined, { headers: { Prefer: 'respond-async' } })
+    expect(apiClientMock.get).not.toHaveBeenCalled()
   })
 })

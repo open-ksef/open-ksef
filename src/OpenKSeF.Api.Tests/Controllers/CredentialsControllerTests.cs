@@ -103,7 +103,6 @@ public class CredentialsControllerCrudTests : IDisposable
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IEncryptionService _encryption;
-    private readonly ITenantSyncService _syncService;
     private readonly ISystemConfigService _systemConfig = Substitute.For<ISystemConfigService>();
     private readonly ILogger<CredentialsController> _logger = Substitute.For<ILogger<CredentialsController>>();
     private readonly string _userId = "user-1";
@@ -123,7 +122,6 @@ public class CredentialsControllerCrudTests : IDisposable
         _encryption.Encrypt(Arg.Any<string>()).Returns(x => $"encrypted:{x.Arg<string>()}");
         _encryption.Decrypt(Arg.Any<string>()).Returns(x => x.Arg<string>()["encrypted:".Length..]);
 
-        _syncService = Substitute.For<ITenantSyncService>();
         _systemConfig.GetValue(Arg.Any<string>()).Returns((string?)null);
 
         _tenantId = Guid.NewGuid();
@@ -133,7 +131,7 @@ public class CredentialsControllerCrudTests : IDisposable
     }
 
     private CredentialsController CreateController() =>
-        new(_db, _currentUser, _encryption, _syncService, _systemConfig, _logger);
+        new(_db, _currentUser, _encryption, CredentialsControllerSyncTests.Jobs(Substitute.For<ITenantSyncService>()), _systemConfig, _logger);
 
     [Fact]
     public async Task AddOrUpdate_CachedKeyRowGoneFromDb_Refreshes_Returns503_SavesNothing()

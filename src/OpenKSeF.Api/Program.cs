@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -151,6 +152,7 @@ builder.Services.AddHttpClient<IExchangeRateSource, NbpExchangeRateSource>(clien
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IUserIdProvider, SubjectUserIdProvider>();
 builder.Services.AddSingleton<IUserPushProvider, SignalRPushProvider>();
+builder.Services.AddSingleton<ManualSyncJobs>();
 
 // UseForwardedHeaders (called in the pipeline below) populates RemoteIpAddress with
 // the real client IP before any rate-limit policy runs, so it is safe to partition on
@@ -216,6 +218,19 @@ builder.Services.AddRateLimiter(options =>
         {
             Window = TimeSpan.FromHours(1),
             PermitLimit = 30,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+
+    options.AddPolicy(CredentialsController.ManualSyncRateLimitPolicy, context =>
+    {
+        var user = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? context.User.FindFirst("sub")?.Value;
+        var partition = user is null ? $"ip:{context.Connection.RemoteIpAddress}" : $"user:{user}";
+        return RateLimitPartition.GetFixedWindowLimiter(partition, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(15),
+            PermitLimit = 6,
             QueueLimit = 0,
             AutoReplenishment = true
         });
@@ -315,8 +330,6 @@ foreach (var network in (string.IsNullOrWhiteSpace(trustedNetworks) ? "127.0.0.0
     forwardedHeaders.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
 app.UseForwardedHeaders(forwardedHeaders);
 
-app.UseRateLimiter();
-
 app.Use(async (context, next) =>
 {
     var correlationId = context.Request.Headers["X-Correlation-ID"].FirstOrDefault()
@@ -354,6 +367,8 @@ app.Use(async (context, next) =>
     }
 });
 app.UseAuthentication();
+// After authentication so the manual-sync policy can partition by user; anonymous requests are still limited before the 401.
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();
