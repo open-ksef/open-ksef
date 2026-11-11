@@ -188,4 +188,28 @@ public class SystemSetupControllerTests
         var secondAttemptCredentials = _sessionService.RedeemSession("valid-session");
         Assert.Null(secondAttemptCredentials);
     }
+
+    [Fact]
+    public async Task Apply_Fails_SameTokenWorksForRetry()
+    {
+        var sessions = new SetupSessionService();
+        var token = sessions.CreateSession("admin", "secret");
+        _systemConfig.IsInitialized.Returns(false);
+        _setupService.AuthenticateAdminAsync("admin", "secret").Returns("kc-token");
+        _setupService.ApplySetupAsync(Arg.Any<SetupApplyRequest>(), "kc-token", "admin", Arg.Any<CancellationToken>())
+            .Returns(new SetupApplyResponse(false, "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną."), new SetupApplyResponse(true, null));
+        var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _logger);
+        var request = new SetupApplyRequest
+        {
+            ExternalBaseUrl = "http://localhost:8080",
+            KSeFBaseUrl = "test",
+            AdminEmail = "admin@example.com",
+            AdminPassword = "Test1234!",
+            FirstTenantNip = "1111111112",
+        };
+
+        Assert.IsType<BadRequestObjectResult>(await controller.Apply(token, request, CancellationToken.None));
+        Assert.IsType<OkObjectResult>(await controller.Apply(token, request, CancellationToken.None));
+        Assert.Null(sessions.RedeemSession(token));
+    }
 }

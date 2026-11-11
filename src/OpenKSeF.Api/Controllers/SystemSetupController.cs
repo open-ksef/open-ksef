@@ -88,7 +88,10 @@ public class SystemSetupController : ControllerBase
 
         var result = await _setupService.ApplySetupAsync(request, kcAdminToken, credentials.Value.Username, ct);
         if (!result.Success)
+        {
+            _sessionService.RestoreSession(setupToken, credentials.Value.Username, credentials.Value.Password);
             return BadRequest(result);
+        }
 
         return Ok(result);
     }

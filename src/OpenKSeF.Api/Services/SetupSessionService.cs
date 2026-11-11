@@ -7,6 +7,7 @@ public interface ISetupSessionService
 {
     string CreateSession(string username, string password);
     (string Username, string Password)? RedeemSession(string token);
+    void RestoreSession(string token, string username, string password);
 }
 
 public class SetupSessionService : ISetupSessionService
@@ -36,6 +37,9 @@ public class SetupSessionService : ISetupSessionService
 
         return (entry.Username, entry.Password);
     }
+
+    public void RestoreSession(string token, string username, string password) =>
+        _sessions[token] = new SessionEntry(username, password, DateTimeOffset.UtcNow.Add(SessionLifetime));
 
     private void PurgeExpired()
     {

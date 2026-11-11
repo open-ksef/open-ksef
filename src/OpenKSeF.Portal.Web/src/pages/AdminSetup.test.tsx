@@ -209,4 +209,21 @@ describe('AdminSetupPage', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('Keycloak unavailable')
     expect(byTestId('setup-apply')).not.toBeNull()
   })
+
+  it('a refused apply is retried from the summary with the same session and data', async () => {
+    vi.mocked(applySetup)
+      .mockRejectedValueOnce(await refusal('Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.'))
+      .mockResolvedValueOnce({ success: true })
+    await reachSummary()
+
+    await click('setup-apply')
+    await waitFor(() => Boolean(container.querySelector('[role="alert"]')))
+    await click('setup-apply')
+    await waitFor(() => Boolean(byTestId('setup-success')))
+
+    const [first, second] = vi.mocked(applySetup).mock.calls
+    expect(second).toEqual(first)
+    expect(second[0]).toBe('session')
+    expect(authenticateAdmin).toHaveBeenCalledTimes(1)
+  })
 })
