@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using OpenKSeF.Api.Controllers;
@@ -15,6 +17,11 @@ public class SystemSetupControllerTests
     private readonly ISystemSetupService _setupService;
     private readonly ISetupSessionService _sessionService;
     private readonly ILogger<SystemSetupController> _logger;
+    private IConfiguration _configuration = Config("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
+
+    private static IConfiguration Config(string? key) => new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?> { ["ENCRYPTION_KEY"] = key })
+        .Build();
 
     public SystemSetupControllerTests()
     {
@@ -25,7 +32,7 @@ public class SystemSetupControllerTests
     }
 
     private SystemSetupController CreateController() =>
-        new(_systemConfig, _setupService, _sessionService, _logger);
+        new(_systemConfig, _setupService, _sessionService, _configuration, _logger);
 
     [Fact]
     public void GetSetupStatus_NotInitialized_ReturnsFalse()
@@ -105,6 +112,35 @@ public class SystemSetupControllerTests
         var response = Assert.IsType<SetupAuthenticateResponse>(result!.Value);
         Assert.Equal("opaque-session-token", response.SetupToken);
         Assert.Equal(600, response.ExpiresInSeconds);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("c2hvcnQ=")]
+    public async Task Authenticate_NoUsableKey_Returns400WithCode_CreatesNoSession(string? key)
+    {
+        _configuration = Config(key);
+        _systemConfig.IsInitialized.Returns(false);
+        _setupService.AuthenticateAdminAsync("admin", "admin").Returns("kc-token-123");
+
+        var result = Assert.IsType<BadRequestObjectResult>(await CreateController().Authenticate(new SetupAuthenticateRequest("admin", "admin")));
+
+        var body = JsonSerializer.SerializeToElement(result.Value);
+        Assert.Equal(SystemSetupService.EncryptionKeyMissingCode, body.GetProperty("code").GetString());
+        Assert.Equal(SystemSetupService.EncryptionKeyMissingMessage, body.GetProperty("error").GetString());
+        _sessionService.DidNotReceiveWithAnyArgs().CreateSession(default!, default!);
+    }
+
+    [Fact]
+    public async Task Authenticate_NoUsableKey_WrongPassword_SaysNothingAboutTheKey()
+    {
+        _configuration = Config(null);
+        _systemConfig.IsInitialized.Returns(false);
+        _setupService.AuthenticateAdminAsync("admin", "wrong").Returns((string?)null);
+
+        var result = Assert.IsType<BadRequestObjectResult>(await CreateController().Authenticate(new SetupAuthenticateRequest("admin", "wrong")));
+
+        Assert.False(JsonSerializer.SerializeToElement(result.Value).TryGetProperty("code", out _));
     }
 
     [Fact]
@@ -198,7 +234,7 @@ public class SystemSetupControllerTests
         _setupService.AuthenticateAdminAsync("admin", "secret").Returns("kc-token");
         _setupService.ApplySetupAsync(Arg.Any<SetupApplyRequest>(), "kc-token", "admin", Arg.Any<CancellationToken>())
             .Returns(new SetupApplyResponse(false, "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną."), new SetupApplyResponse(true, null));
-        var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _logger);
+        var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _configuration, _logger);
         var request = new SetupApplyRequest
         {
             ExternalBaseUrl = "http://localhost:8080",

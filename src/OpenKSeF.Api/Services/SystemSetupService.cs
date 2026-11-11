@@ -21,6 +21,10 @@ public interface ISystemSetupService
 
 public sealed class SystemSetupService : ISystemSetupService
 {
+    public const string EncryptionKeyMissingCode = "encryption_key_missing";
+    public const string EncryptionKeyMissingMessage =
+        "Brak prawidłowego klucza szyfrowania. Wygeneruj klucz poleceniem openssl rand -base64 32, ustaw go w zmiennej ENCRYPTION_KEY usług API i Worker, zachowaj kopię poza bazą danych i uruchom te usługi ponownie. Następnie zaloguj się tutaj ponownie.";
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ISystemConfigService _systemConfig;
@@ -104,14 +108,25 @@ public sealed class SystemSetupService : ISystemSetupService
         }
     }
 
+    public static bool HasUsableEncryptionKey(IConfiguration configuration)
+    {
+        try
+        {
+            return EncryptionServiceExtensions.ReadConfiguredKey(configuration) is not null;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     public async Task<SetupApplyResponse> ApplySetupAsync(
         SetupApplyRequest request, string adminToken, string kcAdminUsername, CancellationToken ct = default)
     {
         try
         {
-            if (EncryptionServiceExtensions.ReadConfiguredKey(_configuration) is null)
-                return new SetupApplyResponse(false,
-                    "ENCRYPTION_KEY is not set. Generate one with: openssl rand -base64 32, set it on the API and Worker, and restart.");
+            if (!HasUsableEncryptionKey(_configuration))
+                return new SetupApplyResponse(false, EncryptionKeyMissingMessage, EncryptionKeyMissingCode);
 
             var ksefEnv = DependencyInjection.NormalizeKSeFEnvironmentKey(request.KSeFBaseUrl);
 

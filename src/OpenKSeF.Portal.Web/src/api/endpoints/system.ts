@@ -58,6 +58,7 @@ export interface SetupApplyRequest {
 export interface SetupApplyResponse {
   success: boolean
   error?: string
+  code?: string
 }
 
 export function getSetupStatus(): Promise<SetupStatusResponse> {

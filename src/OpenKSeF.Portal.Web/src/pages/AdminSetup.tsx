@@ -10,13 +10,13 @@ import {
   type SetupApplyRequest,
   type SmtpConfig,
 } from '@/api/endpoints/system'
+import { readErrorCode } from '@/api/errors'
 import { Button } from '@/components/Button'
 import { nipError } from '@/invoicing/nip'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
 
-const ENCRYPTION_KEY_ERROR =
-  'Brak prawidłowego klucza szyfrowania. Wygeneruj klucz poleceniem openssl rand -base64 32, ustaw go w zmiennej ENCRYPTION_KEY usług API i Worker, zachowaj kopię poza bazą danych i uruchom te usługi ponownie. Następnie kliknij „Dalej” i przejdź kreator jeszcze raz. Wprowadzone dane zostały zachowane.'
+const ENCRYPTION_KEY_MISSING = 'encryption_key_missing'
 
 function StepIndicator({ current }: { current: Step }) {
   const steps = [1, 2, 3, 4, 5, 6] as const
@@ -175,15 +175,10 @@ export function AdminSetupPage(): ReactElement {
     setStep(6)
   }
 
-  const failApply = (message: string) => {
-    // shortcut: matches the API's English text, use an error code if more cases need mapping
-    if (/encryption[_ ]key/i.test(message)) {
-      setError(ENCRYPTION_KEY_ERROR)
-      // The API burns the setup session on apply and restarting it drops all sessions, so a retry must log in again.
-      setStep(1)
-      return
-    }
+  const failApply = (message: string, code?: string | null) => {
     setError(message)
+    // Setting the key needs an API restart, which drops every setup session, so a retry must log in again.
+    if (code === ENCRYPTION_KEY_MISSING) setStep(1)
   }
 
   const handleApply = async () => {
@@ -232,14 +227,14 @@ export function AdminSetupPage(): ReactElement {
     try {
       const result = await applySetup(setupToken, request)
       if (!result.success) {
-        failApply(result.error ?? 'Konfiguracja nie powiodła się')
+        failApply(result.error ?? 'Konfiguracja nie powiodła się', result.code)
         return
       }
       setSetupDone(true)
       queryClient.setQueryData(['setup-status'], { isInitialized: true })
       toast.success('System skonfigurowany pomyślnie!')
     } catch (err) {
-      failApply(err instanceof Error ? err.message : 'Konfiguracja nie powiodła się')
+      failApply(err instanceof Error ? err.message : 'Konfiguracja nie powiodła się', await readErrorCode(err))
     } finally {
       setLoading(false)
     }

@@ -15,17 +15,20 @@ public class SystemSetupController : ControllerBase
     private readonly ISystemConfigService _systemConfig;
     private readonly ISystemSetupService _setupService;
     private readonly ISetupSessionService _sessionService;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<SystemSetupController> _logger;
 
     public SystemSetupController(
         ISystemConfigService systemConfig,
         ISystemSetupService setupService,
         ISetupSessionService sessionService,
+        IConfiguration configuration,
         ILogger<SystemSetupController> logger)
     {
         _systemConfig = systemConfig;
         _setupService = setupService;
         _sessionService = sessionService;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -54,6 +57,9 @@ public class SystemSetupController : ControllerBase
         var kcAdminToken = await _setupService.AuthenticateAdminAsync(request.Username, request.Password);
         if (kcAdminToken is null)
             return BadRequest(new { error = "Invalid Keycloak admin credentials." });
+
+        if (!SystemSetupService.HasUsableEncryptionKey(_configuration))
+            return BadRequest(new { error = SystemSetupService.EncryptionKeyMissingMessage, code = SystemSetupService.EncryptionKeyMissingCode });
 
         var setupToken = _sessionService.CreateSession(request.Username, request.Password);
         return Ok(new SetupAuthenticateResponse(setupToken, 600));
