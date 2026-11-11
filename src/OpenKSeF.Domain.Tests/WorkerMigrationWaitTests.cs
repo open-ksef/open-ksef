@@ -196,7 +196,8 @@ public sealed class WorkerMigrationWaitTests : IDisposable
         [
             new TenantSyncResult(tenantA, "1111111111", TenantSyncOutcome.StoreFailed, ErrorMessage: "Invoice data could not be stored."),
             new TenantSyncResult(tenantB, "2222222222", TenantSyncOutcome.StoreFailed, ErrorMessage: "Invoice data could not be stored."),
-            new TenantSyncResult(Guid.NewGuid(), "3333333333", TenantSyncOutcome.Success)
+            new TenantSyncResult(Guid.NewGuid(), "3333333333", TenantSyncOutcome.Success),
+            new TenantSyncResult(Guid.NewGuid(), "4444444444", TenantSyncOutcome.Busy, ErrorMessage: TenantSyncService.BusyMessage)
         ]));
         var logger = new ListLogger<InvoiceSyncService>();
         var loop = SyncLoop(services, logger);
@@ -207,7 +208,8 @@ public sealed class WorkerMigrationWaitTests : IDisposable
             await Task.Delay(20);
         await loop.StopAsync(CancellationToken.None);
 
-        Assert.Contains("Sync cycle processed 3 tenants. Success: 1, Failed: 2", logger.Messages);
+        Assert.Contains("Sync cycle processed 4 tenants. Success: 1, Failed: 2", logger.Messages);
+        Assert.DoesNotContain(logger.Messages, m => m.Contains("Busy"));
         Assert.Contains($"Tenant sync outcome StoreFailed for tenant {tenantA} (NIP: 1111111111). Error: Invoice data could not be stored.", logger.Messages);
         Assert.Contains($"Tenant sync outcome StoreFailed for tenant {tenantB} (NIP: 2222222222). Error: Invoice data could not be stored.", logger.Messages);
     }

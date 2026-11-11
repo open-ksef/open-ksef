@@ -30,6 +30,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         ["DELETE api/tenants/{tenantId}/credentials"] = null,
         ["GET api/tenants/{tenantId}/credentials/status"] = null,
         ["POST api/tenants/{tenantId}/credentials/sync"] = null,
+        ["GET api/tenants/{tenantId}/credentials/sync"] = null,
         ["POST api/tenants/{tenantId}/credentials/full-resync"] = null,
         ["GET api/tenants/{tenantId}/invoices"] = null,
         ["GET api/tenants/{tenantId}/invoices/{id}"] = null,

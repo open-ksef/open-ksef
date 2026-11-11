@@ -107,6 +107,18 @@ export interface TenantManualSyncResponse {
   issuedNewInvoices?: number
 }
 
+export interface TenantSyncStatusResponse {
+  tenantId: string
+  state: 'idle' | 'waiting' | 'running' | 'succeeded' | 'failed'
+  fullResync: boolean
+  startedAtUtc: string | null
+  finishedAtUtc: string | null
+  result: TenantManualSyncResponse | null
+  errorStatus: number | null
+  error: string | null
+  lastSuccessfulSyncUtc: string | null
+}
+
 export interface DeviceTokenResponse {
   id: string
   token: string

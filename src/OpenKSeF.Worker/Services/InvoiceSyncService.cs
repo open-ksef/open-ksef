@@ -65,7 +65,7 @@ public sealed class InvoiceSyncService : BackgroundService
         _logger.LogInformation("Sync cycle processed {Total} tenants. Success: {Success}, Failed: {Failed}",
             results.Count, successCount, failedCount);
 
-        foreach (var result in results.Where(r => r.Outcome != TenantSyncOutcome.Success))
+        foreach (var result in results.Where(r => r.Outcome is not (TenantSyncOutcome.Success or TenantSyncOutcome.Busy)))
         {
             _logger.LogWarning("Tenant sync outcome {Outcome} for tenant {TenantId} (NIP: {Nip}). Error: {Error}",
                 result.Outcome, result.TenantId, result.Nip, result.ErrorMessage);

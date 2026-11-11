@@ -36,4 +36,14 @@ public class TenantSyncOptions
     /// How long notifications keep sending after the sync is cancelled; fits Docker's 10 s stop window.
     /// </summary>
     public TimeSpan NotificationGrace { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How long a manual sync waits for another run on the same tenant; covers a Worker XML pass of 60 downloads 4 s apart.
+    /// </summary>
+    public TimeSpan ManualLockWait { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How long a manual sync request without <c>Prefer: respond-async</c> waits for the result, below the mobile 30 s and nginx 60 s timeouts.
+    /// </summary>
+    public TimeSpan ManualSyncHold { get; set; } = TimeSpan.FromSeconds(25);
 }
