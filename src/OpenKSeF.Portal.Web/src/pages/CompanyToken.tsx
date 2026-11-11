@@ -32,6 +32,7 @@ export interface TokenReturnState {
 const TOKEN_HELP = 'Token z uprawnieniem odczytu i zapisu, z Aplikacji Podatnika KSeF. Bez zapisu nie wystawisz faktur.'
 const CERTIFICATE_HELP = 'Certyfikat typu Uwierzytelnianie z Aplikacji Podatnika KSeF 2.0. Użyj go, gdy nie masz tokenu.'
 const EXPIRY_WARNING_MS = 30 * 24 * 60 * 60 * 1000
+const MAX_UPLOAD_BYTES = 64 * 1024
 const LONG_TOAST = { duration: 12_000 }
 const FULL_RESYNC_TEXT = 'Pobiera brakujące pozycje, numer rachunku i termin. Niczego nie usuwa, oznaczenia opłacenia zostają. KSeF pozwala na około 16 plików na minutę, dlatego przy większej liczbie faktur uruchom ją ponownie później.'
 
@@ -47,7 +48,7 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
   const { setSwitchGuard } = useCompany()
   const { state, summary, credential, error, refetch } = useCompanyState()
   const ksef = useKsefFetch(tenantId)
-  const [method, setMethod] = useState<'Token' | 'Certificate'>('Token')
+  const [chosenMethod, setMethod] = useState<'Token' | 'Certificate' | null>(null)
   const [token, setToken] = useState('')
   const [certFile, setCertFile] = useState<File | null>(null)
   const [keyFile, setKeyFile] = useState<File | null>(null)
@@ -61,6 +62,7 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
   const rejected = returnTo?.tenantId === tenantId ? returnTo : null
   const hasCredential = credential?.hasCredential ?? false
   const isCertificate = hasCredential && credential?.credentialType === 'Certificate'
+  const method = chosenMethod ?? (isCertificate ? 'Certificate' : 'Token')
   const isCrt = /\.crt$/i.test(certFile?.name ?? '')
   const status = useQuery({
     queryKey: ['credentials', tenantId, 'status'],
@@ -130,6 +132,7 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
     if (!certFile) return 'Wybierz plik certyfikatu'
     if (isCrt && !keyFile) return 'Do pliku .crt dodaj klucz prywatny (.key)'
     if (!certPassword) return 'Hasło jest wymagane'
+    if (certFile.size + (isCrt ? keyFile?.size ?? 0 : 0) > MAX_UPLOAD_BYTES) return 'Plik jest za duży. Maksymalny rozmiar to 64 KB.'
     return { file: certFile, key: isCrt ? keyFile : null, password: certPassword }
   }
 

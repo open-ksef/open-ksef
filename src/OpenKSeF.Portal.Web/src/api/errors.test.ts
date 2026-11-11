@@ -36,6 +36,21 @@ describe('normalizeError', () => {
     expect(error.message).toBe('Nie znaleziono.')
   })
 
+  it('a 413 shows the server error text', async () => {
+    const response = new Response(JSON.stringify({ error: 'Plik jest za duży. Maksymalny rozmiar to 64 KB.' }), {
+      status: 413,
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+    expect((await normalizeError(response)).message).toBe('Plik jest za duży. Maksymalny rozmiar to 64 KB.')
+  })
+
+  it.each(['', '<html><body>Request Entity Too Large</body></html>'])('a 413 without JSON never shows the raw body', async (body) => {
+    const response = new Response(body, { status: 413, headers: { 'Content-Type': 'text/html' } })
+
+    expect((await normalizeError(response)).message).toBe('Plik jest za duży.')
+  })
+
   it('maps network failures to service unavailable', async () => {
     const error = await normalizeError(new TypeError('Failed to fetch'))
 

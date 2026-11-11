@@ -98,8 +98,8 @@ describe('Firma, Dostęp do KSeF i pobieranie', () => {
     })
   }
 
-  async function chooseFile(id: string, name: string): Promise<File> {
-    const file = new File(['x'], name)
+  async function chooseFile(id: string, name: string, bytes = 1): Promise<File> {
+    const file = new File(['x'.repeat(bytes)], name)
     const input = by(id) as HTMLInputElement
     Object.defineProperty(input, 'files', { value: [file], configurable: true })
     await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
@@ -233,6 +233,27 @@ describe('Firma, Dostęp do KSeF i pobieranie', () => {
     await act(async () => buttonByText(container, 'Dodaj certyfikat')!.click())
     expect(container.querySelector('[role="alert"]')?.textContent).toBe('Hasło jest wymagane')
     expect(addOrUpdateCertificate).not.toHaveBeenCalled()
+  })
+
+  it('refuses certificate and key over 64 KB together without sending them', async () => {
+    await render()
+    await chooseCertificate()
+    await chooseFile('credential-certificate-file', 'firma.crt', 40 * 1024)
+    await chooseFile('credential-key-file', 'firma.key', 30 * 1024)
+    await typePassword('tajne')
+    await act(async () => buttonByText(container, 'Zapisz certyfikat')!.click())
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Plik jest za duży. Maksymalny rozmiar to 64 KB.')
+    expect(addOrUpdateCertificate).not.toHaveBeenCalled()
+  })
+
+  it('a saved certificate opens the form on the certificate way', async () => {
+    certificateStatus(inDays(200))
+    vi.mocked(listCredentials).mockResolvedValue([row('a', { credentialType: 'Certificate' })])
+    await render()
+
+    expect((by('credential-method-certificate') as HTMLInputElement).checked).toBe(true)
+    expect(by('credential-certificate-file')).not.toBeNull()
   })
 
   it('shows the API reason when the certificate is refused', async () => {
@@ -374,6 +395,7 @@ describe('Firma, Dostęp do KSeF i pobieranie', () => {
     await render()
 
     expect(by('credential-delete-button')).toBeNull()
+    expect((by('credential-method-token') as HTMLInputElement).checked).toBe(true)
     expect((by('invoice-fetch-button') as HTMLButtonElement).disabled).toBe(true)
     expect(container.textContent).toContain('Dodaj token')
     expect(container.textContent).toContain('Brak tokenu ani certyfikatu dla tej firmy.')

@@ -7,6 +7,7 @@ const DEFAULT_MESSAGES: Record<number, string> = {
   404: 'Nie znaleziono.',
   408: 'Serwer nie odpowiedział na czas.',
   409: 'Operacja jest teraz niemożliwa. Odśwież stronę.',
+  413: 'Plik jest za duży.',
   422: 'Serwer nie przyjął danych.',
   429: 'Za dużo żądań. Spróbuj ponownie za chwilę.',
   500: 'Błąd serwera. Spróbuj ponownie później.',
@@ -102,6 +103,10 @@ async function extractResponseMessage(response: Response): Promise<string | null
         return message
       }
 
+      return null
+    }
+
+    if (response.status === 413) {
       return null
     }
 
