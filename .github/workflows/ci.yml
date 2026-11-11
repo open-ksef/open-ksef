@@ -84,6 +84,30 @@ jobs:
       - run: npm run lint
       - run: npm test
 
+  gateway:
+    name: Gateway nginx config
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build gateway image
+        run: docker build -q -t openksef-gateway:ci infra/nginx
+
+      - name: nginx -t
+        run: docker run --rm openksef-gateway:ci nginx -t
+
+      - name: 2 MB POST returns JSON 413
+        run: |
+          docker run -d --name gateway -p 8080:8080 openksef-gateway:ci
+          for i in $(seq 1 20); do curl -s -o /dev/null http://localhost:8080/ && break; sleep 0.5; done
+          head -c 2097152 /dev/zero > body.bin
+          result=$(curl -s -o out.json -w '%{http_code} %{content_type}' -X POST --data-binary @body.bin http://localhost:8080/api/tenants)
+          echo "$result"; cat out.json
+          test "$result" = "413 application/json; charset=utf-8"
+          test "$(cat out.json)" = '{"error":"Żądanie jest za duże."}'
+
   # ─────────────────────────────────────────────────────────────────
   # Push :dev images to GHCR on every commit to main.
   # Gateway infra image is only rebuilt when its source files change.
