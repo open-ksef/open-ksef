@@ -152,7 +152,6 @@ public class NotificationService : INotificationService
             return;
         }
 
-        // Layer 1: SignalR (in-app, API process only). Says nothing about remote delivery.
         if (_userPushProvider is not null)
         {
             var userIds = deviceTokens.Select(d => d.UserId).Distinct();
@@ -169,7 +168,6 @@ public class NotificationService : INotificationService
             }
         }
 
-        // Layer 2+3: Relay / Direct FCM / APNs per-token (always attempt for remote delivery)
         var tokensToRemove = new List<Entities.DeviceToken>();
 
         foreach (var device in deviceTokens)

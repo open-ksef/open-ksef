@@ -9,15 +9,7 @@ using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Domain.Push;
 
-/// <summary>
-/// Forwards push notifications to the team-operated relay service which
-/// holds the Firebase/APNs credentials. Self-hosted admins don't need
-/// to configure Firebase at all -- the relay handles delivery.
-///
-/// Authentication: each instance registers with the relay during setup
-/// and receives a unique HMAC key. The key and instance ID are stored
-/// in SystemConfig and sent with every request.
-/// </summary>
+/// <summary>Forwards pushes to the team-operated relay, which holds the FCM/APNs credentials; each request is signed with this instance's HMAC key from SystemConfig.</summary>
 public class RelayPushProvider : IPushProvider
 {
     private readonly IHttpClientFactory _httpClientFactory;
