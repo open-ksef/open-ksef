@@ -110,7 +110,7 @@ public sealed class IssuedInvoiceSendProcessor(
             await RejectSendableAsync(invoices, e.Code, credential.Type == CredentialType.Certificate ? InvalidCertificateMessage : InvalidTokenMessage, e.Message, ct);
             return;
         }
-        catch (CryptographicException e)
+        catch (StoredCertificateUnreadableException e)
         {
             logger.LogWarning("Stored certificate of tenant {TenantId} cannot be read: {Error}", tenantId, e.Message);
             await RejectSendableAsync(invoices, null, InvalidCertificateMessage, null, ct);

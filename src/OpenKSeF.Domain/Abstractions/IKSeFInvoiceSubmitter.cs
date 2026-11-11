@@ -44,3 +44,6 @@ public sealed class KSeFAuthRejectedException(int code, string reason) : Excepti
 {
     public int Code { get; } = code;
 }
+
+/// <summary>The decrypted stored certificate is not a readable PKCS#12; distinct from a decrypt failure, which is retried.</summary>
+public sealed class StoredCertificateUnreadableException(Exception inner) : Exception(inner.Message, inner);

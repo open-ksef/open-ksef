@@ -5,6 +5,7 @@ using KSeF.Client.Core.Interfaces.Services;
 using KSeF.Client.Core.Models.Authorization;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
@@ -61,6 +62,26 @@ public class KSeFGatewayLoginTests
         Assert.Contains("SignatureValue", signed);
         Assert.Contains(Convert.ToBase64String(certificate.RawData), signed);
         await _auth.DidNotReceiveWithAnyArgs().AuthKsefTokenAsync(default, default!, default!, default!, default, default, default);
+    }
+
+    [Fact]
+    public async Task StoredSecretDecryptFails_ThrowsCryptographicException_NotUnreadableCertificate()
+    {
+        var otherKey = new AesGcmEncryptionService(RandomNumberGenerator.GetBytes(32));
+        var token = new KSeFCredential { Type = CredentialType.Token, EncryptedToken = otherKey.Encrypt("ksef-token") };
+        var certificate = new KSeFCredential { Type = CredentialType.Certificate, EncryptedCertificateData = otherKey.Encrypt("pfx") };
+
+        await Assert.ThrowsAnyAsync<CryptographicException>(() => Gateway().InitSessionAsync(Nip, token));
+        await Assert.ThrowsAnyAsync<CryptographicException>(() => Gateway().InitSessionAsync(Nip, certificate));
+    }
+
+    [Fact]
+    public async Task StoredCertificateNotPkcs12_ThrowsUnreadableCertificate_NoLogin()
+    {
+        var credential = new KSeFCredential { Type = CredentialType.Certificate, EncryptedCertificateData = _encryption.Encrypt(Convert.ToBase64String([1, 2, 3])) };
+
+        await Assert.ThrowsAsync<StoredCertificateUnreadableException>(() => Gateway().InitSessionAsync(Nip, credential));
+        await _auth.DidNotReceiveWithAnyArgs().AuthAsync(default, default!, default, default!, default, default, default);
     }
 
     private KSeFGateway Gateway() =>

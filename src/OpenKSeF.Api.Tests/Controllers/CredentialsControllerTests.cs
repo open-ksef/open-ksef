@@ -478,11 +478,47 @@ public class CredentialsControllerCrudTests : IDisposable
         var request = new AddCredentialRequest(
             Type: CredentialType.Certificate,
             CertificatePem: certPem,
-            PrivateKeyPem: null);
+            PrivateKeyPem: "");
 
         var result = await controller.AddOrUpdate(_tenantId, request);
 
-        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(CredentialsController.MissingPrivateKeyMessage, Error(result));
+    }
+
+    [Theory]
+    [InlineData(PbeEncryptionAlgorithm.Aes256Cbc, "SHA256")]
+    [InlineData(PbeEncryptionAlgorithm.TripleDes3KeyPkcs12, "SHA1")]
+    public async Task AddOrUpdate_EncryptedPemKey_IterationsAboveCap_ReturnsPolishError_SavesNothing(PbeEncryptionAlgorithm algorithm, string hash)
+    {
+        using var rsa = RSA.Create(2048);
+        using var cert = new CertificateRequest("CN=Costly Key", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
+            .CreateSelfSigned(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(1));
+        var keyPem = rsa.ExportEncryptedPkcs8PrivateKeyPem("Test1234!",
+            new PbeParameters(algorithm, new HashAlgorithmName(hash), CredentialsController.MaxKeyKdfIterations + 1));
+
+        var result = await CreateController().AddOrUpdate(_tenantId, new AddCredentialRequest(
+            Type: CredentialType.Certificate,
+            CertificatePem: cert.ExportCertificatePem(),
+            PrivateKeyPem: keyPem,
+            CertificatePassword: "Test1234!"));
+
+        Assert.Equal(CredentialsController.KeyKdfTooExpensiveMessage, Error(result));
+        Assert.False(await _db.KSeFCredentials.AnyAsync());
+    }
+
+    [Fact]
+    public async Task Status_StoredCertificateDecryptFails_Throws_NotReportedAsLegacy()
+    {
+        var now = DateTime.UtcNow;
+        _db.KSeFCredentials.Add(new KSeFCredential
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, Type = CredentialType.Certificate,
+            EncryptedCertificateData = "encrypted:stale", CertificateFingerprint = "fp", CreatedAt = now, UpdatedAt = now
+        });
+        await _db.SaveChangesAsync();
+        _encryption.Decrypt("encrypted:stale").Returns(_ => throw new AuthenticationTagMismatchException());
+
+        await Assert.ThrowsAnyAsync<CryptographicException>(() => CreateController().Status(_tenantId));
     }
 
     [Fact]

@@ -1,8 +1,10 @@
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using KSeF.Client.Api.Services;
 using KSeF.Client.Core.Interfaces;
 using KSeF.Client.Core.Interfaces.Services;
 using KSeF.Client.Core.Models.Authorization;
+using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
 
@@ -20,7 +22,7 @@ internal static class KSeFLogin
             if (string.IsNullOrEmpty(credential.EncryptedCertificateData))
                 throw new InvalidOperationException("Certificate credential is missing certificate data.");
 
-            using var certificate = X509CertificateLoader.LoadPkcs12(Convert.FromBase64String(encryption.Decrypt(credential.EncryptedCertificateData)), null);
+            using var certificate = LoadStoredCertificate(encryption.Decrypt(credential.EncryptedCertificateData));
             return await coordinator.AuthAsync(
                 AuthenticationTokenContextIdentifierType.Nip,
                 nip,
@@ -39,5 +41,17 @@ internal static class KSeFLogin
             cryptography,
             EncryptionMethodEnum.Rsa,
             cancellationToken: ct);
+    }
+
+    private static X509Certificate2 LoadStoredCertificate(string pkcs12Base64)
+    {
+        try
+        {
+            return X509CertificateLoader.LoadPkcs12(Convert.FromBase64String(pkcs12Base64), null, X509KeyStorageFlags.EphemeralKeySet);
+        }
+        catch (Exception e) when (e is CryptographicException or FormatException)
+        {
+            throw new StoredCertificateUnreadableException(e);
+        }
     }
 }

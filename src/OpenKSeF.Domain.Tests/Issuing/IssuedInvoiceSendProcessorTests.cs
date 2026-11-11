@@ -1327,7 +1327,7 @@ public class IssuedInvoiceSendProcessorTests
     {
         var unsent = await SeedAsync(credentialType: CredentialType.Certificate);
         var sent = await SeedAsync(Sent, tenant: _tenantId, addTenant: false);
-        _submitter.OnLogin = () => throw new CryptographicException("The certificate data cannot be read with the provided password");
+        _submitter.OnLogin = () => throw new StoredCertificateUnreadableException(new CryptographicException("The certificate data cannot be read with the provided password"));
 
         await RunAsync();
 
@@ -1335,6 +1335,22 @@ public class IssuedInvoiceSendProcessorTests
         Assert.Equal(IssuedInvoiceSendProcessor.InvalidCertificateMessage, (await LoadAsync(unsent)).KsefStatusDescription);
         Assert.Equal(IssuedInvoiceStatus.Sending, (await LoadAsync(sent)).Status);
         Assert.Equal(IssuedInvoiceSendProcessor.InvalidCertificateMessage, (await LoadAsync(sent)).LastError);
+        Assert.Equal(0, _submitter.Sends);
+    }
+
+    [Theory]
+    [InlineData(CredentialType.Token)]
+    [InlineData(CredentialType.Certificate)]
+    public async Task StoredCredentialDecryptFails_UnsentStaysQueued_NotRejected(CredentialType credentialType)
+    {
+        var id = await SeedAsync(credentialType: credentialType);
+        _submitter.OnLogin = () => throw new AuthenticationTagMismatchException();
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Queued, invoice.Status);
+        Assert.Null(invoice.KsefStatusDescription);
         Assert.Equal(0, _submitter.Sends);
     }
 

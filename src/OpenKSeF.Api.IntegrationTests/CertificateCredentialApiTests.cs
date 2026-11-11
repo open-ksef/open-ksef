@@ -337,6 +337,29 @@ public class CertificateCredentialApiTests : IDisposable
     // --- Auth guard ---
 
     [Fact]
+    public async Task AddCredential_BodyOver64KB_Returns413_SavesNothing()
+    {
+        await AuthenticateAsync();
+        var tenantId = await CreateTestTenantAsync();
+        using var kestrel = new OpenKSeFWebApplicationFactory(_fixture);
+        kestrel.UseKestrel(0);
+        kestrel.StartServer();
+        using var client = kestrel.CreateClient();
+        client.DefaultRequestHeaders.Authorization = _client.DefaultRequestHeaders.Authorization;
+
+        var response = await client.PostAsJsonAsync($"/api/tenants/{tenantId}/credentials", new
+        {
+            type = "Certificate",
+            certificateBase64 = new string('A', 64 * 1024),
+            certificatePassword = "x"
+        });
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+        var status = await _client.GetFromJsonAsync<CredentialStatusDto>($"/api/tenants/{tenantId}/credentials/status");
+        Assert.False(status!.Exists);
+    }
+
+    [Fact]
     public async Task AddPemCertificate_WithoutAuth_Returns401()
     {
         var response = await _client.PostAsJsonAsync(

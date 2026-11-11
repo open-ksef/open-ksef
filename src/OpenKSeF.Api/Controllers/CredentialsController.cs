@@ -1,3 +1,4 @@
+using System.Formats.Asn1;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Authorization;
@@ -71,6 +72,14 @@ public class CredentialsController : ControllerBase
     public const string ExpiredCertificateMessage = "Certyfikat wygasł. Wygeneruj nowy w Aplikacji Podatnika KSeF i wgraj go.";
     public const string UnreadableCertificateMessage = "Nie udało się odczytać certyfikatu. Sprawdź hasło i czy wybrany plik jest właściwy.";
     public const string MissingCertificatePasswordMessage = "Podaj hasło do certyfikatu.";
+    public const string MissingCertificateFileMessage = "Wybierz plik certyfikatu.";
+    public const string MissingTokenMessage = "Podaj token KSeF.";
+    public const string UnknownCredentialTypeMessage = "Nieznany sposób logowania do KSeF.";
+    public const string EncryptionKeyChangedMessage = "Klucz szyfrowania został zmieniony. Spróbuj ponownie.";
+    public const string KeyKdfTooExpensiveMessage = "Klucz prywatny jest zaszyfrowany ze zbyt dużą liczbą iteracji. Wyeksportuj go ponownie z domyślnymi ustawieniami albo wgraj plik .pfx/.p12.";
+    public const int MaxKeyKdfIterations = 600_000;
+    public const int MaxRequestBytes = 64 * 1024;
+    private const string Pbes2Oid = "1.2.840.113549.1.5.13";
 
     public CredentialsController(
         ApplicationDbContext db,
@@ -91,9 +100,11 @@ public class CredentialsController : ControllerBase
     }
 
     [HttpPost]
+    [RequestSizeLimit(MaxRequestBytes)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> AddOrUpdate(Guid tenantId, [FromBody] AddCredentialRequest request)
     {
@@ -110,7 +121,7 @@ public class CredentialsController : ControllerBase
         {
             case CredentialType.Token:
                 if (string.IsNullOrWhiteSpace(request.Token))
-                    return BadRequest(new { error = "Token is required for token-based credentials." });
+                    return BadRequest(new { error = MissingTokenMessage });
                 encryptedToken = _encryption.Encrypt(request.Token);
                 break;
 
@@ -132,14 +143,14 @@ public class CredentialsController : ControllerBase
                 {
                     return BadRequest(new { error = UnreadableCertificateMessage });
                 }
-                catch (FormatException)
+                catch (Exception ex) when (ex is FormatException or AsnContentException)
                 {
                     return BadRequest(new { error = UnreadableCertificateMessage });
                 }
                 break;
 
             default:
-                return BadRequest(new { error = $"Unknown credential type: {request.Type}" });
+                return BadRequest(new { error = UnknownCredentialTypeMessage });
         }
 
         await using var transaction = _onRowKey && _db.Database.IsNpgsql() ? await _db.Database.BeginTransactionAsync() : null;
@@ -147,7 +158,7 @@ public class CredentialsController : ControllerBase
         {
             await _systemConfig.RefreshCacheAsync();
             _logger.LogCritical("This host still held the encryption key from the database after it moved out, credential not saved for tenant {TenantId}", tenantId);
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Encryption key changed. Try again." });
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = EncryptionKeyChangedMessage });
         }
 
         var existing = await _db.KSeFCredentials
@@ -231,9 +242,10 @@ public class CredentialsController : ControllerBase
         if (encryptedCertificateData is null)
             return null;
 
+        var pkcs12 = Convert.FromBase64String(_encryption.Decrypt(encryptedCertificateData));
         try
         {
-            using var cert = X509CertificateLoader.LoadPkcs12(Convert.FromBase64String(_encryption.Decrypt(encryptedCertificateData)), null);
+            using var cert = X509CertificateLoader.LoadPkcs12(pkcs12, null, X509KeyStorageFlags.EphemeralKeySet, new Pkcs12LoaderLimits { IgnorePrivateKeys = true });
             return cert.NotAfter.ToUniversalTime();
         }
         catch (CryptographicException)
@@ -303,12 +315,12 @@ public class CredentialsController : ControllerBase
 
     private static (X509Certificate2 cert, string base64ForStorage) LoadCertificate(AddCredentialRequest request)
     {
-        bool hasPem = !string.IsNullOrWhiteSpace(request.CertificatePem) &&
-                      !string.IsNullOrWhiteSpace(request.PrivateKeyPem);
+        bool hasCertPem = !string.IsNullOrWhiteSpace(request.CertificatePem);
+        bool hasPem = hasCertPem && !string.IsNullOrWhiteSpace(request.PrivateKeyPem);
         bool hasPfx = !string.IsNullOrWhiteSpace(request.CertificateBase64);
 
         if (!hasPem && !hasPfx)
-            throw new ArgumentException("Provide CertificatePem + PrivateKeyPem, or CertificateBase64.");
+            throw new ArgumentException(hasCertPem ? MissingPrivateKeyMessage : MissingCertificateFileMessage);
 
         var cert = hasPem
             ? LoadFromPem(request.CertificatePem!, request.PrivateKeyPem!, request.CertificatePassword)
@@ -337,7 +349,29 @@ public class CredentialsController : ControllerBase
         if (string.IsNullOrWhiteSpace(password))
             throw new ArgumentException(MissingCertificatePasswordMessage);
 
+        EnsureKdfIterationsWithinCap(keyPem);
         return X509Certificate2.CreateFromEncryptedPem(certPem, keyPem, password);
+    }
+
+    private static void EnsureKdfIterationsWithinCap(string keyPem)
+    {
+        if (!PemEncoding.TryFind(keyPem, out var pem))
+            throw new CryptographicException();
+
+        var algorithm = new AsnReader(Convert.FromBase64String(keyPem[pem.Base64Data]), AsnEncodingRules.BER).ReadSequence().ReadSequence();
+        AsnReader kdfParameters;
+        if (algorithm.ReadObjectIdentifier() == Pbes2Oid)
+        {
+            var kdf = algorithm.ReadSequence().ReadSequence();
+            kdf.ReadObjectIdentifier();
+            kdfParameters = kdf.ReadSequence();
+        }
+        else
+            kdfParameters = algorithm.ReadSequence();
+
+        kdfParameters.ReadOctetString();
+        if (!kdfParameters.TryReadInt32(out var iterations) || iterations > MaxKeyKdfIterations)
+            throw new ArgumentException(KeyKdfTooExpensiveMessage);
     }
 
     private static X509Certificate2 LoadFromPfx(string certificateBase64, string? password)
@@ -345,7 +379,7 @@ public class CredentialsController : ControllerBase
         if (string.IsNullOrWhiteSpace(password))
             throw new ArgumentException(MissingCertificatePasswordMessage);
 
-        return X509CertificateLoader.LoadPkcs12(Convert.FromBase64String(certificateBase64), password, X509KeyStorageFlags.Exportable);
+        return X509CertificateLoader.LoadPkcs12(Convert.FromBase64String(certificateBase64), password, X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
     }
 
     private static string ComputeSha256Fingerprint(X509Certificate2 cert)
