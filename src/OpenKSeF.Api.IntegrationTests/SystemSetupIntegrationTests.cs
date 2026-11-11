@@ -270,6 +270,47 @@ public class SystemSetupIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Apply_RetryAfterPasswordPolicyError_AdminLogsInWithTheNewPassword()
+    {
+        await ClearSystemConfigAsync();
+        try
+        {
+            var authResp = await _client.PostAsJsonAsync("/api/system/setup/authenticate", new SetupAuthenticateRequest("admin", "admin"));
+            authResp.EnsureSuccessStatusCode();
+            var auth = await authResp.Content.ReadFromJsonAsync<SetupAuthenticateResponse>();
+            var request = new SetupApplyRequest
+            {
+                ExternalBaseUrl = "http://localhost:8080",
+                KSeFBaseUrl = "test",
+                AdminEmail = $"retry-{Guid.NewGuid():N}@open-ksef.pl",
+                AdminPassword = "weakpass1",
+                PasswordPolicy = "length(12) and upperCase(1) and specialChars(1)",
+            };
+
+            var weak = await ApplyAsync(auth!.SetupToken, request);
+            Assert.Equal(HttpStatusCode.BadRequest, weak.StatusCode);
+            Assert.Equal(SystemSetupService.KeycloakPasswordPolicyMessage, (await weak.Content.ReadFromJsonAsync<SetupApplyResponse>())!.Error);
+
+            var strong = await ApplyAsync(auth.SetupToken, request with { AdminPassword = "StrongRetry-2026!" });
+            Assert.Equal(HttpStatusCode.OK, strong.StatusCode);
+
+            Assert.False(string.IsNullOrEmpty(await _fixture.GetAccessTokenAsync(request.AdminEmail, "StrongRetry-2026!")));
+        }
+        finally
+        {
+            await _fixture.UpdateRealmAsync(new { passwordPolicy = "" });
+            await ClearSystemConfigAsync();
+        }
+    }
+
+    private Task<HttpResponseMessage> ApplyAsync(string setupToken, SetupApplyRequest request)
+    {
+        var message = new HttpRequestMessage(HttpMethod.Post, "/api/system/setup/apply") { Content = JsonContent.Create(request) };
+        message.Headers.Add("X-Setup-Token", setupToken);
+        return _client.SendAsync(message);
+    }
+
+    [Fact]
     public async Task Apply_AfterInitialized_Returns403()
     {
         await ClearSystemConfigAsync();

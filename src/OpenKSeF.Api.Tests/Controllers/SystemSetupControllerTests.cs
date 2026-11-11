@@ -248,4 +248,26 @@ public class SystemSetupControllerTests
         Assert.IsType<OkObjectResult>(await controller.Apply(token, request, CancellationToken.None));
         Assert.Null(sessions.RedeemSession(token));
     }
+
+    [Fact]
+    public async Task Apply_KeycloakDown_SaysUnreachableInPolish_AndKeepsTheToken()
+    {
+        var sessions = new SetupSessionService();
+        var token = sessions.CreateSession("admin", "secret");
+        _systemConfig.IsInitialized.Returns(false);
+        _setupService.AuthenticateAdminAsync("admin", "secret").Returns((string?)null);
+        var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _configuration, _logger);
+        var request = new SetupApplyRequest
+        {
+            ExternalBaseUrl = "http://localhost:8080",
+            KSeFBaseUrl = "test",
+            AdminEmail = "admin@example.com",
+            AdminPassword = "Test1234!",
+        };
+
+        var result = Assert.IsType<BadRequestObjectResult>(await controller.Apply(token, request, CancellationToken.None));
+
+        Assert.Equal(SystemSetupService.KeycloakUnreachableMessage, Assert.IsType<SetupApplyResponse>(result.Value).Error);
+        Assert.NotNull(sessions.RedeemSession(token));
+    }
 }
