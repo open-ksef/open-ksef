@@ -187,6 +187,35 @@ public class SystemSetupIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Apply_InvalidFirstTenantNip_Is400_NothingCreated()
+    {
+        await ClearSystemConfigAsync();
+        var authResp = await _client.PostAsJsonAsync("/api/system/setup/authenticate", new SetupAuthenticateRequest("admin", "admin"));
+        authResp.EnsureSuccessStatusCode();
+        var auth = await authResp.Content.ReadFromJsonAsync<SetupAuthenticateResponse>();
+
+        using var applyMsg = new HttpRequestMessage(HttpMethod.Post, "/api/system/setup/apply");
+        applyMsg.Headers.Add("X-Setup-Token", auth!.SetupToken);
+        applyMsg.Content = JsonContent.Create(new SetupApplyRequest
+        {
+            ExternalBaseUrl = "http://localhost:8080",
+            KSeFBaseUrl = "test",
+            AdminEmail = "invalid-nip@open-ksef.pl",
+            AdminPassword = "Test1234!",
+            FirstTenantNip = "1234567890",
+        });
+
+        var response = await _client.SendAsync(applyMsg);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("Niepoprawny NIP", (await response.Content.ReadFromJsonAsync<SetupApplyResponse>())!.Error);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Empty(await db.SystemConfigs.ToListAsync());
+        Assert.False(await db.Tenants.AnyAsync(t => t.Nip == "1234567890"));
+    }
+
+    [Fact]
     public async Task HostStart_LegacyKeyRow_IsAdoptedBeforeTheCacheLoads()
     {
         await ClearSystemConfigAsync();

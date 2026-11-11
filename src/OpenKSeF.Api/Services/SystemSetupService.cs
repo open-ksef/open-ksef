@@ -115,6 +115,9 @@ public sealed class SystemSetupService : ISystemSetupService
 
             var ksefEnv = DependencyInjection.NormalizeKSeFEnvironmentKey(request.KSeFBaseUrl);
 
+            if (!string.IsNullOrWhiteSpace(request.FirstTenantNip) && !NipValidator.HasValidChecksum(request.FirstTenantNip))
+                return new SetupApplyResponse(false, "Niepoprawny NIP");
+
             var client = _httpClientFactory.CreateClient("keycloak");
             var kcBase = KeycloakInternalBaseUrl;
 
@@ -584,7 +587,8 @@ public sealed class SystemSetupService : ISystemSetupService
         {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var tenantExists = await db.Tenants.AnyAsync(t => t.UserId == userId && t.Nip == request.FirstTenantNip, ct);
+            var nip = NipValidator.Normalize(request.FirstTenantNip);
+            var tenantExists = await db.Tenants.AnyAsync(t => t.UserId == userId && t.Nip == nip, ct);
             if (!tenantExists)
             {
                 var now = DateTime.UtcNow;
@@ -592,13 +596,13 @@ public sealed class SystemSetupService : ISystemSetupService
                 {
                     Id = Guid.NewGuid(),
                     UserId = userId,
-                    Nip = request.FirstTenantNip,
+                    Nip = nip,
                     DisplayName = request.FirstTenantDisplayName,
                     CreatedAt = now,
                     UpdatedAt = now,
                 });
                 await db.SaveChangesAsync(ct);
-                _logger.LogInformation("Created first tenant with NIP {Nip} for user {UserId}", request.FirstTenantNip, userId);
+                _logger.LogInformation("Created first tenant with NIP {Nip} for user {UserId}", nip, userId);
             }
         }
     }
