@@ -16,11 +16,17 @@ public class WorkerStartupTests(TestcontainersFixture fixture)
     public async Task WorkerProcess_Development_StartsOnPostgres()
     {
         var connection = await SeedDatabaseAsync("test");
+        try
+        {
+            var (started, output) = await RunWorkerAsync(connection, envBaseUrl: "test", stopAt: "Application started");
 
-        var (started, output) = await RunWorkerAsync(connection, envBaseUrl: "test", stopAt: "Application started");
-
-        Assert.True(started, output);
-        Assert.Contains("System initialized", output);
+            Assert.True(started, output);
+            Assert.Contains("System initialized", output);
+        }
+        finally
+        {
+            await DropDatabaseAsync(connection);
+        }
     }
 
     [Theory]
@@ -29,11 +35,17 @@ public class WorkerStartupTests(TestcontainersFixture fixture)
     public async Task WorkerProcess_UnknownEnvironment_ExitsNonZero_BeforeAnyKSeFCall(string? row, string? envBaseUrl)
     {
         var connection = await SeedDatabaseAsync(row);
+        try
+        {
+            var (_, output) = await RunWorkerAsync(connection, envBaseUrl, stopAt: null);
 
-        var (_, output) = await RunWorkerAsync(connection, envBaseUrl, stopAt: null);
-
-        Assert.Contains("Unknown KSeF environment", output);
-        Assert.DoesNotContain("ksef.mf.gov.pl/v2", output);
+            Assert.Contains("Unknown KSeF environment", output);
+            Assert.DoesNotContain("ksef.mf.gov.pl/v2", output);
+        }
+        finally
+        {
+            await DropDatabaseAsync(connection);
+        }
     }
 
     private async Task<string> SeedDatabaseAsync(string? environmentRow)
@@ -53,6 +65,15 @@ public class WorkerStartupTests(TestcontainersFixture fixture)
             db.SystemConfigs.Add(new SystemConfig { Key = SystemConfigKeys.KSeFEnvironment, Value = environmentRow, UpdatedAt = DateTime.UtcNow });
         await db.SaveChangesAsync();
         return connection;
+    }
+
+    private async Task DropDatabaseAsync(string connection)
+    {
+        await using (var own = new NpgsqlConnection(connection))
+            NpgsqlConnection.ClearPool(own);
+        await using var admin = new NpgsqlConnection(fixture.PostgresConnectionString);
+        await admin.OpenAsync();
+        await new NpgsqlCommand($"DROP DATABASE IF EXISTS {new NpgsqlConnectionStringBuilder(connection).Database} WITH (FORCE)", admin).ExecuteNonQueryAsync();
     }
 
     private static async Task<(bool Stopped, string Output)> RunWorkerAsync(string connection, string? envBaseUrl, string? stopAt)

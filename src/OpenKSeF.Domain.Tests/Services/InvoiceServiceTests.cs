@@ -178,6 +178,41 @@ public class InvoiceServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpsertInvoicesAsync_SameNumberTwiceInOnePage_StoresOneRow()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var tenantId = Guid.NewGuid();
+
+        var newIds = await sut.UpsertInvoicesAsync(tenantId, [CreateInvoice(), CreateInvoice() with { VendorName = "Vendor 2" }]);
+
+        Assert.Single(newIds);
+        Assert.Equal(newIds[0], (await _db.InvoiceHeaders.SingleAsync(i => i.TenantId == tenantId)).Id);
+    }
+
+    [Fact]
+    public async Task UpsertInvoicesAsync_ExistingOtherDirectionAndNewRows_InsertsOnlyNew_LeavesExistingUntouched()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var tenantId = Guid.NewGuid();
+        var issued = CreateInvoice() with { Direction = InvoiceDirection.Issued };
+        var issuedId = (await sut.UpsertInvoicesAsync(tenantId, [issued]))[0];
+        _db.ChangeTracker.Clear();
+
+        var fresh = Enumerable.Range(0, 3).Select(i => CreateInvoice() with { Number = $"KSEF-NEW-{i}" }).ToList();
+        var newIds = await sut.UpsertInvoicesAsync(tenantId, [issued with { Direction = InvoiceDirection.Received, VendorName = "Vendor 2" }, .. fresh]);
+        _db.ChangeTracker.Clear();
+
+        Assert.Equal(3, newIds.Count);
+        Assert.Equal(4, await _db.InvoiceHeaders.CountAsync(i => i.TenantId == tenantId));
+        var existing = await _db.InvoiceHeaders.SingleAsync(i => i.Id == issuedId);
+        Assert.Equal(InvoiceDirection.Issued, existing.Direction);
+        Assert.Equal("Vendor", existing.VendorName);
+        Assert.Equal(
+            fresh.Select(i => i.Number).Order(),
+            (await _db.InvoiceHeaders.Where(i => newIds.Contains(i.Id)).Select(i => i.KSeFInvoiceNumber).ToListAsync()).Order());
+    }
+
+    [Fact]
     public async Task UpsertInvoicesAsync_OtherDirection_LeavesExistingRowUntouched()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);

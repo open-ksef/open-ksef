@@ -49,14 +49,8 @@ public class DevicesController : ControllerBase
     {
         var userId = _currentUser.UserId;
 
-        if (request.TenantId.HasValue)
-        {
-            var tenantExists = await _db.Tenants
-                .AnyAsync(t => t.Id == request.TenantId.Value && t.UserId == userId);
-
-            if (!tenantExists)
-                return BadRequest(new { error = "Invalid tenant ID." });
-        }
+        if (request.TenantId.HasValue && !await _db.OwnsTenantAsync(request.TenantId.Value, userId))
+            return BadRequest(new { error = "Invalid tenant ID." });
 
         var now = DateTime.UtcNow;
         var existing = await _db.DeviceTokens.FirstOrDefaultAsync(d => d.Token == request.Token);
