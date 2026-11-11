@@ -248,6 +248,51 @@ public sealed class SyncLockTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Lock_LivesOnItsOwnSession_ThatEndsWithTheRun_WithoutAnyUnlock()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _received = async _ =>
+        {
+            await gate.Task;
+            return Page([]);
+        };
+
+        var manual = ManualSyncAsync();
+        while (Volatile.Read(ref _receivedQueries) < 1)
+            await Task.Delay(20);
+        var holder = await LockHolderPidAsync(_tenantA);
+        Assert.NotNull(holder);
+        gate.SetResult();
+        Assert.Equal(TenantSyncOutcome.Success, (await manual).Outcome);
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (await BackendAliveAsync(holder.Value) && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+        Assert.False(await BackendAliveAsync(holder.Value));
+        Assert.Null(await LockHolderPidAsync(_tenantA));
+        Assert.True(await LockIsFreeAsync(_tenantA));
+    }
+
+    private async Task<int?> LockHolderPidAsync(Guid tenantId)
+    {
+        await using var connection = new NpgsqlConnection(UnpooledConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND classid = 1263748422 AND objid = @key::oid AND granted", connection);
+        command.Parameters.AddWithValue("key", (long)(uint)BinaryPrimitives.ReadInt32LittleEndian(tenantId.ToByteArray()));
+        return await command.ExecuteScalarAsync() as int?;
+    }
+
+    private async Task<bool> BackendAliveAsync(int pid)
+    {
+        await using var connection = new NpgsqlConnection(UnpooledConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("SELECT count(*) FROM pg_stat_activity WHERE pid = @pid", connection);
+        command.Parameters.AddWithValue("pid", pid);
+        return (long)(await command.ExecuteScalarAsync())! > 0;
+    }
+
+    [Fact]
     public async Task Lock_IsReleased_AfterAGatewayFailure_AndAfterCancellation()
     {
         _received = _ => throw new HttpRequestException("KSeF down");

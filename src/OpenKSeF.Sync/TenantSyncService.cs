@@ -4,6 +4,7 @@ using KSeF.Client.Core.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.DTOs;
@@ -64,65 +65,57 @@ public sealed class TenantSyncService : ITenantSyncService
             .Where(t => t.KSeFCredentials.Any())
             .ToListAsync(cancellationToken);
 
-        var holdsConnection = await OpenLockConnectionAsync(cancellationToken);
-        try
+        await using var lockConnection = await OpenLockConnectionAsync(cancellationToken);
+        var runStartedAt = DateTime.UtcNow;
+        var sessions = new Dictionary<Guid, KSeFSession?>();
+        var results = new List<TenantSyncResult>(tenants.Count);
+        foreach (var tenant in tenants)
         {
-            var runStartedAt = DateTime.UtcNow;
-            var sessions = new Dictionary<Guid, KSeFSession?>();
-            var results = new List<TenantSyncResult>(tenants.Count);
-            foreach (var tenant in tenants)
+            // A manual run on this tenant does the same work now; the next cycle catches up through the 1 h overlap.
+            if (!await TryLockAsync(lockConnection, tenant.Id, cancellationToken))
             {
-                // A manual run on this tenant does the same work now; the next cycle catches up through the 1 h overlap.
-                if (!await TryLockAsync(tenant.Id, cancellationToken))
-                {
-                    _logger.LogInformation("Tenant {TenantId} skipped this cycle: another sync holds it", tenant.Id);
-                    results.Add(new TenantSyncResult(tenant.Id, tenant.Nip, TenantSyncOutcome.Busy, ErrorMessage: BusyMessage));
-                    continue;
-                }
-
-                try
-                {
-                    results.Add(await SyncMetadataAsync(tenant, fullResyncWindowStart: null, sessions, cancellationToken));
-                }
-                finally
-                {
-                    await UnlockAsync(tenant.Id);
-                }
+                _logger.LogInformation("Tenant {TenantId} skipped this cycle: another sync holds it", tenant.Id);
+                results.Add(new TenantSyncResult(tenant.Id, tenant.Nip, TenantSyncOutcome.Busy, ErrorMessage: BusyMessage));
+                continue;
             }
 
-            // Five failed calls in a row open the KSeF.Client breaker for every caller, so XML waits for all metadata.
-            var synced = results.Where(r => r.SyncedAtUtc is not null).Select(r => r.TenantId).ToHashSet();
-            foreach (var sameNip in tenants.Where(t => synced.Contains(t.Id)).GroupBy(t => t.Nip))
+            try
             {
-                var locked = new List<Tenant>();
-                try
-                {
-                    foreach (var tenant in sameNip)
-                    {
-                        if (await TryLockAsync(tenant.Id, cancellationToken))
-                            locked.Add(tenant);
-                    }
+                results.Add(await SyncMetadataAsync(tenant, fullResyncWindowStart: null, sessions, cancellationToken));
+            }
+            finally
+            {
+                await UnlockAsync(lockConnection, tenant.Id);
+            }
+        }
 
-                    if (locked.Count > 0)
-                    {
-                        await DownloadQueuedXmlAsync(
-                            locked, sessions, runStartedAt, _syncOptions.XmlDownloadsPerCycle, _syncOptions.XmlDownloadSpacing, fullResync: false, cancellationToken);
-                    }
-                }
-                finally
+        // Five failed calls in a row open the KSeF.Client breaker for every caller, so XML waits for all metadata.
+        var synced = results.Where(r => r.SyncedAtUtc is not null).Select(r => r.TenantId).ToHashSet();
+        foreach (var sameNip in tenants.Where(t => synced.Contains(t.Id)).GroupBy(t => t.Nip))
+        {
+            var locked = new List<Tenant>();
+            try
+            {
+                foreach (var tenant in sameNip)
                 {
-                    foreach (var tenant in locked)
-                        await UnlockAsync(tenant.Id);
+                    if (await TryLockAsync(lockConnection, tenant.Id, cancellationToken))
+                        locked.Add(tenant);
+                }
+
+                if (locked.Count > 0)
+                {
+                    await DownloadQueuedXmlAsync(
+                        locked, sessions, runStartedAt, _syncOptions.XmlDownloadsPerCycle, _syncOptions.XmlDownloadSpacing, fullResync: false, cancellationToken);
                 }
             }
+            finally
+            {
+                foreach (var tenant in locked)
+                    await UnlockAsync(lockConnection, tenant.Id);
+            }
+        }
 
-            return results;
-        }
-        finally
-        {
-            if (holdsConnection)
-                await _db.Database.CloseConnectionAsync();
-        }
+        return results;
     }
 
     public async Task<TenantSyncResult> SyncTenantAsync(
@@ -132,56 +125,49 @@ public sealed class TenantSyncService : ITenantSyncService
         CancellationToken cancellationToken = default,
         Action? onLockAcquired = null)
     {
-        var holdsConnection = await OpenLockConnectionAsync(cancellationToken);
-        try
+        await using var lockConnection = await OpenLockConnectionAsync(cancellationToken);
+        var waited = TimeSpan.Zero;
+        while (!await TryLockAsync(lockConnection, tenantId, cancellationToken))
         {
-            var waited = TimeSpan.Zero;
-            while (!await TryLockAsync(tenantId, cancellationToken))
-            {
-                if (waited >= _syncOptions.ManualLockWait)
-                    return new TenantSyncResult(tenantId, string.Empty, TenantSyncOutcome.Busy, ErrorMessage: BusyMessage);
+            if (waited >= _syncOptions.ManualLockWait)
+                return new TenantSyncResult(tenantId, string.Empty, TenantSyncOutcome.Busy, ErrorMessage: BusyMessage);
 
-                await Task.Delay(LockPollInterval, _time, cancellationToken);
-                waited += LockPollInterval;
-            }
+            await Task.Delay(LockPollInterval, _time, cancellationToken);
+            waited += LockPollInterval;
+        }
 
-            try
-            {
-                onLockAcquired?.Invoke();
-                return await SyncLockedTenantAsync(tenantId, userId, forceFullResync, cancellationToken);
-            }
-            finally
-            {
-                await UnlockAsync(tenantId);
-            }
-        }
-        finally
-        {
-            if (holdsConnection)
-                await _db.Database.CloseConnectionAsync();
-        }
+        onLockAcquired?.Invoke();
+        return await SyncLockedTenantAsync(tenantId, userId, forceFullResync, cancellationToken);
     }
 
-    // The lock is a session lock: every query of the run must use this one opened connection.
-    private async Task<bool> OpenLockConnectionAsync(CancellationToken cancellationToken)
+    // Unpooled, so closing ends the session: a lock can never outlive the run on a pooled connector.
+    private async Task<NpgsqlConnection?> OpenLockConnectionAsync(CancellationToken cancellationToken)
     {
         if (!_db.Database.IsNpgsql())
-            return false;
+            return null;
 
-        await _db.Database.OpenConnectionAsync(cancellationToken);
-        return true;
+        var connection = new NpgsqlConnection(
+            new NpgsqlConnectionStringBuilder(_db.Database.GetConnectionString()) { Pooling = false }.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        return connection;
     }
 
-    private async Task<bool> TryLockAsync(Guid tenantId, CancellationToken cancellationToken) =>
-        !_db.Database.IsNpgsql()
-        || await _db.Database
-            .SqlQuery<bool>($"SELECT pg_try_advisory_lock({TenantLockKeyspace}, {TenantLockKey(tenantId)}) AS \"Value\"")
-            .SingleAsync(cancellationToken);
-
-    private async Task UnlockAsync(Guid tenantId)
+    private static async Task<bool> TryLockAsync(NpgsqlConnection? lockConnection, Guid tenantId, CancellationToken cancellationToken)
     {
-        if (_db.Database.IsNpgsql())
-            await _db.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock({TenantLockKeyspace}, {TenantLockKey(tenantId)})");
+        if (lockConnection is null)
+            return true;
+
+        await using var command = new NpgsqlCommand($"SELECT pg_try_advisory_lock({TenantLockKeyspace}, {TenantLockKey(tenantId)})", lockConnection);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
+
+    private static async Task UnlockAsync(NpgsqlConnection? lockConnection, Guid tenantId)
+    {
+        if (lockConnection is null)
+            return;
+
+        await using var command = new NpgsqlCommand($"SELECT pg_advisory_unlock({TenantLockKeyspace}, {TenantLockKey(tenantId)})", lockConnection);
+        await command.ExecuteScalarAsync();
     }
 
     private static int TenantLockKey(Guid tenantId) => BinaryPrimitives.ReadInt32LittleEndian(tenantId.ToByteArray());
