@@ -159,6 +159,7 @@ public sealed class ManualSyncApiTests : IAsyncLifetime
         var limited = await client.PostAsync($"/api/tenants/{tenantId}/credentials/sync", null);
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
         Assert.Equal("rate_limited", (await limited.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.InRange(limited.Headers.RetryAfter!.Delta!.Value, TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(15));
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/tenants/{tenantId}/credentials/sync")).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await other.PostAsync($"/api/tenants/{otherTenantId}/credentials/sync", null)).StatusCode);
     }

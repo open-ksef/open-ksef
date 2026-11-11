@@ -23,7 +23,7 @@ public sealed class TenantSyncService : ITenantSyncService
     private static readonly TimeSpan LockPollInterval = TimeSpan.FromSeconds(2);
 
     public const string MissingCredentialMessage = "No credential configured for this tenant.";
-    public const string BusyMessage = "Another synchronization of this company is running. Try again later.";
+    public const string BusyMessage = "Synchronizacja tej firmy już trwa. Spróbuj ponownie za kilka minut.";
 
     private readonly ApplicationDbContext _db;
     private readonly IKSeFGateway _gateway;
