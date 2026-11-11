@@ -370,6 +370,11 @@ app.Use(async (context, next) =>
                 : "Żądanie jest za duże."
         });
     }
+    catch (EncryptionKeyUnavailableException) when (!context.Response.HasStarted)
+    {
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        await context.Response.WriteAsJsonAsync(new { error = CredentialsController.EncryptionKeyUnavailableMessage });
+    }
 });
 app.UseAuthentication();
 // After authentication so the manual-sync policy can partition by user; anonymous requests are still limited before the 401.

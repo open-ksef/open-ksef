@@ -9,9 +9,11 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
+using OpenKSeF.Sync.Issuing;
 using OpenKSeF.Worker;
 using OpenKSeF.Worker.Services;
 
@@ -22,12 +24,24 @@ public sealed class WorkerMigrationWaitTests : IDisposable
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"openksef-migration-wait-{Guid.NewGuid():N}.db");
     private readonly ITenantSyncService _sync = Substitute.For<ITenantSyncService>();
 
-    private ServiceProvider Services() => new ServiceCollection()
-        .AddDbContext<ApplicationDbContext>(o => o
-            .UseSqlite($"Data Source={_dbPath}")
-            .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)))
-        .AddSingleton(_sync)
-        .BuildServiceProvider();
+    private ServiceProvider Services(Action<IServiceCollection>? configure = null)
+    {
+        var services = new ServiceCollection()
+            .AddDbContext<ApplicationDbContext>(o => o
+                .UseSqlite($"Data Source={_dbPath}")
+                .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)))
+            .AddSingleton(_sync)
+            .AddScoped(_ => Escalation());
+        configure?.Invoke(services);
+        return services.BuildServiceProvider();
+    }
+
+    // In memory: the escalation query reads the Postgres xmin column, which the SQLite schema lacks.
+    private static IssuedInvoiceEscalationService Escalation() => new(
+        new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options),
+        Substitute.For<INotificationService>(),
+        TimeProvider.System,
+        NullLogger<IssuedInvoiceEscalationService>.Instance);
 
     private static KSeFRuntimeConfig RuntimeConfig(string? environment = null)
     {
@@ -316,6 +330,45 @@ public sealed class WorkerMigrationWaitTests : IDisposable
         Assert.Equal(3, logger.Exceptions.Count);
         Assert.Contains("Unknown KSeF environment 'tset'", logger.Exceptions[1]);
         Assert.Contains("Unknown KSeF environment 'other'", logger.Exceptions[2]);
+    }
+
+    [Fact]
+    public async Task SendLoop_ProcessorFails_EscalationStillRunsEveryCycle_ErrorLoggedOncePerWindow()
+    {
+        var escalations = 0;
+        await using var services = Services(s => s
+            .AddScoped<IssuedInvoiceSendProcessor>(_ => throw new EncryptionKeyUnavailableException("Encryption key is not configured."))
+            .AddScoped(_ =>
+            {
+                Interlocked.Increment(ref escalations);
+                return Escalation();
+            }));
+        await MigrateAsync(services);
+        var now = DateTimeOffset.UnixEpoch;
+        var time = Substitute.For<TimeProvider>();
+        time.GetUtcNow().Returns(_ => now);
+        var logger = new ListLogger<IssuedInvoiceSendService>();
+        var loop = new IssuedInvoiceSendService(
+            services.GetRequiredService<IServiceScopeFactory>(),
+            RuntimeConfig("test"),
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Issuing:PollSeconds"] = "0" }).Build(),
+            time,
+            logger);
+
+        await loop.StartAsync(CancellationToken.None);
+        await WaitForErrorAsync(logger);
+        var seen = Volatile.Read(ref escalations);
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (Volatile.Read(ref escalations) < seen + 20 && DateTime.UtcNow < deadline)
+            await Task.Delay(5);
+        Assert.True(Volatile.Read(ref escalations) >= seen + 20);
+        Assert.Single(logger.Exceptions);
+
+        now = now.AddMinutes(16);
+        await WaitForErrorAsync(logger, count: 2);
+        await loop.StopAsync(CancellationToken.None);
+
+        Assert.All(logger.Exceptions, e => Assert.Equal("Encryption key is not configured.", e));
     }
 
     private static async Task WaitForErrorAsync<T>(ListLogger<T> logger, int count = 1)

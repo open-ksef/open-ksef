@@ -76,6 +76,7 @@ public class CredentialsController : ControllerBase
     public const string MissingCertificateFileMessage = "Wybierz plik certyfikatu.";
     public const string MissingTokenMessage = "Podaj token KSeF.";
     public const string UnknownCredentialTypeMessage = "Nieznany sposób logowania do KSeF.";
+    public const string EncryptionKeyUnavailableMessage = "Serwer nie ma prawidłowego klucza szyfrowania, więc nie może zapisać ani odczytać poświadczeń KSeF. Skontaktuj się z administratorem serwera.";
     public const string KeyKdfTooExpensiveMessage = "Nie można odczytać klucza prywatnego (.key): plik jest zaszyfrowany w nieobsługiwany sposób. Wgraj certyfikat jako plik .pfx/.p12.";
     public const int MaxKeyKdfIterations = 600_000;
     public const int MaxRequestBytes = 64 * 1024;
@@ -206,6 +207,7 @@ public class CredentialsController : ControllerBase
     [HttpGet("status")]
     [ProducesResponseType(typeof(CredentialStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Status(Guid tenantId)
     {
         if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))

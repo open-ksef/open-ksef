@@ -62,6 +62,22 @@ public class CertificateCredentialApiTests : IDisposable
         return tenant!.Id;
     }
 
+    [Fact]
+    public async Task AddToken_NoEncryptionKey_Returns503WithMessage()
+    {
+        await AuthenticateAsync();
+        var tenantId = await CreateTestTenantAsync();
+        using var noKey = _factory.WithWebHostBuilder(builder => builder.UseSetting("ENCRYPTION_KEY", ""));
+        using var client = noKey.CreateClient();
+        client.SetBearerToken(await _fixture.GetAccessTokenAsync());
+
+        var response = await client.PostAsJsonAsync($"/api/tenants/{tenantId}/credentials", new { type = "Token", token = "ksef-token" });
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(OpenKSeF.Api.Controllers.CredentialsController.EncryptionKeyUnavailableMessage, body.GetProperty("error").GetString());
+    }
+
     // --- PEM upload tests ---
 
     [Fact]

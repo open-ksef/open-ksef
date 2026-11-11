@@ -407,6 +407,7 @@ The portal checks `/api/system/setup-status` on every protected page load. If `i
 | API or Worker stops with `Unknown KSeF environment` | The stored or configured value is not a known environment. See [KSeF environment: upgrade](#ksef-environment-upgrade). |
 | Critical: `The configured encryption key does not decrypt` | The configured key does not match the ciphertext. Restore the key that encrypted it. |
 | Critical: `The configured encryption key cannot be used` | The row is gone and `ENCRYPTION_KEY` is empty or malformed. Login and invoice reads work. Adding credentials, sync and send do not. Restore the key. |
+| Portal or app: `Serwer nie ma prawidłowego klucza szyfrowania` | The API has no usable `ENCRYPTION_KEY`. Restore the key that encrypted the credentials and restart API and Worker. |
 | API and Worker exit at start with Critical: `This version no longer reads the key from the database` | The key is still in the database and `ENCRYPTION_KEY` is empty or malformed. Nothing changed. Follow the [upgrade procedure](#upgrade-from-v007-or-earlier), or go back to v0.0.14 meanwhile. |
 
 ## Development
