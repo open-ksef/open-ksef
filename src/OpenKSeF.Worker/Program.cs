@@ -40,10 +40,14 @@ await systemConfig.RefreshCacheAsync();
 
 using (var scope = host.Services.CreateScope())
 {
-    await EncryptionKeyMigration.AdoptConfiguredKeyAsync(
-        scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
-        builder.Configuration,
-        scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("OpenKSeF.Worker.EncryptionKey"));
+    if (!await EncryptionKeyMigration.AdoptConfiguredKeyAsync(
+            scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
+            builder.Configuration,
+            scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("OpenKSeF.Worker.EncryptionKey")))
+    {
+        await Log.CloseAndFlushAsync();
+        return 1;
+    }
     EmailService.WarnIfPlaintextAuth(
         scope.ServiceProvider.GetRequiredService<IOptions<EmailOptions>>().Value,
         scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("OpenKSeF.Worker.Email"));

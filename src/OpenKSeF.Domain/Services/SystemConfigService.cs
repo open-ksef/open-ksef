@@ -151,6 +151,9 @@ public sealed class SystemConfigService : ISystemConfigService
         AesGcmEncryptionService? encryption = null;
         foreach (var entry in entries)
         {
+            if (string.Equals(entry.Key, SystemConfigKeys.EncryptionKey, StringComparison.OrdinalIgnoreCase))
+                continue;
+
             if (!SystemConfigKeys.Secrets.Contains(entry.Key) || !entry.Value.StartsWith(SystemConfigKeys.EncryptedPrefix, StringComparison.Ordinal))
             {
                 cache[entry.Key] = entry.Value;
@@ -159,7 +162,8 @@ public sealed class SystemConfigService : ISystemConfigService
 
             try
             {
-                encryption ??= new AesGcmEncryptionService(ResolveKey(entries)
+                encryption ??= new AesGcmEncryptionService(
+                    EncryptionServiceExtensions.ReadConfiguredKey(_configuration, EncryptionServiceExtensions.RestoreKeyHint)
                     ?? throw new CryptographicException("Encryption key is not configured."));
                 cache[entry.Key] = encryption.Decrypt(entry.Value[SystemConfigKeys.EncryptedPrefix.Length..]);
             }
@@ -170,14 +174,6 @@ public sealed class SystemConfigService : ISystemConfigService
         }
 
         return cache;
-    }
-
-    private byte[]? ResolveKey(List<SystemConfig> entries)
-    {
-        var rowKey = entries.FirstOrDefault(e => string.Equals(e.Key, SystemConfigKeys.EncryptionKey, StringComparison.OrdinalIgnoreCase))?.Value;
-        return rowKey is null
-            ? EncryptionServiceExtensions.ReadConfiguredKey(_configuration, EncryptionServiceExtensions.RestoreKeyHint)
-            : EncryptionServiceExtensions.DecodeKey(rowKey, EncryptionServiceExtensions.RestoreKeyHint);
     }
 
     private void EnsureCacheLoaded()

@@ -70,7 +70,7 @@ If you enable email verification or password reset, SMTP is required. The wizard
 
 The wizard fetches the **API client secret** from the Keycloak `openksef-api` client and stores it in the database. The API never returns it to the browser. If you need it, for example for `API_CLIENT_SECRET`, read it in the Keycloak admin console: **Clients > openksef-api > Credentials**, see [login page setup](login-page-setup.md). Do not regenerate it there: the API prefers the copy in the database, and setup-token exchange then fails.
 
-The **AES-256 encryption key** is not part of the wizard, and no API response contains it. Get it from your copy outside the database, or from `ENCRYPTION_KEY` in `.env` or the stack environment. An installation that has not adopted yet also holds it in the `encryption_key` row of `SystemConfigs`. If you cannot find it, do not generate a new one: step 1 of the [upgrade](#upgrade-from-v007-or-earlier) says where to recover it. Set `ENCRYPTION_KEY` (or `ENCRYPTION_KEY_FILE`) on the API and Worker before you start the stack, and back it up outside the database. The wizard refuses to apply without it. Shipped `docker-compose.yml` forwards only `ENCRYPTION_KEY` and refuses to start without it, so `ENCRYPTION_KEY_FILE` needs your own compose file. An override file alone is not enough, because the check in the base file still runs. See [Encryption key](#encryption-key) for the upgrade and rotation steps.
+The **AES-256 encryption key** is not part of the wizard, and no API response contains it. Get it from your copy outside the database, or from `ENCRYPTION_KEY` in `.env` or the stack environment. An installation that has not adopted yet also holds it in the `encryption_key` row of `SystemConfigs`. If you cannot find it, do not generate a new one: step 1 of the [upgrade](#upgrade-from-v007-or-earlier) says where to recover it. Set `ENCRYPTION_KEY` (or `ENCRYPTION_KEY_FILE`) on the API and Worker before you start the stack, and back it up outside the database. Without it the wizard stops at step 1, after the Keycloak login. Shipped `docker-compose.yml` forwards only `ENCRYPTION_KEY` and refuses to start without it, so `ENCRYPTION_KEY_FILE` needs your own compose file. An override file alone is not enough, because the check in the base file still runs. See [Encryption key](#encryption-key) for the upgrade and rotation steps.
 
 ### Step 5: Optional Integrations
 
@@ -120,16 +120,14 @@ The commands in the procedures below are written for bash. On Windows use WSL or
 
 ### What happens if you only pull the new images
 
-Up to v0.0.7 the key lives in the database next to the ciphertext, so every database dump can decrypt the tokens. The new images change that, but only once you provide a key:
+Up to v0.0.7 the key lives in the database next to the ciphertext, so every database dump can decrypt the tokens. The current images never use that key. They only move it out, and only once you provide a key:
 
 | State after the upgrade | Result |
 |---|---|
-| New images, row in the database, `ENCRYPTION_KEY` empty | Legacy mode. The app keeps the database key, nothing is lost, and each start logs an Error |
-| New images, row in the database, `ENCRYPTION_KEY` malformed (wrong format or length) | The same: legacy mode and an Error at each start |
+| New images, row in the database, `ENCRYPTION_KEY` empty | API and Worker refuse to start (exit code 1, restart loop). Nothing changed. The Critical log `no longer reads the key from the database` names the fix: follow the procedure below, or go back to v0.0.14 |
+| New images, row in the database, `ENCRYPTION_KEY` malformed (wrong format or length) | The same: API and Worker refuse to start, nothing changed |
 | New images, row in the database, `ENCRYPTION_KEY` valid | Adoption at the first start, to exactly this value. Make sure it is stored outside the database, and follow the procedure below **before** you pull the images |
 | New `docker-compose.yml` without `ENCRYPTION_KEY` | `docker compose` refuses. Its message sends an existing installation to this page and names the generator command for a new one. `stop`, `exec`, `ps`, `logs` refuse unless the project name is set. `up`, `pull`, `run` always refuse. Running containers stay untouched |
-
-Legacy mode is temporary: later releases are planned to stop reading the key from the database. Adopt as soon as you can.
 
 ### Upgrade from v0.0.7 or earlier
 
@@ -172,7 +170,19 @@ docker exec -i openksef-postgres pg_restore -l < before-key-move.dump > /dev/nul
 
 The dump from step 3 is now the only copy of the old key. Keep it at least until a sync succeeds. Dumps taken before adoption can decrypt the tokens in them until you delete those dumps.
 
-A Critical log `Moving the encryption key out of the database failed` followed by `Credential <id> cannot be decrypted` means that credential could not be decrypted, and nothing changed. Delete or re-enter that credential in the portal and restart. If the log says `does not decrypt`, restore the key and delete nothing. The same Critical with no credential line means nothing changed: restart. For `cannot be used`, see Troubleshooting.
+A Critical log `Moving the encryption key out of the database failed` followed by `Credential <id> cannot be decrypted` means that credential could not be decrypted, and nothing changed. Delete or re-enter that credential in the portal and restart. If the log says `does not decrypt`, restore the key and delete nothing. The same Critical with no credential line means nothing changed: restart. In both cases API and Worker keep running on `ENCRYPTION_KEY`, and credentials still under the old key stay unusable until a restart moves the key. For `cannot be used`, see Troubleshooting.
+
+**Adoption lock**
+
+A Critical log `Another database client holds the encryption_key row` means another client held a lock on `SystemConfigs` while the key was being moved. Nothing changed. Credentials stay unusable until the key moves. Find the client:
+
+```sql
+SELECT a.pid, a.application_name, a.client_addr, a.state, a.xact_start, a.query
+FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+WHERE l.relation = '"SystemConfigs"'::regclass AND l.granted AND a.pid <> pg_backend_pid();
+```
+
+Close that client. Use `pg_terminate_backend(pid)` only on a session you own. Then restart API and Worker: `docker compose restart api worker`.
 
 **Rollback**
 
@@ -341,8 +351,9 @@ Every service has `restart: unless-stopped`. When API or Worker exits at start, 
 - a bad `ksef_environment` row or `KSEF_BASE_URL` (`Unknown KSeF environment`), see [KSeF environment: upgrade](#ksef-environment-upgrade)
 - `KSeF:ForbidProduction` set on a stack whose environment is production
 - `SystemConfigs` unreadable after 5 attempts (Postgres down or broken)
+- the key still in the database and `ENCRYPTION_KEY` empty or malformed (`no longer reads the key from the database`), see [What happens if you only pull the new images](#what-happens-if-you-only-pull-the-new-images)
 
-API and Worker log one `FTL` line with the reason. The KSeF environment refusals exit with code 1. How to see the loop and the reason:
+API and Worker log one `FTL` line with the reason, or one `CRT` line for the key refusal. The KSeF environment and key refusals exit with code 1. How to see the loop and the reason:
 
 ```bash
 docker compose ps                     # STATUS "Restarting (1) ..." for the looping service
@@ -380,7 +391,7 @@ The portal checks `/api/system/setup-status` on every protected page load. If `i
 
 ## Troubleshooting
 
-> **Legacy mode and deleting rows.** While the key is in the database, the `encryption_key` row is its only copy. If you delete rows from `SystemConfigs` before [adoption](#upgrade-from-v007-or-earlier), you lose stored KSeF tokens and certificates. After adoption, the wizard must run with the same `ENCRYPTION_KEY`, or the credentials stop decrypting.
+> **Key in the database and deleting rows.** While the key is in the database, the `encryption_key` row is its only copy. If you delete rows from `SystemConfigs` before [adoption](#upgrade-from-v007-or-earlier), you lose stored KSeF tokens and certificates. After adoption, the wizard must run with the same `ENCRYPTION_KEY`, or the credentials stop decrypting.
 
 | Problem | Solution |
 |---------|----------|
@@ -390,12 +401,14 @@ The portal checks `/api/system/setup-status` on every protected page load. If `i
 | SMTP test email fails | Verify SMTP credentials. Gmail requires an App Password (not regular password). |
 | Redirect loop after setup | Clear browser cache/cookies. The portal caches setup status for 60 seconds. |
 | Need to re-run wizard | Only if the query from [upgrade step 1](#upgrade-from-v007-or-earlier) returns 0: delete all rows from the `SystemConfigs` table and restart the API container. |
-| Wizard reports no valid encryption key | Generate a key, set `ENCRYPTION_KEY`, keep a copy outside the database and run `docker compose up -d`. Then click **Dalej** (Next) and go through the wizard again. Entered data is kept. |
+| Wizard reports no valid encryption key | The wizard stops at step 1, after the Keycloak login. Generate a key, set `ENCRYPTION_KEY`, keep a copy outside the database and run `docker compose up -d`. Then log in at step 1 again. |
 | `docker compose` reports a missing `ENCRYPTION_KEY`, `POSTGRES_USER` or another required variable | The new `docker-compose.yml` requires the key. On an existing installation first run the row count query in its `docker exec` form from the [upgrade](#upgrade-from-v007-or-earlier). Result 1: follow the upgrade, because setting the key alone skips stopping the hosts and the backup. Result 0: the stack has adopted, so restore the previous `ENCRYPTION_KEY` value and do not generate a new one, because a new key does not decrypt the stored data. If you have no copy, the containers still hold it: `docker inspect openksef-api \| grep '"ENCRYPTION_KEY='`. This command prints a secret to the terminal. No value: see upgrade step 1. Do not run `docker compose up -d` before that. Other variables: restore them from the old `.env` before `up -d`. `docker inspect openksef-postgres \| grep POSTGRES_` and `docker inspect openksef-keycloak \| grep -E 'KEYCLOAK_ADMIN\|KC_DB_'` print them, including secrets. Do the same for the optional values, because `up -d` removes this copy: `docker inspect openksef-api --format '{{range .Config.Env}}{{println .}}{{end}}' \| grep -E 'Auth__PublicAuthority\|KSeF__BaseUrl\|Auth__ServiceAccount__ClientSecret\|Firebase__CredentialsJson'`. This command prints secrets too. In `.env` they are `APP_EXTERNAL_BASE_URL` (`Auth__PublicAuthority` without `/auth/realms/openksef`), `KSEF_BASE_URL`, `API_CLIENT_SECRET` and `FIREBASE_CREDENTIALS_JSON`. `docker ps` shows custom host ports. Only `APP_HOST_PORT` is still read; for the others see [Upgrade: ports and Keycloak admin](#upgrade-ports-and-keycloak-admin). |
 | A container shows `Restarting` | See [Start failures and restart loops](#start-failures-and-restart-loops). |
 | API or Worker stops with `Unknown KSeF environment` | The stored or configured value is not a known environment. See [KSeF environment: upgrade](#ksef-environment-upgrade). |
 | Critical: `The configured encryption key does not decrypt` | The configured key does not match the ciphertext. Restore the key that encrypted it. |
 | Critical: `The configured encryption key cannot be used` | The row is gone and `ENCRYPTION_KEY` is empty or malformed. Login and invoice reads work. Adding credentials, sync and send do not. Restore the key. |
+| Portal or app: `Serwer nie ma prawidłowego klucza szyfrowania` | The API has no usable `ENCRYPTION_KEY`. Restore the key that encrypted the credentials and restart API and Worker. |
+| API and Worker exit at start with Critical: `This version no longer reads the key from the database` | The key is still in the database and `ENCRYPTION_KEY` is empty or malformed. Nothing changed. Follow the [upgrade procedure](#upgrade-from-v007-or-earlier), or go back to v0.0.14 meanwhile. |
 
 ## Development
 

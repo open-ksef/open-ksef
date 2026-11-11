@@ -62,7 +62,8 @@ public record SmtpConfig
 
 public record SetupApplyResponse(
     bool Success,
-    string? Error);
+    string? Error,
+    string? Code = null);
 
 // --- Settings API (post-setup) ---
 

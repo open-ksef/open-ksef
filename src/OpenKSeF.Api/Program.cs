@@ -300,7 +300,11 @@ using (var scope = app.Services.CreateScope())
         .GetRequiredService<ILoggerFactory>()
         .CreateLogger("OpenKSeF.Api.Migrations");
     await MigrationHelper.ApplyMigrationsIdempotentlyAsync(db, startupLogger);
-    await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, app.Configuration, startupLogger);
+    if (!await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, app.Configuration, startupLogger))
+    {
+        await Log.CloseAndFlushAsync();
+        return 1;
+    }
     EmailService.WarnIfPlaintextAuth(scope.ServiceProvider.GetRequiredService<IOptions<EmailOptions>>().Value, startupLogger);
 }
 
@@ -365,6 +369,11 @@ app.Use(async (context, next) =>
                 ? $"Plik jest za duży. Maksymalny rozmiar to {limit / 1024} KB."
                 : "Żądanie jest za duże."
         });
+    }
+    catch (EncryptionKeyUnavailableException) when (!context.Response.HasStarted)
+    {
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        await context.Response.WriteAsJsonAsync(new { error = CredentialsController.EncryptionKeyUnavailableMessage });
     }
 });
 app.UseAuthentication();

@@ -8,16 +8,15 @@ using OpenKSeF.Domain.Entities;
 
 namespace OpenKSeF.Domain.Services;
 
-/// <summary>Moves the AES key out of SystemConfigs and rotates it. While the row exists, all ciphertext is under the row key.</summary>
+/// <summary>Moves the AES key out of SystemConfigs and rotates it. The row is read only to re-encrypt and delete it.</summary>
 public static class EncryptionKeyMigration
 {
     private const string NewKeyEnvVar = "ENCRYPTION_KEY_NEW";
     private const int HostConnectionChecks = 6;
     private static readonly TimeSpan HostConnectionCheckDelay = TimeSpan.FromMilliseconds(500);
-    private const string FixHint =
-        "Set ENCRYPTION_KEY or ENCRYPTION_KEY_FILE to a key from 'openssl rand -base64 32' and restart.";
 
-    public static async Task AdoptConfiguredKeyAsync(
+    /// <summary>Returns false when the host must not start: the row exists and the configured key cannot be used.</summary>
+    public static async Task<bool> AdoptConfiguredKeyAsync(
         ApplicationDbContext db,
         IConfiguration configuration,
         ILogger logger,
@@ -28,26 +27,30 @@ public static class EncryptionKeyMigration
             if (!await db.SystemConfigs.AsNoTracking().AnyAsync(c => c.Key == SystemConfigKeys.EncryptionKey, ct))
             {
                 await CheckConfiguredKeyAsync(db, configuration, logger, ct);
-                return;
+                return true;
             }
 
             var configuredKey = TryReadConfiguredKey(configuration, out var reason);
             if (configuredKey is null)
             {
-                logger.LogError(
-                    "The encryption key is still stored in the database, and the configured key cannot be used: {Reason} {FixHint}",
-                    reason, FixHint);
-                return;
+                logger.LogCritical(
+                    "The encryption key is still stored in the database and the configured key cannot be used: {Reason} " +
+                    "This version no longer reads the key from the database. Nothing changed. " +
+                    "Follow https://open-ksef.pl/docs/admin-setup/#aktualizacja-z-wersji-v007-lub-starszej: back up, " +
+                    "set ENCRYPTION_KEY on the API and Worker to a new key from 'openssl rand -base64 32', and restart. " +
+                    "To keep running meanwhile, go back to v0.0.14.",
+                    reason);
+                return false;
             }
 
             await using var transaction = db.Database.IsNpgsql() ? await db.Database.BeginTransactionAsync(ct) : null;
 
-            // Lock before reading credentials, so a write that passed its check has committed and gets re-encrypted here.
-            var row = await ReadKeyRowLockedAsync(db, forUpdate: true, ct);
+            // A second adopter waits here, then finds no row and writes nothing.
+            var row = await ReadKeyRowLockedAsync(db, ct);
             if (row is null)
             {
                 await CheckConfiguredKeyAsync(db, configuration, logger, ct);
-                return;
+                return true;
             }
 
             var rowKey = EncryptionServiceExtensions.DecodeKey(row.Value);
@@ -71,21 +74,39 @@ public static class EncryptionKeyMigration
                 logger.LogWarning("A credential changed while the encryption key was being moved, nothing changed. Moving it retries at the next start.");
             }
         }
+        catch (Exception ex) when (IsTimeout(ex))
+        {
+            logger.LogCritical(ex,
+                "Another database client holds the encryption_key row, so the key was not moved. Nothing changed. " +
+                "Credentials stay unusable until it moves. " +
+                "Find the client with the query in https://open-ksef.pl/docs/admin-setup/#blokada-przy-przenoszeniu-klucza, close it, and restart.");
+        }
         catch (Exception ex)
         {
             logger.LogCritical(ex,
                 "Moving the encryption key out of the database failed, nothing changed. " +
                 "If a credential is named here, delete or re-enter it in the portal, then restart.");
         }
+
+        return true;
     }
 
-    public static async Task<SystemConfig?> ReadKeyRowLockedAsync(ApplicationDbContext db, bool forUpdate, CancellationToken ct = default)
+    private static bool IsTimeout(Exception? ex)
+    {
+        for (; ex is not null; ex = ex.InnerException)
+            if (ex is TimeoutException)
+                return true;
+
+        return false;
+    }
+
+    public static async Task<SystemConfig?> ReadKeyRowLockedAsync(ApplicationDbContext db, CancellationToken ct = default)
     {
         if (!db.Database.IsNpgsql())
             return await db.SystemConfigs.FirstOrDefaultAsync(c => c.Key == SystemConfigKeys.EncryptionKey, ct);
 
         var rows = await db.SystemConfigs
-            .FromSqlRaw($$"""SELECT * FROM "SystemConfigs" WHERE "Key" = {0} FOR {{(forUpdate ? "UPDATE" : "SHARE")}}""", SystemConfigKeys.EncryptionKey)
+            .FromSqlRaw("""SELECT * FROM "SystemConfigs" WHERE "Key" = {0} FOR UPDATE""", SystemConfigKeys.EncryptionKey)
             .ToListAsync(ct);
         return rows.SingleOrDefault();
     }
@@ -216,7 +237,7 @@ public static class EncryptionKeyMigration
             return;
         }
 
-        var configuredKey = TryReadConfiguredKey(configuration, out var reason, fixHint: "");
+        var configuredKey = TryReadConfiguredKey(configuration, out var reason);
         if (configuredKey is null)
         {
             logger.LogCritical(
@@ -237,15 +258,12 @@ public static class EncryptionKeyMigration
                 failedIds.Count, failedIds);
     }
 
-    private static byte[]? TryReadConfiguredKey(
-        IConfiguration configuration,
-        out string reason,
-        string fixHint = EncryptionServiceExtensions.GenerateKeyHint)
+    private static byte[]? TryReadConfiguredKey(IConfiguration configuration, out string reason)
     {
         reason = "It is not set.";
         try
         {
-            return EncryptionServiceExtensions.ReadConfiguredKey(configuration, fixHint);
+            return EncryptionServiceExtensions.ReadConfiguredKey(configuration, fixHint: "");
         }
         catch (InvalidOperationException ex)
         {

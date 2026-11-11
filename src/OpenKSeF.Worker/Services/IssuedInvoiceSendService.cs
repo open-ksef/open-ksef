@@ -22,30 +22,39 @@ public sealed class IssuedInvoiceSendService(
 
         await MigrationHelper.WaitForMigrationsAsync(scopeFactory, logger, stoppingToken);
 
-        string? lastError = null;
-        var logErrorAgainAt = DateTimeOffset.MinValue;
+        var lastErrors = new Dictionary<string, (string Message, DateTimeOffset LogAgainAt)>();
 
-        while (!stoppingToken.IsCancellationRequested)
+        async Task RunAsync(string step, Func<Task> work)
         {
             try
             {
-                var environment = await runtimeConfig.RefreshAsync(stoppingToken);
-                using var scope = scopeFactory.CreateScope();
-                await scope.ServiceProvider.GetRequiredService<IssuedInvoiceSendProcessor>().ProcessAsync(environment, stoppingToken);
-
-                using var escalationScope = scopeFactory.CreateScope();
-                await escalationScope.ServiceProvider.GetRequiredService<IssuedInvoiceEscalationService>().EscalateAsync(stuckAfter, stoppingToken);
+                await work();
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 var now = timeProvider.GetUtcNow();
-                if (ex.Message != lastError || now >= logErrorAgainAt)
-                {
-                    logger.LogError(ex, "Unhandled error in issued invoice send cycle. The same error repeats in the log at most every {Minutes} min", RepeatedErrorLogInterval.TotalMinutes);
-                    lastError = ex.Message;
-                    logErrorAgainAt = now + RepeatedErrorLogInterval;
-                }
+                if (lastErrors.TryGetValue(step, out var last) && ex.Message == last.Message && now < last.LogAgainAt)
+                    return;
+
+                logger.LogError(ex, "Unhandled error in issued invoice {Step}. The same error repeats in the log at most every {Minutes} min", step, RepeatedErrorLogInterval.TotalMinutes);
+                lastErrors[step] = (ex.Message, now + RepeatedErrorLogInterval);
             }
+        }
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await RunAsync("send cycle", async () =>
+            {
+                var environment = await runtimeConfig.RefreshAsync(stoppingToken);
+                using var scope = scopeFactory.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<IssuedInvoiceSendProcessor>().ProcessAsync(environment, stoppingToken);
+            });
+
+            await RunAsync("escalation", async () =>
+            {
+                using var scope = scopeFactory.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<IssuedInvoiceEscalationService>().EscalateAsync(stuckAfter, stoppingToken);
+            });
 
             await Task.Delay(interval, stoppingToken);
         }

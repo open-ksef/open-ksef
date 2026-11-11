@@ -66,9 +66,7 @@ public class CredentialsController : ControllerBase
     private readonly ICurrentUserService _currentUser;
     private readonly IEncryptionService _encryption;
     private readonly ManualSyncJobs _syncJobs;
-    private readonly ISystemConfigService _systemConfig;
     private readonly ILogger<CredentialsController> _logger;
-    private readonly bool _onRowKey;
 
     public const string ManualSyncRateLimitPolicy = "manual-sync";
     public const string MissingPrivateKeyMessage = "Plik nie zawiera klucza prywatnego. Wgraj plik .pfx/.p12 z kluczem albo parę .crt + .key.";
@@ -78,7 +76,7 @@ public class CredentialsController : ControllerBase
     public const string MissingCertificateFileMessage = "Wybierz plik certyfikatu.";
     public const string MissingTokenMessage = "Podaj token KSeF.";
     public const string UnknownCredentialTypeMessage = "Nieznany sposób logowania do KSeF.";
-    public const string EncryptionKeyChangedMessage = "Nie zapisano. Trwa zmiana ustawień szyfrowania serwera. Spróbuj ponownie za chwilę.";
+    public const string EncryptionKeyUnavailableMessage = "Serwer nie ma prawidłowego klucza szyfrowania, więc nie może zapisać ani odczytać poświadczeń KSeF. Skontaktuj się z administratorem serwera.";
     public const string KeyKdfTooExpensiveMessage = "Nie można odczytać klucza prywatnego (.key): plik jest zaszyfrowany w nieobsługiwany sposób. Wgraj certyfikat jako plik .pfx/.p12.";
     public const int MaxKeyKdfIterations = 600_000;
     public const int MaxRequestBytes = 64 * 1024;
@@ -89,17 +87,13 @@ public class CredentialsController : ControllerBase
         ICurrentUserService currentUser,
         IEncryptionService encryption,
         ManualSyncJobs syncJobs,
-        ISystemConfigService systemConfig,
         ILogger<CredentialsController> logger)
     {
         _db = db;
         _currentUser = currentUser;
         _encryption = encryption;
         _syncJobs = syncJobs;
-        _systemConfig = systemConfig;
         _logger = logger;
-        // Read here, not in the action: binding awaits the request body after _encryption is resolved.
-        _onRowKey = systemConfig.GetValue(SystemConfigKeys.EncryptionKey) is not null;
     }
 
     [HttpPost]
@@ -156,14 +150,6 @@ public class CredentialsController : ControllerBase
                 return BadRequest(new { error = UnknownCredentialTypeMessage });
         }
 
-        await using var transaction = _onRowKey && _db.Database.IsNpgsql() ? await _db.Database.BeginTransactionAsync() : null;
-        if (_onRowKey && await EncryptionKeyMigration.ReadKeyRowLockedAsync(_db, forUpdate: false) is null)
-        {
-            await _systemConfig.RefreshCacheAsync();
-            _logger.LogCritical("This host still held the encryption key from the database after it moved out, credential not saved for tenant {TenantId}", tenantId);
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = EncryptionKeyChangedMessage });
-        }
-
         var existing = await _db.KSeFCredentials
             .FirstOrDefaultAsync(c => c.TenantId == tenantId);
 
@@ -193,8 +179,6 @@ public class CredentialsController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
-        if (transaction is not null)
-            await transaction.CommitAsync();
         return Ok(new { message = "Credential saved." });
     }
 
@@ -223,6 +207,7 @@ public class CredentialsController : ControllerBase
     [HttpGet("status")]
     [ProducesResponseType(typeof(CredentialStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Status(Guid tenantId)
     {
         if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))

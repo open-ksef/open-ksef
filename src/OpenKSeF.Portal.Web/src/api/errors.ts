@@ -82,6 +82,19 @@ export async function readFieldError(error: unknown, field: string): Promise<str
   }
 }
 
+export async function readErrorCode(error: unknown): Promise<string | null> {
+  if (!(error instanceof ApiError) || error.status !== 400 || !(error.originalError instanceof Response)) {
+    return null
+  }
+
+  try {
+    const parsed = (await error.originalError.clone().json()) as { code?: unknown }
+    return typeof parsed.code === 'string' ? parsed.code : null
+  } catch {
+    return null
+  }
+}
+
 function isAbortError(input: unknown): boolean {
   if (!input || typeof input !== 'object') {
     return false

@@ -58,6 +58,8 @@ jobs:
 
             Existing installation: check `ENCRYPTION_KEY` and follow the [upgrade procedure](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/docs/admin-setup.md#upgrade-from-v007-or-earlier) before you run anything. New installation: set `ENCRYPTION_KEY` in `.env` first.
 
+            This release no longer reads the encryption key from the database. An installation that still holds it there (step 1 of the upgrade procedure returns 1) must set `ENCRYPTION_KEY` before it upgrades. Without it, API and Worker refuse to start and change nothing.
+
             Download `docker-compose.yml` attached below and run:
 
             ```bash

@@ -51,13 +51,15 @@ describe('AdminSetupPage', () => {
     await waitFor(() => Boolean(byTestId('setup-apply')))
   }
 
-  const refusal = (error: string) =>
+  const refusal = (error: string, code?: string) =>
     normalizeError(
-      new Response(JSON.stringify({ success: false, error }), {
+      new Response(JSON.stringify({ success: false, error, code }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       }),
     )
+
+  const keyMessage = 'Komunikat API o kluczu szyfrowania'
 
   beforeEach(async () => {
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -175,28 +177,27 @@ describe('AdminSetupPage', () => {
     expect(byTestId('setup-apply')).toBeNull()
   })
 
-  it.each([
-    'ENCRYPTION_KEY is not set. Generate one with: openssl rand -base64 32, set it on the API and Worker, and restart.',
-    'Encryption key is not valid base64. Generate with: openssl rand -base64 32',
-    'Encryption key must decode to exactly 32 bytes (got 16). Generate with: openssl rand -base64 32',
-    "'ENCRYPTION_KEY_FILE' cannot be read.",
-  ])('refusal "%s" explains the key in Polish and restarts at login with the data kept', async (error) => {
-    vi.mocked(applySetup).mockRejectedValue(await refusal(error))
+  it('login without a valid key stays on step 1 with the API text', async () => {
+    vi.mocked(authenticateAdmin).mockRejectedValue(await refusal(keyMessage, 'encryption_key_missing'))
+    type('setup-kc-pass', 'kc-password')
+
+    await click('setup-next')
+    await waitFor(() => Boolean(container.querySelector('[role="alert"]')))
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(keyMessage)
+    expect(byTestId('setup-kc-pass')).not.toBeNull()
+    expect(byTestId('setup-admin-email')).toBeNull()
+  })
+
+  it('apply refused for the key goes back to login with the API text', async () => {
+    vi.mocked(applySetup).mockRejectedValue(await refusal(keyMessage, 'encryption_key_missing'))
     await reachSummary()
 
     await click('setup-apply')
     await waitFor(() => Boolean(byTestId('setup-kc-pass')))
 
-    const alert = container.querySelector('[role="alert"]')?.textContent
-    expect(alert).toContain('Brak prawidłowego klucza szyfrowania')
-    expect(alert).toContain('ENCRYPTION_KEY')
-    expect(alert).not.toContain(error)
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(keyMessage)
     expect(byTestId('setup-success')).toBeNull()
-
-    await click('setup-next')
-    await waitFor(() => Boolean(byTestId('setup-admin-email')))
-    expect(byTestId<HTMLInputElement>('setup-admin-email')?.value).toBe('jan@firma.pl')
-    expect(authenticateAdmin).toHaveBeenCalledTimes(2)
   })
 
   it('other refusals stay on the summary with the API message', async () => {
@@ -208,5 +209,22 @@ describe('AdminSetupPage', () => {
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('Keycloak unavailable')
     expect(byTestId('setup-apply')).not.toBeNull()
+  })
+
+  it('a refused apply is retried from the summary with the same session and data', async () => {
+    vi.mocked(applySetup)
+      .mockRejectedValueOnce(await refusal('Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.'))
+      .mockResolvedValueOnce({ success: true })
+    await reachSummary()
+
+    await click('setup-apply')
+    await waitFor(() => Boolean(container.querySelector('[role="alert"]')))
+    await click('setup-apply')
+    await waitFor(() => Boolean(byTestId('setup-success')))
+
+    const [first, second] = vi.mocked(applySetup).mock.calls
+    expect(second).toEqual(first)
+    expect(second[0]).toBe('session')
+    expect(authenticateAdmin).toHaveBeenCalledTimes(1)
   })
 })

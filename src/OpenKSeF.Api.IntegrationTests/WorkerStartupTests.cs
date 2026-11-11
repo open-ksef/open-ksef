@@ -22,6 +22,7 @@ public class WorkerStartupTests(TestcontainersFixture fixture)
 
             Assert.True(started, output);
             Assert.Contains("System initialized", output);
+            Assert.DoesNotContain("CRT]", output);
         }
         finally
         {
@@ -48,7 +49,27 @@ public class WorkerStartupTests(TestcontainersFixture fixture)
         }
     }
 
-    private async Task<string> SeedDatabaseAsync(string? environmentRow)
+    [Fact]
+    public async Task WorkerProcess_KeyRowAndNoKey_ExitsOne_WritesNothing()
+    {
+        var connection = await SeedDatabaseAsync("test", keyRow: OpenKSeFWebApplicationFactory.TestEncryptionKey);
+        try
+        {
+            var (_, output) = await RunWorkerAsync(connection, envBaseUrl: "test", stopAt: null, encryptionKey: "");
+
+            Assert.Contains("no longer reads the key from the database", output);
+            await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connection).Options);
+            Assert.Equal(
+                OpenKSeFWebApplicationFactory.TestEncryptionKey,
+                (await db.SystemConfigs.SingleAsync(c => c.Key == SystemConfigKeys.EncryptionKey)).Value);
+        }
+        finally
+        {
+            await DropDatabaseAsync(connection);
+        }
+    }
+
+    private async Task<string> SeedDatabaseAsync(string? environmentRow, string? keyRow = null)
     {
         var database = $"worker_{Guid.NewGuid():N}";
         await using (var admin = new NpgsqlConnection(fixture.PostgresConnectionString))
@@ -63,6 +84,8 @@ public class WorkerStartupTests(TestcontainersFixture fixture)
         db.SystemConfigs.Add(new SystemConfig { Key = SystemConfigKeys.IsInitialized, Value = "true", UpdatedAt = DateTime.UtcNow });
         if (environmentRow is not null)
             db.SystemConfigs.Add(new SystemConfig { Key = SystemConfigKeys.KSeFEnvironment, Value = environmentRow, UpdatedAt = DateTime.UtcNow });
+        if (keyRow is not null)
+            db.SystemConfigs.Add(new SystemConfig { Key = SystemConfigKeys.EncryptionKey, Value = keyRow, UpdatedAt = DateTime.UtcNow });
         await db.SaveChangesAsync();
         return connection;
     }
@@ -76,7 +99,8 @@ public class WorkerStartupTests(TestcontainersFixture fixture)
         await new NpgsqlCommand($"DROP DATABASE IF EXISTS {new NpgsqlConnectionStringBuilder(connection).Database} WITH (FORCE)", admin).ExecuteNonQueryAsync();
     }
 
-    private static async Task<(bool Stopped, string Output)> RunWorkerAsync(string connection, string? envBaseUrl, string? stopAt)
+    private static async Task<(bool Stopped, string Output)> RunWorkerAsync(
+        string connection, string? envBaseUrl, string? stopAt, string encryptionKey = OpenKSeFWebApplicationFactory.TestEncryptionKey)
     {
         var workerDll = Path.Combine(AppContext.BaseDirectory.Replace("OpenKSeF.Api.IntegrationTests", "OpenKSeF.Worker"), "OpenKSeF.Worker.dll");
         var start = new ProcessStartInfo("dotnet")
@@ -89,7 +113,7 @@ public class WorkerStartupTests(TestcontainersFixture fixture)
             {
                 ["DOTNET_ENVIRONMENT"] = "Development",
                 ["ConnectionStrings__Db"] = connection,
-                ["ENCRYPTION_KEY"] = OpenKSeFWebApplicationFactory.TestEncryptionKey,
+                ["ENCRYPTION_KEY"] = encryptionKey,
                 ["KSeF__BaseUrl"] = envBaseUrl ?? "",
                 ["KSeF__ForbidProduction"] = "true",
             },
@@ -120,7 +144,7 @@ public class WorkerStartupTests(TestcontainersFixture fixture)
             if (stopAt is null)
             {
                 await exited.WaitAsync(TimeSpan.FromSeconds(5));
-                Assert.NotEqual(0, worker.ExitCode);
+                Assert.Equal(1, worker.ExitCode);
             }
         }
         finally

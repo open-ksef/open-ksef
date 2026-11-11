@@ -1,10 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Api.Models;
+using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
@@ -213,6 +215,21 @@ public class SystemSetupIntegrationTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Empty(await db.SystemConfigs.ToListAsync());
         Assert.False(await db.Tenants.AnyAsync(t => t.Nip == "1234567890"));
+    }
+
+    [Fact]
+    public async Task Authenticate_NoEncryptionKey_Is400WithCode()
+    {
+        await ClearSystemConfigAsync();
+        using var noKey = _factory.WithWebHostBuilder(builder => builder.UseSetting("ENCRYPTION_KEY", ""));
+        using var client = noKey.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/system/setup/authenticate", new SetupAuthenticateRequest("admin", "admin"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<SetupApplyResponse>();
+        Assert.Equal(SystemSetupService.EncryptionKeyMissingCode, body!.Code);
+        Assert.Equal(SystemSetupService.EncryptionKeyMissingMessage, body.Error);
     }
 
     [Fact]
