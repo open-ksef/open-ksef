@@ -45,7 +45,7 @@ public class InvoicesController : ControllerBase
         [FromQuery] DateTime? dateTo = null,
         [FromQuery] bool? isPaid = null)
     {
-        if (!await VerifyTenantOwnership(tenantId))
+        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
             return Forbid();
 
         if (page < 1) page = 1;
@@ -87,31 +87,7 @@ public class InvoicesController : ControllerBase
         var items = await ordered
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(i => new InvoiceResponse(
-                i.Id,
-                i.KSeFInvoiceNumber,
-                i.KSeFReferenceNumber,
-                i.InvoiceNumber,
-                i.VendorName,
-                i.VendorNip,
-                i.BuyerName,
-                i.BuyerNip,
-                i.AmountNet,
-                i.AmountVat,
-                i.AmountGross,
-                i.Currency,
-                i.IssueDate,
-                i.AcquisitionDate,
-                i.InvoiceType,
-                i.FirstSeenAt,
-                i.IsPaid,
-                i.PaidAt,
-                i.VendorBankAccount,
-                null,
-                i.DueDate,
-                i.Direction.ToString(),
-                i.BuyerIdType,
-                i.BuyerForeignId))
+            .Select(InvoiceResponse.Projection)
             .ToListAsync();
 
         return Ok(new PagedResult<InvoiceResponse>
@@ -129,7 +105,7 @@ public class InvoicesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Get(Guid tenantId, Guid id)
     {
-        if (!await VerifyTenantOwnership(tenantId))
+        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
             return Forbid();
 
         var invoice = await _db.InvoiceHeaders
@@ -137,7 +113,7 @@ public class InvoicesController : ControllerBase
             .Where(i => i.Id == id && i.TenantId == tenantId)
             .FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(ToDetailResponse(invoice));
+        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice));
     }
 
     [HttpGet("by-number/{ksefInvoiceNumber}")]
@@ -146,7 +122,7 @@ public class InvoicesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetByKSeFNumber(Guid tenantId, string ksefInvoiceNumber)
     {
-        if (!await VerifyTenantOwnership(tenantId))
+        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
             return Forbid();
 
         var invoice = await _db.InvoiceHeaders
@@ -154,7 +130,7 @@ public class InvoicesController : ControllerBase
             .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber && i.TenantId == tenantId)
             .FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(ToDetailResponse(invoice));
+        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice));
     }
 
     [HttpGet("{id:guid}/transfer")]
@@ -164,7 +140,7 @@ public class InvoicesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> GetTransferDetails(Guid tenantId, Guid id)
     {
-        if (!await VerifyTenantOwnership(tenantId))
+        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
             return Forbid();
 
         var invoice = await _db.InvoiceHeaders
@@ -202,7 +178,7 @@ public class InvoicesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> SetPaid(Guid tenantId, Guid id, [FromBody] SetInvoicePaidRequest request)
     {
-        if (!await VerifyTenantOwnership(tenantId))
+        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
             return Forbid();
 
         var invoice = await _db.InvoiceHeaders
@@ -222,44 +198,6 @@ public class InvoicesController : ControllerBase
 
         await _db.Entry(invoice).Collection(i => i.Lines).LoadAsync();
 
-        return Ok(ToDetailResponse(invoice));
+        return Ok(InvoiceResponse.FromEntity(invoice));
     }
-
-    private async Task<bool> VerifyTenantOwnership(Guid tenantId)
-    {
-        return await _db.Tenants
-            .AnyAsync(t => t.Id == tenantId && t.UserId == _currentUser.UserId);
-    }
-
-    private static InvoiceResponse ToDetailResponse(Domain.Entities.InvoiceHeader i) => new(
-        i.Id,
-        i.KSeFInvoiceNumber,
-        i.KSeFReferenceNumber,
-        i.InvoiceNumber,
-        i.VendorName,
-        i.VendorNip,
-        i.BuyerName,
-        i.BuyerNip,
-        i.AmountNet,
-        i.AmountVat,
-        i.AmountGross,
-        i.Currency,
-        i.IssueDate,
-        i.AcquisitionDate,
-        i.InvoiceType,
-        i.FirstSeenAt,
-        i.IsPaid,
-        i.PaidAt,
-        i.VendorBankAccount,
-        Lines: i.Lines
-            .OrderBy(l => l.LineNumber)
-            .Select(l => new InvoiceLineResponse(
-                l.LineNumber, l.Name, l.Unit, l.Quantity,
-                l.UnitPriceNet, l.UnitPriceGross,
-                l.AmountNet, l.AmountGross, l.AmountVat, l.VatRate))
-            .ToList(),
-        DueDate: i.DueDate,
-        Direction: i.Direction.ToString(),
-        BuyerIdType: i.BuyerIdType,
-        BuyerForeignId: i.BuyerForeignId);
 }

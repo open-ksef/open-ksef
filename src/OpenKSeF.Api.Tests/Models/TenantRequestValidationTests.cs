@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using OpenKSeF.Domain.DTOs;
+using OpenKSeF.Api.Models;
 
 namespace OpenKSeF.Api.Tests.Models;
 

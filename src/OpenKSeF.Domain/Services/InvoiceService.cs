@@ -38,22 +38,21 @@ public class InvoiceService : IInvoiceService
         var newInvoiceIds = new List<Guid>();
         var now = DateTime.UtcNow;
         var page = invoices.DistinctBy(i => i.Number).ToList();
+        var numbers = page.Select(i => i.Number).ToList();
+        var existingByNumber = await _db.InvoiceHeaders
+            .Where(i => i.TenantId == tenantId && numbers.Contains(i.KSeFInvoiceNumber))
+            .ToDictionaryAsync(i => i.KSeFInvoiceNumber);
 
         foreach (var invoice in page)
         {
-            var existing = await _db.InvoiceHeaders
-                .FirstOrDefaultAsync(i =>
-                    i.TenantId == tenantId &&
-                    i.KSeFInvoiceNumber == invoice.Number);
-
-            if (existing is null)
+            if (!existingByNumber.TryGetValue(invoice.Number, out var existing))
             {
                 var newInvoice = new InvoiceHeader
                 {
                     Id = Guid.NewGuid(),
                     TenantId = tenantId,
                     KSeFInvoiceNumber = invoice.Number,
-                    KSeFReferenceNumber = invoice.ReferenceNumber,
+                    KSeFReferenceNumber = invoice.Number,
                     InvoiceNumber = invoice.InvoiceNumber,
                     VendorName = invoice.VendorName,
                     VendorNip = invoice.VendorNip,

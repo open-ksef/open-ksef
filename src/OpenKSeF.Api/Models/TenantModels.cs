@@ -1,7 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 
-namespace OpenKSeF.Domain.DTOs;
+namespace OpenKSeF.Api.Models;
 
 public record CreateTenantRequest(
     [param: Required]

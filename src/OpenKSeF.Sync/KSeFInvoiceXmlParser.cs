@@ -7,20 +7,7 @@ using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Sync;
 
-/// <summary>
-/// Extracts payment data, settlement and line items from KSeF invoice XML (FA(2) / FA(3)).
-/// Uses the CIRFMF library's <c>GetInvoiceAsync</c> output — this is a thin
-/// XML reader, not a custom KSeF client.
-///
-/// XML paths:
-///   Bank account:  Faktura / Fa / Platnosc / RachunekBankowy / NrRB (first valid PL NRB, else first)
-///   Due date:      Faktura / Fa / Platnosc / TerminPlatnosci / Termin (earliest of up to 100)
-///   Payment flags: Fa / Adnotacje / P_18A, Fa / Platnosc / Zaplacono, DataZaplaty, ZnacznikZaplatyCzesciowej
-///   Factor:        Fa / Platnosc / RachunekBankowyFaktora / NrRB, Faktura / Podmiot3 (Rola = 1) / DaneIdentyfikacyjne
-///   Amount due:    Faktura / Fa / P_15 and Fa / Rozliczenie
-///   Line items:    Faktura / Fa / FaWiersz
-/// Schema reference: ksef-docs/faktury/schemy/FA/
-/// </summary>
+/// <summary>Thin reader of FA(2)/FA(3) invoice XML from <c>GetInvoiceAsync</c>: payment data, settlement and line items. Paths follow ksef-docs/faktury/schemy/FA/.</summary>
 public sealed class KSeFInvoiceXmlParser
 {
     private static readonly XNamespace Fa2Ns = "http://crd.gov.pl/wzor/2023/06/29/12648/";

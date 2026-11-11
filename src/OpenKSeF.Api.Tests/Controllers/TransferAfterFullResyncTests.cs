@@ -49,7 +49,7 @@ public class TransferAfterFullResyncTests : IDisposable
             .Returns(Encoding.UTF8.GetBytes($"""<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/"><Fa><P_15>100.00</P_15><Platnosc><RachunekBankowy><NrRB>{Account}</NrRB></RachunekBankowy></Platnosc></Fa></Faktura>"""));
         _gateway.QueryInvoicesAsync(Arg.Any<KSeFSession>(), Arg.Any<KSeFQueryCriteria>(), Arg.Any<CancellationToken>())
             .Returns(new KSeFInvoiceQueryResult(
-                [Header(invoice.KSeFInvoiceNumber, ksefType), Header("KSEF-NOT-STORED-YET", "Vat")], 2, 0, 100));
+                [Header(invoice.KSeFInvoiceNumber, ksefType), Header("KSEF-NOT-STORED-YET", "Vat")]));
 
         var sync = await CreateSyncService().SyncTenantAsync(_tenantId, UserId, forceFullResync: true);
 
@@ -112,7 +112,7 @@ public class TransferAfterFullResyncTests : IDisposable
     }
 
     private KSeFInvoiceHeader Header(string number, string invoiceType) => new(
-        number, number, "FV 1/2026", VendorNip, "Odbiorca 1", null, null,
+        number, "FV 1/2026", VendorNip, "Odbiorca 1", null, null,
         81.30m, 18.70m, 100m, "PLN", _issueDate, _issueDate, invoiceType);
 
     private async Task<TransferDetailsResponse> GetTransfer(Guid id)

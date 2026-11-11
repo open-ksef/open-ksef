@@ -527,10 +527,10 @@ public sealed class EmailNotificationTests : IAsyncLifetime
     }
 
     private static KSeFInvoiceQueryResult Page(IReadOnlyList<KSeFInvoiceHeader> invoices, DateTime? continuationAt = null) =>
-        new(invoices, invoices.Count, 0, 100, continuationAt);
+        new(invoices, continuationAt);
 
     private static KSeFInvoiceHeader Bought(string number, DateTime? acquiredAt = null) => new(
-        number, number, "FV 1/2026", "1111111113", "Dostawca", NipA, "Moja firma", 100m, 23m, 123m, "PLN", DateTime.UtcNow.AddDays(-3), acquiredAt ?? DateTime.UtcNow, "Vat",
+        number, "FV 1/2026", "1111111113", "Dostawca", NipA, "Moja firma", 100m, 23m, 123m, "PLN", DateTime.UtcNow.AddDays(-3), acquiredAt ?? DateTime.UtcNow, "Vat",
         BuyerIdType: "Nip");
 }
 

@@ -12,6 +12,7 @@ Main projects:
 - `src/OpenKSeF.Domain` - shared domain/data (includes `IKSeFGateway` abstraction)
 - `src/OpenKSeF.Sync` - sync orchestration + KSeF gateway (uses CIRFMF `KSeF.Client` via NuGet)
 - `src/OpenKSeF.Portal.Web` - React portal
+- `src/OpenKSeF.PushRelay` - team-hosted push relay (HMAC per instance, FCM/APNs)
 
 All projects above are active code -- refactor, rename, restructure, and delete freely.
 
@@ -26,7 +27,7 @@ When implementing changes:
 ### Layer dependencies
 
 ```
-Domain  (zero project dependencies -- entities, DTOs, abstractions, services)
+Domain  (zero project dependencies -- entities, internal DTOs (Sync->Domain contract), abstractions, services)
   ↑
 Sync    (depends only on Domain -- KSeF gateway impl, sync orchestration)
   ↑
@@ -61,16 +62,15 @@ Always consult these docs (especially the XSD schemas) before making assumptions
 ### Service design
 
 - Define service interfaces in `Domain/Abstractions/` or alongside the service in `Domain/Services/`.
-- Place implementations in the layer that owns the concern: KSeF gateway in `Sync`, push providers in `Api`, background jobs in `Worker`.
+- Place implementations in the layer that owns the concern: KSeF gateway in `Sync`, Relay/FCM/APNs push providers in `Domain/Push` (both hosts push), SignalR push in `Api/Push`, background jobs in `Worker`.
 - Controllers are thin HTTP adapters. They validate input, call a service, and return a response. Business logic belongs in domain services, not controllers.
-- Register services through DI (`AddScoped`, `AddSingleton`) in `Program.cs` or dedicated `DependencyInjection.cs` extension methods.
+- Register services shared by both hosts in `Domain/DependencyInjection.AddOpenKSeFCore` and `Sync/DependencyInjection.AddSyncServices`; host-only services in each host's `Program.cs`.
 
 ### DTO discipline
 
-- `Domain/DTOs/` holds internal contracts shared across layers (e.g. sync results, internal requests).
-- `Api/Models/` holds API-facing request/response types shaped for JSON consumers (portal, mobile app).
+- `Domain/DTOs/` holds only the Sync->Domain contract (`InvoiceDto`, `InvoiceLineDto`, `InvoiceXmlDetails`).
+- Every HTTP request/response type lives in `Api/Models/`, shaped for JSON consumers (portal, mobile app).
 - Do not expose EF entities directly in API responses. Map to a response model.
-- When adding a new API endpoint, define its request/response types in `Api/Models/` and keep `Domain/DTOs/` free of HTTP-specific concerns.
 
 ### DbContext usage
 

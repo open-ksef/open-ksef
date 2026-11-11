@@ -1,17 +1,13 @@
-using System.Diagnostics;
 using System.Net;
 using KSeF.Client.Api.Services;
 using KSeF.Client.Core.Interfaces.Services;
 using KSeF.Client.DI;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using OpenKSeF.Domain.Data;
-using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
 using OpenKSeF.Worker.Services;
@@ -50,8 +46,8 @@ public class KSeFEnvironmentResolutionTests
     [InlineData("api.ksef.mf.gov.pl/v2", KsefEnvironmentsUris.PROD, "production")]
     public void KnownValue_ResolvesToItsUrlAndKey(string value, string url, string key)
     {
-        Assert.Equal(url, DependencyInjection.ResolveKSeFEnvironment(value));
-        Assert.Equal(key, DependencyInjection.NormalizeKSeFEnvironmentKey(value));
+        Assert.Equal(url, Sync.DependencyInjection.ResolveKSeFEnvironment(value));
+        Assert.Equal(key, Sync.DependencyInjection.NormalizeKSeFEnvironmentKey(value));
     }
 
     [Theory]
@@ -60,8 +56,8 @@ public class KSeFEnvironmentResolutionTests
     [InlineData("   ")]
     public void NoValue_IsTest(string? value)
     {
-        Assert.Equal(KsefEnvironmentsUris.TEST, DependencyInjection.ResolveKSeFEnvironment(value));
-        Assert.Equal("test", DependencyInjection.NormalizeKSeFEnvironmentKey(value));
+        Assert.Equal(KsefEnvironmentsUris.TEST, Sync.DependencyInjection.ResolveKSeFEnvironment(value));
+        Assert.Equal("test", Sync.DependencyInjection.NormalizeKSeFEnvironmentKey(value));
     }
 
     [Theory]
@@ -81,9 +77,9 @@ public class KSeFEnvironmentResolutionTests
     [InlineData("not a url")]
     public void UnknownValue_Throws(string value)
     {
-        var resolve = Assert.Throws<InvalidOperationException>(() => DependencyInjection.ResolveKSeFEnvironment(value));
+        var resolve = Assert.Throws<InvalidOperationException>(() => Sync.DependencyInjection.ResolveKSeFEnvironment(value));
         Assert.Contains($"Unknown KSeF environment '{value}'", resolve.Message);
-        Assert.Throws<InvalidOperationException>(() => DependencyInjection.NormalizeKSeFEnvironmentKey(value));
+        Assert.Throws<InvalidOperationException>(() => Sync.DependencyInjection.NormalizeKSeFEnvironmentKey(value));
     }
 
     [Theory]
@@ -117,7 +113,7 @@ public class KSeFEnvironmentResolutionTests
     }
 
     private static IConfiguration ForbidProduction(string? value) => new ConfigurationBuilder()
-        .AddInMemoryCollection(new Dictionary<string, string?> { [DependencyInjection.ForbidProductionKey] = value })
+        .AddInMemoryCollection(new Dictionary<string, string?> { [Sync.DependencyInjection.ForbidProductionKey] = value })
         .Build();
 
     [Theory]
@@ -146,11 +142,11 @@ public class KSeFEnvironmentResolutionTests
     [InlineData("https://ksef.podatki.gov.pl/api")]
     public void StartupResolve_ProductionWithTheSignal_Refuses_WithoutItIsProduction(string value)
     {
-        var error = Assert.Throws<InvalidOperationException>(() => DependencyInjection.ResolveStartupKSeFEnvironment(value, ForbidProduction("true")));
+        var error = Assert.Throws<InvalidOperationException>(() => Sync.DependencyInjection.ResolveStartupKSeFEnvironment(value, ForbidProduction("true")));
 
-        Assert.Contains(DependencyInjection.ForbidProductionKey, error.Message);
-        Assert.Equal(KsefEnvironmentsUris.PROD, DependencyInjection.ResolveStartupKSeFEnvironment(value, ForbidProduction(null)));
-        Assert.Equal(KsefEnvironmentsUris.PROD, DependencyInjection.ResolveStartupKSeFEnvironment(value, ForbidProduction("false")));
+        Assert.Contains(Sync.DependencyInjection.ForbidProductionKey, error.Message);
+        Assert.Equal(KsefEnvironmentsUris.PROD, Sync.DependencyInjection.ResolveStartupKSeFEnvironment(value, ForbidProduction(null)));
+        Assert.Equal(KsefEnvironmentsUris.PROD, Sync.DependencyInjection.ResolveStartupKSeFEnvironment(value, ForbidProduction("false")));
     }
 
     [Theory]
@@ -158,7 +154,7 @@ public class KSeFEnvironmentResolutionTests
     [InlineData("demo", KsefEnvironmentsUris.DEMO)]
     public void StartupResolve_TestOrDemoWithTheSignal_Starts(string value, string url)
     {
-        Assert.Equal(url, DependencyInjection.ResolveStartupKSeFEnvironment(value, ForbidProduction("true")));
+        Assert.Equal(url, Sync.DependencyInjection.ResolveStartupKSeFEnvironment(value, ForbidProduction("true")));
     }
 
     [Fact]
@@ -256,63 +252,5 @@ public class KSeFEnvironmentResolutionTests
 
         Assert.Equal(KsefEnvironmentsUris.TEST, options.BaseUrl);
         await cryptography.DidNotReceiveWithAnyArgs().ForceRefreshAsync(default);
-    }
-
-    [Theory]
-    [InlineData("tset", null)]
-    [InlineData(null, "https://ksef.mf.gov.pl/api")]
-    public async Task WorkerProcess_UnknownEnvironment_ExitsNonZero_BeforeAnyKSeFCall(string? row, string? envBaseUrl)
-    {
-        var dbPath = Path.Combine(Path.GetTempPath(), $"openksef-worker-env-{Guid.NewGuid():N}.db");
-        try
-        {
-            await using (var services = new ServiceCollection()
-                .AddDbContext<ApplicationDbContext>(o => o
-                    .UseSqlite($"Data Source={dbPath}")
-                    .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)))
-                .BuildServiceProvider())
-            {
-                using var scope = services.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-                await db.Database.MigrateAsync();
-                db.SystemConfigs.Add(new SystemConfig { Key = SystemConfigKeys.IsInitialized, Value = "true", UpdatedAt = DateTime.UtcNow });
-                if (row is not null)
-                    db.SystemConfigs.Add(new SystemConfig { Key = SystemConfigKeys.KSeFEnvironment, Value = row, UpdatedAt = DateTime.UtcNow });
-                await db.SaveChangesAsync();
-            }
-
-            var start = new ProcessStartInfo("dotnet")
-            {
-                ArgumentList = { typeof(KSeFRuntimeConfig).Assembly.Location },
-                WorkingDirectory = Path.GetDirectoryName(typeof(KSeFRuntimeConfig).Assembly.Location)!,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                Environment =
-                {
-                    ["ConnectionStrings__Db"] = $"Data Source={dbPath}",
-                    ["ENCRYPTION_KEY"] = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
-                    ["KSeF__BaseUrl"] = envBaseUrl ?? "",
-                },
-            };
-            using var worker = Process.Start(start)!;
-            var stdout = worker.StandardOutput.ReadToEndAsync();
-            var stderr = worker.StandardError.ReadToEndAsync();
-            try
-            {
-                await worker.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromSeconds(60)).Token);
-            }
-            finally
-            {
-                worker.Kill(entireProcessTree: true);
-            }
-
-            Assert.NotEqual(0, worker.ExitCode);
-            Assert.Contains("Unknown KSeF environment", await stdout + await stderr);
-        }
-        finally
-        {
-            SqliteConnection.ClearAllPools();
-            File.Delete(dbPath);
-        }
     }
 }

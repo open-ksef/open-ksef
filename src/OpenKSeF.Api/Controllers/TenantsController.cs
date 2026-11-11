@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
-using OpenKSeF.Domain.DTOs;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Services;
@@ -117,7 +117,7 @@ public class TenantsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Delete(Guid id)
     {
-        if (!await _db.Tenants.AnyAsync(t => t.Id == id && t.UserId == _currentUser.UserId))
+        if (!await _db.OwnsTenantAsync(id, _currentUser.UserId))
             return NotFound();
 
         try

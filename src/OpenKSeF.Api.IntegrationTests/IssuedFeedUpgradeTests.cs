@@ -85,7 +85,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         .ToList();
 
     private static KSeFInvoiceQueryResult Page(IReadOnlyList<KSeFInvoiceHeader> invoices, DateTime? continuationAt = null, bool truncated = false) =>
-        new(invoices, invoices.Count, 0, 100, continuationAt, truncated);
+        new(invoices, continuationAt, truncated);
 
     private static KSeFInvoiceHeader Sale(
         string number,
@@ -94,11 +94,11 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         string? buyerForeignId = null,
         string vendorName = "Moja firma",
         string currency = "PLN") => new(
-        number, number, "FV 7/2026", TenantNip, vendorName, buyerNip, "Nabywca", 200m, 46m, 246m, currency, Issued, Issued, "Vat",
+        number, "FV 7/2026", TenantNip, vendorName, buyerNip, "Nabywca", 200m, 46m, 246m, currency, Issued, Issued, "Vat",
         BuyerIdType: buyerIdType, BuyerForeignId: buyerForeignId);
 
     private static KSeFInvoiceHeader Bought(string number) => new(
-        number, number, "FV 1/2026", "5261040828", "Dostawca", TenantNip, "Moja firma", 100m, 23m, 123m, "PLN", Issued, Issued, "Vat",
+        number, "FV 1/2026", "5261040828", "Dostawca", TenantNip, "Moja firma", 100m, 23m, 123m, "PLN", Issued, Issued, "Vat",
         BuyerIdType: "Nip");
 
     private async Task MigrateAndSeedExistingTenantAsync()
@@ -399,7 +399,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
 
             truncatedOnce = true;
             return new KSeFInvoiceQueryResult(
-                Enumerable.Range(0, 100).Select(n => Sale($"KSEF-T{n}")).ToList(), 100, 0, 100, lastRowAt, true);
+                Enumerable.Range(0, 100).Select(n => Sale($"KSEF-T{n}")).ToList(), lastRowAt, true);
         };
 
         await using (var db = NewContext())
@@ -424,7 +424,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
             .Take(c.PageSize)
             .ToList();
         return new KSeFInvoiceQueryResult(
-            rows.Select(r => Sale(r.Number)).ToList(), rows.Count, c.PageOffset, c.PageSize, c.DateTo, false, rows.LastOrDefault().At);
+            rows.Select(r => Sale(r.Number)).ToList(), c.DateTo, false, rows.LastOrDefault().At);
     };
 
     [Fact]
@@ -485,7 +485,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
             var invoices = rows
                 .Select(n => Sale($"KSEF-{n:D3}", vendorName: n == 199 ? new string('x', 600) : "Moja firma"))
                 .ToList();
-            return new KSeFInvoiceQueryResult(invoices, invoices.Count, c.PageOffset, c.PageSize, c.DateTo, false, at(rows[^1]));
+            return new KSeFInvoiceQueryResult(invoices, c.DateTo, false, at(rows[^1]));
         };
 
         await using (var db = NewContext())

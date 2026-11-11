@@ -1,13 +1,11 @@
-using Microsoft.EntityFrameworkCore;
-using OpenKSeF.Domain.Data;
 using Microsoft.Extensions.Options;
-using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Domain;
+using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
-using OpenKSeF.Worker.Extensions;
+using OpenKSeF.Sync;
 using OpenKSeF.Worker;
 using OpenKSeF.Worker.Services;
-using OpenKSeF.Sync;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -29,43 +27,14 @@ builder.Services.AddSerilog((services, configuration) => configuration
     .WriteTo.Console(outputTemplate:
         "[{Timestamp:HH:mm:ss} {Level:u3}] {CorrelationId} {Message:lj}{NewLine}{Exception}"));
 
-// Database
-var connectionString = builder.Configuration.GetConnectionString("Db");
-ArgumentException.ThrowIfNullOrEmpty(connectionString, "ConnectionStrings:Db");
-
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-{
-    if (connectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase))
-        options.UseNpgsql(connectionString);
-    else
-        options.UseSqlite(connectionString);
-
-    if (builder.Configuration.GetValue("Database:EnableSensitiveDataLogging", false))
-        options.EnableSensitiveDataLogging();
-});
-
-// Encryption: key resolution happens at first use, after adoption and the startup wait-gate.
-builder.Services.AddEncryptionService(builder.Configuration);
-
-// System config (DB-backed key-value store with env var fallback)
-builder.Services.AddSingleton<ISystemConfigService, SystemConfigService>();
-
-// KSeF sync services (gateway + sync + KSeF client)
-builder.Services.AddSyncServices(builder.Configuration);
-
-// Domain services (including push providers: Relay -> FCM -> APNs)
-builder.Services.AddWorkerDomainServices(builder.Configuration);
-
-// Worker-specific sync options
+builder.Services.AddOpenKSeFCore(builder.Configuration).AddSyncServices(builder.Configuration);
 builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection(SyncOptions.SectionName));
-
 builder.Services.AddSingleton<KSeFRuntimeConfig>();
 builder.Services.AddHostedService<InvoiceSyncService>();
 builder.Services.AddHostedService<IssuedInvoiceSendService>();
 
 var host = builder.Build();
 
-// Load system config cache
 var systemConfig = host.Services.GetRequiredService<ISystemConfigService>();
 await systemConfig.RefreshCacheAsync();
 
@@ -92,22 +61,15 @@ while (!systemConfig.IsInitialized)
 }
 Log.Information("System initialized — starting Worker");
 
-// Override KSeF base URL from DB config
-var ksefEnv = systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
-    ?? systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl);
-if (!string.IsNullOrEmpty(ksefEnv))
+try
 {
-    var ksefOptions = host.Services.GetRequiredService<KSeF.Client.DI.KSeFClientOptions>();
-    try
-    {
-        ksefOptions.BaseUrl = OpenKSeF.Sync.DependencyInjection.ResolveStartupKSeFEnvironment(ksefEnv, builder.Configuration);
-    }
-    catch (InvalidOperationException ex)
-    {
-        Log.Fatal("{Message}", ex.Message);
-        await Log.CloseAndFlushAsync();
-        return 1;
-    }
+    host.Services.ApplyStartupKSeFEnvironment(builder.Configuration);
+}
+catch (InvalidOperationException ex)
+{
+    Log.Fatal("{Message}", ex.Message);
+    await Log.CloseAndFlushAsync();
+    return 1;
 }
 
 host.Run();

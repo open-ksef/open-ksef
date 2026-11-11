@@ -60,26 +60,19 @@ public sealed class TenantSyncService : ITenantSyncService
 
         var runStartedAt = DateTime.UtcNow;
         var sessions = new Dictionary<Guid, KSeFSession?>();
-        try
-        {
-            var results = new List<TenantSyncResult>(tenants.Count);
-            foreach (var tenant in tenants)
-                results.Add(await SyncMetadataAsync(tenant, fullResyncWindowStart: null, sessions, cancellationToken));
+        var results = new List<TenantSyncResult>(tenants.Count);
+        foreach (var tenant in tenants)
+            results.Add(await SyncMetadataAsync(tenant, fullResyncWindowStart: null, sessions, cancellationToken));
 
-            // Five failed calls in a row open the KSeF.Client breaker for every caller, so XML waits for all metadata.
-            var synced = results.Where(r => r.SyncedAtUtc is not null).Select(r => r.TenantId).ToHashSet();
-            foreach (var sameNip in tenants.Where(t => synced.Contains(t.Id)).GroupBy(t => t.Nip))
-            {
-                await DownloadQueuedXmlAsync(
-                    sameNip.ToList(), sessions, runStartedAt, _syncOptions.XmlDownloadsPerCycle, _syncOptions.XmlDownloadSpacing, fullResync: false, cancellationToken);
-            }
-
-            return results;
-        }
-        finally
+        // Five failed calls in a row open the KSeF.Client breaker for every caller, so XML waits for all metadata.
+        var synced = results.Where(r => r.SyncedAtUtc is not null).Select(r => r.TenantId).ToHashSet();
+        foreach (var sameNip in tenants.Where(t => synced.Contains(t.Id)).GroupBy(t => t.Nip))
         {
-            await TerminateSessionsAsync(sessions, cancellationToken);
+            await DownloadQueuedXmlAsync(
+                sameNip.ToList(), sessions, runStartedAt, _syncOptions.XmlDownloadsPerCycle, _syncOptions.XmlDownloadSpacing, fullResync: false, cancellationToken);
         }
+
+        return results;
     }
 
     public async Task<TenantSyncResult> SyncTenantAsync(
@@ -113,20 +106,13 @@ public sealed class TenantSyncService : ITenantSyncService
 
         var runStartedAt = DateTime.UtcNow;
         var sessions = new Dictionary<Guid, KSeFSession?>();
-        try
-        {
-            var result = await SyncMetadataAsync(tenant, fullResyncWindowStart, sessions, cancellationToken);
-            if (result.SyncedAtUtc is null)
-                return result;
+        var result = await SyncMetadataAsync(tenant, fullResyncWindowStart, sessions, cancellationToken);
+        if (result.SyncedAtUtc is null)
+            return result;
 
-            var (queued, errored) = await DownloadQueuedXmlAsync(
-                [tenant], sessions, runStartedAt, _syncOptions.XmlDownloadsPerManualRun, _syncOptions.XmlManualDownloadSpacing, forceFullResync, cancellationToken);
-            return result with { QueuedDownloads = queued, ErroredDownloads = errored };
-        }
-        finally
-        {
-            await TerminateSessionsAsync(sessions, cancellationToken);
-        }
+        var (queued, errored) = await DownloadQueuedXmlAsync(
+            [tenant], sessions, runStartedAt, _syncOptions.XmlDownloadsPerManualRun, _syncOptions.XmlManualDownloadSpacing, forceFullResync, cancellationToken);
+        return result with { QueuedDownloads = queued, ErroredDownloads = errored };
     }
 
     private async Task<TenantSyncResult> SyncMetadataAsync(
@@ -406,24 +392,6 @@ public sealed class TenantSyncService : ITenantSyncService
         return sessions[tenant.Id] = await _gateway.InitSessionAsync(tenant.Nip, tenant.KSeFCredentials.First(), cancellationToken);
     }
 
-    private async Task TerminateSessionsAsync(Dictionary<Guid, KSeFSession?> sessions, CancellationToken cancellationToken)
-    {
-        foreach (var (tenantId, session) in sessions)
-        {
-            if (session is null)
-                continue;
-
-            try
-            {
-                await _gateway.TerminateSessionAsync(session, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to terminate KSeF session for tenant {TenantId}", tenantId);
-            }
-        }
-    }
-
     private async Task<(int Fetched, int New)> SyncIssuedInvoicesAsync(
         Tenant tenant, KSeFSession session, SyncState syncState, DateTime now, CancellationToken cancellationToken)
     {
@@ -525,7 +493,6 @@ public sealed class TenantSyncService : ITenantSyncService
 
     private static InvoiceDto ToDto(KSeFInvoiceHeader i, InvoiceDirection direction) => new(
         Number: i.KSeFNumber,
-        ReferenceNumber: i.ReferenceNumber,
         InvoiceNumber: i.InvoiceNumber,
         VendorName: i.VendorName,
         VendorNip: i.VendorNip,

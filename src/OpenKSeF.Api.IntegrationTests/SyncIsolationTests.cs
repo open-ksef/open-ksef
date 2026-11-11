@@ -94,10 +94,10 @@ public sealed class SyncIsolationTests : IAsyncLifetime
     }
 
     private static KSeFInvoiceQueryResult Page(IReadOnlyList<KSeFInvoiceHeader> invoices, DateTime? continuationAt = null) =>
-        new(invoices, invoices.Count, 0, 2, continuationAt);
+        new(invoices, continuationAt);
 
     private static KSeFInvoiceHeader Bought(string number, string buyerNip, string vendorName = "Dostawca", string buyerName = "Moja firma") => new(
-        number, number, "FV 1/2026", "7740001454", vendorName, buyerNip, buyerName, 100m, 23m, 123m, "PLN", DateTime.UtcNow.AddDays(-3), DateTime.UtcNow, "Vat",
+        number, "FV 1/2026", "7740001454", vendorName, buyerNip, buyerName, 100m, 23m, 123m, "PLN", DateTime.UtcNow.AddDays(-3), DateTime.UtcNow, "Vat",
         BuyerIdType: "Nip");
 
     private static byte[] Xml(string name, string unit, string quantity, string unitPrice) => Encoding.UTF8.GetBytes(

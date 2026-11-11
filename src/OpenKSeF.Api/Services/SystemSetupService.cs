@@ -121,7 +121,6 @@ public sealed class SystemSetupService : ISystemSetupService
             var client = _httpClientFactory.CreateClient("keycloak");
             var kcBase = KeycloakInternalBaseUrl;
 
-            // 1. Create realm + clients if they don't exist yet
             await EnsureRealmExistsAsync(client, kcBase, adminToken, ct);
             await EnsureAdminRoleAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Keycloak realm verified/created");
@@ -129,45 +128,37 @@ public sealed class SystemSetupService : ISystemSetupService
             await EnsureClientsExistAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Keycloak clients verified/created");
 
-            // 3. Fetch openksef-api client secret
             var apiClientSecret = await FetchApiClientSecretAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Fetched API client secret");
 
-            // 4. Enable token-exchange role
             await EnableTokenExchangeAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Token exchange configured");
 
-            // 5. Update Keycloak client redirect URIs
             await UpdateClientRedirectUrisAsync(client, kcBase, adminToken, request.ExternalBaseUrl, ct);
             _logger.LogInformation("Updated client redirect URIs");
 
-            // 6. Configure Keycloak realm (login policy, password policy, SMTP)
             await ConfigureRealmAsync(client, kcBase, adminToken, request, ct);
             _logger.LogInformation("Configured Keycloak realm settings");
 
-            // 6b. Disable VERIFY_PROFILE required action (Keycloak 26+ default that blocks login)
+            // Keycloak 26+ enables VERIFY_PROFILE by default, and it blocks login.
             await DisableVerifyProfileActionAsync(client, kcBase, adminToken, ct);
 
-            // 7. Create first user account
             await CreateFirstUserAsync(client, kcBase, adminToken, request, ct);
             _logger.LogInformation("Created first user");
 
-            // 8. Configure Google IdP (if provided)
             if (!string.IsNullOrEmpty(request.GoogleClientId) && !string.IsNullOrEmpty(request.GoogleClientSecret))
             {
                 await ConfigureGoogleIdpAsync(client, kcBase, adminToken, request, ct);
                 _logger.LogInformation("Configured Google IdP");
             }
 
-            // 9. Change Keycloak admin password (if requested) -- must happen
-            //    before persisting is_initialized so a failure here doesn't lock out the wizard.
+            // Before is_initialized is stored, so a failure here does not lock out the wizard.
             if (!string.IsNullOrEmpty(request.NewKeycloakAdminPassword))
             {
                 await ChangeKeycloakAdminPasswordAsync(client, kcBase, adminToken, kcAdminUsername, request.NewKeycloakAdminPassword, ct);
                 _logger.LogInformation("Keycloak admin password changed");
             }
 
-            // 10. Store config in DB (environment key only, URL resolved at runtime)
             var configValues = new Dictionary<string, string>
             {
                 [SystemConfigKeys.ApiClientSecret] = apiClientSecret,

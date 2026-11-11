@@ -146,14 +146,14 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     }
 
     private static KSeFInvoiceQueryResult Page(IReadOnlyList<KSeFInvoiceHeader> invoices, DateTime? continuationAt = null, bool truncated = false) =>
-        new(invoices, invoices.Count, 0, 100, continuationAt, truncated);
+        new(invoices, continuationAt, truncated);
 
     private static KSeFInvoiceHeader Bought(string number) => new(
-        number, number, "FV 1/2026", "5261040828", "Dostawca", Nip, "Moja firma", 100m, 23m, 123m, "PLN", DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, "Vat",
+        number, "FV 1/2026", "5261040828", "Dostawca", Nip, "Moja firma", 100m, 23m, 123m, "PLN", DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, "Vat",
         BuyerIdType: "Nip");
 
     private static KSeFInvoiceHeader Sale(string number) => new(
-        number, number, "FV 7/2026", Nip, "Moja firma", "5261040828", "Nabywca", 200m, 46m, 246m, "PLN", DateTime.UtcNow.AddDays(-5), DateTime.UtcNow, "Vat",
+        number, "FV 7/2026", Nip, "Moja firma", "5261040828", "Nabywca", 200m, 46m, 246m, "PLN", DateTime.UtcNow.AddDays(-5), DateTime.UtcNow, "Vat",
         BuyerIdType: "Nip");
 
     private static byte[] Xml(string? dueDate)

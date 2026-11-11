@@ -78,7 +78,7 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
         $"""<Faktura xmlns="{Fa3}"><Fa><Platnosc><TerminPlatnosci><Termin>{date}</Termin></TerminPlatnosci><RachunekBankowy><NrRB>{Account}</NrRB></RachunekBankowy></Platnosc><FaWiersz><NrWierszaFa>1</NrWierszaFa><P_7>Towar</P_7><P_11>100</P_11><P_12>23</P_12></FaWiersz></Fa></Faktura>""");
 
     private static KSeFInvoiceHeader Header(string number) => new(
-        number, number, "FV 1/2026", "5261040828", "Dostawca", null, null, 100m, 23m, 123m, "PLN", Issued, Issued, "Vat");
+        number, "FV 1/2026", "5261040828", "Dostawca", null, null, 100m, 23m, 123m, "PLN", Issued, Issued, "Vat");
 
     [Fact]
     public async Task FullResync_FillsDatesOfPaidAndUnpaidRows_KeepsPaidMarks_ReportsFailedDownload()
@@ -100,7 +100,7 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
         }
 
         _gateway.QueryInvoicesAsync(Arg.Any<KSeFSession>(), Arg.Any<KSeFQueryCriteria>(), Arg.Any<CancellationToken>())
-            .Returns(new KSeFInvoiceQueryResult([Header(PaidNumber), Header(UnpaidNumber), Header(FailingNumber)], 3, 0, 100));
+            .Returns(new KSeFInvoiceQueryResult([Header(PaidNumber), Header(UnpaidNumber), Header(FailingNumber)]));
         _gateway.DownloadInvoiceAsync(Arg.Any<KSeFSession>(), PaidNumber, Arg.Any<CancellationToken>()).Returns(XmlWithDueDate("2026-10-15"));
         _gateway.DownloadInvoiceAsync(Arg.Any<KSeFSession>(), UnpaidNumber, Arg.Any<CancellationToken>()).Returns(XmlWithDueDate("2026-11-20"));
         _gateway.DownloadInvoiceAsync(Arg.Any<KSeFSession>(), FailingNumber, Arg.Any<CancellationToken>())
@@ -137,7 +137,7 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
         }
 
         _gateway.QueryInvoicesAsync(Arg.Any<KSeFSession>(), Arg.Any<KSeFQueryCriteria>(), Arg.Any<CancellationToken>())
-            .Returns(new KSeFInvoiceQueryResult([Header(UnpaidNumber)], 1, 0, 100));
+            .Returns(new KSeFInvoiceQueryResult([Header(UnpaidNumber)]));
         _gateway.DownloadInvoiceAsync(Arg.Any<KSeFSession>(), UnpaidNumber, Arg.Any<CancellationToken>()).Returns(XmlWithDueDate("2026-11-20"));
 
         await using (var db = NewContext())
