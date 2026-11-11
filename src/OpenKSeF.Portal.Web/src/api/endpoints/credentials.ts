@@ -33,7 +33,7 @@ export async function addOrUpdateCertificate(tenantId: string, { file, key, pass
   const body = key
     ? { type: 'Certificate', certificatePem: toPem(bytes), privateKeyPem: await key.text(), certificatePassword: password }
     : { type: 'Certificate', certificateBase64: toBase64(bytes), certificatePassword: password }
-  if (new TextEncoder().encode(JSON.stringify(body)).length > MAX_REQUEST_BYTES) throw new Error('Plik jest za duży. Maksymalny rozmiar to 64 KB.')
+  if (new TextEncoder().encode(JSON.stringify(body)).length > MAX_REQUEST_BYTES) throw new Error('Pliki są za duże. Certyfikat i klucz razem mogą mieć najwyżej ok. 47 KB.')
   return apiClient.post<MessageResponse>(`/tenants/${encodeURIComponent(tenantId)}/credentials`, body)
 }
 

@@ -270,7 +270,7 @@ describe('Firma, Dostęp do KSeF i pobieranie', () => {
     await act(async () => buttonByText(container, 'Zapisz certyfikat')!.click())
     await settle()
 
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Plik jest za duży. Maksymalny rozmiar to 64 KB.')
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Pliki są za duże. Certyfikat i klucz razem mogą mieć najwyżej ok. 47 KB.')
     expect(apiClient.post).not.toHaveBeenCalled()
     expect(toast.error).not.toHaveBeenCalled()
     expect(toast.success).not.toHaveBeenCalled()
