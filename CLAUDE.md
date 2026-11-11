@@ -12,6 +12,7 @@ Main projects:
 - `src/OpenKSeF.Domain` - shared domain/data (includes `IKSeFGateway` abstraction)
 - `src/OpenKSeF.Sync` - sync orchestration + KSeF gateway (uses CIRFMF `KSeF.Client` via NuGet)
 - `src/OpenKSeF.Portal.Web` - React portal
+- `src/OpenKSeF.PushRelay` - team-hosted push relay (HMAC per instance, FCM/APNs)
 
 All projects above are active code -- refactor, rename, restructure, and delete freely.
 
@@ -61,9 +62,9 @@ Always consult these docs (especially the XSD schemas) before making assumptions
 ### Service design
 
 - Define service interfaces in `Domain/Abstractions/` or alongside the service in `Domain/Services/`.
-- Place implementations in the layer that owns the concern: KSeF gateway in `Sync`, push providers in `Api`, background jobs in `Worker`.
+- Place implementations in the layer that owns the concern: KSeF gateway in `Sync`, Relay/FCM/APNs push providers in `Domain/Push` (both hosts push), SignalR push in `Api/Push`, background jobs in `Worker`.
 - Controllers are thin HTTP adapters. They validate input, call a service, and return a response. Business logic belongs in domain services, not controllers.
-- Register services through DI (`AddScoped`, `AddSingleton`) in `Program.cs` or dedicated `DependencyInjection.cs` extension methods.
+- Register services shared by both hosts in `Domain/DependencyInjection.AddOpenKSeFCore` and `Sync/DependencyInjection.AddSyncServices`; host-only services in each host's `Program.cs`.
 
 ### DTO discipline
 
