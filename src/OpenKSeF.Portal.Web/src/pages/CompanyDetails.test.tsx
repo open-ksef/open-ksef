@@ -22,7 +22,7 @@ vi.mock('@/api/endpoints/tenants', () => ({
 }))
 vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedFeed: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn().mockResolvedValue({ ksefEnvironment: 'test' }) }))
-vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
+vi.mock('react-hot-toast', () => ({ default: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }))
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 const company = (id: string, name: string, nip: string) => ({ id, nip, displayName: name, notificationEmail: 'a@b.pl', createdAt: '2026-09-14T10:00:00Z' })
@@ -105,6 +105,36 @@ describe('Firma, Dane firmy', () => {
     await settle()
 
     expect(updateTenant).toHaveBeenCalledExactlyOnceWith('b', { displayName: 'Nowa B', notificationEmail: 'a@b.pl' })
+  })
+
+  it('shows the server name length error in the edit and add forms, and caps the input at 200', async () => {
+    const tooLong = () =>
+      normalizeError(
+        new Response(JSON.stringify({ title: 'One or more validation errors occurred.', status: 400, errors: { DisplayName: ['Nazwa może mieć najwyżej 200 znaków.'] } }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/problem+json' },
+        }),
+      )
+    vi.mocked(updateTenant).mockRejectedValue(await tooLong())
+    vi.mocked(createTenant).mockRejectedValue(await tooLong())
+    await render()
+
+    expect(by('company-display-name')?.getAttribute('maxlength')).toBe('200')
+    await type('company-display-name', 'Nowa A')
+    await act(async () => by('company-save')?.click())
+    await settle()
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Nazwa może mieć najwyżej 200 znaków.')
+
+    await act(async () => by('company-card')?.click())
+    await settle()
+    await act(async () => by('company-add')?.click())
+    await settle()
+    expect(by('tenant-form-display-name')?.getAttribute('maxlength')).toBe('200')
+    await type('tenant-form-nip', '3333333333')
+    await act(async () => by('tenant-form-submit')?.click())
+    await settle()
+    expect(container.querySelector('[role="dialog"] [role="alert"]')?.textContent).toBe('Nazwa może mieć najwyżej 200 znaków.')
+    expect(toast.error).not.toHaveBeenCalled()
   })
 
   it('says the notification e-mail needs server mail, in details and in the add dialog', async () => {
@@ -212,11 +242,13 @@ describe('Firma, Dane firmy', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toBe('Nieprawidłowy NIP: sprawdź cyfry (błędna suma kontrolna)')
     expect(createTenant).not.toHaveBeenCalled()
 
+    vi.mocked(listTenants).mockResolvedValue([company('a', 'Firma A', '1111111111'), company('c', 'Firma C', '3333333333')])
     await type('tenant-form-nip', '3333333333')
     await act(async () => by('tenant-form-submit')?.click())
     await settle()
 
     expect(vi.mocked(createTenant).mock.calls[0][0]).toEqual({ nip: '3333333333', displayName: null, notificationEmail: null })
     expect(by('location')?.textContent).toBe('/company/token?tenantId=c')
+    expect(toast).not.toHaveBeenCalled()
   })
 })

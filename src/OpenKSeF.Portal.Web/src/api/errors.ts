@@ -68,6 +68,20 @@ export async function readValidationEnvelope(error: unknown): Promise<Validation
   }
 }
 
+export async function readFieldError(error: unknown, field: string): Promise<string | null> {
+  if (!(error instanceof ApiError) || error.status !== 400 || !(error.originalError instanceof Response)) {
+    return null
+  }
+
+  try {
+    const parsed = (await error.originalError.clone().json()) as { errors?: Record<string, unknown> }
+    const messages = parsed.errors?.[field]
+    return Array.isArray(messages) && typeof messages[0] === 'string' ? messages[0] : null
+  } catch {
+    return null
+  }
+}
+
 function isAbortError(input: unknown): boolean {
   if (!input || typeof input !== 'object') {
     return false

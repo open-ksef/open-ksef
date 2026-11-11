@@ -5,7 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import { createTenant, deleteTenant, updateTenant } from '@/api/endpoints/tenants'
-import { ApiError } from '@/api/errors'
+import { ApiError, readFieldError } from '@/api/errors'
 import type { TenantResponse } from '@/api/types'
 import { CompanyBox } from '@/company/CompanyBox'
 import { useCompany } from '@/company/useCompany'
@@ -74,7 +74,11 @@ function DetailsTab({ company }: { company: TenantResponse }): ReactElement {
       notifyMutationSuccess('updated', 'Tenant')
       await queryClient.invalidateQueries({ queryKey: ['tenants'] })
     },
-    onError: (error) => notifyMutationError('update', 'Tenant', error),
+    onError: async (error) => {
+      const nameError = await readFieldError(error, 'DisplayName')
+      if (nameError) setFormError(nameError)
+      else notifyMutationError('update', 'Tenant', error)
+    },
   })
 
   const remove = useMutation({
@@ -132,6 +136,7 @@ function DetailsTab({ company }: { company: TenantResponse }): ReactElement {
               id="company-display-name"
               data-testid="company-display-name"
               type="text"
+              maxLength={200}
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
             />
@@ -224,7 +229,11 @@ function AddCompanyDialog({ onClose }: { onClose: () => void }): ReactElement {
       await queryClient.invalidateQueries({ queryKey: ['credentials'] })
       void navigate(`/company/token?tenantId=${encodeURIComponent(created.id)}`)
     },
-    onError: (error) => notifyMutationError('create', 'Tenant', error),
+    onError: async (error) => {
+      const nameError = await readFieldError(error, 'DisplayName')
+      if (nameError) setFormError(nameError)
+      else notifyMutationError('create', 'Tenant', error)
+    },
   })
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -268,6 +277,7 @@ function AddCompanyDialog({ onClose }: { onClose: () => void }): ReactElement {
               id="tenant-form-display-name"
               data-testid="tenant-form-display-name"
               type="text"
+              maxLength={200}
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
             />
