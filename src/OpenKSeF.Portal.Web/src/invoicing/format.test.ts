@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDateTime, formatDecimal, formatMoney, formatNrb, formatWarsawDate } from './format'
+import { formatDateTime, formatDecimal, formatMoney, formatNrb, formatWarsawDate, polishPlural } from './format'
 import { vatRateLabel } from './totals'
 
 const plain = (text: string): string => text.replace(/\s/g, ' ')
@@ -81,5 +81,23 @@ describe('vatRateLabel', () => {
     ['oo', 'oo'],
   ])('%s reads %s', (code, expected) => {
     expect(vatRateLabel(code)).toBe(expected)
+  })
+})
+
+describe('polishPlural', () => {
+  it.each([
+    [0, 'faktur'],
+    [1, 'faktura'],
+    [2, 'faktury'],
+    [4, 'faktury'],
+    [5, 'faktur'],
+    [12, 'faktur'],
+    [14, 'faktur'],
+    [21, 'faktur'],
+    [22, 'faktury'],
+    [112, 'faktur'],
+    [1024, 'faktury'],
+  ])('%i -> %s', (count, word) => {
+    expect(polishPlural(count, ['faktura', 'faktury', 'faktur'])).toBe(word)
   })
 })

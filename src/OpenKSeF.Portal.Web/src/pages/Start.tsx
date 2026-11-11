@@ -19,7 +19,7 @@ import { PaidStatus } from '@/components/PaidStatus'
 import { Skeleton } from '@/components/Skeleton'
 import { useCompanyState } from '@/hooks/useCompanyState'
 import { useKsefFetch } from '@/hooks/useKsefFetch'
-import { formatDate, formatDateTime, formatMoney } from '@/invoicing/format'
+import { formatDate, formatDateTime, formatMoney, polishPlural } from '@/invoicing/format'
 
 const WIDE_FROM_PX = 1800
 const RESERVED_HEIGHT_PX = 640
@@ -33,12 +33,7 @@ const COMPANIES_SHOWN = 5
 const rowsForViewport = (): number =>
   window.innerWidth >= WIDE_FROM_PX ? Math.max(MIN_WIDE_ROWS, Math.floor((window.innerHeight - RESERVED_HEIGHT_PX) / ROW_HEIGHT_PX)) : NARROW_ROWS
 
-const invoicesWord = (count: number): string => {
-  if (count === 1) return 'faktura'
-  const lastDigit = count % 10
-  const lastTwo = count % 100
-  return lastDigit >= 2 && lastDigit <= 4 && (lastTwo < 12 || lastTwo > 14) ? 'faktury' : 'faktur'
-}
+const invoicesWord = (count: number): string => polishPlural(count, ['faktura', 'faktury', 'faktur'])
 
 const issuedPath = (row: { id: string }, tenantId: string): string =>
   `/issued/${encodeURIComponent(row.id)}?tenantId=${encodeURIComponent(tenantId)}`
