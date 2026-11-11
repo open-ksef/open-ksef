@@ -270,6 +270,30 @@ describe('manual sync endpoints', () => {
     expect(apiClientMock.get).toHaveBeenCalledWith('/tenants/tenant-1/credentials/sync')
   })
 
+  it('keeps polling after a transient status error and resolves the result', async () => {
+    const { forceCredentialSync } = await import('./credentials')
+    apiClientMock.post.mockResolvedValueOnce(status('running'))
+    apiClientMock.get.mockRejectedValueOnce(new ApiError('Serwer jest chwilowo niedostępny.', 503)).mockResolvedValueOnce(status('succeeded', { result }))
+
+    const sync = forceCredentialSync('tenant-1')
+    await vi.advanceTimersByTimeAsync(6000)
+
+    await expect(sync).resolves.toEqual(result)
+    expect(apiClientMock.get).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops polling on a 404 status error', async () => {
+    const { forceCredentialSync } = await import('./credentials')
+    apiClientMock.post.mockResolvedValueOnce(status('running'))
+    apiClientMock.get.mockRejectedValueOnce(new ApiError('Nie znaleziono.', 404))
+
+    const sync = forceCredentialSync('tenant-1').catch((e: unknown) => e)
+    await vi.advanceTimersByTimeAsync(3000)
+
+    expect(((await sync) as ApiError).status).toBe(404)
+    expect(apiClientMock.get).toHaveBeenCalledTimes(1)
+  })
+
   it('throws an ApiError with the failed status and a JSON Response, so the hooks keep their mapping', async () => {
     const { forceCredentialSync } = await import('./credentials')
     apiClientMock.post.mockResolvedValueOnce(status('failed', { errorStatus: 502, error: 'KSeF unavailable.' }))

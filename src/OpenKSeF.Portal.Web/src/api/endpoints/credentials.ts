@@ -75,7 +75,11 @@ async function runSync(tenantId: string, action: string, fullResync: boolean): P
   while (status.state === 'waiting' || status.state === 'running') {
     if (Date.now() >= deadline) throw await normalizeError(new Response(null, { status: 408 }))
     await new Promise((resolve) => setTimeout(resolve, SYNC_POLL_INTERVAL_MS))
-    status = await apiClient.get<TenantSyncStatusResponse>(`${base}/sync`)
+    try {
+      status = await apiClient.get<TenantSyncStatusResponse>(`${base}/sync`)
+    } catch (error) {
+      if (!(error instanceof ApiError) || !isTransient(error.status)) throw error
+    }
   }
 
   if (status.state === 'succeeded' && status.result) return status.result
@@ -85,4 +89,8 @@ async function runSync(tenantId: string, action: string, fullResync: boolean): P
     status: status.errorStatus ?? 500,
     headers: { 'Content-Type': 'application/json' },
   }))
+}
+
+function isTransient(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500
 }
