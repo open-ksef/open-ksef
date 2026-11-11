@@ -103,6 +103,22 @@ describe('credentials endpoints', () => {
       certificatePassword: 'p',
     })
   })
+
+  it('refuses a certificate whose JSON body would exceed 64 KB, before posting', async () => {
+    const { addOrUpdateCertificate } = await import('./credentials')
+    const kb = (size: number) => new Uint8Array(size * 1024).fill(0x30)
+
+    await expect(addOrUpdateCertificate('tenant-1', { file: new File([kb(48)], 'a.pfx'), key: null, password: 'p' })).rejects.toThrow(
+      'Plik jest za duży. Maksymalny rozmiar to 64 KB.',
+    )
+    await expect(
+      addOrUpdateCertificate('tenant-1', { file: new File([kb(46)], 'a.crt'), key: new File([kb(3)], 'a.key'), password: 'p' }),
+    ).rejects.toThrow('Plik jest za duży. Maksymalny rozmiar to 64 KB.')
+    expect(apiClientMock.post).not.toHaveBeenCalled()
+
+    await addOrUpdateCertificate('tenant-1', { file: new File([kb(47)], 'a.pfx'), key: null, password: 'p' })
+    expect(apiClientMock.post).toHaveBeenCalledOnce()
+  })
 })
 
 describe('devices endpoints', () => {
