@@ -384,6 +384,8 @@ public class CertificateCredentialApiTests : IDisposable
         using var client = kestrel.CreateClient();
         client.DefaultRequestHeaders.Authorization = _client.DefaultRequestHeaders.Authorization;
         client.DefaultRequestHeaders.Add("X-Correlation-ID", "t655-generic");
+        // Kestrel rejects on Content-Length and closes without draining; streaming the body races into a broken pipe.
+        client.DefaultRequestHeaders.ExpectContinue = true;
 
         var response = await client.PostAsJsonAsync("/api/tenants", new
         {
