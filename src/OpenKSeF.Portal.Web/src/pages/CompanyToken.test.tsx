@@ -15,9 +15,11 @@ import {
   getCredentialStatus,
   listCredentials,
 } from '@/api/endpoints/credentials'
+import { apiClient } from '@/api/client'
 import { getDashboardOverview } from '@/api/endpoints/dashboard'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { listTenants } from '@/api/endpoints/tenants'
+import { ApiError } from '@/api/errors'
 import type { TenantCredentialStatusResponse } from '@/api/types'
 import { CompanyCard } from '@/company/CompanyCard'
 import { CompanyProvider } from '@/company/CompanyProvider'
@@ -35,6 +37,7 @@ vi.mock('@/api/endpoints/credentials', () => ({
   forceCredentialSync: vi.fn(),
   forceFullResync: vi.fn(),
 }))
+vi.mock('@/api/client', () => ({ apiClient: { post: vi.fn() } }))
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/dashboard', () => ({ getDashboardOverview: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn() }))
@@ -245,7 +248,7 @@ describe('Firma, Dostęp do KSeF i pobieranie', () => {
   })
 
   it('shows the API reason when the certificate is refused', async () => {
-    vi.mocked(addOrUpdateCertificate).mockRejectedValue(new Error('Certyfikat wygasł. Wygeneruj nowy w Aplikacji Podatnika KSeF i wgraj go.'))
+    vi.mocked(addOrUpdateCertificate).mockRejectedValue(new ApiError('Certyfikat wygasł. Wygeneruj nowy w Aplikacji Podatnika KSeF i wgraj go.', 400))
     await render()
     await chooseCertificate()
     await chooseFile('credential-certificate-file', 'firma.pfx')
@@ -254,6 +257,22 @@ describe('Firma, Dostęp do KSeF i pobieranie', () => {
     await settle()
 
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Certyfikat wygasł. Wygeneruj nowy'))
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('shows a too large certificate inline, without a toast or a POST', async () => {
+    const actual = await vi.importActual<typeof import('@/api/endpoints/credentials')>('@/api/endpoints/credentials')
+    vi.mocked(addOrUpdateCertificate).mockImplementation(actual.addOrUpdateCertificate)
+    await render()
+    await chooseCertificate()
+    await chooseFile('credential-certificate-file', 'firma.pfx', 48 * 1024)
+    await typePassword('tajne')
+    await act(async () => buttonByText(container, 'Zapisz certyfikat')!.click())
+    await settle()
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Plik jest za duży. Maksymalny rozmiar to 64 KB.')
+    expect(apiClient.post).not.toHaveBeenCalled()
+    expect(toast.error).not.toHaveBeenCalled()
     expect(toast.success).not.toHaveBeenCalled()
   })
 
