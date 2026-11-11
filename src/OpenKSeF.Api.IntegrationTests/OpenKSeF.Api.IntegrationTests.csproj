@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OpenKSeF.Api\OpenKSeF.Api.csproj" />
+    <ProjectReference Include="..\OpenKSeF.Worker\OpenKSeF.Worker.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

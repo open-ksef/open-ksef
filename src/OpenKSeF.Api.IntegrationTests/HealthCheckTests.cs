@@ -3,7 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
+using OpenKSeF.Api.Push;
+using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Push;
 
 namespace OpenKSeF.Api.IntegrationTests;
 
@@ -42,6 +45,15 @@ public class HealthCheckTests : IDisposable
         var options = scope.ServiceProvider.GetRequiredService<DbContextOptions<ApplicationDbContext>>();
 
         Assert.False(options.FindExtension<CoreOptionsExtension>()!.IsSensitiveDataLoggingEnabled);
+    }
+
+    [Fact]
+    public void PushProviders_AreRelayFcmApns_Once_AndUserPushIsSignalR()
+    {
+        Assert.Equal(
+            [typeof(RelayPushProvider), typeof(FcmPushProvider), typeof(ApnsPushProvider)],
+            _factory.Services.GetServices<IPushProvider>().Select(p => p.GetType()));
+        Assert.IsType<SignalRPushProvider>(_factory.Services.GetRequiredService<IUserPushProvider>());
     }
 
     public void Dispose()

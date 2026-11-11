@@ -5,15 +5,14 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using OpenKSeF.Api.Controllers;
 using OpenKSeF.Api.Hubs;
 using OpenKSeF.Api.Push;
-using OpenKSeF.Domain.Push;
 using OpenKSeF.Api.Services;
+using OpenKSeF.Domain;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Models;
@@ -41,30 +40,10 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .WriteTo.Console(outputTemplate:
         "[{Timestamp:HH:mm:ss} {Level:u3}] {CorrelationId} {Message:lj}{NewLine}{Exception}"));
 
-// Database
-var connectionString = builder.Configuration.GetConnectionString("Db");
-ArgumentException.ThrowIfNullOrEmpty(connectionString, "ConnectionStrings:Db");
-
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-{
-    options.UseNpgsql(connectionString);
-
-    if (builder.Configuration.GetValue("Database:EnableSensitiveDataLogging", false))
-        options.EnableSensitiveDataLogging();
-});
-
-// System config (DB-backed key-value store with env var fallback)
-builder.Services.AddSingleton<ISystemConfigService, SystemConfigService>();
+builder.Services.AddOpenKSeFCore(builder.Configuration).AddSyncServices(builder.Configuration);
 builder.Services.AddScoped<ISystemSetupService, SystemSetupService>();
 builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
 
-// Encryption
-builder.Services.AddEncryptionService(builder.Configuration);
-
-// KSeF sync services (gateway + sync + KSeF client)
-builder.Services.AddSyncServices(builder.Configuration);
-
-// Authentication
 var authority = builder.Configuration["Auth:Authority"]?.TrimEnd('/');
 ArgumentException.ThrowIfNullOrEmpty(authority, "Auth:Authority");
 var publicAuthority = builder.Configuration["Auth:PublicAuthority"]?.TrimEnd('/');
@@ -144,28 +123,20 @@ builder.Services.AddAuthorization(options => options.AddPolicy(SystemSettingsCon
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
-// Memory cache (may be used by framework internals)
 builder.Services.AddMemoryCache();
 
-// Setup session (server-side opaque token store for admin setup wizard)
 builder.Services.AddSingleton<ISetupSessionService, SetupSessionService>();
 
-// Mobile setup token services
 builder.Services.AddSingleton<ISetupTokenService, SetupTokenService>();
 builder.Services.AddHttpClient("keycloak");
 builder.Services.AddSingleton<IKeycloakTokenExchangeService, KeycloakTokenExchangeService>();
 builder.Services.AddSingleton<IKeycloakUserService, KeycloakUserService>();
 
-// Domain services
-builder.Services.AddScoped<IInvoiceService, InvoiceService>();
-builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ITransferDetailsService, TransferDetailsService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();
-builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ISellerProfileService, SellerProfileService>();
 builder.Services.AddScoped<IKSeFIssuingEnvironment, OpenKSeF.Api.Services.KSeFIssuingEnvironment>();
 builder.Services.AddScoped<IIssuedInvoiceService, IssuedInvoiceService>();
-builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<WhiteListClient>(client =>
 {
     client.BaseAddress = WhiteListClient.BaseAddress;
@@ -177,30 +148,10 @@ builder.Services.AddHttpClient<IExchangeRateSource, NbpExchangeRateSource>(clien
     client.Timeout = TimeSpan.FromSeconds(3);
 });
 
-// Email
-builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
-builder.Services.AddScoped<IEmailService, EmailService>();
-
-// SignalR for local push notifications
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IUserIdProvider, SubjectUserIdProvider>();
 builder.Services.AddSingleton<IUserPushProvider, SignalRPushProvider>();
 
-// Push Relay (team-operated, default for self-hosted instances)
-builder.Services.AddHttpClient("push-relay");
-builder.Services.AddSingleton<IPushProvider, RelayPushProvider>();
-
-builder.Services.AddSingleton<IPushProvider, FcmPushProvider>();
-builder.Services.AddSingleton<IPushProvider, ApnsPushProvider>(sp =>
-{
-    var httpClient = new HttpClient
-    {
-        BaseAddress = new Uri(builder.Configuration["APNs:BaseUrl"] ?? "https://api.push.apple.com")
-    };
-    return new ApnsPushProvider(httpClient, builder.Configuration, sp.GetRequiredService<ILogger<ApnsPushProvider>>());
-});
-
-// Rate limiting
 // UseForwardedHeaders (called in the pipeline below) populates RemoteIpAddress with
 // the real client IP before any rate-limit policy runs, so it is safe to partition on
 // RemoteIpAddress here. Never read X-Forwarded-For directly — it is client-controllable.
@@ -210,7 +161,6 @@ builder.Services.AddRateLimiter(options =>
     options.OnRejected = (context, ct) => new ValueTask(context.HttpContext.Response.WriteAsJsonAsync(
         new { code = "rate_limited", error = "Zbyt wiele prób. Spróbuj ponownie później." }, ct));
 
-    // Strict limit for setup authentication: 5 attempts per 15 minutes per IP
     options.AddPolicy("setup-auth", context =>
     {
         var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -223,7 +173,6 @@ builder.Services.AddRateLimiter(options =>
         });
     });
 
-    // Strict limit for setup apply: 5 attempts per 15 minutes per IP
     options.AddPolicy("setup-apply", context =>
     {
         var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -272,7 +221,6 @@ builder.Services.AddRateLimiter(options =>
         });
     });
 
-    // Global baseline: 120 requests per minute per IP (sliding window)
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
     {
         var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -287,10 +235,8 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 
-// Controllers
 builder.Services.AddControllers();
 
-// Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -318,7 +264,6 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-// Health checks
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ApplicationDbContext>();
 
@@ -332,7 +277,6 @@ if (args.Contains("rotate-encryption-key"))
         scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(), app.Configuration, Console.Out);
 }
 
-// Apply pending migrations on startup
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -344,26 +288,18 @@ using (var scope = app.Services.CreateScope())
     EmailService.WarnIfPlaintextAuth(scope.ServiceProvider.GetRequiredService<IOptions<EmailOptions>>().Value, startupLogger);
 }
 
-// Load system config cache
 var systemConfig = app.Services.GetRequiredService<ISystemConfigService>();
 await systemConfig.LoadCacheAsync();
 
-// Resolve KSeF environment from DB config to the URL from KSeF.Client NuGet
-var ksefEnv = systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
-    ?? systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl);
-if (!string.IsNullOrEmpty(ksefEnv))
+try
 {
-    var ksefOptions = app.Services.GetRequiredService<KSeF.Client.DI.KSeFClientOptions>();
-    try
-    {
-        ksefOptions.BaseUrl = OpenKSeF.Sync.DependencyInjection.ResolveStartupKSeFEnvironment(ksefEnv, app.Configuration);
-    }
-    catch (InvalidOperationException ex)
-    {
-        Log.Fatal("{Message}", ex.Message);
-        await Log.CloseAndFlushAsync();
-        return 1;
-    }
+    app.Services.ApplyStartupKSeFEnvironment(app.Configuration);
+}
+catch (InvalidOperationException ex)
+{
+    Log.Fatal("{Message}", ex.Message);
+    await Log.CloseAndFlushAsync();
+    return 1;
 }
 
 var forwardedHeaders = new ForwardedHeadersOptions
@@ -381,7 +317,6 @@ app.UseForwardedHeaders(forwardedHeaders);
 
 app.UseRateLimiter();
 
-// Correlation ID middleware
 app.Use(async (context, next) =>
 {
     var correlationId = context.Request.Headers["X-Correlation-ID"].FirstOrDefault()

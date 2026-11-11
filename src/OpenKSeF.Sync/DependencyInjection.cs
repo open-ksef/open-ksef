@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync.Issuing;
 
 namespace OpenKSeF.Sync;
@@ -53,7 +54,6 @@ public static class DependencyInjection
 
         var val = envKey.Trim().ToLowerInvariant();
 
-        // Environment keys
         if (val is "production" or "prod") return KsefEnvironmentsUris.PROD;
         if (val is "demo") return KsefEnvironmentsUris.DEMO;
         if (val is "test") return KsefEnvironmentsUris.TEST;
@@ -80,6 +80,15 @@ public static class DependencyInjection
                 $"KSeF environment '{envKey}' is production, and {ForbidProductionKey} forbids it. On a real install remove KSeF__ForbidProduction from the stack and keep the row. On a dev or test stack set the ksef_environment row or KSEF_BASE_URL to test.");
 
         return url;
+    }
+
+    public static void ApplyStartupKSeFEnvironment(this IServiceProvider services, IConfiguration configuration)
+    {
+        var systemConfig = services.GetRequiredService<ISystemConfigService>();
+        var ksefEnv = systemConfig.GetValue(SystemConfigKeys.KSeFEnvironment)
+            ?? systemConfig.GetValue(SystemConfigKeys.KSeFBaseUrl);
+        if (!string.IsNullOrEmpty(ksefEnv))
+            services.GetRequiredService<KSeFClientOptions>().BaseUrl = ResolveStartupKSeFEnvironment(ksefEnv, configuration);
     }
 
     /// <summary>
