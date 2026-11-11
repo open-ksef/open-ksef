@@ -5,6 +5,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-openksef}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openksef_dev_password}
+      POSTGRES_DB: openksef
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
