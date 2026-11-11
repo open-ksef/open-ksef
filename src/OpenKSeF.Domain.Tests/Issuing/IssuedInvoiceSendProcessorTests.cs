@@ -36,7 +36,7 @@ public class IssuedInvoiceSendProcessorTests
     private ApplicationDbContext NewDb() =>
         new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(_dbName).Options);
 
-    private async Task<Guid> SeedAsync(Action<IssuedInvoice>? arrange = null, string environment = "test", bool tokenCredential = true, Guid? tenant = null, bool addTenant = true)
+    private async Task<Guid> SeedAsync(Action<IssuedInvoice>? arrange = null, string environment = "test", CredentialType credentialType = CredentialType.Token, bool withSecret = true, Guid? tenant = null, bool addTenant = true)
     {
         var tenantId = tenant ?? _tenantId;
         await using var db = NewDb();
@@ -48,9 +48,9 @@ public class IssuedInvoiceSendProcessorTests
                 Nip = "5260250274",
                 KSeFCredentials =
                 [
-                    tokenCredential
-                        ? new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, Type = CredentialType.Token, EncryptedToken = _encryption.Encrypt(Token) }
-                        : new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, Type = CredentialType.Certificate, EncryptedCertificateData = "x", CertificateFingerprint = "f" }
+                    credentialType == CredentialType.Token
+                        ? new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, Type = CredentialType.Token, EncryptedToken = withSecret ? _encryption.Encrypt(Token) : null }
+                        : new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, Type = CredentialType.Certificate, EncryptedCertificateData = withSecret ? _encryption.Encrypt("pfx") : null, CertificateFingerprint = "f" }
                 ]
             });
         var invoice = Fa3InvoiceWriterTests.Issued(i => i.AddLine("Usługa", null, 1, 100m, VatRate.Rate23), tenantId: tenantId);
@@ -64,7 +64,7 @@ public class IssuedInvoiceSendProcessorTests
     private async Task RunAsync(string environment = "test")
     {
         await using var db = NewDb();
-        var processor = new IssuedInvoiceSendProcessor(db, _submitter, _encryption, _time,
+        var processor = new IssuedInvoiceSendProcessor(db, _submitter, _time,
             new LoggerAdapter<IssuedInvoiceSendProcessor>(_logs));
         await processor.ProcessAsync(environment, CancellationToken.None);
     }
@@ -780,9 +780,10 @@ public class IssuedInvoiceSendProcessorTests
     [Fact]
     public async Task Submitter_Http401OnLogin_StaysKsefApiException()
     {
-        var submitter = new KSeFInvoiceSubmitter(DispatchProxy.Create<IKSeFClient, UnauthorizedClient>(), null!);
+        var submitter = new KSeFInvoiceSubmitter(DispatchProxy.Create<IKSeFClient, UnauthorizedClient>(), null!, _encryption);
+        var credential = new KSeFCredential { Type = CredentialType.Token, EncryptedToken = _encryption.Encrypt("token") };
 
-        var error = await Assert.ThrowsAsync<KsefApiException>(() => submitter.LoginAsync("5260250274", "token"));
+        var error = await Assert.ThrowsAsync<KsefApiException>(() => submitter.LoginAsync("5260250274", credential));
 
         Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
     }
@@ -993,7 +994,7 @@ public class IssuedInvoiceSendProcessorTests
     [Fact]
     public async Task MissingToken_SentInvoice_StaysSending_NeverRejected()
     {
-        var id = await SeedAsync(Sent, tokenCredential: false);
+        var id = await SeedAsync(Sent, withSecret: false);
 
         await RunAsync();
 
@@ -1299,13 +1300,72 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Fact]
-    public async Task CertificateOnlyTenant_RejectedWithTokenMessage()
+    public async Task CertificateTenant_LogsInWithCertificate_AndSends()
     {
-        var id = await SeedAsync(tokenCredential: false);
+        var id = await SeedAsync(credentialType: CredentialType.Certificate);
+
+        await RunAsync();
+
+        Assert.Equal(CredentialType.Certificate, _submitter.Credential?.Type);
+        Assert.Equal(1, _submitter.Sends);
+        Assert.Equal("el-1", (await LoadAsync(id)).KsefElementRef);
+    }
+
+    [Fact]
+    public async Task CertificateWithoutData_RejectedWithMissingCredentialMessage_NoLogin()
+    {
+        var id = await SeedAsync(credentialType: CredentialType.Certificate, withSecret: false);
 
         await RunAsync();
 
         Assert.Equal(IssuedInvoiceSendProcessor.MissingTokenMessage, (await LoadAsync(id)).KsefStatusDescription);
+        Assert.Equal(0, _submitter.Logins);
+    }
+
+    [Fact]
+    public async Task UnreadableStoredCertificate_UnsentRejected_SentStaysSending_NoSend()
+    {
+        var unsent = await SeedAsync(credentialType: CredentialType.Certificate);
+        var sent = await SeedAsync(Sent, tenant: _tenantId, addTenant: false);
+        _submitter.OnLogin = () => throw new StoredCertificateUnreadableException(new CryptographicException("The certificate data cannot be read with the provided password"));
+
+        await RunAsync();
+
+        Assert.Equal(IssuedInvoiceStatus.Rejected, (await LoadAsync(unsent)).Status);
+        Assert.Equal(IssuedInvoiceSendProcessor.InvalidCertificateMessage, (await LoadAsync(unsent)).KsefStatusDescription);
+        Assert.Equal(IssuedInvoiceStatus.Sending, (await LoadAsync(sent)).Status);
+        Assert.Equal(IssuedInvoiceSendProcessor.InvalidCertificateMessage, (await LoadAsync(sent)).LastError);
+        Assert.Equal(0, _submitter.Sends);
+    }
+
+    [Theory]
+    [InlineData(CredentialType.Token)]
+    [InlineData(CredentialType.Certificate)]
+    public async Task StoredCredentialDecryptFails_UnsentStaysQueued_NotRejected(CredentialType credentialType)
+    {
+        var id = await SeedAsync(credentialType: credentialType);
+        _submitter.OnLogin = () => throw new AuthenticationTagMismatchException();
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Queued, invoice.Status);
+        Assert.Null(invoice.KsefStatusDescription);
+        Assert.Equal(0, _submitter.Sends);
+    }
+
+    [Fact]
+    public async Task CertificateRejected_UnsentRejectedWithCertificateMessage()
+    {
+        var id = await SeedAsync(credentialType: CredentialType.Certificate);
+        _submitter.OnLogin = () => throw new KSeFAuthRejectedException(415, "Nieprawidłowy certyfikat");
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Rejected, invoice.Status);
+        Assert.Equal(IssuedInvoiceSendProcessor.InvalidCertificateMessage, invoice.KsefStatusDescription);
+        Assert.Equal(0, _submitter.Sends);
     }
 
     [Fact]
@@ -1338,11 +1398,12 @@ public class IssuedInvoiceSendProcessorTests
         public int Logins, Opens, Sends, Gets, Closes;
         public List<(string SessionRef, string ElementRef)> UpoRequests = [];
         public List<byte[]> SentBytes = [];
+        public KSeFCredential? Credential;
 
-        public Task<string> LoginAsync(string nip, string ksefToken, CancellationToken ct = default)
+        public Task<string> LoginAsync(string nip, KSeFCredential credential, CancellationToken ct = default)
         {
             Logins++;
-            Assert.Equal(Token, ksefToken);
+            Credential = credential;
             OnLogin();
             return Task.FromResult(AccessToken);
         }

@@ -21,7 +21,6 @@ namespace OpenKSeF.Sync.Issuing;
 public sealed class IssuedInvoiceSendProcessor(
     ApplicationDbContext db,
     IKSeFInvoiceSubmitter submitter,
-    IEncryptionService encryption,
     TimeProvider time,
     ILogger<IssuedInvoiceSendProcessor> logger)
 {
@@ -30,12 +29,13 @@ public sealed class IssuedInvoiceSendProcessor(
     public static readonly TimeSpan CloseCap = TimeSpan.FromSeconds(10);
     public const string UnavailableMessage = "KSeF nie odpowiada, ponowimy wysyłkę";
     public const string RateLimitedMessage = "KSeF ogranicza liczbę żądań, ponowimy wysyłkę";
-    public const string NoWritePermissionMessage = "Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy.";
+    public const string NoWritePermissionMessage = "Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie do zapisu.";
     public const string EnvironmentChangedMessage = "Środowisko KSeF zmienione";
     public const string InvalidTokenMessage = "KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.";
+    public const string InvalidCertificateMessage = "KSeF odrzucił certyfikat (nieprawidłowy, wygasły lub unieważniony). Wgraj nowy certyfikat KSeF w ustawieniach firmy.";
     public const string NumberTakenMessage = "Ten numer faktury jest już użyty w KSeF. Sprawdź tę fakturę w KSeF, zanim wystawisz ją pod nowym numerem.";
     public const string DuplicateUnresolvedMessage = "Nie można jeszcze potwierdzić wyniku wysyłki w KSeF. Wcześniejsza próba mogła zostać przyjęta, więc faktura czeka na wyjaśnienie i sprawdzimy ją ponownie.";
-    public const string MissingTokenMessage = "Wysyłka faktur wymaga tokenu KSeF w ustawieniach firmy";
+    public const string MissingTokenMessage = "Wysyłka faktur wymaga tokenu lub certyfikatu KSeF w ustawieniach firmy";
     public const string MissingXmlMessage = "Brak zapisanego XML faktury";
     public const string UpoPendingMessage = "UPO jeszcze niedostępne, ponowimy pobranie";
 
@@ -90,7 +90,7 @@ public sealed class IssuedInvoiceSendProcessor(
             return;
 
         var tenant = await db.Tenants.Include(t => t.KSeFCredentials).SingleAsync(t => t.Id == tenantId, ct);
-        var credential = tenant.KSeFCredentials.FirstOrDefault(c => c.Type == CredentialType.Token && c.EncryptedToken != null);
+        var credential = tenant.KSeFCredentials.FirstOrDefault(c => c.Type == CredentialType.Certificate ? c.EncryptedCertificateData != null : c.EncryptedToken != null);
         if (credential is null)
         {
             await RejectSendableAsync(invoices, null, MissingTokenMessage, null, ct);
@@ -102,12 +102,18 @@ public sealed class IssuedInvoiceSendProcessor(
         {
             using var loginTimeout = new CancellationTokenSource(LoginCap, time);
             using var loginCap = CancellationTokenSource.CreateLinkedTokenSource(ksef, loginTimeout.Token);
-            accessToken = await submitter.LoginAsync(tenant.Nip, encryption.Decrypt(credential.EncryptedToken!), loginCap.Token);
+            accessToken = await submitter.LoginAsync(tenant.Nip, credential, loginCap.Token);
         }
         catch (KSeFAuthRejectedException e)
         {
-            logger.LogWarning("KSeF rejected the token of tenant {TenantId}: {Code} {Reason}", tenantId, e.Code, e.Message);
-            await RejectSendableAsync(invoices, e.Code, InvalidTokenMessage, e.Message, ct);
+            logger.LogWarning("KSeF rejected the {CredentialType} of tenant {TenantId}: {Code} {Reason}", credential.Type, tenantId, e.Code, e.Message);
+            await RejectSendableAsync(invoices, e.Code, credential.Type == CredentialType.Certificate ? InvalidCertificateMessage : InvalidTokenMessage, e.Message, ct);
+            return;
+        }
+        catch (StoredCertificateUnreadableException e)
+        {
+            logger.LogWarning("Stored certificate of tenant {TenantId} cannot be read: {Error}", tenantId, e.Message);
+            await RejectSendableAsync(invoices, null, InvalidCertificateMessage, null, ct);
             return;
         }
         catch (Exception e) when (IsTransient(e, ct))

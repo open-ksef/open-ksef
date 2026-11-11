@@ -77,7 +77,6 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     private TenantSyncService SyncService(ApplicationDbContext db, TimeSpan? spacing = null, int budget = 60) => new(
         db,
         _gateway,
-        Substitute.For<IEncryptionService>(),
         new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions { XmlDownloadSpacing = spacing ?? TimeSpan.Zero, XmlDownloadsPerCycle = budget }),

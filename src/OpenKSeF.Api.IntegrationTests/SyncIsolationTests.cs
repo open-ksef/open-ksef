@@ -57,7 +57,6 @@ public sealed class SyncIsolationTests : IAsyncLifetime
     private TenantSyncService SyncService(ApplicationDbContext db) => new(
         db,
         _gateway,
-        Substitute.For<IEncryptionService>(),
         new InvoiceService(db, Substitute.For<INotificationService>(), _invoiceLogger),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions { BatchSize = 2, XmlDownloadSpacing = TimeSpan.Zero }),

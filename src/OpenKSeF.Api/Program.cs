@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
@@ -399,6 +400,20 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseSerilogRequestLogging();
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge && !context.Response.HasStarted)
+    {
+        var maxKb = context.Features.Get<IHttpMaxRequestBodySizeFeature>()?.MaxRequestBodySize / 1024;
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+        await context.Response.WriteAsJsonAsync(new { error = $"Plik jest za duży. Maksymalny rozmiar to {maxKb} KB." });
+    }
+});
 app.UseAuthentication();
 app.UseAuthorization();
 

@@ -10,7 +10,7 @@ import '@/components/invoicing/invoicing.css'
 
 const tabs = [
   { to: '/company/invoice-data', label: 'Dane do faktur' },
-  { to: '/company/token', label: 'Token KSeF i pobieranie' },
+  { to: '/company/token', label: 'Dostęp do KSeF i pobieranie' },
   { to: '/company/details', label: 'Dane firmy' },
 ]
 

@@ -13,4 +13,5 @@ public record AddCredentialRequest(
 public record CredentialStatusResponse(
     bool Exists,
     CredentialType? CredentialType,
-    DateTime? UpdatedAt);
+    DateTime? UpdatedAt,
+    DateTime? CertificateValidTo = null);

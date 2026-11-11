@@ -121,6 +121,7 @@ public class CredentialsControllerCrudTests : IDisposable
 
         _encryption = Substitute.For<IEncryptionService>();
         _encryption.Encrypt(Arg.Any<string>()).Returns(x => $"encrypted:{x.Arg<string>()}");
+        _encryption.Decrypt(Arg.Any<string>()).Returns(x => x.Arg<string>()["encrypted:".Length..]);
 
         _syncService = Substitute.For<ITenantSyncService>();
         _systemConfig.GetValue(Arg.Any<string>()).Returns((string?)null);
@@ -259,7 +260,7 @@ public class CredentialsControllerCrudTests : IDisposable
 
         var result = await controller.AddOrUpdate(_tenantId, request);
 
-        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(CredentialsController.UnreadableCertificateMessage, Error(result));
     }
 
     [Fact]
@@ -273,7 +274,17 @@ public class CredentialsControllerCrudTests : IDisposable
 
         var result = await controller.AddOrUpdate(_tenantId, request);
 
-        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(CredentialsController.UnreadableCertificateMessage, Error(result));
+    }
+
+    [Fact]
+    public async Task AddOrUpdate_Pfx_MissingPassword_ReturnsPolishError()
+    {
+        var result = await CreateController().AddOrUpdate(_tenantId, new AddCredentialRequest(
+            Type: CredentialType.Certificate,
+            CertificateBase64: GenerateTestPfxBase64("Test1234!")));
+
+        Assert.Equal(CredentialsController.MissingCertificatePasswordMessage, Error(result));
     }
 
     [Fact]
@@ -309,7 +320,7 @@ public class CredentialsControllerCrudTests : IDisposable
     }
 
     [Fact]
-    public async Task Status_ReturnsCredentialType()
+    public async Task Status_LegacyPasswordProtectedPfx_ReturnsTypeWithoutValidTo()
     {
         var now = DateTime.UtcNow;
         _db.KSeFCredentials.Add(new KSeFCredential
@@ -317,7 +328,7 @@ public class CredentialsControllerCrudTests : IDisposable
             Id = Guid.NewGuid(),
             TenantId = _tenantId,
             Type = CredentialType.Certificate,
-            EncryptedCertificateData = "enc",
+            EncryptedCertificateData = "encrypted:" + GenerateTestPfxBase64("Test1234!"),
             CertificateFingerprint = "fp",
             CreatedAt = now,
             UpdatedAt = now
@@ -329,6 +340,66 @@ public class CredentialsControllerCrudTests : IDisposable
         var status = Assert.IsType<CredentialStatusResponse>(result!.Value);
         Assert.True(status.Exists);
         Assert.Equal(CredentialType.Certificate, status.CredentialType);
+        Assert.Null(status.CertificateValidTo);
+    }
+
+    [Fact]
+    public async Task AddOrUpdate_Pfx_StoredWithoutPassword_StatusReturnsValidTo()
+    {
+        var validTo = DateTimeOffset.UtcNow.AddDays(30);
+        var controller = CreateController();
+
+        var result = await controller.AddOrUpdate(_tenantId, new AddCredentialRequest(
+            Type: CredentialType.Certificate,
+            CertificateBase64: GenerateTestPfxBase64("Test1234!", validTo),
+            CertificatePassword: "Test1234!"));
+
+        Assert.IsType<OkObjectResult>(result);
+        var stored = (await _db.KSeFCredentials.SingleAsync(c => c.TenantId == _tenantId)).EncryptedCertificateData!;
+        using (var cert = X509CertificateLoader.LoadPkcs12(Convert.FromBase64String(stored["encrypted:".Length..]), null))
+            Assert.True(cert.HasPrivateKey);
+        var status = Assert.IsType<CredentialStatusResponse>(((OkObjectResult)await controller.Status(_tenantId)).Value);
+        Assert.Equal(validTo.UtcDateTime, status.CertificateValidTo!.Value, TimeSpan.FromSeconds(1));
+        Assert.Equal(DateTimeKind.Utc, status.CertificateValidTo.Value.Kind);
+    }
+
+    [Fact]
+    public async Task AddOrUpdate_PfxWithoutPrivateKey_ReturnsPolishError_SavesNothing()
+    {
+        using var rsa = RSA.Create(2048);
+        using var cert = new CertificateRequest("CN=No Key", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
+            .CreateSelfSigned(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(1));
+        using var publicOnly = X509CertificateLoader.LoadCertificate(cert.RawData);
+
+        var result = await CreateController().AddOrUpdate(_tenantId, new AddCredentialRequest(
+            Type: CredentialType.Certificate,
+            CertificateBase64: Convert.ToBase64String(publicOnly.Export(X509ContentType.Pfx, "Test1234!")),
+            CertificatePassword: "Test1234!"));
+
+        Assert.Equal(CredentialsController.MissingPrivateKeyMessage, Error(result));
+        Assert.False(await _db.KSeFCredentials.AnyAsync());
+    }
+
+    [Fact]
+    public async Task AddOrUpdate_ExpiredCertificate_ReturnsPolishError_SavesNothing()
+    {
+        using var rsa = RSA.Create(2048);
+        using var cert = new CertificateRequest("CN=Expired", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
+            .CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-10), DateTimeOffset.UtcNow.AddDays(-1));
+
+        var result = await CreateController().AddOrUpdate(_tenantId, new AddCredentialRequest(
+            Type: CredentialType.Certificate,
+            CertificatePem: new string(PemEncoding.Write("CERTIFICATE", cert.RawData)),
+            PrivateKeyPem: new string(PemEncoding.Write("PRIVATE KEY", rsa.ExportPkcs8PrivateKey()))));
+
+        Assert.Equal(CredentialsController.ExpiredCertificateMessage, Error(result));
+        Assert.False(await _db.KSeFCredentials.AnyAsync());
+    }
+
+    private static string? Error(IActionResult result)
+    {
+        var value = Assert.IsType<BadRequestObjectResult>(result).Value!;
+        return (string?)value.GetType().GetProperty("error")!.GetValue(value);
     }
 
     [Fact]
@@ -407,11 +478,47 @@ public class CredentialsControllerCrudTests : IDisposable
         var request = new AddCredentialRequest(
             Type: CredentialType.Certificate,
             CertificatePem: certPem,
-            PrivateKeyPem: null);
+            PrivateKeyPem: "");
 
         var result = await controller.AddOrUpdate(_tenantId, request);
 
-        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(CredentialsController.MissingPrivateKeyMessage, Error(result));
+    }
+
+    [Theory]
+    [InlineData(PbeEncryptionAlgorithm.Aes256Cbc, "SHA256")]
+    [InlineData(PbeEncryptionAlgorithm.TripleDes3KeyPkcs12, "SHA1")]
+    public async Task AddOrUpdate_EncryptedPemKey_IterationsAboveCap_ReturnsPolishError_SavesNothing(PbeEncryptionAlgorithm algorithm, string hash)
+    {
+        using var rsa = RSA.Create(2048);
+        using var cert = new CertificateRequest("CN=Costly Key", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
+            .CreateSelfSigned(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(1));
+        var keyPem = rsa.ExportEncryptedPkcs8PrivateKeyPem("Test1234!",
+            new PbeParameters(algorithm, new HashAlgorithmName(hash), CredentialsController.MaxKeyKdfIterations + 1));
+
+        var result = await CreateController().AddOrUpdate(_tenantId, new AddCredentialRequest(
+            Type: CredentialType.Certificate,
+            CertificatePem: cert.ExportCertificatePem(),
+            PrivateKeyPem: keyPem,
+            CertificatePassword: "Test1234!"));
+
+        Assert.Equal(CredentialsController.KeyKdfTooExpensiveMessage, Error(result));
+        Assert.False(await _db.KSeFCredentials.AnyAsync());
+    }
+
+    [Fact]
+    public async Task Status_StoredCertificateDecryptFails_Throws_NotReportedAsLegacy()
+    {
+        var now = DateTime.UtcNow;
+        _db.KSeFCredentials.Add(new KSeFCredential
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, Type = CredentialType.Certificate,
+            EncryptedCertificateData = "encrypted:stale", CertificateFingerprint = "fp", CreatedAt = now, UpdatedAt = now
+        });
+        await _db.SaveChangesAsync();
+        _encryption.Decrypt("encrypted:stale").Returns(_ => throw new AuthenticationTagMismatchException());
+
+        await Assert.ThrowsAnyAsync<CryptographicException>(() => CreateController().Status(_tenantId));
     }
 
     [Fact]
@@ -433,12 +540,12 @@ public class CredentialsControllerCrudTests : IDisposable
         Assert.NotNull(cred.CertificateFingerprint);
     }
 
-    private static string GenerateTestPfxBase64(string password)
+    private static string GenerateTestPfxBase64(string password, DateTimeOffset? validTo = null)
     {
         using var rsa = RSA.Create(2048);
         var distinguishedName = new X500DistinguishedName("CN=E2E Test");
         var req = new CertificateRequest(distinguishedName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(1));
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow, validTo ?? DateTimeOffset.UtcNow.AddDays(1));
         var pfxBytes = cert.Export(X509ContentType.Pfx, password);
         return Convert.ToBase64String(pfxBytes);
     }

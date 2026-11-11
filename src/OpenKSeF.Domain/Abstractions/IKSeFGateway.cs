@@ -1,12 +1,11 @@
+using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
 
 namespace OpenKSeF.Domain.Abstractions;
 
 public interface IKSeFGateway
 {
-    Task<KSeFSession> InitSessionAsync(string nip, string authToken, CancellationToken ct = default);
-
-    Task<KSeFSession> InitSignedSessionAsync(string nip, Func<string, Task<string>> xmlSigner, string fingerprint, CancellationToken ct = default);
+    Task<KSeFSession> InitSessionAsync(string nip, KSeFCredential credential, CancellationToken ct = default);
 
     Task<KSeFInvoiceQueryResult> QueryInvoicesAsync(KSeFSession session, KSeFQueryCriteria criteria, CancellationToken ct = default);
 

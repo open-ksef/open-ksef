@@ -10,10 +10,13 @@ export function ksefPollInterval(status: IssuedInvoiceStatus | undefined, elapse
 export const isReissueBlocked = ({ status, ksef }: IssuedInvoiceResponse): boolean =>
   status === 'Rejected' && ksef.statusCode === 440
 
-// Stored by IssuedInvoiceSendProcessor. The API has no cause field, and only a new token fixes these.
+// Stored by IssuedInvoiceSendProcessor. The API has no cause field, and only a new token or certificate fixes these. Pre-T-652 texts stay for older rows.
 export const TOKEN_REJECTIONS = [
-  'Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy.',
+  'Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie do zapisu.',
   'KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.',
+  'Wysyłka faktur wymaga tokenu lub certyfikatu KSeF w ustawieniach firmy',
+  'KSeF odrzucił certyfikat (nieprawidłowy, wygasły lub unieważniony). Wgraj nowy certyfikat KSeF w ustawieniach firmy.',
+  'Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy.',
   'Wysyłka faktur wymaga tokenu KSeF w ustawieniach firmy',
 ]
 
