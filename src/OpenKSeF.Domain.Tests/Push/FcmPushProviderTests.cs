@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using FirebaseAdmin;
+using FirebaseAdmin.Messaging;
 using Google.Apis.Auth.OAuth2;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -57,6 +58,21 @@ public sealed class FcmPushProviderTests : IDisposable
         Assert.Single(logger.ReceivedCalls(), c => c.GetMethodInfo().Name == nameof(ILogger.Log) && (LogLevel)c.GetArguments()[0]! == LogLevel.Warning);
         Assert.Null(FirebaseApp.DefaultInstance);
     }
+
+    [Theory]
+    [InlineData(MessagingErrorCode.Unregistered, "Requested entity was not found.", PushResult.InvalidToken)]
+    [InlineData(MessagingErrorCode.InvalidArgument, "The registration token is not a valid FCM registration token", PushResult.InvalidToken)]
+    [InlineData(MessagingErrorCode.InvalidArgument, "Invalid value at 'message.data[0].value' (TYPE_STRING), 12", PushResult.Failed)]
+    [InlineData(MessagingErrorCode.InvalidArgument, "Request contains an invalid argument.", PushResult.Failed)]
+    [InlineData(MessagingErrorCode.InvalidArgument, null, PushResult.Failed)]
+    [InlineData(MessagingErrorCode.Unavailable, "The service is currently unavailable.", PushResult.Failed)]
+    [InlineData(MessagingErrorCode.Internal, "Internal error.", PushResult.Failed)]
+    [InlineData(MessagingErrorCode.QuotaExceeded, "Quota exceeded.", PushResult.Failed)]
+    [InlineData(MessagingErrorCode.SenderIdMismatch, "SenderId mismatch", PushResult.Failed)]
+    [InlineData(MessagingErrorCode.ThirdPartyAuthError, "Auth error from APNS or Web Push Service", PushResult.Failed)]
+    [InlineData(null, "unknown", PushResult.Failed)]
+    public void Classify_DeletesOnlyOnErrorsNamingTheToken(MessagingErrorCode? code, string? message, PushResult expected) =>
+        Assert.Equal(expected, FcmPushProvider.Classify(code, message));
 
     private static string ServiceAccountJson(string projectId)
     {

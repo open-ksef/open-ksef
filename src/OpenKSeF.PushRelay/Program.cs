@@ -217,9 +217,11 @@ app.MapPost("/api/push", async (
             sent = true;
             logger.LogDebug("FCM push sent for token {Token}", shortToken);
         }
+        // Same rule as the instance's FcmPushProvider.Classify: InvalidArgument also covers payload errors, which must not answer 410.
         catch (FirebaseMessagingException ex) when (
             ex.MessagingErrorCode == MessagingErrorCode.Unregistered ||
-            ex.MessagingErrorCode == MessagingErrorCode.InvalidArgument)
+            (ex.MessagingErrorCode == MessagingErrorCode.InvalidArgument
+                && ex.Message.Contains("registration token", StringComparison.OrdinalIgnoreCase)))
         {
             rejected = true;
             logger.LogInformation("FCM rejected token {Token}: {Error}", shortToken, ex.MessagingErrorCode);

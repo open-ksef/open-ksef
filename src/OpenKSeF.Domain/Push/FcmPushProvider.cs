@@ -51,19 +51,24 @@ public class FcmPushProvider : IPushProvider
             _logger.LogDebug("FCM message sent: {MessageId}", messageId);
             return PushResult.Sent;
         }
-        catch (FirebaseMessagingException ex) when (
-            ex.MessagingErrorCode == MessagingErrorCode.Unregistered ||
-            ex.MessagingErrorCode == MessagingErrorCode.InvalidArgument)
-        {
-            _logger.LogWarning("FCM token invalid or unregistered: {Token}", deviceToken[..Math.Min(8, deviceToken.Length)]);
-            return PushResult.InvalidToken;
-        }
         catch (FirebaseMessagingException ex)
         {
-            _logger.LogWarning(ex, "FCM push failed: {ErrorCode}", ex.MessagingErrorCode);
-            return PushResult.Failed;
+            var result = Classify(ex.MessagingErrorCode, ex.Message);
+            if (result == PushResult.InvalidToken)
+                _logger.LogWarning("FCM token invalid or unregistered: {Token}", deviceToken[..Math.Min(8, deviceToken.Length)]);
+            else
+                _logger.LogWarning(ex, "FCM push failed: {ErrorCode} {Error}", ex.MessagingErrorCode, ex.Message);
+            return result;
         }
     }
+
+    /// <summary>Only an error naming the token deletes it; InvalidArgument also covers payload errors, which must keep the token.</summary>
+    internal static PushResult Classify(MessagingErrorCode? code, string? message) => code switch
+    {
+        MessagingErrorCode.Unregistered => PushResult.InvalidToken,
+        MessagingErrorCode.InvalidArgument when message?.Contains("registration token", StringComparison.OrdinalIgnoreCase) == true => PushResult.InvalidToken,
+        _ => PushResult.Failed,
+    };
 
     internal bool TryInitializeFirebase()
     {
