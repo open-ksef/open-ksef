@@ -75,8 +75,8 @@ public class CredentialsController : ControllerBase
     public const string MissingCertificateFileMessage = "Wybierz plik certyfikatu.";
     public const string MissingTokenMessage = "Podaj token KSeF.";
     public const string UnknownCredentialTypeMessage = "Nieznany sposób logowania do KSeF.";
-    public const string EncryptionKeyChangedMessage = "Klucz szyfrowania został zmieniony. Spróbuj ponownie.";
-    public const string KeyKdfTooExpensiveMessage = "Klucz prywatny jest zaszyfrowany ze zbyt dużą liczbą iteracji. Wyeksportuj go ponownie z domyślnymi ustawieniami albo wgraj plik .pfx/.p12.";
+    public const string EncryptionKeyChangedMessage = "Nie zapisano. Trwa zmiana ustawień szyfrowania serwera. Spróbuj ponownie za chwilę.";
+    public const string KeyKdfTooExpensiveMessage = "Nie można odczytać klucza prywatnego (.key): plik jest zaszyfrowany w nieobsługiwany sposób. Wgraj certyfikat jako plik .pfx/.p12.";
     public const int MaxKeyKdfIterations = 600_000;
     public const int MaxRequestBytes = 64 * 1024;
     private const string Pbes2Oid = "1.2.840.113549.1.5.13";
