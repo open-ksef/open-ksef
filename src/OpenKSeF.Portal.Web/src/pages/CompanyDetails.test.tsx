@@ -239,7 +239,7 @@ describe('Firma, Dane firmy', () => {
 
     await type('tenant-form-nip', '1234567890')
     await act(async () => by('tenant-form-submit')?.click())
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Nieprawidłowy NIP: sprawdź cyfry (błędna suma kontrolna)')
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.')
     expect(createTenant).not.toHaveBeenCalled()
 
     vi.mocked(listTenants).mockResolvedValue([company('a', 'Firma A', '1111111111'), company('c', 'Firma C', '3333333333')])

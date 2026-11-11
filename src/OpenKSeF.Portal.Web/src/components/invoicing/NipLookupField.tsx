@@ -3,7 +3,7 @@ import { useState, type ReactElement } from 'react'
 import { lookupNip } from '@/api/endpoints/nipLookup'
 import { ApiError } from '@/api/errors'
 import type { NipLookupResponse } from '@/api/types'
-import { isValidNip } from '@/invoicing/nip'
+import { isValidNip, nipError } from '@/invoicing/nip'
 
 interface NipLookupFieldProps {
   id: string
@@ -37,7 +37,7 @@ export function NipLookupField({
 }: NipLookupFieldProps): ReactElement {
   const [state, setState] = useState<LookupState>({ kind: 'idle' })
   const valid = isValidNip(value)
-  const localError = value.length > 0 && !valid ? 'Niepoprawny NIP (suma kontrolna)' : null
+  const localError = value.length > 0 ? nipError(value) : null
   const error = serverError ?? localError
   const errorId = `${id}-error`
   const statusId = `${id}-status`

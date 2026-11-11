@@ -130,7 +130,7 @@ describe('issuing components', () => {
 
   it('NipLookupField disables lookup for an invalid NIP', async () => {
     await render(<NipLookupField id="nip" value="1234567890" onChange={() => {}} onFound={() => {}} />)
-    expect(container.textContent).toContain('Niepoprawny NIP (suma kontrolna)')
+    expect(container.textContent).toContain('Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.')
     expect(container.querySelector('button')?.disabled).toBe(true)
   })
 

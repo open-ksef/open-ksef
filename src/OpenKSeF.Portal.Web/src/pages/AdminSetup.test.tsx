@@ -102,7 +102,7 @@ describe('AdminSetupPage', () => {
     type('setup-tenant-nip', '1234567890')
     await click('setup-next')
 
-    expect(container.textContent).toContain('Nieprawidłowy NIP: sprawdź cyfry (błędna suma kontrolna)')
+    expect(container.textContent).toContain('Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.')
     expect(byTestId('setup-tenant-nip')).not.toBeNull()
   })
 

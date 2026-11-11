@@ -154,7 +154,7 @@ function Initialize-TestCompany([string]$nip, [string]$ksefToken) {
     $invoiceCount = ((Invoke-RestMethod -Uri "$ApiBaseUrl/api/dashboard" -Headers $authHeaders -Method Get) |
         Where-Object { $_.tenantId -eq $tenantId }).totalInvoices
 
-    if ($syncFailed -or $invoiceCount -eq 0) {
+    if ($syncFailed -or -not $invoiceCount) {
         Write-Host "  [PARTIAL] Tenant '$nip' provisioned, $invoiceCount invoices. Sync did not complete." -ForegroundColor Yellow
         return $false
     }

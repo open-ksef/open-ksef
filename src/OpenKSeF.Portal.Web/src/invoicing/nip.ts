@@ -11,5 +11,5 @@ export function isValidNip(nip: string): boolean {
 
 export function nipError(nip: string): string | null {
   if (!/^\d{10}$/.test(nip)) return 'NIP musi zawierać dokładnie 10 cyfr'
-  return isValidNip(nip) ? null : 'Nieprawidłowy NIP: sprawdź cyfry (błędna suma kontrolna)'
+  return isValidNip(nip) ? null : 'Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.'
 }

@@ -26,6 +26,6 @@ describe('isValidNip', () => {
   it('gives one message for length and one for checksum', () => {
     expect(nipError('5260250274')).toBeNull()
     expect(nipError('526025027')).toBe('NIP musi zawierać dokładnie 10 cyfr')
-    expect(nipError('1234567890')).toBe('Nieprawidłowy NIP: sprawdź cyfry (błędna suma kontrolna)')
+    expect(nipError('1234567890')).toBe('Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.')
   })
 })

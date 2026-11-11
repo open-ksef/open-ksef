@@ -109,11 +109,11 @@ describe('credentials endpoints', () => {
     const kb = (size: number) => new Uint8Array(size * 1024).fill(0x30)
 
     await expect(addOrUpdateCertificate('tenant-1', { file: new File([kb(48)], 'a.pfx'), key: null, password: 'p' })).rejects.toThrow(
-      'Plik jest za duży. Maksymalny rozmiar to 64 KB.',
+      'Pliki są za duże. Certyfikat i klucz razem mogą mieć najwyżej ok. 47 KB.',
     )
     await expect(
       addOrUpdateCertificate('tenant-1', { file: new File([kb(46)], 'a.crt'), key: new File([kb(3)], 'a.key'), password: 'p' }),
-    ).rejects.toThrow('Plik jest za duży. Maksymalny rozmiar to 64 KB.')
+    ).rejects.toThrow('Pliki są za duże. Certyfikat i klucz razem mogą mieć najwyżej ok. 47 KB.')
     expect(apiClientMock.post).not.toHaveBeenCalled()
 
     await addOrUpdateCertificate('tenant-1', { file: new File([kb(47)], 'a.pfx'), key: null, password: 'p' })
