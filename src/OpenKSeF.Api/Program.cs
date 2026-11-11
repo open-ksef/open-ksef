@@ -153,6 +153,7 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<IUserIdProvider, SubjectUserIdProvider>();
 builder.Services.AddSingleton<IUserPushProvider, SignalRPushProvider>();
 builder.Services.AddSingleton<ManualSyncJobs>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ManualSyncJobs>());
 
 // UseForwardedHeaders (called in the pipeline below) populates RemoteIpAddress with
 // the real client IP before any rate-limit policy runs, so it is safe to partition on

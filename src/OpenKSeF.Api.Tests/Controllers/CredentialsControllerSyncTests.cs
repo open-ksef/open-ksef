@@ -195,6 +195,7 @@ public class CredentialsControllerSyncTests : IDisposable
         aborted.Cancel();
 
         Assert.Null(accepted.Value);
+        Assert.True(SpinWait.SpinUntil(() => _jobs.Find(_tenantId)!.Running, TimeSpan.FromSeconds(5)));
         Assert.Equal("running", (await StatusAsync()).State);
 
         gate.SetResult(new TenantSyncResult(_tenantId, "1111111111", TenantSyncOutcome.Success, FetchedInvoices: 3, NewInvoices: 1, SyncedAtUtc: DateTime.UtcNow));
@@ -248,6 +249,7 @@ public class CredentialsControllerSyncTests : IDisposable
 
         var running = SyncWaits();
         await CreateController(preferAsync: true).SyncNow(_tenantId, CancellationToken.None);
+        Assert.True(SpinWait.SpinUntil(() => _jobs.Find(_tenantId)!.Running, TimeSpan.FromSeconds(5)));
         Assert.Equal("running", (await StatusAsync()).State);
         running.SetResult(Outcome(TenantSyncOutcome.Failed, "KSeF unavailable."));
         await _jobs.Find(_tenantId)!.Completion;
@@ -276,6 +278,20 @@ public class CredentialsControllerSyncTests : IDisposable
 
         Assert.Equal(502, result.StatusCode);
         Assert.Equal("failed", (await StatusAsync()).State);
+    }
+
+    [Fact]
+    public async Task StopAsync_WaitsForARunningJob()
+    {
+        var gate = SyncWaits();
+        _jobs.Start(_tenantId, _userId, fullResync: false);
+
+        var stop = _jobs.StopAsync(CancellationToken.None);
+        await Task.Delay(200);
+        Assert.False(stop.IsCompleted);
+
+        gate.SetResult(Outcome(TenantSyncOutcome.Success));
+        await stop.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     public void Dispose() => _db.Dispose();

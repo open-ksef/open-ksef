@@ -5,7 +5,7 @@ using OpenKSeF.Sync;
 namespace OpenKSeF.Api.Services;
 
 /// <summary>Runs manual syncs outside the request, one job per tenant; a second start while one runs attaches to it.</summary>
-public sealed class ManualSyncJobs
+public sealed class ManualSyncJobs : IHostedService
 {
     private const int MaxConcurrentJobs = 4;
 
@@ -46,9 +46,14 @@ public sealed class ManualSyncJobs
         }
     }
 
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    // ApplicationStopping has already cancelled the jobs; waiting lets their notification grace finish before exit.
+    public Task StopAsync(CancellationToken cancellationToken) =>
+        Task.WhenAll(_jobs.Values.Select(j => j.Completion)).WaitAsync(cancellationToken);
+
     public Job? Find(Guid tenantId) => _jobs.GetValueOrDefault(tenantId);
 
-    /// <returns>The result, or null when the job is still running after the hold.</returns>
     public async Task<TenantSyncResult?> WaitAsync(Job job, CancellationToken cancellationToken)
     {
         try
