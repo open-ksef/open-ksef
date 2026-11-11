@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
-using OpenKSeF.Domain.DTOs;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Services;

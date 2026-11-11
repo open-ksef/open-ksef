@@ -26,7 +26,7 @@ When implementing changes:
 ### Layer dependencies
 
 ```
-Domain  (zero project dependencies -- entities, DTOs, abstractions, services)
+Domain  (zero project dependencies -- entities, internal DTOs (Sync->Domain contract), abstractions, services)
   ↑
 Sync    (depends only on Domain -- KSeF gateway impl, sync orchestration)
   ↑
@@ -67,10 +67,9 @@ Always consult these docs (especially the XSD schemas) before making assumptions
 
 ### DTO discipline
 
-- `Domain/DTOs/` holds internal contracts shared across layers (e.g. sync results, internal requests).
-- `Api/Models/` holds API-facing request/response types shaped for JSON consumers (portal, mobile app).
+- `Domain/DTOs/` holds only the Sync->Domain contract (`InvoiceDto`, `InvoiceLineDto`, `InvoiceXmlDetails`).
+- Every HTTP request/response type lives in `Api/Models/`, shaped for JSON consumers (portal, mobile app).
 - Do not expose EF entities directly in API responses. Map to a response model.
-- When adding a new API endpoint, define its request/response types in `Api/Models/` and keep `Domain/DTOs/` free of HTTP-specific concerns.
 
 ### DbContext usage
 
