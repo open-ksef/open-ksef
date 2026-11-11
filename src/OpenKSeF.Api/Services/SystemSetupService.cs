@@ -559,7 +559,7 @@ public sealed class SystemSetupService : ISystemSetupService
         if (existing.Length > 0)
         {
             userId = existing[0].GetProperty("id").GetString()!;
-            _logger.LogInformation("User {Email} already exists, skipping creation", request.AdminEmail);
+            _logger.LogInformation("User {Email} already exists, setting its password", request.AdminEmail);
         }
         else
         {
@@ -586,11 +586,10 @@ public sealed class SystemSetupService : ISystemSetupService
                 throw new InvalidOperationException("Failed to find created user");
 
             userId = users[0].GetProperty("id").GetString()!;
-
-            var passUrl = $"{usersUrl}/{userId}/reset-password";
-            await SendKeycloakJsonAsync(client, HttpMethod.Put, passUrl, adminToken,
-                new { type = "password", value = request.AdminPassword, temporary = false }, ct);
         }
+
+        await SendKeycloakJsonAsync(client, HttpMethod.Put, $"{usersUrl}/{userId}/reset-password", adminToken,
+            new { type = "password", value = request.AdminPassword, temporary = false }, ct);
 
         using var roleReq = new HttpRequestMessage(HttpMethod.Get, $"{kcBase}/admin/realms/openksef/roles/{SystemSettingsController.AdminRole}");
         roleReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");

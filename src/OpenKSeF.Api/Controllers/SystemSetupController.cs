@@ -90,7 +90,10 @@ public class SystemSetupController : ControllerBase
 
         var kcAdminToken = await _setupService.AuthenticateAdminAsync(credentials.Value.Username, credentials.Value.Password);
         if (kcAdminToken is null)
-            return BadRequest(new { error = "Failed to authenticate with Keycloak. Please restart the setup." });
+        {
+            _sessionService.RestoreSession(setupToken, credentials.Value.Username, credentials.Value.Password);
+            return BadRequest(new SetupApplyResponse(false, SystemSetupService.KeycloakUnreachableMessage));
+        }
 
         var result = await _setupService.ApplySetupAsync(request, kcAdminToken, credentials.Value.Username, ct);
         if (!result.Success)
