@@ -7,11 +7,14 @@ public record CreateTenantRequest(
     [param: Required]
     [param: RegularExpression(@"^[\d\-]{10,13}$", ErrorMessage = "NIP must be 10 digits, optionally with dashes.")]
     string Nip,
+    [param: MaxLength(200, ErrorMessage = "Nazwa może mieć najwyżej 200 znaków.")]
     string? DisplayName,
     [param: EmailAddress]
     string? NotificationEmail);
 
-public record UpdateTenantRequest(string? DisplayName)
+public record UpdateTenantRequest(
+    [param: MaxLength(200, ErrorMessage = "Nazwa może mieć najwyżej 200 znaków.")]
+    string? DisplayName)
 {
     private readonly string? _notificationEmail;
 
