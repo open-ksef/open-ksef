@@ -131,7 +131,9 @@ public class CredentialsControllerSyncTests : IDisposable
         var result = Assert.IsType<ObjectResult>(await CreateController().SyncNow(_tenantId, CancellationToken.None));
 
         Assert.Equal(status, result.StatusCode);
-        Assert.Equal($$"""{"error":"{{error}}"}""", JsonSerializer.Serialize(result.Value));
+        var body = JsonSerializer.SerializeToElement(result.Value);
+        Assert.Equal(error, Assert.Single(body.EnumerateObject(), p => p.Name == "error").Value.GetString());
+        Assert.Single(body.EnumerateObject());
     }
 
     [Fact]
@@ -294,5 +296,45 @@ public class CredentialsControllerSyncTests : IDisposable
         await stop.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    [Theory]
+    [InlineData(true, LogLevel.Information, false)]
+    [InlineData(false, LogLevel.Warning, true)]
+    public async Task CancelledJob_LogsInformationWithoutStack_OnlyWhenTheApiStops(bool stopping, LogLevel level, bool withException)
+    {
+        using var stop = new CancellationTokenSource();
+        var lifetime = Substitute.For<IHostApplicationLifetime>();
+        lifetime.ApplicationStopping.Returns(stop.Token);
+        var logger = new ListLogger();
+        var jobs = new ManualSyncJobs(
+            new ServiceCollection().AddSingleton(_sync).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+            lifetime,
+            Options.Create(new TenantSyncOptions()),
+            TimeProvider.System,
+            logger);
+        if (stopping)
+            stop.Cancel();
+        _sync.SyncTenantAsync(_tenantId, _userId, false, Arg.Any<CancellationToken>(), Arg.Any<Action?>())
+            .Returns<Task<TenantSyncResult>>(_ => throw new OperationCanceledException());
+
+        var result = await jobs.Start(_tenantId, _userId, fullResync: false).Completion;
+
+        Assert.Equal(TenantSyncOutcome.Failed, result.Outcome);
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(level, entry.Level);
+        Assert.Equal(withException, entry.Exception is not null);
+    }
+
     public void Dispose() => _db.Dispose();
+
+    private sealed class ListLogger : ILogger<ManualSyncJobs>
+    {
+        public List<(LogLevel Level, Exception? Exception)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Entries.Add((logLevel, exception));
+    }
 }

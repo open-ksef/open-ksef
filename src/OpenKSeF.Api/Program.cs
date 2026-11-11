@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.RateLimiting;
@@ -161,8 +162,13 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<ManualSyncJobs>())
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.OnRejected = (context, ct) => new ValueTask(context.HttpContext.Response.WriteAsJsonAsync(
-        new { code = "rate_limited", error = "Zbyt wiele prób. Spróbuj ponownie później." }, ct));
+    options.OnRejected = (context, ct) =>
+    {
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+            context.HttpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+        return new ValueTask(context.HttpContext.Response.WriteAsJsonAsync(
+            new { code = "rate_limited", error = "Zbyt wiele prób. Spróbuj ponownie później." }, ct));
+    };
 
     options.AddPolicy("setup-auth", context =>
     {

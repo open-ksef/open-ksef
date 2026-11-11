@@ -6,6 +6,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: openksef
     # Creates the keycloak database on first init (no local file mount needed)
     entrypoint:
       - sh

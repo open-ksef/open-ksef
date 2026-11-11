@@ -24,6 +24,10 @@ public sealed class SystemSetupService : ISystemSetupService
     public const string EncryptionKeyMissingCode = "encryption_key_missing";
     public const string EncryptionKeyMissingMessage =
         "Brak prawidłowego klucza szyfrowania. Wygeneruj klucz poleceniem openssl rand -base64 32, ustaw go w zmiennej ENCRYPTION_KEY usług API i Worker, zachowaj kopię poza bazą danych i uruchom te usługi ponownie. Następnie zaloguj się tutaj ponownie.";
+    public const string KeycloakPasswordPolicyMessage =
+        "Hasło nie spełnia wymagań Keycloak (zasady haseł realmu). Użyj dłuższego hasła z wielkimi i małymi literami, cyfrą i znakiem specjalnym.";
+    public const string KeycloakRejectedMessage = "Keycloak odrzucił konfigurację. Szczegóły są w logu API.";
+    public const string KeycloakUnreachableMessage = "Nie można połączyć się z Keycloak. Sprawdź, czy działa, i spróbuj ponownie.";
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
@@ -229,7 +233,14 @@ public sealed class SystemSetupService : ISystemSetupService
         catch (Exception ex)
         {
             _logger.LogError(ex, "System setup failed");
-            return new SetupApplyResponse(false, ex.Message);
+            return new SetupApplyResponse(false, ex switch
+            {
+                HttpRequestException when ex.Message.Contains("invalidPassword", StringComparison.OrdinalIgnoreCase)
+                    || ex.Message.Contains("password policy", StringComparison.OrdinalIgnoreCase) => KeycloakPasswordPolicyMessage,
+                HttpRequestException { StatusCode: null } => KeycloakUnreachableMessage,
+                HttpRequestException => KeycloakRejectedMessage,
+                _ => ex.Message,
+            });
         }
     }
 
@@ -728,8 +739,10 @@ public sealed class SystemSetupService : ISystemSetupService
         req.Content = JsonContent.Create(payload);
 
         var resp = await client.SendAsync(req, ct);
-        if (throwOnError)
-            resp.EnsureSuccessStatusCode();
+        if (throwOnError && !resp.IsSuccessStatusCode)
+            throw new HttpRequestException(
+                $"Keycloak {method} {req.RequestUri!.AbsolutePath} returned {(int)resp.StatusCode}: {await resp.Content.ReadAsStringAsync(ct)}",
+                null, resp.StatusCode);
         return resp;
     }
 }

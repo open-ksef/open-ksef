@@ -462,24 +462,72 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task CredentialDeletedDuringAdoption_LogsWarning_RowStays_NextStartAdopts()
+    public async Task CredentialDeletedDuringAdoption_WaitsForTheAdopter_ThenDeletes()
     {
         await SeedAsync(_oldKey, withRow: true);
+        Task? delete = null;
 
         await using (var db = NewContext(new BeforeSave(async () =>
         {
-            await using var other = NewContext();
-            other.KSeFCredentials.Remove(await other.KSeFCredentials.SingleAsync(c => c.Id == _tokenCredentialId));
-            await other.SaveChangesAsync();
+            delete = Task.Run(async () =>
+            {
+                await using var other = NewContext();
+                await other.KSeFCredentials.Where(c => c.Id == _tokenCredentialId).ExecuteDeleteAsync();
+            });
+            await WaitUntilBlockedOrDoneAsync(delete);
+            Assert.False(delete.IsCompleted);
         })))
             await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), _logs);
-
-        Assert.True(await RowExistsAsync());
-        Assert.Contains(_logs.Entries, e => e.Level == LogLevel.Warning && e.Text.Contains("next start"));
-
-        await AdoptAsync(NewKey);
+        await delete!;
 
         Assert.False(await RowExistsAsync());
+        Assert.DoesNotContain(_logs.Entries, e => e.Level >= LogLevel.Warning);
+        await using var check = NewContext();
+        Assert.Equal(_certificateCredentialId, (await check.KSeFCredentials.SingleAsync()).Id);
+    }
+
+    [Fact]
+    public async Task CredentialUpdateInFlightDuringAdoption_IsKept_AndDecryptsWithTheConfiguredKey()
+    {
+        const string updatedToken = "ksef-token-updated";
+        await SeedAsync(_oldKey, withRow: true);
+        await using var writer = NewContext();
+        await using var update = await writer.Database.BeginTransactionAsync();
+        await writer.KSeFCredentials.Where(c => c.Id == _tokenCredentialId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.EncryptedToken, new AesGcmEncryptionService(_newKey).Encrypt(updatedToken)));
+
+        var adoption = Task.Run(() => AdoptAsync(NewKey));
+        await WaitUntilBlockedOrDoneAsync(adoption);
+        await update.CommitAsync();
+        Assert.True(await adoption);
+
+        Assert.False(await RowExistsAsync());
+        var (token, certificate) = await CiphertextAsync();
+        var encryption = new AesGcmEncryptionService(_newKey);
+        Assert.Equal(updatedToken, encryption.Decrypt(token));
+        Assert.Equal(Certificate, encryption.Decrypt(certificate));
+    }
+
+    [Fact]
+    public async Task HeldCredentialLock_AdoptionTimesOut_LogsCredentialLockCritical_ChangesNothing()
+    {
+        await SeedAsync(_oldKey, withRow: true);
+        var before = await CiphertextAsync();
+        await using var holder = NewContext();
+        await using var held = await holder.Database.BeginTransactionAsync();
+        await holder.Database.ExecuteSqlRawAsync("""SELECT 1 FROM "KSeFCredentials" FOR UPDATE""");
+
+        await using (var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(_postgres.GetConnectionString(), o => o.CommandTimeout(2)).Options))
+            Assert.True(await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), _logs));
+
+        await held.RollbackAsync();
+        Assert.True(await RowExistsAsync());
+        Assert.Equal(before, await CiphertextAsync());
+        Assert.StartsWith(
+            "Moving the encryption key out of the database timed out waiting for a lock on KSeFCredentials. Nothing changed. " +
+            "Find the lock holder with the query at https://open-ksef.pl/docs/admin-setup/#blokada-przy-przenoszeniu-klucza and restart API and Worker.",
+            Assert.Single(_logs.Entries, e => e.Level == LogLevel.Critical).Text);
     }
 
     [Fact]

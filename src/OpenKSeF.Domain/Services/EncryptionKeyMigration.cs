@@ -45,8 +45,21 @@ public static class EncryptionKeyMigration
 
             await using var transaction = db.Database.IsNpgsql() ? await db.Database.BeginTransactionAsync(ct) : null;
 
-            // A second adopter waits here, then finds no row and writes nothing.
-            var row = await ReadKeyRowLockedAsync(db, ct);
+            SystemConfig? row;
+            try
+            {
+                // A second adopter waits here, then finds no row and writes nothing.
+                row = await ReadKeyRowLockedAsync(db, ct);
+            }
+            catch (Exception ex) when (IsTimeout(ex))
+            {
+                logger.LogCritical(ex,
+                    "Another database client holds the encryption_key row, so the key was not moved. Nothing changed. " +
+                    "Credentials stay unusable until it moves. " +
+                    "Find the client with the query in https://open-ksef.pl/docs/admin-setup/#blokada-przy-przenoszeniu-klucza, close it, and restart.");
+                return true;
+            }
+
             if (row is null)
             {
                 await CheckConfiguredKeyAsync(db, configuration, logger, ct);
@@ -54,32 +67,31 @@ public static class EncryptionKeyMigration
             }
 
             var rowKey = EncryptionServiceExtensions.DecodeKey(row.Value);
-            var count = await ReEncryptTrackedAsync(db, rowKey, configuredKey, ct);
-            db.SystemConfigs.Remove(row);
+            // Locked so that a credential written by a host already serving waits for the adopter instead of being overwritten.
+            var credentials = db.Database.IsNpgsql()
+                ? db.KSeFCredentials.FromSqlRaw("""SELECT * FROM "KSeFCredentials" FOR UPDATE""")
+                : db.KSeFCredentials;
+            int count;
             try
             {
-                await db.SaveChangesAsync(ct);
-                if (transaction is not null)
-                    await transaction.CommitAsync(ct);
-                logger.LogInformation("Encryption key moved out of the database, {Count} credentials re-encrypted", count);
-                if (configuredKey.SequenceEqual(rowKey))
-                    logger.LogWarning(
-                        "The configured encryption key is the one that was stored in the database, so every older database dump holds it. " +
-                        "Replace it with the rotate-encryption-key command.");
+                count = await ReEncryptTrackedAsync(credentials, rowKey, configuredKey, ct);
             }
-            catch (DbUpdateConcurrencyException)
+            catch (Exception ex) when (IsTimeout(ex))
             {
-                if (transaction is not null)
-                    await transaction.RollbackAsync(ct);
-                logger.LogWarning("A credential changed while the encryption key was being moved, nothing changed. Moving it retries at the next start.");
+                logger.LogCritical(ex,
+                    "Moving the encryption key out of the database timed out waiting for a lock on KSeFCredentials. Nothing changed. " +
+                    "Find the lock holder with the query at https://open-ksef.pl/docs/admin-setup/#blokada-przy-przenoszeniu-klucza and restart API and Worker.");
+                return true;
             }
-        }
-        catch (Exception ex) when (IsTimeout(ex))
-        {
-            logger.LogCritical(ex,
-                "Another database client holds the encryption_key row, so the key was not moved. Nothing changed. " +
-                "Credentials stay unusable until it moves. " +
-                "Find the client with the query in https://open-ksef.pl/docs/admin-setup/#blokada-przy-przenoszeniu-klucza, close it, and restart.");
+            db.SystemConfigs.Remove(row);
+            await db.SaveChangesAsync(ct);
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+            logger.LogInformation("Encryption key moved out of the database, {Count} credentials re-encrypted", count);
+            if (configuredKey.SequenceEqual(rowKey))
+                logger.LogWarning(
+                    "The configured encryption key is the one that was stored in the database, so every older database dump holds it. " +
+                    "Replace it with the rotate-encryption-key command.");
         }
         catch (Exception ex)
         {
@@ -117,7 +129,7 @@ public static class EncryptionKeyMigration
         byte[] newKey,
         CancellationToken ct = default)
     {
-        var count = await ReEncryptTrackedAsync(db, currentKey, newKey, ct);
+        var count = await ReEncryptTrackedAsync(db.KSeFCredentials, currentKey, newKey, ct);
         await db.SaveChangesAsync(ct);
         return count;
     }
@@ -289,7 +301,7 @@ public static class EncryptionKeyMigration
     }
 
     private static async Task<int> ReEncryptTrackedAsync(
-        ApplicationDbContext db,
+        IQueryable<KSeFCredential> credentials,
         byte[] currentKey,
         byte[] newKey,
         CancellationToken ct)
@@ -298,7 +310,7 @@ public static class EncryptionKeyMigration
         var next = new AesGcmEncryptionService(newKey);
         var count = 0;
 
-        foreach (var credential in await db.KSeFCredentials.ToListAsync(ct))
+        foreach (var credential in await credentials.ToListAsync(ct))
         {
             var token = ReEncrypt(credential.EncryptedToken, credential.Id, current, next);
             var certificate = ReEncrypt(credential.EncryptedCertificateData, credential.Id, current, next);

@@ -84,7 +84,10 @@ public sealed class ManualSyncJobs : IHostedService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Manual sync job failed for tenant {TenantId}", tenantId);
+            if (ex is OperationCanceledException && _stopping.IsCancellationRequested)
+                _logger.LogInformation("Manual sync job for tenant {TenantId} stopped: the API is shutting down", tenantId);
+            else
+                _logger.LogWarning(ex, "Manual sync job failed for tenant {TenantId}", tenantId);
             return new TenantSyncResult(tenantId, string.Empty, TenantSyncOutcome.Failed, ErrorMessage: "Synchronization failed. Details are in the server log.");
         }
         finally
