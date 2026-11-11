@@ -208,7 +208,7 @@ public class SystemSetupIntegrationTests : IDisposable
         var response = await _client.SendAsync(applyMsg);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal("Niepoprawny NIP", (await response.Content.ReadFromJsonAsync<SetupApplyResponse>())!.Error);
+        Assert.Equal("Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.", (await response.Content.ReadFromJsonAsync<SetupApplyResponse>())!.Error);
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Empty(await db.SystemConfigs.ToListAsync());
