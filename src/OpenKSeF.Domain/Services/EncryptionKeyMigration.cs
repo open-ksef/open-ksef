@@ -45,7 +45,7 @@ public static class EncryptionKeyMigration
 
             await using var transaction = db.Database.IsNpgsql() ? await db.Database.BeginTransactionAsync(ct) : null;
 
-            // Lock before reading credentials, so a write that passed its check has committed and gets re-encrypted here.
+            // A second adopter waits here, then finds no row and writes nothing.
             var row = await ReadKeyRowLockedAsync(db, ct);
             if (row is null)
             {
