@@ -99,7 +99,7 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Build & push API
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./src
           file: ./src/OpenKSeF.Api/Dockerfile
@@ -111,7 +111,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build & push Worker
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./src
           file: ./src/OpenKSeF.Worker/Dockerfile
@@ -123,7 +123,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build & push Portal Web
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./src
           file: ./src/OpenKSeF.Portal.Web/Dockerfile
@@ -133,7 +133,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build & push Gateway
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./infra/nginx
           push: true
@@ -142,7 +142,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build & push Push Relay
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./src/OpenKSeF.PushRelay
           push: true
