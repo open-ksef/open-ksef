@@ -8,5 +8,6 @@ public interface ITenantSyncService
         Guid tenantId,
         string? userId = null,
         bool forceFullResync = false,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        Action? onLockAcquired = null);
 }
