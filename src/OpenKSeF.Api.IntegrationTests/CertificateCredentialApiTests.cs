@@ -3,6 +3,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -384,14 +386,13 @@ public class CertificateCredentialApiTests : IDisposable
         using var client = kestrel.CreateClient();
         client.DefaultRequestHeaders.Authorization = _client.DefaultRequestHeaders.Authorization;
         client.DefaultRequestHeaders.Add("X-Correlation-ID", "t655-generic");
-        // Kestrel rejects on Content-Length and closes without draining; streaming the body races into a broken pipe.
+        // Content-Length lets Kestrel reject before 100 Continue, so no body is sent into a socket it closes undrained.
         client.DefaultRequestHeaders.ExpectContinue = true;
 
-        var response = await client.PostAsJsonAsync("/api/tenants", new
-        {
-            nip = TestNip.New(),
-            displayName = new string('A', 3 * 1024 * 1024)
-        });
+        var response = await client.PostAsync("/api/tenants", new StringContent(
+            JsonSerializer.Serialize(new { nip = TestNip.New(), displayName = new string('A', 3 * 1024 * 1024) }),
+            Encoding.UTF8,
+            "application/json"));
 
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<ErrorDto>();
