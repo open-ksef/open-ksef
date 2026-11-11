@@ -172,6 +172,18 @@ The dump from step 3 is now the only copy of the old key. Keep it at least until
 
 A Critical log `Moving the encryption key out of the database failed` followed by `Credential <id> cannot be decrypted` means that credential could not be decrypted, and nothing changed. Delete or re-enter that credential in the portal and restart. If the log says `does not decrypt`, restore the key and delete nothing. The same Critical with no credential line means nothing changed: restart. In both cases API and Worker keep running on `ENCRYPTION_KEY`, and credentials still under the old key stay unusable until a restart moves the key. For `cannot be used`, see Troubleshooting.
 
+**Adoption lock**
+
+A Critical log `Another database client holds the encryption_key row` means another client held a lock on `SystemConfigs` while the key was being moved. Nothing changed. Credentials stay unusable until the key moves. Find the client:
+
+```sql
+SELECT a.pid, a.application_name, a.client_addr, a.state, a.xact_start, a.query
+FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+WHERE l.relation = '"SystemConfigs"'::regclass AND l.granted AND a.pid <> pg_backend_pid();
+```
+
+Close that client. Use `pg_terminate_backend(pid)` only on a session you own. Then restart API and Worker: `docker compose restart api worker`.
+
 **Rollback**
 
 Previous images carry a release tag, e.g. `:v0.0.7`. Set it in the four `ghcr.io/open-ksef/openksef-*` `image:` lines of `docker-compose.yml`, then run `docker compose up -d`.

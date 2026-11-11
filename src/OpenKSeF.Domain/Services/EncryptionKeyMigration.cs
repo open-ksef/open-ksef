@@ -74,6 +74,13 @@ public static class EncryptionKeyMigration
                 logger.LogWarning("A credential changed while the encryption key was being moved, nothing changed. Moving it retries at the next start.");
             }
         }
+        catch (Exception ex) when (IsTimeout(ex))
+        {
+            logger.LogCritical(ex,
+                "Another database client holds the encryption_key row, so the key was not moved. Nothing changed. " +
+                "Credentials stay unusable until it moves. " +
+                "Find the client with the query in https://open-ksef.pl/docs/admin-setup/#blokada-przy-przenoszeniu-klucza, close it, and restart.");
+        }
         catch (Exception ex)
         {
             logger.LogCritical(ex,
@@ -82,6 +89,15 @@ public static class EncryptionKeyMigration
         }
 
         return true;
+    }
+
+    private static bool IsTimeout(Exception? ex)
+    {
+        for (; ex is not null; ex = ex.InnerException)
+            if (ex is TimeoutException)
+                return true;
+
+        return false;
     }
 
     public static async Task<SystemConfig?> ReadKeyRowLockedAsync(ApplicationDbContext db, CancellationToken ct = default)

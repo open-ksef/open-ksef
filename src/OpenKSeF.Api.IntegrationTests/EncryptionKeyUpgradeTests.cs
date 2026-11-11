@@ -425,7 +425,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task HeldKeyRowLock_AdoptionTimesOut_LogsCritical_ChangesNothing()
+    public async Task HeldKeyRowLock_AdoptionTimesOut_LogsLockCritical_ChangesNothing()
     {
         await SeedAsync(_oldKey, withRow: true);
         var before = await CiphertextAsync();
@@ -435,12 +435,16 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
 
         await using (var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(_postgres.GetConnectionString(), o => o.CommandTimeout(2)).Options))
-            await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), _logs);
+            Assert.True(await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), _logs));
 
         await held.RollbackAsync();
         Assert.True(await RowExistsAsync());
         Assert.Equal(before, await CiphertextAsync());
-        Assert.Single(_logs.Entries, e => e.Level == LogLevel.Critical);
+        Assert.StartsWith(
+            "Another database client holds the encryption_key row, so the key was not moved. Nothing changed. " +
+            "Credentials stay unusable until it moves. " +
+            "Find the client with the query in https://open-ksef.pl/docs/admin-setup/#blokada-przy-przenoszeniu-klucza, close it, and restart.",
+            Assert.Single(_logs.Entries, e => e.Level == LogLevel.Critical).Text);
     }
 
     [Fact]
