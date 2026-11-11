@@ -44,6 +44,19 @@ public class KeycloakRealmPayloadTests
     }
 
     [Theory]
+    [InlineData("""{"error":"invalidPasswordMinLengthMessage","error_description":"Invalid password: minimum length 12."}""", SystemSetupService.KeycloakPasswordPolicyMessage)]
+    [InlineData("""{"errorMessage":"Conflict detected. See logs for details"}""", SystemSetupService.KeycloakRejectedMessage)]
+    public async Task ApplySetup_KeycloakRejectsAWrite_ReturnsPolishMessage_NotTheHttpStatusText(string keycloakBody, string expected)
+    {
+        _keycloak.WriteFailureBody = keycloakBody;
+
+        var result = await CreateSetupService(Substitute.For<ISystemConfigService>(), ValidKey).ApplySetupAsync(NewSetupRequest(), "token", "admin");
+
+        Assert.False(result.Success);
+        Assert.Equal(expected, result.Error);
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("not-a-key")]
@@ -299,6 +312,8 @@ public class KeycloakRealmPayloadTests
 
         public HttpStatusCode RealmStatus { get; set; } = HttpStatusCode.OK;
 
+        public string? WriteFailureBody { get; set; }
+
         public JsonElement Body(HttpMethod method, string url) => Assert.Single(Bodies(method, url));
 
         public List<JsonElement> Bodies(HttpMethod method, string url, bool prefix = false) => _requests
@@ -313,7 +328,8 @@ public class KeycloakRealmPayloadTests
             _requests.Add((request.Method, url, body));
 
             if (request.Method != HttpMethod.Get)
-                return new HttpResponseMessage(HttpStatusCode.NoContent);
+                return WriteFailureBody is null ? new HttpResponseMessage(HttpStatusCode.NoContent)
+                    : new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent(WriteFailureBody, Encoding.UTF8, "application/json") };
 
             if (url == RealmUrl)
                 return RealmJson is null ? new HttpResponseMessage(HttpStatusCode.NotFound)
