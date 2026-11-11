@@ -140,7 +140,7 @@ public class WhiteListClientTests
         var result = await new NipLookupController(client).Get(nip, CancellationToken.None);
 
         var bad = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.Equal("Niepoprawny NIP", Assert.IsType<ValidationEnvelope>(bad.Value).Errors.Single().Message);
+        Assert.Equal("Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.", Assert.IsType<ValidationEnvelope>(bad.Value).Errors.Single().Message);
         Assert.Empty(handler.Requests);
     }
 

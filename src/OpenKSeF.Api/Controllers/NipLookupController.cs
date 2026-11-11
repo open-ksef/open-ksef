@@ -24,7 +24,7 @@ public class NipLookupController(WhiteListClient whiteList) : ControllerBase
     {
         var normalized = nip.Replace("-", "").Trim();
         if (!NipValidator.HasValidChecksum(normalized))
-            return BadRequest(Envelope("NIP-INVALID", "Niepoprawny NIP"));
+            return BadRequest(Envelope("NIP-INVALID", "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną."));
 
         try
         {
@@ -35,7 +35,7 @@ public class NipLookupController(WhiteListClient whiteList) : ControllerBase
         }
         catch (WhiteListInvalidNipException)
         {
-            return BadRequest(Envelope("NIP-INVALID", "Niepoprawny NIP"));
+            return BadRequest(Envelope("NIP-INVALID", "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną."));
         }
         catch (WhiteListUnavailableException)
         {
