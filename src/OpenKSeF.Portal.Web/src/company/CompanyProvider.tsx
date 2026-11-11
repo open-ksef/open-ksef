@@ -78,6 +78,14 @@ export function CompanyProvider({ children }: PropsWithChildren): ReactElement {
     tenants?.[0] ??
     null
 
+  const unknownUrlId = tenants && urlId && !validUrlId && company ? urlId : ''
+  const noticedUrlId = useRef('')
+  useEffect(() => {
+    if (!unknownUrlId || noticedUrlId.current === unknownUrlId || !company) return
+    noticedUrlId.current = unknownUrlId
+    toast(`Nie znaleziono firmy z linku. Pokazujemy firmę ${companyName(company)}.`)
+  }, [unknownUrlId, company])
+
   const setSwitchGuard = useCallback((guard: CompanySwitchGuard | null) => {
     guardRef.current = guard
   }, [])

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, type ReactNode } from 'react'
+import toast from 'react-hot-toast'
 import { createRoot, type Root } from 'react-dom/client'
 import { Route, RouterProvider, Routes, createMemoryRouter, useLocation, type InitialEntry } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -20,6 +21,7 @@ import { CompanyProvider } from './CompanyProvider'
 import { memoryStorage } from './memoryStorage'
 import { useCompany } from './useCompany'
 
+vi.mock('react-hot-toast', () => ({ default: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }))
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/invoices', () => ({ listInvoices: vi.fn(), getInvoiceByKSeFNumber: vi.fn() }))
 vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedInvoices: vi.fn(), listIssuedFeed: vi.fn(), getIssuedInvoice: vi.fn() }))
@@ -160,6 +162,15 @@ describe('CompanyProvider', () => {
 
     expect(probe().dataset.tenant).toBe('b')
     expect(localStorage.getItem(STORAGE_KEY)).toBe('b')
+  })
+
+  it('tells the user a URL company is unknown and queries only the shown one', async () => {
+    localStorage.setItem(STORAGE_KEY, 'b')
+    await render('/invoices?tenantId=foreign', <InvoiceListPage />)
+
+    expect(toast).toHaveBeenCalledExactlyOnceWith('Nie znaleziono firmy z linku. Pokazujemy firmę Firma B.')
+    expect(listInvoices).toHaveBeenCalledWith('b', expect.anything())
+    expect(listInvoices).not.toHaveBeenCalledWith('foreign', expect.anything())
   })
 
   it('a switch on a row opened from the issued list goes to Wystawione', async () => {
