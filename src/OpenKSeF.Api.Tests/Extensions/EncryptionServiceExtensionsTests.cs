@@ -14,11 +14,11 @@ public class EncryptionServiceExtensionsTests
     [InlineData(null)]
     [InlineData("c2hvcnQ=")]
     [InlineData("generate_with_openssl_rand")]
-    public void Resolve_NoRow_NoOrMalformedKey_SaysRestore_NotGenerate(string? envKey)
+    public void Resolve_NoOrMalformedKey_ThrowsUnavailable_SaysRestore_NotGenerate(string? envKey)
     {
         var provider = BuildProvider(dbKey: null, envKey: envKey);
 
-        var ex = Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IEncryptionService>());
+        var ex = Assert.Throws<EncryptionKeyUnavailableException>(() => provider.GetRequiredService<IEncryptionService>());
         Assert.Contains("ENCRYPTION_KEY", ex.Message);
         Assert.Contains("Restore the key that encrypted the credentials", ex.Message);
         Assert.Contains("only if no copy remains", ex.Message);
@@ -36,17 +36,17 @@ public class EncryptionServiceExtensionsTests
     }
 
     [Fact]
-    public void Resolve_UsesDbKey()
+    public void Resolve_RowOnly_ThrowsUnavailable()
     {
         var provider = BuildProvider(dbKey: ValidKey, envKey: null);
 
-        Assert.IsType<AesGcmEncryptionService>(provider.GetRequiredService<IEncryptionService>());
+        Assert.Throws<EncryptionKeyUnavailableException>(() => provider.GetRequiredService<IEncryptionService>());
     }
 
     [Fact]
-    public void Resolve_RowBeatsEnv()
+    public void Resolve_IgnoresRow_UsesEnvKey()
     {
-        var ciphertext = new AesGcmEncryptionService(Convert.FromBase64String(ValidKey)).Encrypt("secret");
+        var ciphertext = new AesGcmEncryptionService(Convert.FromBase64String(OtherKey)).Encrypt("secret");
         var provider = BuildProvider(dbKey: ValidKey, envKey: OtherKey);
 
         Assert.Equal("secret", provider.GetRequiredService<IEncryptionService>().Decrypt(ciphertext));

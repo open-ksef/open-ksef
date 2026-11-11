@@ -240,7 +240,7 @@ Portal Web tests (`vitest`) also verify cross-project contracts (docker-compose 
 - `Auth__Authority`
 - `Auth__RequireHttpsMetadata` - default `true`; set `false` when `Auth__Authority` is plain http (compose `http://keycloak`)
 - `Database__EnableSensitiveDataLogging` - default `false`; logs SQL parameter values, never enable in prod
-- `ENCRYPTION_KEY` - required; base64 of 32 bytes; not in the DB once adopted (legacy row read until then)
+- `ENCRYPTION_KEY` - required; base64 of 32 bytes; never read from the DB; a leftover `encryption_key` row is only adopted (re-encrypt, delete) at start, and row + missing key stops API and Worker with exit 1
 - `ENCRYPTION_KEY_FILE` - file holding the key, used when `ENCRYPTION_KEY` is empty; shipped compose does not forward it
 - `ENCRYPTION_KEY_NEW` - only for `rotate-encryption-key` on the API image
 - `KSeF__BaseUrl` - `test`, `demo` or `production`; legacy KSeF URLs resolve by exact host; an unknown value stops API and Worker; a DB row wins

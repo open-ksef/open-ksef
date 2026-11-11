@@ -103,7 +103,6 @@ public class CredentialsControllerCrudTests : IDisposable
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IEncryptionService _encryption;
-    private readonly ISystemConfigService _systemConfig = Substitute.For<ISystemConfigService>();
     private readonly ILogger<CredentialsController> _logger = Substitute.For<ILogger<CredentialsController>>();
     private readonly string _userId = "user-1";
     private readonly Guid _tenantId;
@@ -122,8 +121,6 @@ public class CredentialsControllerCrudTests : IDisposable
         _encryption.Encrypt(Arg.Any<string>()).Returns(x => $"encrypted:{x.Arg<string>()}");
         _encryption.Decrypt(Arg.Any<string>()).Returns(x => x.Arg<string>()["encrypted:".Length..]);
 
-        _systemConfig.GetValue(Arg.Any<string>()).Returns((string?)null);
-
         _tenantId = Guid.NewGuid();
         var now = DateTime.UtcNow;
         _db.Tenants.Add(new Tenant { Id = _tenantId, UserId = _userId, Nip = "5555555555", DisplayName = "Test", CreatedAt = now, UpdatedAt = now });
@@ -131,62 +128,7 @@ public class CredentialsControllerCrudTests : IDisposable
     }
 
     private CredentialsController CreateController() =>
-        new(_db, _currentUser, _encryption, CredentialsControllerSyncTests.Jobs(Substitute.For<ITenantSyncService>()), _systemConfig, _logger);
-
-    [Fact]
-    public async Task AddOrUpdate_CachedKeyRowGoneFromDb_Refreshes_Returns503_SavesNothing()
-    {
-        _systemConfig.GetValue(SystemConfigKeys.EncryptionKey).Returns("cached-row-key");
-
-        var result = await CreateController().AddOrUpdate(_tenantId, new AddCredentialRequest(Type: CredentialType.Token, Token: "my-token"));
-
-        Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(result).StatusCode);
-        await _systemConfig.Received(1).RefreshCacheAsync(Arg.Any<CancellationToken>());
-        Assert.False(await _db.KSeFCredentials.AnyAsync());
-        Assert.Single(_logger.ReceivedCalls(), c => c.GetMethodInfo().Name == "Log" && (LogLevel)c.GetArguments()[0]! == LogLevel.Critical);
-    }
-
-    [Fact]
-    public async Task AddOrUpdate_CacheRefreshedWhileEncrypting_Returns503_SavesNothing()
-    {
-        _systemConfig.GetValue(SystemConfigKeys.EncryptionKey).Returns("cached-row-key");
-        _encryption.Encrypt(Arg.Any<string>()).Returns(_ =>
-        {
-            _systemConfig.GetValue(SystemConfigKeys.EncryptionKey).Returns((string?)null);
-            return "encrypted-under-row-key";
-        });
-
-        var result = await CreateController().AddOrUpdate(_tenantId, new AddCredentialRequest(Type: CredentialType.Token, Token: "my-token"));
-
-        Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(result).StatusCode);
-        Assert.False(await _db.KSeFCredentials.AnyAsync());
-    }
-
-    [Fact]
-    public async Task AddOrUpdate_CacheRefreshedAfterControllerCreated_Returns503_SavesNothing()
-    {
-        _systemConfig.GetValue(SystemConfigKeys.EncryptionKey).Returns("cached-row-key");
-        var controller = CreateController();
-        _systemConfig.GetValue(SystemConfigKeys.EncryptionKey).Returns((string?)null);
-
-        var result = await controller.AddOrUpdate(_tenantId, new AddCredentialRequest(Type: CredentialType.Token, Token: "my-token"));
-
-        Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(result).StatusCode);
-        Assert.False(await _db.KSeFCredentials.AnyAsync());
-    }
-
-    [Fact]
-    public async Task AddOrUpdate_CachedKeyRowStillInDb_Saves()
-    {
-        _systemConfig.GetValue(SystemConfigKeys.EncryptionKey).Returns("cached-row-key");
-        _db.SystemConfigs.Add(new SystemConfig { Key = SystemConfigKeys.EncryptionKey, Value = "cached-row-key", UpdatedAt = DateTime.UtcNow });
-        await _db.SaveChangesAsync();
-
-        var result = await CreateController().AddOrUpdate(_tenantId, new AddCredentialRequest(Type: CredentialType.Token, Token: "my-token"));
-
-        Assert.IsType<OkObjectResult>(result);
-        await _systemConfig.DidNotReceive().RefreshCacheAsync(Arg.Any<CancellationToken>());
-    }
+        new(_db, _currentUser, _encryption, CredentialsControllerSyncTests.Jobs(Substitute.For<ITenantSyncService>()), _logger);
 
     [Fact]
     public async Task AddOrUpdate_Token_CreatesCredential()

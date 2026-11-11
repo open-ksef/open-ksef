@@ -136,14 +136,6 @@ public class SystemConfigServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetValue_EncryptionKey_ReturnsRow()
-    {
-        await _service.SetValueAsync(SystemConfigKeys.EncryptionKey, "db-encryption-key");
-
-        Assert.Equal("db-encryption-key", _service.GetValue(SystemConfigKeys.EncryptionKey));
-    }
-
-    [Fact]
     public async Task SetValuesAsync_PersistsMultipleValues()
     {
         var values = new Dictionary<string, string>
@@ -263,13 +255,14 @@ public class SystemConfigServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task EncryptedSecret_UsesTheKeyRow_WhenPresent()
+    public async Task KeyRow_IsNeitherExposedNorUsedToDecrypt()
     {
         var service = await ServiceWithRowsAsync(null,
             (SystemConfigKeys.EncryptionKey, Key),
             (SystemConfigKeys.SetupTokenSigningKey, Encrypted("signing-key")));
 
-        Assert.Equal("signing-key", service.GetValue(SystemConfigKeys.SetupTokenSigningKey));
+        Assert.Null(service.GetValue(SystemConfigKeys.EncryptionKey));
+        Assert.Null(service.GetValue(SystemConfigKeys.SetupTokenSigningKey));
     }
 
     [Theory]

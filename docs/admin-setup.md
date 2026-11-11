@@ -120,16 +120,14 @@ The commands in the procedures below are written for bash. On Windows use WSL or
 
 ### What happens if you only pull the new images
 
-Up to v0.0.7 the key lives in the database next to the ciphertext, so every database dump can decrypt the tokens. The new images change that, but only once you provide a key:
+Up to v0.0.7 the key lives in the database next to the ciphertext, so every database dump can decrypt the tokens. The current images never use that key. They only move it out, and only once you provide a key:
 
 | State after the upgrade | Result |
 |---|---|
-| New images, row in the database, `ENCRYPTION_KEY` empty | Legacy mode. The app keeps the database key, nothing is lost, and each start logs an Error |
-| New images, row in the database, `ENCRYPTION_KEY` malformed (wrong format or length) | The same: legacy mode and an Error at each start |
+| New images, row in the database, `ENCRYPTION_KEY` empty | API and Worker refuse to start (exit code 1, restart loop). Nothing changed. The Critical log `no longer reads the key from the database` names the fix: follow the procedure below, or go back to v0.0.14 |
+| New images, row in the database, `ENCRYPTION_KEY` malformed (wrong format or length) | The same: API and Worker refuse to start, nothing changed |
 | New images, row in the database, `ENCRYPTION_KEY` valid | Adoption at the first start, to exactly this value. Make sure it is stored outside the database, and follow the procedure below **before** you pull the images |
 | New `docker-compose.yml` without `ENCRYPTION_KEY` | `docker compose` refuses. Its message sends an existing installation to this page and names the generator command for a new one. `stop`, `exec`, `ps`, `logs` refuse unless the project name is set. `up`, `pull`, `run` always refuse. Running containers stay untouched |
-
-Legacy mode is temporary: later releases are planned to stop reading the key from the database. Adopt as soon as you can.
 
 ### Upgrade from v0.0.7 or earlier
 
@@ -172,7 +170,7 @@ docker exec -i openksef-postgres pg_restore -l < before-key-move.dump > /dev/nul
 
 The dump from step 3 is now the only copy of the old key. Keep it at least until a sync succeeds. Dumps taken before adoption can decrypt the tokens in them until you delete those dumps.
 
-A Critical log `Moving the encryption key out of the database failed` followed by `Credential <id> cannot be decrypted` means that credential could not be decrypted, and nothing changed. Delete or re-enter that credential in the portal and restart. If the log says `does not decrypt`, restore the key and delete nothing. The same Critical with no credential line means nothing changed: restart. For `cannot be used`, see Troubleshooting.
+A Critical log `Moving the encryption key out of the database failed` followed by `Credential <id> cannot be decrypted` means that credential could not be decrypted, and nothing changed. Delete or re-enter that credential in the portal and restart. If the log says `does not decrypt`, restore the key and delete nothing. The same Critical with no credential line means nothing changed: restart. In both cases API and Worker keep running on `ENCRYPTION_KEY`, and credentials still under the old key stay unusable until a restart moves the key. For `cannot be used`, see Troubleshooting.
 
 **Rollback**
 
@@ -341,8 +339,9 @@ Every service has `restart: unless-stopped`. When API or Worker exits at start, 
 - a bad `ksef_environment` row or `KSEF_BASE_URL` (`Unknown KSeF environment`), see [KSeF environment: upgrade](#ksef-environment-upgrade)
 - `KSeF:ForbidProduction` set on a stack whose environment is production
 - `SystemConfigs` unreadable after 5 attempts (Postgres down or broken)
+- the key still in the database and `ENCRYPTION_KEY` empty or malformed (`no longer reads the key from the database`), see [What happens if you only pull the new images](#what-happens-if-you-only-pull-the-new-images)
 
-API and Worker log one `FTL` line with the reason. The KSeF environment refusals exit with code 1. How to see the loop and the reason:
+API and Worker log one `FTL` line with the reason, or one `CRT` line for the key refusal. The KSeF environment and key refusals exit with code 1. How to see the loop and the reason:
 
 ```bash
 docker compose ps                     # STATUS "Restarting (1) ..." for the looping service
@@ -380,7 +379,7 @@ The portal checks `/api/system/setup-status` on every protected page load. If `i
 
 ## Troubleshooting
 
-> **Legacy mode and deleting rows.** While the key is in the database, the `encryption_key` row is its only copy. If you delete rows from `SystemConfigs` before [adoption](#upgrade-from-v007-or-earlier), you lose stored KSeF tokens and certificates. After adoption, the wizard must run with the same `ENCRYPTION_KEY`, or the credentials stop decrypting.
+> **Key in the database and deleting rows.** While the key is in the database, the `encryption_key` row is its only copy. If you delete rows from `SystemConfigs` before [adoption](#upgrade-from-v007-or-earlier), you lose stored KSeF tokens and certificates. After adoption, the wizard must run with the same `ENCRYPTION_KEY`, or the credentials stop decrypting.
 
 | Problem | Solution |
 |---------|----------|
@@ -396,6 +395,7 @@ The portal checks `/api/system/setup-status` on every protected page load. If `i
 | API or Worker stops with `Unknown KSeF environment` | The stored or configured value is not a known environment. See [KSeF environment: upgrade](#ksef-environment-upgrade). |
 | Critical: `The configured encryption key does not decrypt` | The configured key does not match the ciphertext. Restore the key that encrypted it. |
 | Critical: `The configured encryption key cannot be used` | The row is gone and `ENCRYPTION_KEY` is empty or malformed. Login and invoice reads work. Adding credentials, sync and send do not. Restore the key. |
+| API and Worker exit at start with Critical: `This version no longer reads the key from the database` | The key is still in the database and `ENCRYPTION_KEY` is empty or malformed. Nothing changed. Follow the [upgrade procedure](#upgrade-from-v007-or-earlier), or go back to v0.0.14 meanwhile. |
 
 ## Development
 

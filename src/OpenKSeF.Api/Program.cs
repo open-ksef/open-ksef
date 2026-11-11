@@ -300,7 +300,11 @@ using (var scope = app.Services.CreateScope())
         .GetRequiredService<ILoggerFactory>()
         .CreateLogger("OpenKSeF.Api.Migrations");
     await MigrationHelper.ApplyMigrationsIdempotentlyAsync(db, startupLogger);
-    await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, app.Configuration, startupLogger);
+    if (!await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, app.Configuration, startupLogger))
+    {
+        await Log.CloseAndFlushAsync();
+        return 1;
+    }
     EmailService.WarnIfPlaintextAuth(scope.ServiceProvider.GetRequiredService<IOptions<EmailOptions>>().Value, startupLogger);
 }
 

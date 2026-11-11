@@ -67,16 +67,22 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    private async Task AdoptAsync(string? configuredKey)
+    private async Task<bool> AdoptAsync(string? configuredKey)
     {
         await using var db = NewContext();
-        await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(configuredKey), _logs);
+        return await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(configuredKey), _logs);
     }
 
     private async Task<bool> RowExistsAsync()
     {
         await using var db = NewContext();
         return await db.SystemConfigs.AnyAsync(c => c.Key == SystemConfigKeys.EncryptionKey);
+    }
+
+    private async Task<List<(string Key, string Value)>> SystemConfigsAsync()
+    {
+        await using var db = NewContext();
+        return (await db.SystemConfigs.AsNoTracking().OrderBy(c => c.Key).ToListAsync()).Select(c => (c.Key, c.Value)).ToList();
     }
 
     private async Task<(string Token, string Certificate)> CiphertextAsync()
@@ -133,17 +139,8 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
             new TestUser(),
             scope.ServiceProvider.GetRequiredService<IEncryptionService>(),
             null!,
-            scope.ServiceProvider.GetRequiredService<ISystemConfigService>(),
             NullLogger<CredentialsController>.Instance);
         return await controller.AddOrUpdate(tenantId, new AddCredentialRequest(Type: CredentialType.Token, Token: token));
-    }
-
-    private async Task<Guid> TenantOfTokenCredentialAsync()
-    {
-        await using var db = NewContext();
-        db.KSeFCredentials.Remove(await db.KSeFCredentials.SingleAsync(c => c.Id == _certificateCredentialId));
-        await db.SaveChangesAsync();
-        return (await db.KSeFCredentials.SingleAsync(c => c.Id == _tokenCredentialId)).TenantId;
     }
 
     private async Task WaitUntilBlockedOrDoneAsync(Task other)
@@ -187,7 +184,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     {
         await SeedAsync(_oldKey, withRow: true);
 
-        await AdoptAsync(NewKey);
+        Assert.True(await AdoptAsync(NewKey));
 
         Assert.False(await RowExistsAsync());
         await AssertAllDecryptAsync(_newKey);
@@ -217,17 +214,21 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(null, "It is not set. Set ENCRYPTION_KEY or ENCRYPTION_KEY_FILE to a key from 'openssl rand -base64 32' and restart.")]
-    [InlineData(MalformedKey, "Encryption key is not valid base64. Generate with: openssl rand -base64 32 Set ENCRYPTION_KEY or ENCRYPTION_KEY_FILE to a key from 'openssl rand -base64 32' and restart.")]
-    public async Task RowPresent_NoOrMalformedKey_LegacyLogTextIsUnchanged(string? configuredKey, string expectedEnd)
+    [InlineData(null, "It is not set.")]
+    [InlineData(MalformedKey, "Encryption key is not valid base64.")]
+    public async Task RowPresent_NoOrMalformedKey_RefusalLogText(string? configuredKey, string reason)
     {
         await SeedAsync(_oldKey, withRow: true);
 
         await AdoptAsync(configuredKey);
 
         Assert.Equal(
-            $"The encryption key is still stored in the database, and the configured key cannot be used: {expectedEnd}",
-            Assert.Single(_logs.Entries, e => e.Level == LogLevel.Error).Text);
+            $"The encryption key is still stored in the database and the configured key cannot be used: {reason} " +
+            "This version no longer reads the key from the database. Nothing changed. " +
+            "Follow https://open-ksef.pl/docs/admin-setup/#aktualizacja-z-wersji-v007-lub-starszej: back up, " +
+            "set ENCRYPTION_KEY on the API and Worker to a new key from 'openssl rand -base64 32', and restart. " +
+            "To keep running meanwhile, go back to v0.0.14.",
+            Assert.Single(_logs.Entries, e => e.Level == LogLevel.Critical).Text);
     }
 
     [Fact]
@@ -248,9 +249,9 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
                 var logs = new ListLogger();
                 await using var db = NewContext();
 
-                await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, configuration, logs);
+                Assert.False(await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, configuration, logs));
 
-                Assert.Contains(reason, Assert.Single(logs.Entries, e => e.Level == LogLevel.Error).Text);
+                Assert.Contains(reason, Assert.Single(logs.Entries, e => e.Level == LogLevel.Critical).Text);
                 Assert.DoesNotContain(logs.Entries, e => e.Text.Contains(MalformedKey) || e.Text.Contains(OldKey));
             }
         }
@@ -265,19 +266,39 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     [InlineData("")]
     [InlineData(MalformedKey)]
     [InlineData("generate_with_openssl_rand")]
-    public async Task NoOrMalformedEnv_StaysInLegacyMode_AndLogsError(string? configuredKey)
+    public async Task RowPresent_NoOrMalformedEnv_RefusesStart_WritesNothing(string? configuredKey)
     {
         await SeedAsync(_oldKey, withRow: true);
         var before = await CiphertextAsync();
+        var configBefore = await SystemConfigsAsync();
 
-        await AdoptAsync(configuredKey);
+        Assert.False(await AdoptAsync(configuredKey));
 
         Assert.True(await RowExistsAsync());
         Assert.Equal(before, await CiphertextAsync());
-        Assert.Contains("'openssl rand -base64 32' and restart.", Assert.Single(_logs.Entries, e => e.Level == LogLevel.Error).Text);
-        var encryption = await ResolveAsHostAsync(configuredKey);
-        Assert.Equal(Token, encryption.Decrypt(before.Token));
+        Assert.Equal(configBefore, await SystemConfigsAsync());
+        var critical = Assert.Single(_logs.Entries, e => e.Level == LogLevel.Critical).Text;
+        Assert.Contains("no longer reads the key from the database", critical);
+        Assert.Contains("ENCRYPTION_KEY", critical);
+        Assert.DoesNotContain(_logs.Entries, e => e.Level == LogLevel.Error);
+        await AssertAllDecryptAsync(_oldKey);
         AssertNoSecretsLogged();
+    }
+
+    [Fact]
+    public async Task ApiProcess_RowPresent_NoKey_ExitsOne_WritesNothing()
+    {
+        await SeedAsync(_oldKey, withRow: true);
+        var before = await CiphertextAsync();
+        var configBefore = await SystemConfigsAsync();
+
+        var (exitCode, output) = await RunApiAsync(currentKey: null, newKey: null, rotate: false);
+
+        Assert.True(exitCode == 1, output);
+        Assert.Contains("no longer reads the key from the database", output);
+        Assert.Equal(before, await CiphertextAsync());
+        Assert.Equal(configBefore, await SystemConfigsAsync());
+        await AssertAllDecryptAsync(_oldKey);
     }
 
     [Fact]
@@ -300,6 +321,39 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         var critical = Assert.Single(_logs.Entries, e => e.Level == LogLevel.Critical);
         Assert.Contains(corruptId.ToString(), critical.Text);
         AssertNoSecretsLogged();
+    }
+
+    [Fact]
+    public async Task FailedAdoption_HostRunsOnEnvKey_NextAdoptionKeepsItsWrite()
+    {
+        await SeedAsync(_oldKey, withRow: true);
+        var corruptId = Guid.NewGuid();
+        await using (var db = NewContext())
+        {
+            var tenantId = (await db.KSeFCredentials.FirstAsync()).TenantId;
+            db.KSeFCredentials.Add(new KSeFCredential { Id = corruptId, TenantId = tenantId, EncryptedToken = Convert.ToBase64String(new byte[64]), CreatedAt = Now, UpdatedAt = Now });
+            await db.SaveChangesAsync();
+        }
+
+        Assert.True(await AdoptAsync(NewKey));
+        Assert.True(await RowExistsAsync());
+
+        var newTenantId = await AddTenantWithoutCredentialAsync();
+        await using (var host = await StartHostAsync(NewKey))
+            Assert.IsType<OkObjectResult>(await PostTokenAsync(host, newTenantId, "user-new-token"));
+        await using (var db = NewContext())
+        {
+            db.KSeFCredentials.Remove(await db.KSeFCredentials.SingleAsync(c => c.Id == corruptId));
+            await db.SaveChangesAsync();
+        }
+
+        Assert.True(await AdoptAsync(NewKey));
+
+        Assert.False(await RowExistsAsync());
+        await AssertAllDecryptAsync(_newKey);
+        await using var check = NewContext();
+        var saved = await check.KSeFCredentials.SingleAsync(c => c.TenantId == newTenantId);
+        Assert.Equal("user-new-token", new AesGcmEncryptionService(_newKey).Decrypt(saved.EncryptedToken!));
     }
 
     [Fact]
@@ -377,7 +431,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         var before = await CiphertextAsync();
         await using var holder = NewContext();
         await using var held = await holder.Database.BeginTransactionAsync();
-        await EncryptionKeyMigration.ReadKeyRowLockedAsync(holder, forUpdate: true);
+        await EncryptionKeyMigration.ReadKeyRowLockedAsync(holder);
 
         await using (var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(_postgres.GetConnectionString(), o => o.CommandTimeout(2)).Options))
@@ -387,108 +441,6 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         Assert.True(await RowExistsAsync());
         Assert.Equal(before, await CiphertextAsync());
         Assert.Single(_logs.Entries, e => e.Level == LogLevel.Critical);
-    }
-
-    [Fact]
-    public async Task StaleHost_AfterOtherHostAdopted_Gets503_ThenWritesUnderConfiguredKey()
-    {
-        await SeedAsync(_oldKey, withRow: true);
-        var tenantId = await AddTenantWithoutCredentialAsync();
-        await using var staleHost = await StartHostAsync(NewKey);
-
-        await AdoptAsync(NewKey);
-
-        var refused = await PostTokenAsync(staleHost, tenantId, "user-new-token");
-        Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(refused).StatusCode);
-        await using (var db = NewContext())
-            Assert.False(await db.KSeFCredentials.AnyAsync(c => c.TenantId == tenantId));
-
-        Assert.IsType<OkObjectResult>(await PostTokenAsync(staleHost, tenantId, "user-new-token"));
-        await using var check = NewContext();
-        var saved = await check.KSeFCredentials.SingleAsync(c => c.TenantId == tenantId);
-        Assert.Equal("user-new-token", new AesGcmEncryptionService(_newKey).Decrypt(saved.EncryptedToken!));
-    }
-
-    [Fact]
-    public async Task HostOnRowKey_NextScopeAfterRefresh_UsesConfiguredKey()
-    {
-        await SeedAsync(_oldKey, withRow: true);
-        var (tokenBefore, _) = await CiphertextAsync();
-        await using var host = await StartHostAsync(NewKey);
-        using (var scope = host.CreateScope())
-            Assert.Equal(Token, scope.ServiceProvider.GetRequiredService<IEncryptionService>().Decrypt(tokenBefore));
-
-        await AdoptAsync(NewKey);
-        await host.GetRequiredService<ISystemConfigService>().RefreshCacheAsync();
-
-        var (tokenAfter, _) = await CiphertextAsync();
-        using var nextScope = host.CreateScope();
-        Assert.Equal(Token, nextScope.ServiceProvider.GetRequiredService<IEncryptionService>().Decrypt(tokenAfter));
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task RowKeyWrite_WhileAdoptionHoldsLock_Gets503_AndSavesNothing(bool update)
-    {
-        await SeedAsync(_oldKey, withRow: true);
-        var tenantId = update ? await TenantOfTokenCredentialAsync() : await AddTenantWithoutCredentialAsync();
-        await using var staleHost = await StartHostAsync(NewKey);
-        Task<IActionResult>? write = null;
-
-        await using (var db = NewContext(new BeforeSave(async () =>
-        {
-            write = Task.Run(() => PostTokenAsync(staleHost, tenantId, "user-new-token"));
-            await WaitUntilBlockedOrDoneAsync(write);
-        })))
-            await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), _logs);
-
-        var result = await write!;
-        Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(result).StatusCode);
-        Assert.False(await RowExistsAsync());
-        await using var check = NewContext();
-        var saved = await check.KSeFCredentials.Where(c => c.TenantId == tenantId).ToListAsync();
-        Assert.Equal(update ? 1 : 0, saved.Count);
-        if (update)
-            Assert.Equal(Token, new AesGcmEncryptionService(_newKey).Decrypt(saved[0].EncryptedToken!));
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task RowKeyWrite_HoldingLock_AdopterWaits_AndReEncryptsTheWrite(bool update)
-    {
-        await SeedAsync(_oldKey, withRow: true);
-        var tenantId = update ? await TenantOfTokenCredentialAsync() : await AddTenantWithoutCredentialAsync();
-        await using var staleHost = await StartHostAsync(NewKey);
-        Task? adoption = null;
-
-        await using var writerDb = NewContext(new BeforeSave(async () =>
-        {
-            adoption = Task.Run(() => AdoptAsync(NewKey));
-            await WaitUntilBlockedOrDoneAsync(adoption);
-        }));
-        Assert.IsType<OkObjectResult>(await PostTokenAsync(staleHost, tenantId, "user-new-token", writerDb));
-        await adoption!;
-
-        Assert.False(await RowExistsAsync());
-        await using var check = NewContext();
-        var saved = await check.KSeFCredentials.SingleAsync(c => c.TenantId == tenantId);
-        Assert.Equal("user-new-token", new AesGcmEncryptionService(_newKey).Decrypt(saved.EncryptedToken!));
-    }
-
-    [Fact]
-    public async Task LegacyWrite_NoAdopter_SavesUnderRowKey()
-    {
-        await SeedAsync(_oldKey, withRow: true);
-        var tenantId = await AddTenantWithoutCredentialAsync();
-        await using var legacyHost = await StartHostAsync(null);
-
-        Assert.IsType<OkObjectResult>(await PostTokenAsync(legacyHost, tenantId, "user-new-token"));
-
-        await using var check = NewContext();
-        var saved = await check.KSeFCredentials.SingleAsync(c => c.TenantId == tenantId);
-        Assert.Equal("user-new-token", new AesGcmEncryptionService(_oldKey).Decrypt(saved.EncryptedToken!));
     }
 
     [Fact]
@@ -558,13 +510,20 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RowAbsent_RightKey_NoCritical()
+    public async Task RowAbsent_RightKey_StartsAsBefore_ChangesNothing()
     {
         await SeedAsync(_newKey, withRow: false);
+        var before = await CiphertextAsync();
+        var configBefore = await SystemConfigsAsync();
 
-        await AdoptAsync(NewKey);
+        Assert.True(await AdoptAsync(NewKey));
 
-        Assert.DoesNotContain(_logs.Entries, e => e.Level >= LogLevel.Error);
+        Assert.DoesNotContain(_logs.Entries, e => e.Level >= LogLevel.Warning);
+        Assert.Equal(before, await CiphertextAsync());
+        Assert.Equal(configBefore, await SystemConfigsAsync());
+        var encryption = await ResolveAsHostAsync(NewKey);
+        Assert.Equal(Token, encryption.Decrypt(before.Token));
+        Assert.Equal(Certificate, encryption.Decrypt(before.Certificate));
     }
 
     [Fact]
@@ -588,7 +547,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     {
         await SeedAsync(_oldKey, withRow: false);
 
-        await AdoptAsync(configuredKey);
+        Assert.True(await AdoptAsync(configuredKey));
 
         var critical = Assert.Single(_logs.Entries, e => e.Level == LogLevel.Critical).Text;
         Assert.Contains("Restore the key that encrypted the credentials", critical);
@@ -790,7 +749,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         await SeedAsync(_oldKey, withRow: true);
         var before = await CiphertextAsync();
 
-        var (exitCode, output) = await RunApiRotateAsync(NewKey, withNewKey ? Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)) : null);
+        var (exitCode, output) = await RunApiAsync(NewKey, withNewKey ? Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)) : null);
 
         Assert.Equal(1, exitCode);
         Assert.Contains(reason, output);
@@ -806,7 +765,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         await using var runningHost = new NpgsqlConnection(_postgres.GetConnectionString() + ";Pooling=false");
         await runningHost.OpenAsync();
 
-        var (exitCode, output) = await RunApiRotateAsync(OldKey, NewKey);
+        var (exitCode, output) = await RunApiAsync(OldKey, NewKey);
 
         Assert.Equal(1, exitCode);
         Assert.Contains("1 other connections", output);
@@ -818,7 +777,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     {
         await SeedAsync(_oldKey, withRow: false);
 
-        var (exitCode, output) = await RunApiRotateAsync(OldKey, NewKey);
+        var (exitCode, output) = await RunApiAsync(OldKey, NewKey);
 
         Assert.True(exitCode == 0, output);
         Assert.Contains("Re-encrypted 2 credentials.", output);
@@ -827,7 +786,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         await AssertAllDecryptAsync(_newKey);
     }
 
-    private async Task<(int ExitCode, string Output)> RunApiRotateAsync(string currentKey, string? newKey)
+    private async Task<(int ExitCode, string Output)> RunApiAsync(string? currentKey, string? newKey, bool rotate = true)
     {
         await using (var ownPool = new NpgsqlConnection(_postgres.GetConnectionString()))
             NpgsqlConnection.ClearPool(ownPool);
@@ -839,18 +798,26 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
             RedirectStandardError = true,
         };
         start.ArgumentList.Add(typeof(CredentialsController).Assembly.Location);
-        start.ArgumentList.Add("rotate-encryption-key");
+        if (rotate)
+            start.ArgumentList.Add("rotate-encryption-key");
         start.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
         start.Environment["ConnectionStrings__Db"] = _postgres.GetConnectionString();
         start.Environment["Auth__Authority"] = "http://localhost:1/auth/realms/openksef";
         start.Environment["Auth__RequireHttpsMetadata"] = "false";
-        start.Environment["ENCRYPTION_KEY"] = currentKey;
+        start.Environment["ENCRYPTION_KEY"] = currentKey ?? "";
         start.Environment["ENCRYPTION_KEY_NEW"] = newKey ?? "";
 
         using var process = Process.Start(start)!;
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromMinutes(2)).Token);
+        try
+        {
+            await process.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromMinutes(2)).Token);
+        }
+        finally
+        {
+            process.Kill(entireProcessTree: true);
+        }
         return (process.ExitCode, await stdout + await stderr);
     }
 

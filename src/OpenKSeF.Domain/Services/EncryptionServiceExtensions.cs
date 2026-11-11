@@ -16,14 +16,20 @@ public static class EncryptionServiceExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddScoped<IEncryptionService>(sp =>
+        services.AddScoped<IEncryptionService>(_ =>
         {
-            var rowKey = sp.GetService<ISystemConfigService>()?.GetValue(SystemConfigKeys.EncryptionKey);
+            byte[]? key;
+            try
+            {
+                key = ReadConfiguredKey(configuration, RestoreKeyHint);
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new EncryptionKeyUnavailableException(ex.Message, ex);
+            }
 
-            var key = (rowKey is null ? ReadConfiguredKey(configuration, RestoreKeyHint) : DecodeKey(rowKey))
-                ?? throw new InvalidOperationException($"Encryption key is not configured. {RestoreKeyHint}");
-
-            return new AesGcmEncryptionService(key);
+            return new AesGcmEncryptionService(key
+                ?? throw new EncryptionKeyUnavailableException($"Encryption key is not configured. {RestoreKeyHint}"));
         });
 
         return services;
@@ -72,3 +78,5 @@ public static class EncryptionServiceExtensions
         return key;
     }
 }
+
+public sealed class EncryptionKeyUnavailableException(string message, Exception? inner = null) : InvalidOperationException(message, inner);
