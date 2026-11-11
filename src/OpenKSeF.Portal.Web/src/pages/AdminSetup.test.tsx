@@ -93,6 +93,19 @@ describe('AdminSetupPage', () => {
     expect(byTestId('setup-apply')).not.toBeNull()
   })
 
+  it('refuses a first company NIP with a wrong checksum', async () => {
+    type('setup-kc-pass', 'kc-password')
+    await click('setup-next')
+    await waitFor(() => Boolean(byTestId('setup-admin-email')))
+    type('setup-admin-email', 'jan@firma.pl')
+    type('setup-admin-pass', 'Haslo1234')
+    type('setup-tenant-nip', '1234567890')
+    await click('setup-next')
+
+    expect(container.textContent).toContain('Nieprawidłowy NIP: sprawdź cyfry (błędna suma kontrolna)')
+    expect(byTestId('setup-tenant-nip')).not.toBeNull()
+  })
+
   it('step 4 has no secret field, only the note', async () => {
     type('setup-kc-pass', 'kc-password')
     await click('setup-next')

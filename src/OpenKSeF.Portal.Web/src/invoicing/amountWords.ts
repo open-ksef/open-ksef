@@ -1,3 +1,5 @@
+import { polishPlural } from './format'
+
 const PL_UNITS = ['', 'jeden', 'dwa', 'trzy', 'cztery', 'pięć', 'sześć', 'siedem', 'osiem', 'dziewięć']
 const PL_TEENS = ['dziesięć', 'jedenaście', 'dwanaście', 'trzynaście', 'czternaście', 'piętnaście', 'szesnaście', 'siedemnaście', 'osiemnaście', 'dziewiętnaście']
 const PL_TENS = ['', '', 'dwadzieścia', 'trzydzieści', 'czterdzieści', 'pięćdziesiąt', 'sześćdziesiąt', 'siedemdziesiąt', 'osiemdziesiąt', 'dziewięćdziesiąt']
@@ -21,13 +23,6 @@ const CURRENCY_NAMES: Record<string, { pl: [string, string, string]; en: [string
 }
 
 const MAX_WHOLE_DIGITS = 12
-
-function polishForm<T>(value: number, [one, few, many]: [T, T, T]): T {
-  if (value === 1) return one
-  const lastTwo = value % 100
-  const last = value % 10
-  return lastTwo >= 12 && lastTwo <= 14 ? many : last >= 2 && last <= 4 ? few : many
-}
 
 function polishGroup(value: number): string[] {
   const rest = value % 100
@@ -53,7 +48,7 @@ function polishNumber(whole: number): string {
   const words: string[] = []
   groupsOf(whole).forEach((group, scale) => {
     if (group === 0) return
-    const parts = scale === 0 ? polishGroup(group) : group === 1 ? [PL_SCALES[scale - 1][0]] : [...polishGroup(group), polishForm(group, PL_SCALES[scale - 1])]
+    const parts = scale === 0 ? polishGroup(group) : group === 1 ? [PL_SCALES[scale - 1][0]] : [...polishGroup(group), polishPlural(group, PL_SCALES[scale - 1])]
     words.unshift(...parts)
   })
   return words.join(' ')
@@ -81,7 +76,7 @@ export function amountInWords(amount: string, currency: string): { pl: string; e
   const whole = Number(digits)
   const minor = `${(match[2] ?? '').padEnd(2, '0')}/100`
   const names = CURRENCY_NAMES[currency]
-  const polishName = names ? polishForm(whole, names.pl) : currency
+  const polishName = names ? polishPlural(whole, names.pl) : currency
   const englishName = names ? (whole === 1 ? names.en[0] : names.en[1]) : currency
   return {
     pl: `${polishNumber(whole)} ${polishName} ${minor}`,

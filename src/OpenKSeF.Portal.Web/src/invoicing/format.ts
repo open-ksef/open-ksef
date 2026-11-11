@@ -1,5 +1,12 @@
 import { isValidNrb } from './nrb'
 
+const pluralRules = new Intl.PluralRules('pl-PL')
+
+export function polishPlural<T>(count: number, [one, few, many]: [T, T, T]): T {
+  const rule = pluralRules.select(count)
+  return rule === 'one' ? one : rule === 'few' ? few : many
+}
+
 const moneyFormat = new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })
 
 export function formatAmount(amount: number): string {

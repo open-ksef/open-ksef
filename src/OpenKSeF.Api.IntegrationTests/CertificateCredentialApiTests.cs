@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -353,6 +354,7 @@ public class CertificateCredentialApiTests : IDisposable
         kestrel.StartServer();
         using var client = kestrel.CreateClient();
         client.DefaultRequestHeaders.Authorization = _client.DefaultRequestHeaders.Authorization;
+        client.DefaultRequestHeaders.Add("X-Correlation-ID", "t655-cred");
 
         var response = await client.PostAsJsonAsync($"/api/tenants/{tenantId}/credentials", new
         {
@@ -364,9 +366,35 @@ public class CertificateCredentialApiTests : IDisposable
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<ErrorDto>();
         Assert.Equal("Plik jest za duży. Maksymalny rozmiar to 64 KB.", body!.Error);
+        Assert.Equal("t655-cred", response.Headers.GetValues("X-Correlation-ID").Single());
         Assert.Empty(errors.Entries);
         var status = await _client.GetFromJsonAsync<CredentialStatusDto>($"/api/tenants/{tenantId}/credentials/status");
         Assert.False(status!.Exists);
+    }
+
+    [Fact]
+    public async Task PostTenant_BodyOverServerLimit_Returns413_GenericMessage()
+    {
+        await AuthenticateAsync();
+        using var baseFactory = new OpenKSeFWebApplicationFactory(_fixture);
+        using var kestrel = baseFactory.WithWebHostBuilder(b =>
+            b.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 2 * 1024 * 1024));
+        kestrel.UseKestrel(0);
+        kestrel.StartServer();
+        using var client = kestrel.CreateClient();
+        client.DefaultRequestHeaders.Authorization = _client.DefaultRequestHeaders.Authorization;
+        client.DefaultRequestHeaders.Add("X-Correlation-ID", "t655-generic");
+
+        var response = await client.PostAsJsonAsync("/api/tenants", new
+        {
+            nip = TestNip.New(),
+            displayName = new string('A', 3 * 1024 * 1024)
+        });
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<ErrorDto>();
+        Assert.Equal("Żądanie jest za duże.", body!.Error);
+        Assert.Equal("t655-generic", response.Headers.GetValues("X-Correlation-ID").Single());
     }
 
     [Fact]

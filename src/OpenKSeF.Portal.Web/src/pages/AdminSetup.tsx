@@ -11,6 +11,7 @@ import {
   type SmtpConfig,
 } from '@/api/endpoints/system'
 import { Button } from '@/components/Button'
+import { nipError } from '@/invoicing/nip'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
 
@@ -154,7 +155,8 @@ export function AdminSetupPage(): ReactElement {
     if (!externalUrl) { setError('Adres URL systemu jest wymagany'); return }
     if (!userEmail || !/^\S+@\S+\.\S+$/.test(userEmail)) { setError('Prawidłowy adres e-mail jest wymagany'); return }
     if (!userPassword || userPassword.length < 8) { setError('Hasło musi mieć co najmniej 8 znaków'); return }
-    if (!firstTenantNip || !/^\d{10}$/.test(firstTenantNip)) { setError('NIP musi składać się z 10 cyfr'); return }
+    const invalidNip = nipError(firstTenantNip)
+    if (invalidNip) { setError(invalidNip); return }
     setStep(3)
   }
 

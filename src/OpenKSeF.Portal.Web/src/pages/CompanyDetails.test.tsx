@@ -35,6 +35,7 @@ function Location(): ReactElement {
 describe('Firma, Dane firmy', () => {
   let root: Root
   let container: HTMLDivElement
+  let client: QueryClient
   const by = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
 
   async function settle(): Promise<void> {
@@ -42,7 +43,7 @@ describe('Firma, Dane firmy', () => {
   }
 
   async function render(path = '/company/details?tenantId=a'): Promise<void> {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const router = createMemoryRouter(
       [
         {
@@ -135,6 +136,19 @@ describe('Firma, Dane firmy', () => {
     await act(async () => dialog.querySelector<HTMLElement>('.ui-button--danger')?.click())
     await settle()
     expect(deleteTenant).toHaveBeenCalledExactlyOnceWith('a')
+  })
+
+  it('invalidates every cached query after a delete', async () => {
+    vi.mocked(deleteTenant).mockResolvedValue(undefined)
+    await render()
+    client.setQueryData(['invoices', 'a', 1], { items: [] })
+    client.setQueryData(['issued-feed', 'a'], { items: [] })
+    const dialog = await openDelete()
+    await act(async () => dialog.querySelector<HTMLElement>('.ui-button--danger')?.click())
+    await settle()
+
+    expect(client.getQueryState(['invoices', 'a', 1])?.isInvalidated).toBe(true)
+    expect(client.getQueryState(['issued-feed', 'a'])?.isInvalidated).toBe(true)
   })
 
   it('counts only the company being deleted', async () => {

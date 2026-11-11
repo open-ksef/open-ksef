@@ -408,10 +408,14 @@ app.Use(async (context, next) =>
     }
     catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge && !context.Response.HasStarted)
     {
-        var maxKb = context.Features.Get<IHttpMaxRequestBodySizeFeature>()?.MaxRequestBodySize / 1024;
-        context.Response.Clear();
+        var limit = context.Features.Get<IHttpMaxRequestBodySizeFeature>()?.MaxRequestBodySize;
         context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-        await context.Response.WriteAsJsonAsync(new { error = $"Plik jest za duży. Maksymalny rozmiar to {maxKb} KB." });
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = limit is <= 1024 * 1024
+                ? $"Plik jest za duży. Maksymalny rozmiar to {limit / 1024} KB."
+                : "Żądanie jest za duże."
+        });
     }
 });
 app.UseAuthentication();
