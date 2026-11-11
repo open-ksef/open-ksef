@@ -10,11 +10,9 @@ public interface IKSeFGateway
     Task<KSeFInvoiceQueryResult> QueryInvoicesAsync(KSeFSession session, KSeFQueryCriteria criteria, CancellationToken ct = default);
 
     Task<byte[]> DownloadInvoiceAsync(KSeFSession session, string ksefNumber, CancellationToken ct = default);
-
-    Task TerminateSessionAsync(KSeFSession session, CancellationToken ct = default);
 }
 
-public record KSeFSession(string Token, string ReferenceNumber, DateTime ExpiresAtUtc);
+public record KSeFSession(string Token, DateTime ExpiresAtUtc);
 
 public record KSeFQueryCriteria(
     string SubjectNip,
@@ -26,7 +24,6 @@ public record KSeFQueryCriteria(
 
 public record KSeFInvoiceHeader(
     string KSeFNumber,
-    string ReferenceNumber,
     string? InvoiceNumber,
     string VendorNip,
     string VendorName,
@@ -45,9 +42,6 @@ public record KSeFInvoiceHeader(
 
 public record KSeFInvoiceQueryResult(
     IReadOnlyList<KSeFInvoiceHeader> Invoices,
-    int TotalCount,
-    int PageOffset,
-    int PageSize,
     DateTime? ContinuationAt = null,
     bool IsTruncated = false,
     DateTime? LastRowAt = null);

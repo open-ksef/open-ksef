@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
@@ -23,7 +22,7 @@ public class SellerProfileController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Get(Guid tenantId, CancellationToken ct)
     {
-        if (!await OwnsTenantAsync(tenantId, ct))
+        if (!await db.OwnsTenantAsync(tenantId, currentUser.UserId, ct))
             return NotFound();
 
         var view = await sellerProfiles.GetAsync(tenantId, ct);
@@ -37,7 +36,7 @@ public class SellerProfileController(
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Put(Guid tenantId, SellerProfileRequest request, CancellationToken ct)
     {
-        if (!await OwnsTenantAsync(tenantId, ct))
+        if (!await db.OwnsTenantAsync(tenantId, currentUser.UserId, ct))
             return NotFound();
 
         try
@@ -61,9 +60,6 @@ public class SellerProfileController(
             return Conflict(new { message = e.Message });
         }
     }
-
-    private Task<bool> OwnsTenantAsync(Guid tenantId, CancellationToken ct) =>
-        db.Tenants.AnyAsync(t => t.Id == tenantId && t.UserId == currentUser.UserId, ct);
 
     private static ValidationEnvelope ToEnvelope(IReadOnlyList<InvoiceCheck> errors) =>
         new(errors.Select(e => new ValidationIssue(e.Code, e.Field, e.Message)).ToList(), []);

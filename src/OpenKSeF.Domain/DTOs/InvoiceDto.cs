@@ -4,7 +4,6 @@ namespace OpenKSeF.Domain.DTOs;
 
 public record InvoiceDto(
     string Number,
-    string ReferenceNumber,
     string? InvoiceNumber,
     string VendorName,
     string VendorNip,

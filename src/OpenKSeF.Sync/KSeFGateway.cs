@@ -55,7 +55,6 @@ public sealed class KSeFGateway : IKSeFGateway
 
         return new KSeFSession(
             Token: authResult.AccessToken.Token,
-            ReferenceNumber: string.Empty,
             ExpiresAtUtc: authResult.AccessToken.ValidUntil.UtcDateTime);
     }
 
@@ -91,12 +90,10 @@ public sealed class KSeFGateway : IKSeFGateway
         var invoices = result.Invoices?.Select(MapInvoice).ToList()
             ?? new List<KSeFInvoiceHeader>();
 
-        var totalCount = invoices.Count + (result.HasMore ? criteria.PageSize : 0);
-
         var lastRowAt = result.Invoices?.LastOrDefault()?.PermanentStorageDate.UtcDateTime;
         var continuationAt = result.IsTruncated ? lastRowAt : result.PermanentStorageHwmDate?.UtcDateTime;
 
-        return new KSeFInvoiceQueryResult(invoices, totalCount, criteria.PageOffset, criteria.PageSize, continuationAt, result.IsTruncated, lastRowAt);
+        return new KSeFInvoiceQueryResult(invoices, continuationAt, result.IsTruncated, lastRowAt);
     }
 
     public async Task<byte[]> DownloadInvoiceAsync(
@@ -106,12 +103,6 @@ public sealed class KSeFGateway : IKSeFGateway
         return Encoding.UTF8.GetBytes(xml);
     }
 
-    public Task TerminateSessionAsync(KSeFSession session, CancellationToken ct = default)
-    {
-        _logger.LogInformation("KSeF session released (token-based auth, no explicit close needed)");
-        return Task.CompletedTask;
-    }
-
     private static KSeFInvoiceHeader MapInvoice(InvoiceSummary inv)
     {
         var buyerId = inv.Buyer?.Identifier;
@@ -119,7 +110,6 @@ public sealed class KSeFGateway : IKSeFGateway
 
         return new(
             KSeFNumber: inv.KsefNumber ?? string.Empty,
-            ReferenceNumber: inv.KsefNumber ?? string.Empty,
             InvoiceNumber: inv.InvoiceNumber,
             VendorNip: inv.Seller?.Nip ?? string.Empty,
             VendorName: CutName(inv.Seller?.Name) ?? string.Empty,

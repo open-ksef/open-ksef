@@ -117,7 +117,7 @@ public class TenantsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Delete(Guid id)
     {
-        if (!await _db.Tenants.AnyAsync(t => t.Id == id && t.UserId == _currentUser.UserId))
+        if (!await _db.OwnsTenantAsync(id, _currentUser.UserId))
             return NotFound();
 
         try

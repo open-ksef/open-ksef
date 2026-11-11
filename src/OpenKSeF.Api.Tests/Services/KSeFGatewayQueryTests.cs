@@ -14,7 +14,7 @@ namespace OpenKSeF.Api.Tests.Services;
 
 public class KSeFGatewayQueryTests
 {
-    private static readonly KSeFSession Session = new("token", string.Empty, DateTime.UtcNow.AddHours(1));
+    private static readonly KSeFSession Session = new("token", DateTime.UtcNow.AddHours(1));
     private static readonly DateTime From = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime To = new(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc);
 

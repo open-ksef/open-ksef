@@ -108,7 +108,7 @@ public class CredentialsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> AddOrUpdate(Guid tenantId, [FromBody] AddCredentialRequest request)
     {
-        if (!await VerifyTenantOwnership(tenantId))
+        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
             return Forbid();
 
         var now = DateTime.UtcNow;
@@ -201,7 +201,7 @@ public class CredentialsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid tenantId)
     {
-        if (!await VerifyTenantOwnership(tenantId))
+        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
             return Forbid();
 
         var existing = await _db.KSeFCredentials
@@ -222,7 +222,7 @@ public class CredentialsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Status(Guid tenantId)
     {
-        if (!await VerifyTenantOwnership(tenantId))
+        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
             return Forbid();
 
         var credential = await _db.KSeFCredentials
@@ -306,12 +306,6 @@ public class CredentialsController : ControllerBase
             IssuedNewInvoices: result.IssuedNewInvoices)),
         _ => StatusCode(StatusCodes.Status500InternalServerError, new { error = "Unknown sync outcome." })
     };
-
-    private async Task<bool> VerifyTenantOwnership(Guid tenantId)
-    {
-        return await _db.Tenants
-            .AnyAsync(t => t.Id == tenantId && t.UserId == _currentUser.UserId);
-    }
 
     private static (X509Certificate2 cert, string base64ForStorage) LoadCertificate(AddCredentialRequest request)
     {

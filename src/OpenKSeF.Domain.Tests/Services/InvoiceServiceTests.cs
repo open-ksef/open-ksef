@@ -1,4 +1,7 @@
+using System.Data.Common;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -29,6 +32,7 @@ public class InvoiceServiceTests : IDisposable
 
         Assert.Single(newIds);
         Assert.Equal(0, _notifications.Count);
+        Assert.Equal("KSEF-1", (await _db.InvoiceHeaders.SingleAsync()).KSeFReferenceNumber);
     }
 
     [Theory]
@@ -142,6 +146,35 @@ public class InvoiceServiceTests : IDisposable
 
         Assert.Equal(11, throwing.Attempts);
         Assert.Equal(12, await _db.InvoiceHeaders.CountAsync());
+    }
+
+    [Fact]
+    public async Task UpsertInvoicesAsync_PageOfExistingAndNew_LoadsExistingRowsInOneSelect()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var selects = new SelectCounter();
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .AddInterceptors(selects)
+            .Options);
+        await db.Database.EnsureCreatedAsync();
+        var sut = new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance);
+        var tenantId = Guid.NewGuid();
+        db.Tenants.Add(new Entities.Tenant { Id = tenantId, UserId = "user-1", Nip = "1111111111", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+        var existing = Enumerable.Range(0, 3).Select(i => CreateInvoice() with { Number = $"KSEF-{i}" }).ToList();
+        await sut.UpsertInvoicesAsync(tenantId, existing);
+        db.ChangeTracker.Clear();
+        selects.Count = 0;
+
+        var newIds = await sut.UpsertInvoicesAsync(tenantId, [.. existing.Select(i => i with { VendorName = "Vendor 2" }), CreateInvoice() with { Number = "KSEF-NEW" }]);
+
+        Assert.Equal(1, selects.Count);
+        Assert.Single(newIds);
+        db.ChangeTracker.Clear();
+        Assert.Equal(4, await db.InvoiceHeaders.CountAsync(i => i.TenantId == tenantId));
+        Assert.Equal(3, await db.InvoiceHeaders.CountAsync(i => i.VendorName == "Vendor 2"));
     }
 
     [Fact]
@@ -302,7 +335,6 @@ public class InvoiceServiceTests : IDisposable
 
     private static InvoiceDto CreateInvoice() => new(
         Number: "KSEF-1",
-        ReferenceNumber: "REF-1",
         InvoiceNumber: "FV/1",
         VendorName: "Vendor",
         VendorNip: "1234567890",
@@ -317,6 +349,19 @@ public class InvoiceServiceTests : IDisposable
         InvoiceType: "VAT");
 
     public void Dispose() => _db.Dispose();
+
+    private sealed class SelectCounter : DbCommandInterceptor
+    {
+        public int Count { get; set; }
+
+        public override ValueTask<DbDataReader> ReaderExecutedAsync(
+            DbCommand command, CommandExecutedEventData eventData, DbDataReader result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+                Count++;
+            return base.ReaderExecutedAsync(command, eventData, result, cancellationToken);
+        }
+    }
 
     private sealed class RecordingNotificationService : INotificationService
     {

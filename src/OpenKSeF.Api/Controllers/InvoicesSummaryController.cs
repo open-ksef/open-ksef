@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
-using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
@@ -41,7 +40,7 @@ public class InvoicesSummaryController : ControllerBase
 
         var userTenantIds = UserTenantIds();
 
-        if (tenantId.HasValue && !await IsTenantOwnedByCurrentUser(tenantId.Value))
+        if (tenantId.HasValue && !await _db.OwnsTenantAsync(tenantId.Value, _currentUser.UserId))
             return Forbid();
 
         var query = _db.InvoiceHeaders
@@ -69,7 +68,7 @@ public class InvoicesSummaryController : ControllerBase
             .ThenBy(i => i.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(ToInvoiceResponse())
+            .Select(InvoiceResponse.Projection)
             .ToListAsync();
 
         return Ok(new PagedResult<InvoiceResponse>
@@ -89,7 +88,7 @@ public class InvoicesSummaryController : ControllerBase
         string ksefInvoiceNumber,
         [FromQuery] Guid? tenantId = null)
     {
-        if (tenantId.HasValue && !await IsTenantOwnedByCurrentUser(tenantId.Value))
+        if (tenantId.HasValue && !await _db.OwnsTenantAsync(tenantId.Value, _currentUser.UserId))
             return Forbid();
 
         var userTenantIds = UserTenantIds();
@@ -105,73 +104,11 @@ public class InvoicesSummaryController : ControllerBase
 
         var invoice = await headerQuery.FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(ToDetailResponse(invoice));
+        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice));
     }
 
     private IQueryable<Guid> UserTenantIds() =>
         _db.Tenants
             .Where(t => t.UserId == _currentUser.UserId)
             .Select(t => t.Id);
-
-    private async Task<bool> IsTenantOwnedByCurrentUser(Guid tenantId) =>
-        await _db.Tenants.AnyAsync(t => t.Id == tenantId && t.UserId == _currentUser.UserId);
-
-    private static System.Linq.Expressions.Expression<Func<InvoiceHeader, InvoiceResponse>> ToInvoiceResponse() =>
-        i => new InvoiceResponse(
-            i.Id,
-            i.KSeFInvoiceNumber,
-            i.KSeFReferenceNumber,
-            i.InvoiceNumber,
-            i.VendorName,
-            i.VendorNip,
-            i.BuyerName,
-            i.BuyerNip,
-            i.AmountNet,
-            i.AmountVat,
-            i.AmountGross,
-            i.Currency,
-            i.IssueDate,
-            i.AcquisitionDate,
-            i.InvoiceType,
-            i.FirstSeenAt,
-            i.IsPaid,
-            i.PaidAt,
-            i.VendorBankAccount,
-            null,
-            i.DueDate,
-            i.Direction.ToString(),
-            i.BuyerIdType,
-            i.BuyerForeignId);
-
-    private static InvoiceResponse ToDetailResponse(InvoiceHeader i) => new(
-        i.Id,
-        i.KSeFInvoiceNumber,
-        i.KSeFReferenceNumber,
-        i.InvoiceNumber,
-        i.VendorName,
-        i.VendorNip,
-        i.BuyerName,
-        i.BuyerNip,
-        i.AmountNet,
-        i.AmountVat,
-        i.AmountGross,
-        i.Currency,
-        i.IssueDate,
-        i.AcquisitionDate,
-        i.InvoiceType,
-        i.FirstSeenAt,
-        i.IsPaid,
-        i.PaidAt,
-        i.VendorBankAccount,
-        Lines: i.Lines
-            .OrderBy(l => l.LineNumber)
-            .Select(l => new InvoiceLineResponse(
-                l.LineNumber, l.Name, l.Unit, l.Quantity,
-                l.UnitPriceNet, l.UnitPriceGross,
-                l.AmountNet, l.AmountGross, l.AmountVat, l.VatRate))
-            .ToList(),
-        DueDate: i.DueDate,
-        Direction: i.Direction.ToString(),
-        BuyerIdType: i.BuyerIdType,
-        BuyerForeignId: i.BuyerForeignId);
 }

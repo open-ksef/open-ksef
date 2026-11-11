@@ -226,7 +226,7 @@ public class IssuedInvoicesController(
 
     private async Task<IActionResult> GuardedAsync(Guid tenantId, int validationStatus, Func<Task<IActionResult>> action)
     {
-        if (!await db.Tenants.AnyAsync(t => t.Id == tenantId && t.UserId == currentUser.UserId, HttpContext.RequestAborted))
+        if (!await db.OwnsTenantAsync(tenantId, currentUser.UserId, HttpContext.RequestAborted))
             return NotFound();
 
         try
