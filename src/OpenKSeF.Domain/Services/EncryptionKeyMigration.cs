@@ -71,7 +71,18 @@ public static class EncryptionKeyMigration
             var credentials = db.Database.IsNpgsql()
                 ? db.KSeFCredentials.FromSqlRaw("""SELECT * FROM "KSeFCredentials" FOR UPDATE""")
                 : db.KSeFCredentials;
-            var count = await ReEncryptTrackedAsync(credentials, rowKey, configuredKey, ct);
+            int count;
+            try
+            {
+                count = await ReEncryptTrackedAsync(credentials, rowKey, configuredKey, ct);
+            }
+            catch (Exception ex) when (IsTimeout(ex))
+            {
+                logger.LogCritical(ex,
+                    "Moving the encryption key out of the database timed out waiting for a lock on KSeFCredentials. Nothing changed. " +
+                    "Find the lock holder with the query at https://open-ksef.pl/docs/admin-setup/#blokada-przy-przenoszeniu-klucza and restart API and Worker.");
+                return true;
+            }
             db.SystemConfigs.Remove(row);
             await db.SaveChangesAsync(ct);
             if (transaction is not null)

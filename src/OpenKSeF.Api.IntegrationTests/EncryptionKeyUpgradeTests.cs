@@ -509,7 +509,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task HeldCredentialLock_AdoptionTimesOut_LogsGenericCritical_ChangesNothing()
+    public async Task HeldCredentialLock_AdoptionTimesOut_LogsCredentialLockCritical_ChangesNothing()
     {
         await SeedAsync(_oldKey, withRow: true);
         var before = await CiphertextAsync();
@@ -525,7 +525,8 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         Assert.True(await RowExistsAsync());
         Assert.Equal(before, await CiphertextAsync());
         Assert.StartsWith(
-            "Moving the encryption key out of the database failed, nothing changed.",
+            "Moving the encryption key out of the database timed out waiting for a lock on KSeFCredentials. Nothing changed. " +
+            "Find the lock holder with the query at https://open-ksef.pl/docs/admin-setup/#blokada-przy-przenoszeniu-klucza and restart API and Worker.",
             Assert.Single(_logs.Entries, e => e.Level == LogLevel.Critical).Text);
     }
 
