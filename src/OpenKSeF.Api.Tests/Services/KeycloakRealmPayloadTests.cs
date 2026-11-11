@@ -56,6 +56,17 @@ public class KeycloakRealmPayloadTests
         Assert.Equal(expected, result.Error);
     }
 
+    [Fact]
+    public async Task ApplySetup_KeycloakUnreachable_ReturnsPolishConnectionMessage()
+    {
+        _keycloak.Unreachable = true;
+
+        var result = await CreateSetupService(Substitute.For<ISystemConfigService>(), ValidKey).ApplySetupAsync(NewSetupRequest(), "token", "admin");
+
+        Assert.False(result.Success);
+        Assert.Equal(SystemSetupService.KeycloakUnreachableMessage, result.Error);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -314,6 +325,8 @@ public class KeycloakRealmPayloadTests
 
         public string? WriteFailureBody { get; set; }
 
+        public bool Unreachable { get; set; }
+
         public JsonElement Body(HttpMethod method, string url) => Assert.Single(Bodies(method, url));
 
         public List<JsonElement> Bodies(HttpMethod method, string url, bool prefix = false) => _requests
@@ -326,6 +339,8 @@ public class KeycloakRealmPayloadTests
             var url = request.RequestUri!.ToString();
             var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
             _requests.Add((request.Method, url, body));
+            if (Unreachable)
+                throw new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (keycloak:8080)");
 
             if (request.Method != HttpMethod.Get)
                 return WriteFailureBody is null ? new HttpResponseMessage(HttpStatusCode.NoContent)

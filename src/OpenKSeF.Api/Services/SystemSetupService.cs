@@ -27,6 +27,7 @@ public sealed class SystemSetupService : ISystemSetupService
     public const string KeycloakPasswordPolicyMessage =
         "Hasło nie spełnia wymagań Keycloak (zasady haseł realmu). Użyj dłuższego hasła z wielkimi i małymi literami, cyfrą i znakiem specjalnym.";
     public const string KeycloakRejectedMessage = "Keycloak odrzucił konfigurację. Szczegóły są w logu API.";
+    public const string KeycloakUnreachableMessage = "Nie można połączyć się z Keycloak. Sprawdź, czy działa, i spróbuj ponownie.";
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
@@ -236,6 +237,7 @@ public sealed class SystemSetupService : ISystemSetupService
             {
                 HttpRequestException when ex.Message.Contains("invalidPassword", StringComparison.OrdinalIgnoreCase)
                     || ex.Message.Contains("password policy", StringComparison.OrdinalIgnoreCase) => KeycloakPasswordPolicyMessage,
+                HttpRequestException { StatusCode: null } => KeycloakUnreachableMessage,
                 HttpRequestException => KeycloakRejectedMessage,
                 _ => ex.Message,
             });
