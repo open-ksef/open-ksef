@@ -17,6 +17,7 @@ public sealed class SystemConfigService : ISystemConfigService
     private readonly IConfiguration _configuration;
     private readonly ILogger<SystemConfigService> _logger;
     private ConcurrentDictionary<string, string> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private ConcurrentDictionary<string, byte> _undecryptable = new(StringComparer.OrdinalIgnoreCase);
     private volatile bool _cacheLoaded;
 
     private static readonly Dictionary<string, string> EnvVarMapping = new(StringComparer.OrdinalIgnoreCase)
@@ -66,6 +67,12 @@ public sealed class SystemConfigService : ISystemConfigService
         return null;
     }
 
+    public bool CannotDecrypt(string key)
+    {
+        EnsureCacheLoaded();
+        return _undecryptable.ContainsKey(key);
+    }
+
     public async Task SetValueAsync(string key, string value, CancellationToken cancellationToken = default)
     {
         await SetValuesAsync(new Dictionary<string, string> { [key] = value }, cancellationToken);
@@ -102,7 +109,10 @@ public sealed class SystemConfigService : ISystemConfigService
         await db.SaveChangesAsync(cancellationToken);
 
         foreach (var (key, value) in values)
+        {
             _cache[key] = value;
+            _undecryptable.TryRemove(key, out _);
+        }
     }
 
     private string Protect(string key, string value)
@@ -173,6 +183,7 @@ public sealed class SystemConfigService : ISystemConfigService
     private ConcurrentDictionary<string, string> BuildCache(List<SystemConfig> entries)
     {
         var cache = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var undecryptable = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
         AesGcmEncryptionService? encryption = null;
         foreach (var entry in entries)
         {
@@ -194,10 +205,13 @@ public sealed class SystemConfigService : ISystemConfigService
             }
             catch (Exception ex) when (ex is CryptographicException or InvalidOperationException)
             {
-                _logger.LogCritical("System config {Key} cannot be decrypted and is ignored. {Hint}", entry.Key, EncryptionServiceExtensions.RestoreKeyHint);
+                undecryptable[entry.Key] = 0;
+                if (!_undecryptable.ContainsKey(entry.Key))
+                    _logger.LogCritical("System config {Key} cannot be decrypted and is ignored. {Hint}", entry.Key, EncryptionServiceExtensions.RestoreKeyHint);
             }
         }
 
+        _undecryptable = undecryptable;
         return cache;
     }
 
