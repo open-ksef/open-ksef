@@ -30,7 +30,7 @@ describe('Third-party notices', () => {
     expect(notices).toContain('SIL OPEN FONT LICENSE Version 1.1')
     expect(notices).toContain('Copyright 2011 The Roboto Project Authors')
     expect(notices).toContain('END OF TERMS AND CONDITIONS')
-    for (const name of ['pdfmake 0.3.11', 'i18next 25.8.4', 'xml-js 1.6.11', 'pdfkit 0.19.1', 'fontkit 2.0.4', 'sax 1.6.0']) {
+    for (const name of ['pdfmake 0.3.11', 'i18next 25.8.4', 'xml-js 1.6.11', 'pdfkit 0.19.1', 'fontkit 2.0.4', 'sax 1.6.1']) {
       expect(notices).toContain(`\n${name}\n`)
     }
   })
