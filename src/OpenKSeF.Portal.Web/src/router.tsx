@@ -5,6 +5,7 @@ import { CompanyProvider } from '@/company/CompanyProvider'
 import { Layout } from '@/components/Layout'
 import { Moved } from '@/components/Moved'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
+import { RouteError } from '@/components/RouteError'
 import { loadRoute } from '@/loadRoute'
 import { Callback } from '@/pages/Callback'
 import { CompanyDetailsPage } from '@/pages/CompanyDetails'
@@ -21,6 +22,7 @@ import { StartPage } from '@/pages/Start'
 export const appRoutes: RouteObject[] = [
   {
     hydrateFallbackElement: <main>Ładowanie…</main>,
+    errorElement: <RouteError />,
     children: [
       {
         path: '/',
