@@ -36,7 +36,9 @@ public class FcmPushProvider : IPushProvider
 
         var message = new Message
         {
+#pragma warning disable CS0618
             Token = deviceToken,
+#pragma warning restore CS0618
             Notification = new Notification
             {
                 Title = notification.Title,
