@@ -278,6 +278,48 @@ public class SystemConfigServiceTests : IDisposable
         Assert.Equal("https://example.test", service.GetValue(SystemConfigKeys.ExternalBaseUrl));
     }
 
+    private string RawValue(string key)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().SystemConfigs.AsNoTracking().Single(c => c.Key == key).Value;
+    }
+
+    [Fact]
+    public async Task SetSecret_StoresEnc_ReadsPlaintext_AfterReload()
+    {
+        var service = await ServiceWithRowsAsync(Key);
+
+        await service.SetValuesAsync(new Dictionary<string, string>
+        {
+            [SystemConfigKeys.PushRelayApiKey] = "relay-key",
+            [SystemConfigKeys.GoogleClientSecret] = "",
+            [SystemConfigKeys.ExternalBaseUrl] = "https://example.test",
+        });
+
+        var raw = RawValue(SystemConfigKeys.PushRelayApiKey);
+        Assert.StartsWith(SystemConfigKeys.EncryptedPrefix, raw);
+        Assert.Equal("relay-key", new AesGcmEncryptionService(Convert.FromBase64String(Key)).Decrypt(raw[SystemConfigKeys.EncryptedPrefix.Length..]));
+        Assert.Equal("", RawValue(SystemConfigKeys.GoogleClientSecret));
+        Assert.Equal("https://example.test", RawValue(SystemConfigKeys.ExternalBaseUrl));
+        Assert.Equal("relay-key", service.GetValue(SystemConfigKeys.PushRelayApiKey));
+        await service.RefreshCacheAsync();
+        Assert.Equal("relay-key", service.GetValue(SystemConfigKeys.PushRelayApiKey));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("not-base64")]
+    public async Task SetSecret_NoUsableKey_StoresPlaintext(string? encryptionKey)
+    {
+        var service = await ServiceWithRowsAsync(encryptionKey);
+
+        await service.SetValueAsync(SystemConfigKeys.PushRelayApiKey, "relay-key");
+
+        Assert.Equal("relay-key", RawValue(SystemConfigKeys.PushRelayApiKey));
+        await service.RefreshCacheAsync();
+        Assert.Equal("relay-key", service.GetValue(SystemConfigKeys.PushRelayApiKey));
+    }
+
     [Fact]
     public async Task NonSecretWithPrefix_StaysLiteral()
     {

@@ -175,8 +175,208 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
 
     private void AssertNoSecretsLogged()
     {
-        foreach (var secret in new[] { OldKey, NewKey, MalformedKey, Token, Certificate })
+        foreach (var secret in new[] { OldKey, NewKey, MalformedKey, Token, Certificate, RelayKey, ClientSecret })
             Assert.DoesNotContain(_logs.Entries, e => e.Text.Contains(secret));
+    }
+
+    private const string RelayKey = "relay-api-key-plaintext";
+    private const string ClientSecret = "client-secret-plaintext";
+    private const string Firebase = "{\"type\":\"service_account\"}";
+
+    private async Task SeedSecretsAsync(byte[] firebaseKey)
+    {
+        await using var db = NewContext();
+        db.SystemConfigs.AddRange(
+            new SystemConfig { Key = SystemConfigKeys.PushRelayApiKey, Value = RelayKey, UpdatedAt = Now },
+            new SystemConfig { Key = SystemConfigKeys.ApiClientSecret, Value = ClientSecret, UpdatedAt = Now },
+            new SystemConfig { Key = SystemConfigKeys.FirebaseCredentialsJson, Value = Encrypted(firebaseKey, Firebase), UpdatedAt = Now },
+            new SystemConfig { Key = SystemConfigKeys.GoogleClientSecret, Value = "", UpdatedAt = Now },
+            new SystemConfig { Key = SystemConfigKeys.ExternalBaseUrl, Value = "https://example.test", UpdatedAt = Now });
+        await db.SaveChangesAsync();
+    }
+
+    private static string Encrypted(byte[] key, string plaintext) =>
+        SystemConfigKeys.EncryptedPrefix + new AesGcmEncryptionService(key).Encrypt(plaintext);
+
+    private async Task<string> RawAsync(string key)
+    {
+        await using var db = NewContext();
+        return (await db.SystemConfigs.AsNoTracking().SingleAsync(c => c.Key == key)).Value;
+    }
+
+    private async Task AssertSecretsDecryptAsync(byte[] key)
+    {
+        var encryption = new AesGcmEncryptionService(key);
+        foreach (var (name, plaintext) in new[] { (SystemConfigKeys.PushRelayApiKey, RelayKey), (SystemConfigKeys.ApiClientSecret, ClientSecret), (SystemConfigKeys.FirebaseCredentialsJson, Firebase) })
+        {
+            var raw = await RawAsync(name);
+            Assert.StartsWith(SystemConfigKeys.EncryptedPrefix, raw);
+            Assert.Equal(plaintext, encryption.Decrypt(raw[SystemConfigKeys.EncryptedPrefix.Length..]));
+        }
+        Assert.Equal("", await RawAsync(SystemConfigKeys.GoogleClientSecret));
+        Assert.Equal("https://example.test", await RawAsync(SystemConfigKeys.ExternalBaseUrl));
+    }
+
+    [Fact]
+    public async Task StartupPass_EncryptsPlaintextSecrets_LeavesEncryptedAndEmpty_SecondRunNoOp()
+    {
+        await SeedAsync(_newKey, withRow: false);
+        await SeedSecretsAsync(_newKey);
+        var firebaseBefore = await RawAsync(SystemConfigKeys.FirebaseCredentialsJson);
+
+        Assert.True(await AdoptAsync(NewKey));
+
+        await AssertSecretsDecryptAsync(_newKey);
+        Assert.Equal(firebaseBefore, await RawAsync(SystemConfigKeys.FirebaseCredentialsJson));
+        var info = Assert.Single(_logs.Entries, e => e.Text.Contains("system config secrets encrypted"));
+        Assert.Contains(SystemConfigKeys.PushRelayApiKey, info.Text);
+        Assert.DoesNotContain(_logs.Entries, e => e.Level >= LogLevel.Warning);
+        AssertNoSecretsLogged();
+
+        var afterFirst = await SystemConfigsAsync();
+        Assert.True(await AdoptAsync(NewKey));
+        Assert.Equal(afterFirst, await SystemConfigsAsync());
+        Assert.Single(_logs.Entries, e => e.Text.Contains("system config secrets encrypted"));
+
+        await using var host = await StartHostAsync(NewKey);
+        var config = host.GetRequiredService<ISystemConfigService>();
+        Assert.Equal(RelayKey, config.GetValue(SystemConfigKeys.PushRelayApiKey));
+        Assert.Equal(ClientSecret, config.GetValue(SystemConfigKeys.ApiClientSecret));
+        Assert.Equal(Firebase, config.GetValue(SystemConfigKeys.FirebaseCredentialsJson));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(MalformedKey)]
+    public async Task StartupPass_NoUsableKey_KeepsPlaintext_AndWarnsWithKeyNamesOnly(string? configuredKey)
+    {
+        await SeedAsync(_newKey, withRow: false);
+        await SeedSecretsAsync(_newKey);
+        var before = await SystemConfigsAsync();
+
+        Assert.True(await AdoptAsync(configuredKey));
+
+        Assert.Equal(before, await SystemConfigsAsync());
+        var warning = Assert.Single(_logs.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("stay in plaintext", warning.Text);
+        Assert.Contains(SystemConfigKeys.ApiClientSecret, warning.Text);
+        AssertNoSecretsLogged();
+    }
+
+    [Fact]
+    public async Task StartupPass_TwoHostsConcurrently_EncryptOnce()
+    {
+        await SeedAsync(_newKey, withRow: false);
+        await SeedSecretsAsync(_newKey);
+
+        for (var round = 0; round < 10; round++)
+        {
+            if (round > 0)
+            {
+                await using var reset = NewContext();
+                (await reset.SystemConfigs.SingleAsync(c => c.Key == SystemConfigKeys.PushRelayApiKey)).Value = RelayKey;
+                (await reset.SystemConfigs.SingleAsync(c => c.Key == SystemConfigKeys.ApiClientSecret)).Value = ClientSecret;
+                await reset.SaveChangesAsync();
+            }
+
+            var logs = new ListLogger();
+            await Task.WhenAll(
+                Task.Run(() => PassWithSlowSaveAsync(logs)),
+                Task.Run(() => PassWithSlowSaveAsync(logs)));
+
+            await AssertSecretsDecryptAsync(_newKey);
+            Assert.DoesNotContain(logs.Entries, e => e.Level >= LogLevel.Warning);
+            Assert.Single(logs.Entries, e => e.Text.Contains("system config secrets encrypted"));
+        }
+    }
+
+    private async Task PassWithSlowSaveAsync(ILogger logger)
+    {
+        await using var db = NewContext(new BeforeSave(() => Task.Delay(50)));
+        await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), logger);
+    }
+
+    [Fact]
+    public async Task StartupPass_WizardWriteDuringPass_IsKept()
+    {
+        const string newRelayKey = "relay-api-key-new";
+        await SeedAsync(_newKey, withRow: false);
+        await SeedSecretsAsync(_newKey);
+        await using var host = await StartHostAsync(NewKey);
+        Task? write = null;
+        var writeWaited = false;
+
+        await using (var db = NewContext(new BeforeSave(async () =>
+        {
+            write = Task.Run(() => host.GetRequiredService<ISystemConfigService>().SetValueAsync(SystemConfigKeys.PushRelayApiKey, newRelayKey));
+            await WaitUntilBlockedOrDoneAsync(write);
+            writeWaited = !write.IsCompleted;
+        })))
+            Assert.True(await EncryptionKeyMigration.AdoptConfiguredKeyAsync(db, Config(NewKey), _logs));
+        await write!;
+
+        Assert.True(writeWaited);
+        Assert.Contains(_logs.Entries, e => e.Text.Contains("2 system config secrets encrypted"));
+
+        var raw = await RawAsync(SystemConfigKeys.PushRelayApiKey);
+        Assert.Equal(newRelayKey, new AesGcmEncryptionService(_newKey).Decrypt(raw[SystemConfigKeys.EncryptedPrefix.Length..]));
+    }
+
+    [Fact]
+    public async Task Adoption_ReEncryptsSecretRows_UnderTheConfiguredKey()
+    {
+        await SeedAsync(_oldKey, withRow: true);
+        await SeedSecretsAsync(_oldKey);
+
+        Assert.True(await AdoptAsync(NewKey));
+
+        Assert.False(await RowExistsAsync());
+        await AssertSecretsDecryptAsync(_newKey);
+        Assert.Contains(_logs.Entries, e => e.Text.Contains("2 credentials and 3 system config secrets re-encrypted"));
+        Assert.DoesNotContain(_logs.Entries, e => e.Level >= LogLevel.Error);
+        AssertNoSecretsLogged();
+    }
+
+    [Fact]
+    public async Task RotateCommand_ReEncryptsSecretRows_AndReRunIsIdempotent()
+    {
+        await SeedAsync(_oldKey, withRow: false);
+        await SeedSecretsAsync(_oldKey);
+        var output = new StringWriter();
+
+        await using (var db = NewContext())
+            Assert.Equal(0, await EncryptionKeyMigration.RunRotateCommandAsync(db, Config(OldKey, NewKey), output));
+
+        Assert.Equal("Re-encrypted 2 credentials and 3 system config secrets.", output.ToString().Trim());
+        await AssertSecretsDecryptAsync(_newKey);
+        var afterFirst = await SystemConfigsAsync();
+        await using (var db = NewContext())
+            Assert.Equal((0, 0), await EncryptionKeyMigration.RotateAsync(db, _oldKey, _newKey));
+        Assert.Equal(afterFirst, await SystemConfigsAsync());
+
+        await using var host = await StartHostAsync(NewKey);
+        Assert.Equal(RelayKey, host.GetRequiredService<ISystemConfigService>().GetValue(SystemConfigKeys.PushRelayApiKey));
+    }
+
+    [Fact]
+    public async Task SetValues_StoresSecretAsEnc_ReadsPlaintext()
+    {
+        await SeedAsync(_newKey, withRow: false);
+        await using (var host = await StartHostAsync(NewKey))
+            await host.GetRequiredService<ISystemConfigService>().SetValuesAsync(new Dictionary<string, string>
+            {
+                [SystemConfigKeys.PushRelayApiKey] = RelayKey,
+                [SystemConfigKeys.GoogleClientSecret] = "",
+                [SystemConfigKeys.ExternalBaseUrl] = "https://example.test",
+            });
+
+        var raw = await RawAsync(SystemConfigKeys.PushRelayApiKey);
+        Assert.StartsWith(SystemConfigKeys.EncryptedPrefix, raw);
+        Assert.DoesNotContain(RelayKey, raw);
+        Assert.Equal("", await RawAsync(SystemConfigKeys.GoogleClientSecret));
+        Assert.Equal("https://example.test", await RawAsync(SystemConfigKeys.ExternalBaseUrl));
+        await using var restarted = await StartHostAsync(NewKey);
+        Assert.Equal(RelayKey, restarted.GetRequiredService<ISystemConfigService>().GetValue(SystemConfigKeys.PushRelayApiKey));
     }
 
     [Fact]
@@ -614,12 +814,12 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         await SeedAsync(_oldKey, withRow: false);
 
         await using (var db = NewContext())
-            Assert.Equal(2, await EncryptionKeyMigration.RotateAsync(db, _oldKey, _newKey));
+            Assert.Equal((2, 0), await EncryptionKeyMigration.RotateAsync(db, _oldKey, _newKey));
         await AssertAllDecryptAsync(_newKey);
         var afterFirst = await CiphertextAsync();
 
         await using (var db = NewContext())
-            Assert.Equal(0, await EncryptionKeyMigration.RotateAsync(db, _oldKey, _newKey));
+            Assert.Equal((0, 0), await EncryptionKeyMigration.RotateAsync(db, _oldKey, _newKey));
         Assert.Equal(afterFirst, await CiphertextAsync());
     }
 
@@ -633,7 +833,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         var exitCode = await EncryptionKeyMigration.RunRotateCommandAsync(db, Config(OldKey, NewKey), output);
 
         Assert.Equal(0, exitCode);
-        Assert.Equal("Re-encrypted 2 credentials.", output.ToString().Trim());
+        Assert.Equal("Re-encrypted 2 credentials and 0 system config secrets.", output.ToString().Trim());
         await AssertAllDecryptAsync(_newKey);
     }
 
@@ -832,7 +1032,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         var (exitCode, output) = await RunApiAsync(OldKey, NewKey);
 
         Assert.True(exitCode == 0, output);
-        Assert.Contains("Re-encrypted 2 credentials.", output);
+        Assert.Contains("Re-encrypted 2 credentials and 0 system config secrets.", output);
         Assert.DoesNotContain(OldKey, output);
         Assert.DoesNotContain(NewKey, output);
         await AssertAllDecryptAsync(_newKey);
