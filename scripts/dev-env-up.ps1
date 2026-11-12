@@ -101,7 +101,7 @@ Get-Content $envTestFile | ForEach-Object {
 }
 
 if (-not $SkipBuild -and -not (Test-Path $envFile) -and -not $testEnv['NUGET_CIRFMF_PAT']) {
-    throw "Set NUGET_CIRFMF_USER and NUGET_CIRFMF_PAT in .env.test (GitHub PAT with read:packages, see CONTRIBUTING.md), then run this script again."
+    throw "Set NUGET_CIRFMF_PAT in .env.test (GitHub PAT with read:packages, see CONTRIBUTING.md), then run this script again."
 }
 
 if (-not (Test-Path $envFile)) {

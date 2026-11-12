@@ -108,7 +108,7 @@ One-command bootstrap:
 ./scripts/dev-env-down.ps1        # stop all (add -RemoveVolumes for clean state)
 ```
 
-`.env.test` is gitignored. On a fresh clone the script creates it from `.env.test.example`, generates `ENCRYPTION_KEY`, and stops until `NUGET_CIRFMF_USER` and `NUGET_CIRFMF_PAT` are set there. It then copies `.env.test` to `.env` if missing. `E2E_TEST_NIP` and `E2E_TEST_KSEF_TOKEN` are optional.
+`.env.test` is gitignored. On a fresh clone the script creates it from `.env.test.example`, generates `ENCRYPTION_KEY`, and stops until `NUGET_CIRFMF_PAT` is set there. It then copies `.env.test` to `.env` only if missing: after editing `.env.test`, delete `.env` and rerun. `E2E_TEST_NIP` and `E2E_TEST_KSEF_TOKEN` are optional.
 
 A fresh stack has no `openksef` realm: the script stops and asks for the setup wizard. Complete it at http://localhost:8080 (Keycloak admin `admin` / `admin`), never in Relay mode (step 5: **Tylko lokalne (SignalR)**), because Relay registers the dev stack on the production relay. Then run `./scripts/dev-env-up.ps1 -SkipBuild -SkipNgrok`.
 
