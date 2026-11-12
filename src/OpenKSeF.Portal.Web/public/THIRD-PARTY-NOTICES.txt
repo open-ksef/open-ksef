@@ -204,7 +204,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------
-@swc/helpers 0.5.23
+@swc/helpers 0.5.24
 License: Apache-2.0
 
 Apache License
@@ -1866,7 +1866,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-sax 1.6.0
+sax 1.6.1
 License: BlueOak-1.0.0
 
 # Blue Oak Model License
@@ -2279,7 +2279,7 @@ License: SIL Open Font License 1.1 (full text in part 1, under Roboto)
 Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
 ------------------------------------------------------------------------
-@tanstack/query-core 5.90.20
+@tanstack/query-core 5.107.1
 License: MIT
 
 MIT License
@@ -2305,7 +2305,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-@tanstack/react-query 5.90.21
+@tanstack/react-query 5.107.1
 License: MIT
 
 MIT License
@@ -2331,7 +2331,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-goober 2.1.18
+goober 2.1.19
 License: MIT
 
 MIT License
@@ -2383,7 +2383,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-oidc-client-ts 3.4.1
+oidc-client-ts 3.5.0
 License: Apache-2.0
 
 Apache License
@@ -2612,7 +2612,7 @@ This product bundles QR Code Generator, which is available under a
 "MIT" license. For details, see src/third-party/qrcodegen.
 
 ------------------------------------------------------------------------
-react 19.2.4
+react 19.3.1
 License: MIT
 
 MIT License
@@ -2638,7 +2638,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-react-dom 19.2.4
+react-dom 19.3.1
 License: MIT
 
 MIT License
@@ -2664,7 +2664,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-react-hot-toast 2.6.0
+react-hot-toast 2.6.1
 License: MIT
 
 MIT License
@@ -2690,7 +2690,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-react-router 7.18.4
+react-router 7.18.5
 License: MIT
 
 MIT License
@@ -2718,7 +2718,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-react-router-dom 7.18.4
+react-router-dom 7.18.5
 License: MIT
 
 MIT License
@@ -2746,7 +2746,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-scheduler 0.27.0
+scheduler 0.28.0
 License: MIT
 
 MIT License

@@ -31,8 +31,7 @@ internal static class Mailpit
 
     public static IContainer Create(int? hostSmtpPort = null, params (string Name, string Value)[] environment)
     {
-        var builder = new ContainerBuilder()
-            .WithImage("axllent/mailpit:v1.30.0")
+        var builder = new ContainerBuilder("axllent/mailpit:v1.30.0")
             .WithPortBinding(HttpPort, true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(r => r.ForPort(HttpPort).ForPath("/api/v1/info")));
         builder = hostSmtpPort is null ? builder.WithPortBinding(SmtpPort, true) : builder.WithPortBinding(hostSmtpPort.Value, SmtpPort);

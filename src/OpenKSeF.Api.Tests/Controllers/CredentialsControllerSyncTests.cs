@@ -25,7 +25,7 @@ public class CredentialsControllerSyncTests : IDisposable
     private readonly ITenantSyncService _sync = Substitute.For<ITenantSyncService>();
     private readonly string _userId = "user-1";
     private readonly Guid _tenantId = Guid.NewGuid();
-    private readonly ManualSyncJobs _jobs;
+    private ManualSyncJobs _jobs;
 
     public CredentialsControllerSyncTests()
     {
@@ -35,7 +35,7 @@ public class CredentialsControllerSyncTests : IDisposable
         _db = new ApplicationDbContext(options);
         _currentUser = Substitute.For<ICurrentUserService>();
         _currentUser.UserId.Returns(_userId);
-        _jobs = Jobs(_sync, TimeSpan.FromMilliseconds(300));
+        _jobs = Jobs(_sync, Timeout.InfiniteTimeSpan);
 
         var now = DateTime.UtcNow;
         _db.Tenants.Add(new Tenant
@@ -190,6 +190,7 @@ public class CredentialsControllerSyncTests : IDisposable
     [Fact]
     public async Task SyncNow_WithoutPrefer_SlowJob_Returns202WithEmptyBody_AndJobFinishesAfterAbort()
     {
+        _jobs = Jobs(_sync, TimeSpan.Zero);
         var gate = SyncWaits();
         using var aborted = new CancellationTokenSource();
 

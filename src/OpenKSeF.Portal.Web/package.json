@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "licenses": "node scripts/third-party-notices.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.107.1",

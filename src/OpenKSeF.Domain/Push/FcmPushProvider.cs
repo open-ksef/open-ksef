@@ -85,7 +85,7 @@ public class FcmPushProvider : IPushProvider
 
             try
             {
-                FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.FromJson(credentialsJson) });
+                FirebaseApp.Create(new AppOptions { Credential = CredentialFactory.FromJson<ServiceAccountCredential>(credentialsJson).ToGoogleCredential() });
                 _logger.LogInformation("Firebase initialized");
                 return true;
             }

@@ -1,6 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using NSubstitute;
 using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
@@ -74,8 +78,32 @@ public class SyncFreshnessHealthCheckTests : IDisposable
         Assert.Equal("1 tenant(s) not synced for over 12h", result.Description);
     }
 
-    private SyncFreshnessHealthCheck Check() =>
-        new(_db, Options.Create(new TenantSyncOptions { IntervalHours = 4 }), TimeProvider.System);
+    [Fact]
+    public async Task LogsOnlyWhenTheStatusChanges()
+    {
+        var logger = Substitute.For<ILogger<SyncFreshnessHealthCheck>>();
+        var check = Check(logger);
+
+        await check.CheckHealthAsync(new HealthCheckContext());
+        AddTenant(credentialAge: TimeSpan.FromDays(30), lastSyncAge: TimeSpan.FromDays(2));
+        for (var i = 0; i < 3; i++)
+            await check.CheckHealthAsync(new HealthCheckContext());
+        _db.SyncStates.Single().LastSyncedAt = _now;
+        _db.SaveChanges();
+        await check.CheckHealthAsync(new HealthCheckContext());
+        await check.CheckHealthAsync(new HealthCheckContext());
+
+        var levels = logger.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(ILogger.Log))
+            .Select(c => (LogLevel)c.GetArguments()[0]!);
+        Assert.Equal([LogLevel.Warning, LogLevel.Information], levels);
+    }
+
+    private SyncFreshnessHealthCheck Check(ILogger<SyncFreshnessHealthCheck>? logger = null) =>
+        new(new ServiceCollection().AddSingleton(_db).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+            Options.Create(new TenantSyncOptions { IntervalHours = 4 }),
+            TimeProvider.System,
+            logger ?? NullLogger<SyncFreshnessHealthCheck>.Instance);
 
     private async Task<HealthStatus> CheckAsync() => (await Check().CheckHealthAsync(new HealthCheckContext())).Status;
 

@@ -26,7 +26,7 @@ The .NET projects depend on `KSeF.Client` from the [CIRFMF](https://github.com/C
 To restore NuGet packages you need a **GitHub Personal Access Token (classic)** with the `read:packages` scope:
 
 1. Go to [github.com/settings/tokens](https://github.com/settings/tokens) and generate a classic token with `read:packages`
-2. For image builds, put the token in `.env.test` as `NUGET_CIRFMF_USER` and `NUGET_CIRFMF_PAT` (see Quick start)
+2. For image builds, put the token in `.env.test` as `NUGET_CIRFMF_PAT` (see Quick start)
 3. Register the feed in your user-level NuGet config. Run this from the repository root, not from `src/`. Never put credentials in `src/nuget.config`: it is tracked.
    ```bash
    dotnet nuget add source "https://nuget.pkg.github.com/CIRFMF/index.json" \
@@ -44,7 +44,20 @@ Bootstrap script (PowerShell):
 ./scripts/dev-env-up.ps1 -SkipNgrok
 ```
 
-The first run creates `.env.test` from `.env.test.example`, generates `ENCRYPTION_KEY` and stops until you set `NUGET_CIRFMF_USER` and `NUGET_CIRFMF_PAT` in `.env.test`. Run it again: it builds and starts the stack, then stops at the setup wizard. Complete the wizard at <http://localhost:8080> with Keycloak admin `admin` / `admin`, choose **Tylko lokalne (SignalR)** in step 5, then run `./scripts/dev-env-up.ps1 -SkipBuild -SkipNgrok` to create the test user. Omit `-SkipNgrok` only for mobile OIDC testing: it opens a public tunnel to your stack.
+The first run creates `.env.test` from `.env.test.example`, generates `ENCRYPTION_KEY` and stops until you set `NUGET_CIRFMF_PAT` in `.env.test`. Run it again: it copies `.env.test` to `.env`, builds and starts the stack, then stops at the setup wizard.
+
+Complete the wizard at <http://localhost:8080>:
+
+- Keycloak admin: `admin` / `admin`.
+- Step 2: any admin email, an admin password of at least 8 characters, and the fake NIP `1111111111`.
+- Step 5: Relay is pre-selected. Switch it to **Tylko lokalne (SignalR)**. Relay registers your dev stack on the production relay.
+
+Then run `./scripts/dev-env-up.ps1 -SkipBuild -SkipNgrok` to create the test user. Omit `-SkipNgrok` only for mobile OIDC testing: it opens a public tunnel to your stack.
+
+Notes:
+
+- `.env` is copied from `.env.test` only when it is missing. Docker Compose reads `.env`, the scripts read `.env.test`. After you change `.env.test` (for example a new PAT), delete `.env` and run the script again.
+- Container names and host ports are fixed. Run one dev stack per machine: stop the other one (`./scripts/dev-env-down.ps1`) before you start a stack from another checkout.
 
 ### Running tests
 

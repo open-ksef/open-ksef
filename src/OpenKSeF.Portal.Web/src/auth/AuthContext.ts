@@ -1,8 +1,6 @@
 import { createContext } from 'react'
 import type { User } from 'oidc-client-ts'
 
-export type LoginAction = 'signin' | 'signup'
-
 export interface RegisterData {
   email: string
   password: string
@@ -14,7 +12,7 @@ export interface AuthContextValue {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
-  login: (action?: LoginAction) => Promise<void>
+  login: () => Promise<void>
   loginWithCredentials: (username: string, password: string) => Promise<void>
   loginWithGoogle: () => Promise<void>
   register: (data: RegisterData) => Promise<void>
