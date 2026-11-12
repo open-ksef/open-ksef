@@ -264,6 +264,26 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task StartupPass_KeyDoesNotDecryptExistingData_KeepsPlaintext_UntilTheRightKeyIsBack()
+    {
+        await SeedAsync(_oldKey, withRow: false);
+        await SeedSecretsAsync(_oldKey);
+        var before = await SystemConfigsAsync();
+
+        Assert.True(await AdoptAsync(NewKey));
+
+        Assert.Equal(before, await SystemConfigsAsync());
+        var warning = Assert.Single(_logs.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("does not decrypt existing data", warning.Text);
+        Assert.Contains(SystemConfigKeys.PushRelayApiKey, warning.Text);
+        AssertNoSecretsLogged();
+
+        Assert.True(await AdoptAsync(OldKey));
+
+        await AssertSecretsDecryptAsync(_oldKey);
+    }
+
+    [Fact]
     public async Task StartupPass_TwoHostsConcurrently_EncryptOnce()
     {
         await SeedAsync(_newKey, withRow: false);

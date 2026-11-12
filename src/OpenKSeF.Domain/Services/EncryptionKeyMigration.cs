@@ -342,7 +342,8 @@ public static class EncryptionKeyMigration
         {
             await using var transaction = db.Database.IsNpgsql() ? await db.Database.BeginTransactionAsync(ct) : null;
             // Locked and re-read, so a host starting at the same time waits and then finds the rows already encrypted.
-            var rows = (await ReadSecretRowsLockedAsync(db, ct))
+            var locked = await ReadSecretRowsLockedAsync(db, ct);
+            var rows = locked
                 .Where(r => !r.Value.StartsWith(SystemConfigKeys.EncryptedPrefix, StringComparison.Ordinal))
                 .ToList();
             if (rows.Count == 0)
@@ -359,6 +360,16 @@ public static class EncryptionKeyMigration
             }
 
             var encryption = new AesGcmEncryptionService(configuredKey);
+            var credentials = await db.KSeFCredentials.AsNoTracking().ToListAsync(ct);
+            if (credentials.Any(c => !CanDecrypt(encryption, c.EncryptedToken) || !CanDecrypt(encryption, c.EncryptedCertificateData))
+                || locked.Except(rows).Any(r => !CanDecrypt(encryption, r.Value[SystemConfigKeys.EncryptedPrefix.Length..])))
+            {
+                logger.LogWarning(
+                    "{Count} system config secrets stay in plaintext because the configured encryption key does not decrypt existing data. Keys: {Keys}",
+                    rows.Count, keys);
+                return;
+            }
+
             foreach (var row in rows)
                 row.Value = SystemConfigKeys.EncryptedPrefix + EncryptVerified(row.Value, $"System config {row.Key}", encryption);
 

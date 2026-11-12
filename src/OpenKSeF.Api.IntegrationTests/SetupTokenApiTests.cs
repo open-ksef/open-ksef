@@ -3,8 +3,12 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
+using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.IntegrationTests;
 
@@ -40,6 +44,10 @@ public class SetupTokenApiTests : IDisposable
         Assert.NotNull(result);
         Assert.False(string.IsNullOrWhiteSpace(result.SetupToken));
         Assert.Equal(300, result.ExpiresInSeconds);
+        using var scope = _factory.Services.CreateScope();
+        var signingKey = await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().SystemConfigs
+            .AsNoTracking().SingleAsync(c => c.Key == SystemConfigKeys.SetupTokenSigningKey);
+        Assert.StartsWith(SystemConfigKeys.EncryptedPrefix, signingKey.Value);
     }
 
     [Fact]

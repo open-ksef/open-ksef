@@ -106,7 +106,7 @@ Review all settings and click "Apply". The wizard:
 >
 > Already adopted (the query in its step 1 returns 0)? Keep that value, because it is the only copy of the key, and [rotate the key](#rotate-the-key) only if you want a new one. Is the value empty? Do not generate a key and do not run `docker compose up -d`. Step 1 of the procedure says where to recover it.
 
-The key encrypts stored KSeF tokens and certificates, and the wizard secrets in `SystemConfigs` (service account secret, relay API key, Firebase credentials, Google client secret, setup token signing key), stored as `enc:...`. Each start encrypts any plaintext wizard secret, in one transaction. Losing the key loses all of them: tenants must enter tokens again and the admin must run the wizard again. Update API and Worker together, and roll back only to v0.0.12 or newer: older images read `enc:` values as the secret itself.
+The key encrypts stored KSeF tokens and certificates, and the wizard secrets in `SystemConfigs` (service account secret, relay API key, Firebase credentials, Google client secret, setup token signing key), stored as `enc:...`. Each start encrypts any plaintext wizard secret, in one transaction. Losing the key loses all of them: tenants must enter tokens again and the admin must run the wizard again. Update API and Worker together, and roll back only to v0.0.12 or newer: older images read `enc:` values as the secret itself. After this release, run `rotate-encryption-key` only with this image or newer: older images rotate KSeF credentials only and leave the wizard secrets under the old key.
 
 A valid key is 32 bytes in base64, which is 44 characters. Generate it with one of these commands:
 
