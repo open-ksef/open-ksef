@@ -14,7 +14,6 @@ using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
 using OpenKSeF.Sync.Issuing;
-using OpenKSeF.Worker;
 using OpenKSeF.Worker.Services;
 
 namespace OpenKSeF.Domain.Tests;
@@ -63,7 +62,7 @@ public sealed class WorkerMigrationWaitTests : IDisposable
     private InvoiceSyncService SyncLoop(ServiceProvider services, ILogger<InvoiceSyncService> logger, string? environment = null) => new(
         services.GetRequiredService<IServiceScopeFactory>(),
         RuntimeConfig(environment),
-        Options.Create(new SyncOptions { IntervalHours = 4 }),
+        Options.Create(new TenantSyncOptions { IntervalHours = 4 }),
         logger);
 
     [Fact]

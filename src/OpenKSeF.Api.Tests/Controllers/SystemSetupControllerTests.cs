@@ -17,6 +17,7 @@ public class SystemSetupControllerTests
     private readonly ISystemSetupService _setupService;
     private readonly ISetupSessionService _sessionService;
     private readonly ILogger<SystemSetupController> _logger;
+    private readonly SetupAuthAttemptLimiter _limiter = new(TimeProvider.System);
     private IConfiguration _configuration = Config("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
 
     private static IConfiguration Config(string? key) => new ConfigurationBuilder()
@@ -32,7 +33,10 @@ public class SystemSetupControllerTests
     }
 
     private SystemSetupController CreateController() =>
-        new(_systemConfig, _setupService, _sessionService, _configuration, _logger);
+        new(_systemConfig, _setupService, _sessionService, _limiter, _configuration, _logger)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
 
     [Fact]
     public void GetSetupStatus_NotInitialized_ReturnsFalse()
@@ -108,6 +112,36 @@ public class SystemSetupControllerTests
 
         Assert.Equal(SystemSetupService.KeycloakUnreachableMessage, JsonSerializer.SerializeToElement(result.Value).GetProperty("error").GetString());
         _sessionService.DidNotReceiveWithAnyArgs().CreateSession(default!, default!);
+    }
+
+    [Fact]
+    public async Task Authenticate_KeycloakUnreachable_DoesNotConsumeRateLimit()
+    {
+        _systemConfig.IsInitialized.Returns(false);
+        _setupService.AuthenticateAdminAsync("admin", "admin").Returns(((string?)null, true), ((string?)null, true), ((string?)null, true),
+            ((string?)null, true), ((string?)null, true), ((string?)null, true), ((string?)null, false));
+
+        for (var i = 0; i < SetupAuthAttemptLimiter.PermitLimit + 1; i++)
+            Assert.IsType<BadRequestObjectResult>(await CreateController().Authenticate(new SetupAuthenticateRequest("admin", "admin")));
+
+        var result = Assert.IsType<BadRequestObjectResult>(await CreateController().Authenticate(new SetupAuthenticateRequest("admin", "admin")));
+        Assert.Equal(SystemSetupService.KeycloakInvalidCredentialsMessage, JsonSerializer.SerializeToElement(result.Value).GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Authenticate_RejectedCredentials_AreRateLimited()
+    {
+        _systemConfig.IsInitialized.Returns(false);
+        _setupService.AuthenticateAdminAsync("admin", "wrong").Returns(((string?)null, false));
+
+        for (var i = 0; i < SetupAuthAttemptLimiter.PermitLimit; i++)
+            Assert.IsType<BadRequestObjectResult>(await CreateController().Authenticate(new SetupAuthenticateRequest("admin", "wrong")));
+
+        var controller = CreateController();
+        var result = Assert.IsType<ObjectResult>(await controller.Authenticate(new SetupAuthenticateRequest("admin", "wrong")));
+        Assert.Equal(StatusCodes.Status429TooManyRequests, result.StatusCode);
+        Assert.False(string.IsNullOrEmpty(controller.Response.Headers.RetryAfter));
+        await _setupService.Received(SetupAuthAttemptLimiter.PermitLimit).AuthenticateAdminAsync("admin", "wrong");
     }
 
     [Fact]
@@ -246,7 +280,7 @@ public class SystemSetupControllerTests
         _setupService.AuthenticateAdminAsync("admin", "secret").Returns(((string?)"kc-token", false));
         _setupService.ApplySetupAsync(Arg.Any<SetupApplyRequest>(), "kc-token", "admin", Arg.Any<CancellationToken>())
             .Returns(new SetupApplyResponse(false, "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną."), new SetupApplyResponse(true, null));
-        var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _configuration, _logger);
+        var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _limiter, _configuration, _logger);
         var request = new SetupApplyRequest
         {
             ExternalBaseUrl = "http://localhost:8080",
@@ -268,7 +302,7 @@ public class SystemSetupControllerTests
         var token = sessions.CreateSession("admin", "secret");
         _systemConfig.IsInitialized.Returns(false);
         _setupService.AuthenticateAdminAsync("admin", "secret").Returns(((string?)null, true));
-        var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _configuration, _logger);
+        var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _limiter, _configuration, _logger);
         var request = new SetupApplyRequest
         {
             ExternalBaseUrl = "http://localhost:8080",
@@ -290,7 +324,7 @@ public class SystemSetupControllerTests
         var token = sessions.CreateSession("admin", "changed");
         _systemConfig.IsInitialized.Returns(false);
         _setupService.AuthenticateAdminAsync("admin", "changed").Returns(((string?)null, false));
-        var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _configuration, _logger);
+        var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _limiter, _configuration, _logger);
         var request = new SetupApplyRequest
         {
             ExternalBaseUrl = "http://localhost:8080",
