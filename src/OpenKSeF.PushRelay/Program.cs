@@ -68,7 +68,7 @@ builder.Services.AddRateLimiter(options =>
 var firebaseJson = builder.Configuration["Firebase:CredentialsJson"];
 if (!string.IsNullOrEmpty(firebaseJson))
 {
-    FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.FromJson(firebaseJson) });
+    FirebaseApp.Create(new AppOptions { Credential = CredentialFactory.FromJson<ServiceAccountCredential>(firebaseJson).ToGoogleCredential() });
     Console.WriteLine("Firebase initialized");
 }
 else

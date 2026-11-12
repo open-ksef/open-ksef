@@ -137,15 +137,10 @@ describe('AuthProvider', () => {
     expect(await lastContextValue?.getAccessToken()).toBe('access-token')
 
     await lastContextValue?.login()
-    await lastContextValue?.login('signup')
     await lastContextValue?.logout()
 
-    expect(mockManager.signinRedirect).toHaveBeenCalledTimes(2)
-    expect(mockManager.signinRedirect).toHaveBeenNthCalledWith(2, {
-      extraQueryParams: {
-        kc_action: 'register',
-      },
-    })
+    expect(mockManager.signinRedirect).toHaveBeenCalledTimes(1)
+    expect(mockManager.signinRedirect).toHaveBeenCalledWith()
     expect(mockManager.startSilentRenew).toHaveBeenCalledTimes(1)
     expect(mockManager.signoutRedirect).toHaveBeenCalledTimes(1)
   })

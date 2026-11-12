@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PropsWithChildren, type ReactElement } from 'react'
 import { UserManager, type User } from 'oidc-client-ts'
 
-import { AuthContext, type LoginAction, type RegisterData } from './AuthContext'
+import { AuthContext, type RegisterData } from './AuthContext'
 import { clearAccessTokenProvider, setAccessTokenProvider } from './accessToken'
 import { oidcConfig } from './config'
 
@@ -100,16 +100,7 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
     // eslint-disable-next-line react-hooks/refs
   }, [manager, setUser])
 
-  const login = useCallback(async (action: LoginAction = 'signin') => {
-    if (action === 'signup') {
-      await manager.signinRedirect({
-        extraQueryParams: {
-          kc_action: 'register',
-        },
-      })
-      return
-    }
-
+  const login = useCallback(async () => {
     await manager.signinRedirect()
   }, [manager])
 

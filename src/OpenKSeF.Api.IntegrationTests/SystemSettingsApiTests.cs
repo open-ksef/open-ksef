@@ -387,8 +387,7 @@ public class SystemSettingsApiTests : IAsyncLifetime
     [Fact]
     public async Task SavingWithoutTheSmtpPassword_KeycloakStillLogsInWithTheStoredOne()
     {
-        var smtp = new ContainerBuilder()
-            .WithImage("alpine:3.20")
+        var smtp = new ContainerBuilder("alpine:3.20")
             // A Windows checkout gives this literal CRLF line ends, and the script then drops the connection after its banner.
             .WithEntrypoint("sh", "-c", FakeSmtpServer.ReplaceLineEndings("\n"))
             .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("ready"))

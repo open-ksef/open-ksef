@@ -275,6 +275,7 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
+builder.Services.AddSingleton<SyncFreshnessHealthCheck>();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ApplicationDbContext>()
     .AddCheck<SyncFreshnessHealthCheck>("sync-freshness");
