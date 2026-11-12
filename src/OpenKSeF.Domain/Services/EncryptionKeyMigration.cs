@@ -27,6 +27,7 @@ public static class EncryptionKeyMigration
             if (!await db.SystemConfigs.AsNoTracking().AnyAsync(c => c.Key == SystemConfigKeys.EncryptionKey, ct))
             {
                 await CheckConfiguredKeyAsync(db, configuration, logger, ct);
+                await EncryptPlaintextSecretsAsync(db, configuration, logger, ct);
                 return true;
             }
 
@@ -62,7 +63,10 @@ public static class EncryptionKeyMigration
 
             if (row is null)
             {
+                if (transaction is not null)
+                    await transaction.CommitAsync(ct);
                 await CheckConfiguredKeyAsync(db, configuration, logger, ct);
+                await EncryptPlaintextSecretsAsync(db, configuration, logger, ct);
                 return true;
             }
 
@@ -83,11 +87,14 @@ public static class EncryptionKeyMigration
                     "Find the lock holder with the query at https://open-ksef.pl/docs/admin-setup/#blokada-przy-przenoszeniu-klucza and restart API and Worker.");
                 return true;
             }
+            var secrets = await ReEncryptSecretsTrackedAsync(db, rowKey, configuredKey, ct);
             db.SystemConfigs.Remove(row);
             await db.SaveChangesAsync(ct);
             if (transaction is not null)
                 await transaction.CommitAsync(ct);
-            logger.LogInformation("Encryption key moved out of the database, {Count} credentials re-encrypted", count);
+            logger.LogInformation(
+                "Encryption key moved out of the database, {Count} credentials and {SecretCount} system config secrets re-encrypted",
+                count, secrets);
             if (configuredKey.SequenceEqual(rowKey))
                 logger.LogWarning(
                     "The configured encryption key is the one that was stored in the database, so every older database dump holds it. " +
@@ -123,15 +130,16 @@ public static class EncryptionKeyMigration
         return rows.SingleOrDefault();
     }
 
-    public static async Task<int> RotateAsync(
+    public static async Task<(int Credentials, int Secrets)> RotateAsync(
         ApplicationDbContext db,
         byte[] currentKey,
         byte[] newKey,
         CancellationToken ct = default)
     {
-        var count = await ReEncryptTrackedAsync(db.KSeFCredentials, currentKey, newKey, ct);
+        var credentials = await ReEncryptTrackedAsync(db.KSeFCredentials, currentKey, newKey, ct);
+        var secrets = await ReEncryptSecretsTrackedAsync(db, currentKey, newKey, ct);
         await db.SaveChangesAsync(ct);
-        return count;
+        return (credentials, secrets);
     }
 
     public static async Task<int> RunRotateCommandAsync(
@@ -194,8 +202,8 @@ public static class EncryptionKeyMigration
 
         try
         {
-            var count = await RotateAsync(db, currentKey, newKey, ct);
-            await output.WriteLineAsync($"Re-encrypted {count} credentials.");
+            var (credentials, secrets) = await RotateAsync(db, currentKey, newKey, ct);
+            await output.WriteLineAsync($"Re-encrypted {credentials} credentials and {secrets} system config secrets.");
             return 0;
         }
         catch (CryptographicException ex)
@@ -312,8 +320,8 @@ public static class EncryptionKeyMigration
 
         foreach (var credential in await credentials.ToListAsync(ct))
         {
-            var token = ReEncrypt(credential.EncryptedToken, credential.Id, current, next);
-            var certificate = ReEncrypt(credential.EncryptedCertificateData, credential.Id, current, next);
+            var token = ReEncrypt(credential.EncryptedToken, $"Credential {credential.Id}", current, next);
+            var certificate = ReEncrypt(credential.EncryptedCertificateData, $"Credential {credential.Id}", current, next);
             if (token != credential.EncryptedToken || certificate != credential.EncryptedCertificateData)
                 count++;
 
@@ -324,9 +332,106 @@ public static class EncryptionKeyMigration
         return count;
     }
 
+    private static async Task EncryptPlaintextSecretsAsync(
+        ApplicationDbContext db,
+        IConfiguration configuration,
+        ILogger logger,
+        CancellationToken ct)
+    {
+        try
+        {
+            await using var transaction = db.Database.IsNpgsql() ? await db.Database.BeginTransactionAsync(ct) : null;
+            // Locked and re-read, so a host starting at the same time waits and then finds the rows already encrypted.
+            var locked = await ReadSecretRowsLockedAsync(db, ct);
+            var rows = locked
+                .Where(r => !r.Value.StartsWith(SystemConfigKeys.EncryptedPrefix, StringComparison.Ordinal))
+                .ToList();
+            if (rows.Count == 0)
+                return;
+
+            var keys = rows.Select(r => r.Key).Order(StringComparer.Ordinal).ToList();
+            var configuredKey = TryReadConfiguredKey(configuration, out var reason);
+            if (configuredKey is null)
+            {
+                logger.LogWarning(
+                    "{Count} system config secrets stay in plaintext because the encryption key cannot be used: {Reason} Keys: {Keys}",
+                    rows.Count, reason, keys);
+                return;
+            }
+
+            var encryption = new AesGcmEncryptionService(configuredKey);
+            var credentials = await db.KSeFCredentials.AsNoTracking().ToListAsync(ct);
+            if (credentials.Any(c => !CanDecrypt(encryption, c.EncryptedToken) || !CanDecrypt(encryption, c.EncryptedCertificateData))
+                || locked.Except(rows).Any(r => !CanDecrypt(encryption, r.Value[SystemConfigKeys.EncryptedPrefix.Length..])))
+            {
+                logger.LogWarning(
+                    "{Count} system config secrets stay in plaintext because the configured encryption key does not decrypt existing data. Keys: {Keys}",
+                    rows.Count, keys);
+                return;
+            }
+
+            foreach (var row in rows)
+                row.Value = SystemConfigKeys.EncryptedPrefix + EncryptVerified(row.Value, $"System config {row.Key}", encryption);
+
+            await db.SaveChangesAsync(ct);
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+            logger.LogInformation("{Count} system config secrets encrypted: {Keys}", rows.Count, keys);
+        }
+        catch (Exception ex)
+        {
+            logger.LogCritical(ex, "Encrypting plaintext system config secrets failed, nothing changed. They stay readable as plaintext.");
+        }
+    }
+
+    private static async Task<List<SystemConfig>> ReadSecretRowsLockedAsync(ApplicationDbContext db, CancellationToken ct)
+    {
+        var keys = SystemConfigKeys.Secrets.ToArray();
+        if (!db.Database.IsNpgsql())
+            return await db.SystemConfigs.Where(c => keys.Contains(c.Key) && c.Value != "").ToListAsync(ct);
+
+        return await db.SystemConfigs
+            .FromSqlRaw("""SELECT * FROM "SystemConfigs" WHERE "Key" = ANY({0}) AND "Value" <> '' FOR UPDATE""", (object)keys)
+            .ToListAsync(ct);
+    }
+
+    private static async Task<int> ReEncryptSecretsTrackedAsync(
+        ApplicationDbContext db,
+        byte[] currentKey,
+        byte[] newKey,
+        CancellationToken ct)
+    {
+        var current = new AesGcmEncryptionService(currentKey);
+        var next = new AesGcmEncryptionService(newKey);
+        var count = 0;
+
+        foreach (var row in await ReadSecretRowsLockedAsync(db, ct))
+        {
+            var name = $"System config {row.Key}";
+            var value = SystemConfigKeys.EncryptedPrefix + (row.Value.StartsWith(SystemConfigKeys.EncryptedPrefix, StringComparison.Ordinal)
+                ? ReEncrypt(row.Value[SystemConfigKeys.EncryptedPrefix.Length..], name, current, next)
+                : EncryptVerified(row.Value, name, next));
+            if (value != row.Value)
+                count++;
+
+            row.Value = value;
+        }
+
+        return count;
+    }
+
+    private static string EncryptVerified(string plaintext, string name, AesGcmEncryptionService encryption)
+    {
+        var result = encryption.Encrypt(plaintext);
+        if (encryption.Decrypt(result) != plaintext)
+            throw new CryptographicException($"{name} failed encryption verification.");
+
+        return result;
+    }
+
     private static string? ReEncrypt(
         string? ciphertext,
-        Guid credentialId,
+        string name,
         AesGcmEncryptionService current,
         AesGcmEncryptionService next)
     {
@@ -344,13 +449,9 @@ public static class EncryptionKeyMigration
             if (CanDecrypt(next, ciphertext))
                 return ciphertext;
 
-            throw new CryptographicException($"Credential {credentialId} cannot be decrypted.");
+            throw new CryptographicException($"{name} cannot be decrypted.");
         }
 
-        var result = next.Encrypt(plaintext);
-        if (next.Decrypt(result) != plaintext)
-            throw new CryptographicException($"Credential {credentialId} failed re-encryption verification.");
-
-        return result;
+        return EncryptVerified(plaintext, name, next);
     }
 }

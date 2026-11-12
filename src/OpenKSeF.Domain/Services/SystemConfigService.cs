@@ -87,14 +87,15 @@ public sealed class SystemConfigService : ISystemConfigService
         var now = DateTime.UtcNow;
         foreach (var (key, value) in values)
         {
+            var stored = Protect(key, value);
             if (existing.TryGetValue(key, out var entry))
             {
-                entry.Value = value;
+                entry.Value = stored;
                 entry.UpdatedAt = now;
             }
             else
             {
-                db.SystemConfigs.Add(new SystemConfig { Key = key, Value = value, UpdatedAt = now });
+                db.SystemConfigs.Add(new SystemConfig { Key = key, Value = stored, UpdatedAt = now });
             }
         }
 
@@ -102,6 +103,30 @@ public sealed class SystemConfigService : ISystemConfigService
 
         foreach (var (key, value) in values)
             _cache[key] = value;
+    }
+
+    private string Protect(string key, string value)
+    {
+        if (value.Length == 0 || !SystemConfigKeys.Secrets.Contains(key))
+            return value;
+
+        byte[]? encryptionKey;
+        try
+        {
+            encryptionKey = EncryptionServiceExtensions.ReadConfiguredKey(_configuration);
+        }
+        catch (InvalidOperationException)
+        {
+            encryptionKey = null;
+        }
+
+        if (encryptionKey is null)
+        {
+            _logger.LogWarning("System config {Key} is stored in plaintext because the encryption key cannot be used", key);
+            return value;
+        }
+
+        return SystemConfigKeys.EncryptedPrefix + new AesGcmEncryptionService(encryptionKey).Encrypt(value);
     }
 
     public async Task RefreshCacheAsync(CancellationToken cancellationToken = default)

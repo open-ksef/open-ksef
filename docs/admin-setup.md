@@ -106,7 +106,7 @@ Review all settings and click "Apply". The wizard:
 >
 > Already adopted (the query in its step 1 returns 0)? Keep that value, because it is the only copy of the key, and [rotate the key](#rotate-the-key) only if you want a new one. Is the value empty? Do not generate a key and do not run `docker compose up -d`. Step 1 of the procedure says where to recover it.
 
-The key encrypts stored KSeF tokens and certificates. Losing it loses them: tenants must enter them again.
+The key encrypts stored KSeF tokens and certificates, and the wizard secrets in `SystemConfigs` (service account secret, relay API key, Firebase credentials, Google client secret, setup token signing key), stored as `enc:...`. Each start encrypts any plaintext wizard secret, in one transaction. Losing the key loses all of them: tenants must enter tokens again and the admin must run the wizard again. Update API and Worker together, and roll back only to v0.0.12 or newer: older images read `enc:` values as the secret itself. After this release, run `rotate-encryption-key` only with this image or newer: older images rotate KSeF credentials only and leave the wizard secrets under the old key.
 
 A valid key is 32 bytes in base64, which is 44 characters. Generate it with one of these commands:
 
@@ -212,7 +212,7 @@ Run this on a stack that already runs the current images and has adopted: the qu
    docker compose run --rm -e ENCRYPTION_KEY_NEW api rotate-encryption-key
    unset ENCRYPTION_KEY_NEW
    ```
-   It prints `Re-encrypted N credentials.` and exits 0. A re-run is safe and reports 0.
+   It prints `Re-encrypted N credentials and M system config secrets.` and exits 0. A re-run is safe and reports 0.
 5. Set `ENCRYPTION_KEY` to the new value in `.env` or the stack environment, then `docker compose up -d`.
 6. Verify: no Critical in the logs and one manual sync succeeds. Only then discard the old key.
 
@@ -221,7 +221,7 @@ The command exits 1 and writes nothing when:
 - `ENCRYPTION_KEY_NEW` is missing, malformed or equal to the current key, or the current key is missing or malformed.
 - Other clients with no application name are connected to the database. This catches a running Worker and a busy API. An API idle for several minutes holds no connection and is not caught, so always do step 2. Tools that set a name (`psql`, `pg_dump`, pgAdmin) and autovacuum do not count. Close any other client the message counts. To find them: `SELECT pid, usename, client_addr, backend_start FROM pg_stat_activity WHERE datname = current_database() AND backend_type = 'client backend' AND application_name = '';`
 - The database is not on this image's version, or the key is still in the database. Start the app once, stop it and retry.
-- A credential cannot be decrypted. The message names it.
+- A credential or wizard secret cannot be decrypted. The message names it.
 
 **Rollback**
 
