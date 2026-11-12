@@ -13,6 +13,8 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
     managerRef.current = new UserManager(oidcConfig)
   }
 
+  // Ref, not useState initializer: StrictMode would build a second UserManager with its own silent-renew timer.
+  // eslint-disable-next-line react-hooks/refs
   const manager = managerRef.current
   const userRef = useRef<User | null>(null)
   const [user, setUserState] = useState<User | null>(null)
@@ -95,6 +97,7 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
       manager.events.removeAccessTokenExpired(onAccessTokenExpired)
       manager.stopSilentRenew()
     }
+    // eslint-disable-next-line react-hooks/refs
   }, [manager, setUser])
 
   const login = useCallback(async (action: LoginAction = 'signin') => {

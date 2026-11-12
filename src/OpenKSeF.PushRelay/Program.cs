@@ -204,7 +204,9 @@ app.MapPost("/api/push", async (
         {
             var message = new Message
             {
+#pragma warning disable CS0618
                 Token = request.PushToken,
+#pragma warning restore CS0618
                 Notification = new Notification
                 {
                     Title = request.Title ?? "OpenKSeF",

@@ -5,9 +5,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="KSeF.Client" Version="[2.9.0]" />
-    <PackageReference Include="KSeF.Client.Core" Version="[2.9.0]" />
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.14" />
+    <PackageReference Include="KSeF.Client" Version="[2.9.0.1]" />
+    <PackageReference Include="KSeF.Client.Core" Version="[2.9.0.1]" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.15" />
   </ItemGroup>
 
   <ItemGroup>
