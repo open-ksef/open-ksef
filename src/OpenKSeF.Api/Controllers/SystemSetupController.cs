@@ -59,7 +59,7 @@ public class SystemSetupController : ControllerBase
             return BadRequest(ModelState);
 
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        if (!_authLimiter.TryAcquire(ip, out var retryAfter))
+        if (!_authLimiter.TryAcquire(ip, out var windowStart, out var retryAfter))
         {
             Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
             return StatusCode(StatusCodes.Status429TooManyRequests, new { code = "rate_limited", error = "Zbyt wiele prób. Spróbuj ponownie później." });
@@ -69,7 +69,7 @@ public class SystemSetupController : ControllerBase
         if (kcAdminToken is null)
         {
             if (unreachable)
-                _authLimiter.Release(ip);
+                _authLimiter.Release(ip, windowStart);
             return BadRequest(new { error = AuthFailureMessage(unreachable) });
         }
 

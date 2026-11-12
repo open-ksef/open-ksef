@@ -9,7 +9,7 @@ public sealed class SetupAuthAttemptLimiter(TimeProvider time)
     // shortcut: one entry per IP until restart, bounded because the endpoint only works before setup completes.
     private readonly Dictionary<string, (DateTimeOffset Start, int Count)> _attempts = [];
 
-    public bool TryAcquire(string ip, out TimeSpan retryAfter)
+    public bool TryAcquire(string ip, out DateTimeOffset windowStart, out TimeSpan retryAfter)
     {
         var now = time.GetUtcNow();
         lock (_attempts)
@@ -17,6 +17,7 @@ public sealed class SetupAuthAttemptLimiter(TimeProvider time)
             if (!_attempts.TryGetValue(ip, out var entry) || now - entry.Start >= Window)
                 entry = (now, 0);
 
+            windowStart = entry.Start;
             retryAfter = entry.Start + Window - now;
             if (entry.Count >= PermitLimit)
                 return false;
@@ -26,11 +27,11 @@ public sealed class SetupAuthAttemptLimiter(TimeProvider time)
         }
     }
 
-    public void Release(string ip)
+    public void Release(string ip, DateTimeOffset windowStart)
     {
         lock (_attempts)
         {
-            if (_attempts.TryGetValue(ip, out var entry) && entry.Count > 0)
+            if (_attempts.TryGetValue(ip, out var entry) && entry.Start == windowStart && entry.Count > 0)
                 _attempts[ip] = (entry.Start, entry.Count - 1);
         }
     }
