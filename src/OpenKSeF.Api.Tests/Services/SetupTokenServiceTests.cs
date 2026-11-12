@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
@@ -105,6 +106,17 @@ public class SetupTokenServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.GenerateSetupTokenAsync("user-1", null, null));
         var forged = CreateToken(Encoding.UTF8.GetBytes("dev-setup-token-key-must-be-32b!"), DateTime.UtcNow.AddMinutes(5));
         Assert.Null(await service.ValidateAndConsumeAsync(forged));
+    }
+
+    [Fact]
+    public async Task SigningKey_RowCannotBeDecrypted_IsNotReplaced_GenerateThrows()
+    {
+        _systemConfig.CannotDecrypt(SystemConfigKeys.SetupTokenSigningKey).Returns(true);
+        var service = new SetupTokenService(_systemConfig, NullLogger<SetupTokenService>.Instance);
+
+        await Assert.ThrowsAsync<CryptographicException>(() => service.GenerateSetupTokenAsync("user-1", null, null));
+
+        await _systemConfig.DidNotReceive().SetValueAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     private static string CreateToken(byte[] key, DateTime expires, string purpose = "mobile-setup")

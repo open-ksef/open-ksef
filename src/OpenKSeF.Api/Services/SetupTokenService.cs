@@ -125,6 +125,12 @@ public class SetupTokenService : ISetupTokenService
             var keyBase64 = _systemConfig.GetValue(SystemConfigKeys.SetupTokenSigningKey);
             if (string.IsNullOrEmpty(keyBase64))
             {
+                if (_systemConfig.CannotDecrypt(SystemConfigKeys.SetupTokenSigningKey))
+                {
+                    _logger.LogError("Setup token signing key exists but cannot be decrypted, so it is kept and no setup token is issued. Check ENCRYPTION_KEY on the API.");
+                    throw new CryptographicException("Setup token signing key cannot be decrypted.");
+                }
+
                 keyBase64 = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
                 await _systemConfig.SetValueAsync(SystemConfigKeys.SetupTokenSigningKey, keyBase64);
             }

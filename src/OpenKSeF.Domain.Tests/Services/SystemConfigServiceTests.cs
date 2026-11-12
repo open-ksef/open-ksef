@@ -218,6 +218,8 @@ public class SystemConfigServiceTests : IDisposable
 
     private static readonly string Key = Convert.ToBase64String(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray());
 
+    private ILogger<SystemConfigService> _rowsLogger = NullLogger<SystemConfigService>.Instance;
+
     private async Task<SystemConfigService> ServiceWithRowsAsync(string? encryptionKey, params (string Key, string Value)[] rows)
     {
         using (var scope = _serviceProvider.CreateScope())
@@ -235,7 +237,7 @@ public class SystemConfigServiceTests : IDisposable
                 ["ENCRYPTION_KEY"] = encryptionKey,
                 ["Auth:ServiceAccount:ClientSecret"] = "env-secret",
             }).Build(),
-            NullLogger<SystemConfigService>.Instance);
+            _rowsLogger);
         await service.LoadCacheAsync(retryDelay: TimeSpan.Zero);
         return service;
     }
@@ -276,6 +278,36 @@ public class SystemConfigServiceTests : IDisposable
 
         Assert.Equal("env-secret", service.GetValue(SystemConfigKeys.ApiClientSecret));
         Assert.Equal("https://example.test", service.GetValue(SystemConfigKeys.ExternalBaseUrl));
+    }
+
+    [Fact]
+    public async Task UndecryptableSecret_LogsCriticalOnce_AcrossRefreshes_AndIsFlagged()
+    {
+        _rowsLogger = Substitute.For<ILogger<SystemConfigService>>();
+        var service = await ServiceWithRowsAsync("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+            (SystemConfigKeys.SetupTokenSigningKey, Encrypted("signing-key")),
+            (SystemConfigKeys.ExternalBaseUrl, "https://example.test"));
+
+        for (var i = 0; i < 5; i++)
+            await service.RefreshCacheAsync();
+
+        Assert.Single(_rowsLogger.ReceivedCalls(), c => c.GetMethodInfo().Name == nameof(ILogger.Log) && (LogLevel)c.GetArguments()[0]! == LogLevel.Critical);
+        Assert.True(service.CannotDecrypt(SystemConfigKeys.SetupTokenSigningKey));
+        Assert.False(service.CannotDecrypt(SystemConfigKeys.ExternalBaseUrl));
+        Assert.Null(service.GetValue(SystemConfigKeys.SetupTokenSigningKey));
+    }
+
+    [Fact]
+    public async Task UndecryptableSecret_Overwritten_IsNoLongerFlagged()
+    {
+        var service = await ServiceWithRowsAsync("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+            (SystemConfigKeys.PushRelayApiKey, Encrypted("relay-key")));
+
+        await service.SetValueAsync(SystemConfigKeys.PushRelayApiKey, "new-relay-key");
+
+        Assert.False(service.CannotDecrypt(SystemConfigKeys.PushRelayApiKey));
+        await service.RefreshCacheAsync();
+        Assert.False(service.CannotDecrypt(SystemConfigKeys.PushRelayApiKey));
     }
 
     private string RawValue(string key)
