@@ -7,12 +7,19 @@ export default defineConfig({
   plugins: [
     react(),
     {
-      name: 'entry-chunk-budget',
+      name: 'initial-js-budget',
       generateBundle(_, bundle) {
-        for (const chunk of Object.values(bundle)) {
-          if (chunk.type === 'chunk' && chunk.isEntry && chunk.code.length > 500_000) {
-            this.error(`Entry chunk ${chunk.fileName} is ${chunk.code.length} bytes, budget 500000`)
-          }
+        const initial = new Set<string>()
+        const visit = (fileName: string) => {
+          const chunk = bundle[fileName]
+          if (initial.has(fileName) || chunk?.type !== 'chunk') return
+          initial.add(fileName)
+          chunk.imports.forEach(visit)
+        }
+        Object.values(bundle).forEach((chunk) => chunk.type === 'chunk' && chunk.isEntry && visit(chunk.fileName))
+        const size = [...initial].reduce((sum, fileName) => sum + (bundle[fileName] as { code: string }).code.length, 0)
+        if (size > 600_000) {
+          this.error(`Initial JS (${[...initial].join(', ')}) is ${size} bytes, budget 600000`)
         }
       },
     },

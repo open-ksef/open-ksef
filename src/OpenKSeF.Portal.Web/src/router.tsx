@@ -5,6 +5,7 @@ import { CompanyProvider } from '@/company/CompanyProvider'
 import { Layout } from '@/components/Layout'
 import { Moved } from '@/components/Moved'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
+import { loadRoute } from '@/loadRoute'
 import { Callback } from '@/pages/Callback'
 import { CompanyDetailsPage } from '@/pages/CompanyDetails'
 import { CompanyLayoutPage } from '@/pages/CompanyLayout'
@@ -19,54 +20,59 @@ import { StartPage } from '@/pages/Start'
 
 export const appRoutes: RouteObject[] = [
   {
-    path: '/',
-    element: (
-      <ProtectedRoute>
-        <CompanyProvider>
-          <Layout />
-        </CompanyProvider>
-      </ProtectedRoute>
-    ),
+    hydrateFallbackElement: <main>Ładowanie…</main>,
     children: [
-      { index: true, element: <StartPage /> },
-      { path: 'invoices', element: <InvoiceListPage /> },
-      { path: 'invoices/:ksefInvoiceNumber', lazy: async () => ({ Component: (await import('@/pages/InvoiceDetails')).InvoiceDetailsPage }) },
-      { path: 'issued', element: <IssuedInvoiceListPage /> },
-      { path: 'issued/new', lazy: async () => ({ Component: (await import('@/pages/InvoiceDraft')).InvoiceDraftPage }) },
-      { path: 'issued/:id', lazy: async () => ({ Component: (await import('@/pages/IssuedInvoiceDetails')).IssuedInvoiceDetailsPage }) },
-      { path: 'issued/:id/edit', lazy: async () => ({ Component: (await import('@/pages/InvoiceDraft')).InvoiceDraftPage }) },
       {
-        path: 'company',
-        element: <CompanyLayoutPage />,
+        path: '/',
+        element: (
+          <ProtectedRoute>
+            <CompanyProvider>
+              <Layout />
+            </CompanyProvider>
+          </ProtectedRoute>
+        ),
         children: [
-          { index: true, element: <Moved to="/company/invoice-data" /> },
-          { path: 'invoice-data', element: <SellerProfilePage /> },
-          { path: 'token', element: <CompanyTokenPage /> },
-          { path: 'details', element: <CompanyDetailsPage /> },
+          { index: true, element: <StartPage /> },
+          { path: 'invoices', element: <InvoiceListPage /> },
+          { path: 'invoices/:ksefInvoiceNumber', lazy: () => loadRoute(() => import('@/pages/InvoiceDetails')).then((m) => ({ Component: m.InvoiceDetailsPage })) },
+          { path: 'issued', element: <IssuedInvoiceListPage /> },
+          { path: 'issued/new', lazy: () => loadRoute(() => import('@/pages/InvoiceDraft')).then((m) => ({ Component: m.InvoiceDraftPage })) },
+          { path: 'issued/:id', lazy: () => loadRoute(() => import('@/pages/IssuedInvoiceDetails')).then((m) => ({ Component: m.IssuedInvoiceDetailsPage })) },
+          { path: 'issued/:id/edit', lazy: () => loadRoute(() => import('@/pages/InvoiceDraft')).then((m) => ({ Component: m.InvoiceDraftPage })) },
+          {
+            path: 'company',
+            element: <CompanyLayoutPage />,
+            children: [
+              { index: true, element: <Moved to="/company/invoice-data" /> },
+              { path: 'invoice-data', element: <SellerProfilePage /> },
+              { path: 'token', element: <CompanyTokenPage /> },
+              { path: 'details', element: <CompanyDetailsPage /> },
+            ],
+          },
+          { path: 'seller-profile', element: <Moved to="/company/invoice-data" /> },
+          { path: 'tenants', element: <Moved to="/company/details" /> },
+          { path: 'credentials', element: <Moved to="/company/token" /> },
+          { path: 'devices', element: <Moved to="/mobile-setup" /> },
+          { path: 'mobile-setup', lazy: () => loadRoute(() => import('@/pages/MobileSetup')).then((m) => ({ Component: m.MobileSetupPage })) },
+          { path: 'settings', lazy: () => loadRoute(() => import('@/pages/Settings')).then((m) => ({ Component: m.SettingsPage })) },
+          { path: 'settings/admin', lazy: () => loadRoute(() => import('@/pages/SettingsAdmin')).then((m) => ({ Component: m.SettingsAdminPage })) },
         ],
       },
-      { path: 'seller-profile', element: <Moved to="/company/invoice-data" /> },
-      { path: 'tenants', element: <Moved to="/company/details" /> },
-      { path: 'credentials', element: <Moved to="/company/token" /> },
-      { path: 'devices', element: <Moved to="/mobile-setup" /> },
-      { path: 'mobile-setup', lazy: async () => ({ Component: (await import('@/pages/MobileSetup')).MobileSetupPage }) },
-      { path: 'settings', lazy: async () => ({ Component: (await import('@/pages/Settings')).SettingsPage }) },
-      { path: 'settings/admin', lazy: async () => ({ Component: (await import('@/pages/SettingsAdmin')).SettingsAdminPage }) },
+      {
+        element: (
+          <ProtectedRoute>
+            <Outlet />
+          </ProtectedRoute>
+        ),
+        children: [{ path: '/onboarding', lazy: () => loadRoute(() => import('@/pages/Onboarding')).then((m) => ({ Component: m.OnboardingPage })) }],
+      },
+      { path: '/callback', element: <Callback /> },
+      { path: '/silent-callback', element: <SilentCallbackPage /> },
+      { path: '/login', element: <LoginPage /> },
+      { path: '/admin-setup', lazy: () => loadRoute(() => import('@/pages/AdminSetup')).then((m) => ({ Component: m.AdminSetupPage })) },
+      { path: '*', element: <NotFoundPage /> },
     ],
   },
-  {
-    element: (
-      <ProtectedRoute>
-        <Outlet />
-      </ProtectedRoute>
-    ),
-    children: [{ path: '/onboarding', lazy: async () => ({ Component: (await import('@/pages/Onboarding')).OnboardingPage }) }],
-  },
-  { path: '/callback', element: <Callback /> },
-  { path: '/silent-callback', element: <SilentCallbackPage /> },
-  { path: '/login', element: <LoginPage /> },
-  { path: '/admin-setup', lazy: async () => ({ Component: (await import('@/pages/AdminSetup')).AdminSetupPage }) },
-  { path: '*', element: <NotFoundPage /> },
 ]
 
 export function createAppRouter() {
