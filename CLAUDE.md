@@ -71,6 +71,7 @@ Always consult these docs (especially the XSD schemas) before making assumptions
 - `Domain/DTOs/` holds only the Sync->Domain contract (`InvoiceDto`, `InvoiceLineDto`, `InvoiceXmlDetails`).
 - Every HTTP request/response type lives in `Api/Models/`, shaped for JSON consumers (portal, mobile app).
 - Do not expose EF entities directly in API responses. Map to a response model.
+- API contract and DB migration changes follow [ADR-004](docs/adr/adr-004-contract-and-migration-policy.md): additive mobile surface, expand-only migrations, M1 four-line PR body.
 
 ### DbContext usage
 
