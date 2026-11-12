@@ -128,6 +128,7 @@ builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddMemoryCache();
 
 builder.Services.AddSingleton<ISetupSessionService, SetupSessionService>();
+builder.Services.AddSingleton<SetupAuthAttemptLimiter>();
 
 builder.Services.AddSingleton<ISetupTokenService, SetupTokenService>();
 builder.Services.AddHttpClient("keycloak");
@@ -169,18 +170,6 @@ builder.Services.AddRateLimiter(options =>
         return new ValueTask(context.HttpContext.Response.WriteAsJsonAsync(
             new { code = "rate_limited", error = "Zbyt wiele prób. Spróbuj ponownie później." }, ct));
     };
-
-    options.AddPolicy("setup-auth", context =>
-    {
-        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
-        {
-            Window = TimeSpan.FromMinutes(15),
-            PermitLimit = 5,
-            QueueLimit = 0,
-            AutoReplenishment = true
-        });
-    });
 
     options.AddPolicy("setup-apply", context =>
     {
@@ -287,7 +276,8 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 builder.Services.AddHealthChecks()
-    .AddDbContextCheck<ApplicationDbContext>();
+    .AddDbContextCheck<ApplicationDbContext>()
+    .AddCheck<SyncFreshnessHealthCheck>("sync-freshness");
 
 var app = builder.Build();
 

@@ -7,6 +7,11 @@ public class TenantSyncOptions
     public int BatchSize { get; set; } = 100;
 
     /// <summary>
+    /// Hours between Worker sync cycles. The API reads it too: /health turns Degraded after three intervals without a sync.
+    /// </summary>
+    public int IntervalHours { get; set; } = 4;
+
+    /// <summary>
     /// How many months back to query on the very first sync (no LastSuccessfulSync).
     /// KSeF limits each query to max 3 months, so the service iterates in windows.
     /// </summary>

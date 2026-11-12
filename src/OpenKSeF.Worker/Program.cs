@@ -4,7 +4,6 @@ using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
-using OpenKSeF.Worker;
 using OpenKSeF.Worker.Services;
 using Serilog;
 
@@ -28,7 +27,6 @@ builder.Services.AddSerilog((services, configuration) => configuration
         "[{Timestamp:HH:mm:ss} {Level:u3}] {CorrelationId} {Message:lj}{NewLine}{Exception}"));
 
 builder.Services.AddOpenKSeFCore(builder.Configuration).AddSyncServices(builder.Configuration);
-builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection(SyncOptions.SectionName));
 builder.Services.AddSingleton<KSeFRuntimeConfig>();
 builder.Services.AddHostedService<InvoiceSyncService>();
 builder.Services.AddHostedService<IssuedInvoiceSendService>();

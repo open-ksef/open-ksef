@@ -8,13 +8,13 @@ public sealed class InvoiceSyncService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly KSeFRuntimeConfig _runtimeConfig;
-    private readonly SyncOptions _syncOptions;
+    private readonly TenantSyncOptions _syncOptions;
     private readonly ILogger<InvoiceSyncService> _logger;
 
     public InvoiceSyncService(
         IServiceScopeFactory scopeFactory,
         KSeFRuntimeConfig runtimeConfig,
-        IOptions<SyncOptions> syncOptions,
+        IOptions<TenantSyncOptions> syncOptions,
         ILogger<InvoiceSyncService> logger)
     {
         _scopeFactory = scopeFactory;

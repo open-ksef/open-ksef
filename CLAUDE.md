@@ -245,4 +245,5 @@ Portal Web tests (`vitest`) also verify cross-project contracts (docker-compose 
 - `ENCRYPTION_KEY_NEW` - only for `rotate-encryption-key` on the API image
 - `KSeF__BaseUrl` - `test`, `demo` or `production`; legacy KSeF URLs resolve by exact host; an unknown value stops API and Worker; a DB row wins
 - `KSeF__ForbidProduction` - `true` only in `docker-compose.dev.yml` (dev stack, E2E, QA stacks built on it); API and Worker refuse to start on production and block HTTP to production KSeF hosts; never set on a real install
+- `Sync__IntervalHours` - default `4`; hours between Worker sync cycles; set the same value on API and Worker, because API `/health` turns `Degraded` (still HTTP 200) when a tenant with a credential has not synced for 3 intervals
 - `Issuing__StuckAfterHours` - Worker; default `24`; hours after issue before an invoice is escalated as stuck

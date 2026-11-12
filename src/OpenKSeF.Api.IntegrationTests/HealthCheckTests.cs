@@ -6,6 +6,7 @@ using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Api.Push;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Push;
 
 namespace OpenKSeF.Api.IntegrationTests;
@@ -28,6 +29,35 @@ public class HealthCheckTests : IDisposable
         var response = await _client.GetAsync("/health");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Health_StaleSync_ReportsDegraded_WithStatus200()
+    {
+        var now = DateTime.UtcNow;
+        var tenant = new Tenant { Id = Guid.NewGuid(), UserId = $"health-{Guid.NewGuid()}", Nip = "1111111111", CreatedAt = now.AddDays(-30), UpdatedAt = now };
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Tenants.Add(tenant);
+            db.KSeFCredentials.Add(new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenant.Id, EncryptedToken = "x", CreatedAt = now.AddDays(-30), UpdatedAt = now });
+            db.SyncStates.Add(new SyncState { Id = Guid.NewGuid(), TenantId = tenant.Id, LastSyncedAt = now.AddDays(-2) });
+            await db.SaveChangesAsync();
+        }
+
+        try
+        {
+            var response = await _client.GetAsync("/health");
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("Degraded", await response.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            await db.Tenants.Where(t => t.Id == tenant.Id).ExecuteDeleteAsync();
+        }
     }
 
     [Fact]

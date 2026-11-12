@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -15,6 +16,7 @@ public class SystemSetupController : ControllerBase
     private readonly ISystemConfigService _systemConfig;
     private readonly ISystemSetupService _setupService;
     private readonly ISetupSessionService _sessionService;
+    private readonly SetupAuthAttemptLimiter _authLimiter;
     private readonly IConfiguration _configuration;
     private readonly ILogger<SystemSetupController> _logger;
 
@@ -22,12 +24,14 @@ public class SystemSetupController : ControllerBase
         ISystemConfigService systemConfig,
         ISystemSetupService setupService,
         ISetupSessionService sessionService,
+        SetupAuthAttemptLimiter authLimiter,
         IConfiguration configuration,
         ILogger<SystemSetupController> logger)
     {
         _systemConfig = systemConfig;
         _setupService = setupService;
         _sessionService = sessionService;
+        _authLimiter = authLimiter;
         _configuration = configuration;
         _logger = logger;
     }
@@ -42,10 +46,10 @@ public class SystemSetupController : ControllerBase
     }
 
     [HttpPost("setup/authenticate")]
-    [EnableRateLimiting("setup-auth")]
     [ProducesResponseType(typeof(SetupAuthenticateResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> Authenticate([FromBody] SetupAuthenticateRequest request)
     {
         if (_systemConfig.IsInitialized)
@@ -54,9 +58,20 @@ public class SystemSetupController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        if (!_authLimiter.TryAcquire(ip, out var retryAfter))
+        {
+            Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { code = "rate_limited", error = "Zbyt wiele prób. Spróbuj ponownie później." });
+        }
+
         var (kcAdminToken, unreachable) = await _setupService.AuthenticateAdminAsync(request.Username, request.Password);
         if (kcAdminToken is null)
+        {
+            if (unreachable)
+                _authLimiter.Release(ip);
             return BadRequest(new { error = AuthFailureMessage(unreachable) });
+        }
 
         if (!SystemSetupService.HasUsableEncryptionKey(_configuration))
             return BadRequest(new { error = SystemSetupService.EncryptionKeyMissingMessage, code = SystemSetupService.EncryptionKeyMissingCode });
