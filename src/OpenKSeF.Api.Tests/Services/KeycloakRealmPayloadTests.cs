@@ -59,6 +59,7 @@ public class KeycloakRealmPayloadTests
     [Theory]
     [InlineData(HttpStatusCode.OK, false, true, false)]
     [InlineData(HttpStatusCode.Unauthorized, false, false, false)]
+    [InlineData(HttpStatusCode.BadRequest, false, false, false)]
     [InlineData(HttpStatusCode.ServiceUnavailable, false, false, true)]
     [InlineData(HttpStatusCode.OK, true, false, true)]
     public async Task AuthenticateAdmin_SeparatesRejectedCredentialsFromTransportFailure(HttpStatusCode tokenStatus, bool unreachable, bool expectToken, bool expectUnreachable)
