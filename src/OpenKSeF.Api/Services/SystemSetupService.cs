@@ -15,7 +15,7 @@ namespace OpenKSeF.Api.Services;
 
 public interface ISystemSetupService
 {
-    Task<string?> AuthenticateAdminAsync(string username, string password);
+    Task<(string? Token, bool Unreachable)> AuthenticateAdminAsync(string username, string password);
     Task<SetupApplyResponse> ApplySetupAsync(SetupApplyRequest request, string adminToken, string kcAdminUsername, CancellationToken ct = default);
 }
 
@@ -28,6 +28,7 @@ public sealed class SystemSetupService : ISystemSetupService
         "Hasło nie spełnia wymagań Keycloak (zasady haseł realmu). Użyj dłuższego hasła z wielkimi i małymi literami, cyfrą i znakiem specjalnym.";
     public const string KeycloakRejectedMessage = "Keycloak odrzucił konfigurację. Szczegóły są w logu API.";
     public const string KeycloakUnreachableMessage = "Nie można połączyć się z Keycloak. Sprawdź, czy działa, i spróbuj ponownie.";
+    public const string KeycloakInvalidCredentialsMessage = "Nieprawidłowy login lub hasło administratora Keycloak.";
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
@@ -80,7 +81,7 @@ public sealed class SystemSetupService : ISystemSetupService
         }
     }
 
-    public async Task<string?> AuthenticateAdminAsync(string username, string password)
+    public async Task<(string? Token, bool Unreachable)> AuthenticateAdminAsync(string username, string password)
     {
         var client = _httpClientFactory.CreateClient("keycloak");
         var tokenUrl = $"{KeycloakInternalBaseUrl}/realms/master/protocol/openid-connect/token";
@@ -99,16 +100,16 @@ public sealed class SystemSetupService : ISystemSetupService
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Keycloak admin auth failed: {Status}", response.StatusCode);
-                return null;
+                return (null, response.StatusCode is not (HttpStatusCode.Unauthorized or HttpStatusCode.BadRequest));
             }
 
             var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-            return json.GetProperty("access_token").GetString();
+            return (json.GetProperty("access_token").GetString(), false);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to authenticate Keycloak admin");
-            return null;
+            return (null, true);
         }
     }
 

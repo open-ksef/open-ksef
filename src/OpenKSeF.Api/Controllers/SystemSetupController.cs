@@ -54,9 +54,9 @@ public class SystemSetupController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        var kcAdminToken = await _setupService.AuthenticateAdminAsync(request.Username, request.Password);
+        var (kcAdminToken, unreachable) = await _setupService.AuthenticateAdminAsync(request.Username, request.Password);
         if (kcAdminToken is null)
-            return BadRequest(new { error = "Invalid Keycloak admin credentials." });
+            return BadRequest(new { error = AuthFailureMessage(unreachable) });
 
         if (!SystemSetupService.HasUsableEncryptionKey(_configuration))
             return BadRequest(new { error = SystemSetupService.EncryptionKeyMissingMessage, code = SystemSetupService.EncryptionKeyMissingCode });
@@ -88,20 +88,25 @@ public class SystemSetupController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        var kcAdminToken = await _setupService.AuthenticateAdminAsync(credentials.Value.Username, credentials.Value.Password);
+        var (kcAdminToken, unreachable) = await _setupService.AuthenticateAdminAsync(credentials.Value.Username, credentials.Value.Password);
         if (kcAdminToken is null)
         {
-            _sessionService.RestoreSession(setupToken, credentials.Value.Username, credentials.Value.Password);
-            return BadRequest(new SetupApplyResponse(false, SystemSetupService.KeycloakUnreachableMessage));
+            if (unreachable)
+                _sessionService.RestoreSession(setupToken, credentials.Value);
+            return BadRequest(new SetupApplyResponse(false, AuthFailureMessage(unreachable)));
         }
 
         var result = await _setupService.ApplySetupAsync(request, kcAdminToken, credentials.Value.Username, ct);
         if (!result.Success)
         {
-            _sessionService.RestoreSession(setupToken, credentials.Value.Username, credentials.Value.Password);
+            _sessionService.RestoreSession(setupToken, credentials.Value);
             return BadRequest(result);
         }
 
         return Ok(result);
     }
+
+    private static string AuthFailureMessage(bool unreachable) => unreachable
+        ? SystemSetupService.KeycloakUnreachableMessage
+        : SystemSetupService.KeycloakInvalidCredentialsMessage;
 }
