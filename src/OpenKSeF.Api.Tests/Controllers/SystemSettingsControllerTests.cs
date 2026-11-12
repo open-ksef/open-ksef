@@ -43,7 +43,7 @@ public class SystemSettingsControllerTests
     public async Task GetSettings_InvalidKcCredentials_Returns401()
     {
         _systemConfig.IsInitialized.Returns(true);
-        _setupService.AuthenticateAdminAsync("admin", "wrong").Returns((string?)null);
+        _setupService.AuthenticateAdminAsync("admin", "wrong").Returns(((string?)null, false));
         var controller = CreateController();
         var request = new SettingsAuthRequest { KcAdminUsername = "admin", KcAdminPassword = "wrong" };
 
@@ -56,7 +56,7 @@ public class SystemSettingsControllerTests
     public async Task GetSettings_ValidCredentials_ReturnsSettings()
     {
         _systemConfig.IsInitialized.Returns(true);
-        _setupService.AuthenticateAdminAsync("admin", "admin").Returns("kc-token");
+        _setupService.AuthenticateAdminAsync("admin", "admin").Returns(((string?)"kc-token", false));
 
         var expectedSettings = new SettingsResponse
         {
@@ -97,7 +97,7 @@ public class SystemSettingsControllerTests
     public async Task UpdateSettings_InvalidKcCredentials_Returns401()
     {
         _systemConfig.IsInitialized.Returns(true);
-        _setupService.AuthenticateAdminAsync("admin", "wrong").Returns((string?)null);
+        _setupService.AuthenticateAdminAsync("admin", "wrong").Returns(((string?)null, false));
         var controller = CreateController();
         var request = new SettingsUpdateRequest
         {
@@ -114,7 +114,7 @@ public class SystemSettingsControllerTests
     public async Task UpdateSettings_Success_ReturnsOk()
     {
         _systemConfig.IsInitialized.Returns(true);
-        _setupService.AuthenticateAdminAsync("admin", "admin").Returns("kc-token");
+        _setupService.AuthenticateAdminAsync("admin", "admin").Returns(((string?)"kc-token", false));
         _settingsService.UpdateSettingsAsync(Arg.Any<SettingsUpdateRequest>(), "kc-token", Arg.Any<CancellationToken>())
             .Returns(new SettingsUpdateResponse(true, null));
 
@@ -136,7 +136,7 @@ public class SystemSettingsControllerTests
     public async Task UpdateSettings_RequiresConfirmation_ReturnsOkWithTheFlag()
     {
         _systemConfig.IsInitialized.Returns(true);
-        _setupService.AuthenticateAdminAsync("admin", "admin").Returns("kc-token");
+        _setupService.AuthenticateAdminAsync("admin", "admin").Returns(((string?)"kc-token", false));
         _settingsService.UpdateSettingsAsync(Arg.Any<SettingsUpdateRequest>(), "kc-token", Arg.Any<CancellationToken>())
             .Returns(new SettingsUpdateResponse(false, "wipe", RequiresConfirmation: true));
 
@@ -153,7 +153,7 @@ public class SystemSettingsControllerTests
     public async Task UpdateSettings_ServiceError_ReturnsBadRequest()
     {
         _systemConfig.IsInitialized.Returns(true);
-        _setupService.AuthenticateAdminAsync("admin", "admin").Returns("kc-token");
+        _setupService.AuthenticateAdminAsync("admin", "admin").Returns(((string?)"kc-token", false));
         _settingsService.UpdateSettingsAsync(Arg.Any<SettingsUpdateRequest>(), "kc-token", Arg.Any<CancellationToken>())
             .Returns(new SettingsUpdateResponse(false, "KSeF env change blocked"));
 

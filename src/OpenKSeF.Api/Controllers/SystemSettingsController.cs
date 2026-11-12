@@ -48,7 +48,7 @@ public class SystemSettingsController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        var kcAdminToken = await _setupService.AuthenticateAdminAsync(request.KcAdminUsername, request.KcAdminPassword);
+        var (kcAdminToken, _) = await _setupService.AuthenticateAdminAsync(request.KcAdminUsername, request.KcAdminPassword);
         if (kcAdminToken is null)
             return Unauthorized(new { error = "Invalid Keycloak admin credentials." });
 
@@ -70,7 +70,7 @@ public class SystemSettingsController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        var kcAdminToken = await _setupService.AuthenticateAdminAsync(request.KcAdminUsername, request.KcAdminPassword);
+        var (kcAdminToken, _) = await _setupService.AuthenticateAdminAsync(request.KcAdminUsername, request.KcAdminPassword);
         if (kcAdminToken is null)
             return Unauthorized(new { error = "Invalid Keycloak admin credentials." });
 

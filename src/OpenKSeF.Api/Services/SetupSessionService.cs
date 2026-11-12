@@ -6,8 +6,8 @@ namespace OpenKSeF.Api.Services;
 public interface ISetupSessionService
 {
     string CreateSession(string username, string password);
-    (string Username, string Password)? RedeemSession(string token);
-    void RestoreSession(string token, string username, string password);
+    (string Username, string Password, DateTimeOffset ExpiresAt)? RedeemSession(string token);
+    void RestoreSession(string token, (string Username, string Password, DateTimeOffset ExpiresAt) session);
 }
 
 public class SetupSessionService : ISetupSessionService
@@ -26,7 +26,7 @@ public class SetupSessionService : ISetupSessionService
         return token;
     }
 
-    public (string Username, string Password)? RedeemSession(string token)
+    public (string Username, string Password, DateTimeOffset ExpiresAt)? RedeemSession(string token)
     {
         // TryRemove is atomic — only one concurrent caller succeeds, preventing replay races.
         if (!_sessions.TryRemove(token, out var entry))
@@ -35,11 +35,11 @@ public class SetupSessionService : ISetupSessionService
         if (DateTimeOffset.UtcNow > entry.ExpiresAt)
             return null;
 
-        return (entry.Username, entry.Password);
+        return (entry.Username, entry.Password, entry.ExpiresAt);
     }
 
-    public void RestoreSession(string token, string username, string password) =>
-        _sessions[token] = new SessionEntry(username, password, DateTimeOffset.UtcNow.Add(SessionLifetime));
+    public void RestoreSession(string token, (string Username, string Password, DateTimeOffset ExpiresAt) session) =>
+        _sessions[token] = new SessionEntry(session.Username, session.Password, session.ExpiresAt);
 
     private void PurgeExpired()
     {

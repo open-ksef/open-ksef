@@ -56,6 +56,22 @@ public class KeycloakRealmPayloadTests
         Assert.Equal(expected, result.Error);
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.OK, false, true, false)]
+    [InlineData(HttpStatusCode.Unauthorized, false, false, false)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, false, false, true)]
+    [InlineData(HttpStatusCode.OK, true, false, true)]
+    public async Task AuthenticateAdmin_SeparatesRejectedCredentialsFromTransportFailure(HttpStatusCode tokenStatus, bool unreachable, bool expectToken, bool expectUnreachable)
+    {
+        _keycloak.TokenStatus = tokenStatus;
+        _keycloak.Unreachable = unreachable;
+
+        var (token, isUnreachable) = await CreateSetupService(Substitute.For<ISystemConfigService>(), ValidKey).AuthenticateAdminAsync("admin", "secret");
+
+        Assert.Equal(expectToken, token is not null);
+        Assert.Equal(expectUnreachable, isUnreachable);
+    }
+
     [Fact]
     public async Task ApplySetup_KeycloakUnreachable_ReturnsPolishConnectionMessage()
     {
@@ -327,6 +343,8 @@ public class KeycloakRealmPayloadTests
 
         public bool Unreachable { get; set; }
 
+        public HttpStatusCode TokenStatus { get; set; } = HttpStatusCode.OK;
+
         public JsonElement Body(HttpMethod method, string url) => Assert.Single(Bodies(method, url));
 
         public List<JsonElement> Bodies(HttpMethod method, string url, bool prefix = false) => _requests
@@ -341,6 +359,9 @@ public class KeycloakRealmPayloadTests
             _requests.Add((request.Method, url, body));
             if (Unreachable)
                 throw new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (keycloak:8080)");
+
+            if (url.EndsWith("/protocol/openid-connect/token"))
+                return TokenStatus == HttpStatusCode.OK ? Json("""{"access_token":"kc-token"}""") : new HttpResponseMessage(TokenStatus);
 
             if (request.Method != HttpMethod.Get)
                 return WriteFailureBody is null ? new HttpResponseMessage(HttpStatusCode.NoContent)

@@ -89,20 +89,32 @@ public class SystemSetupControllerTests
     public async Task Authenticate_InvalidCredentials_ReturnsBadRequest()
     {
         _systemConfig.IsInitialized.Returns(false);
-        _setupService.AuthenticateAdminAsync("admin", "wrong").Returns((string?)null);
+        _setupService.AuthenticateAdminAsync("admin", "wrong").Returns(((string?)null, false));
         var controller = CreateController();
         var request = new SetupAuthenticateRequest("admin", "wrong");
 
-        var result = await controller.Authenticate(request) as BadRequestObjectResult;
+        var result = Assert.IsType<BadRequestObjectResult>(await controller.Authenticate(request));
 
-        Assert.NotNull(result);
+        Assert.Equal(SystemSetupService.KeycloakInvalidCredentialsMessage, JsonSerializer.SerializeToElement(result.Value).GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Authenticate_KeycloakUnreachable_SaysUnreachableInPolish()
+    {
+        _systemConfig.IsInitialized.Returns(false);
+        _setupService.AuthenticateAdminAsync("admin", "admin").Returns(((string?)null, true));
+
+        var result = Assert.IsType<BadRequestObjectResult>(await CreateController().Authenticate(new SetupAuthenticateRequest("admin", "admin")));
+
+        Assert.Equal(SystemSetupService.KeycloakUnreachableMessage, JsonSerializer.SerializeToElement(result.Value).GetProperty("error").GetString());
+        _sessionService.DidNotReceiveWithAnyArgs().CreateSession(default!, default!);
     }
 
     [Fact]
     public async Task Authenticate_ValidCredentials_ReturnsSetupToken()
     {
         _systemConfig.IsInitialized.Returns(false);
-        _setupService.AuthenticateAdminAsync("admin", "admin").Returns("kc-token-123");
+        _setupService.AuthenticateAdminAsync("admin", "admin").Returns(((string?)"kc-token-123", false));
         _sessionService.CreateSession("admin", "admin").Returns("opaque-session-token");
         var controller = CreateController();
         var request = new SetupAuthenticateRequest("admin", "admin");
@@ -121,7 +133,7 @@ public class SystemSetupControllerTests
     {
         _configuration = Config(key);
         _systemConfig.IsInitialized.Returns(false);
-        _setupService.AuthenticateAdminAsync("admin", "admin").Returns("kc-token-123");
+        _setupService.AuthenticateAdminAsync("admin", "admin").Returns(((string?)"kc-token-123", false));
 
         var result = Assert.IsType<BadRequestObjectResult>(await CreateController().Authenticate(new SetupAuthenticateRequest("admin", "admin")));
 
@@ -136,7 +148,7 @@ public class SystemSetupControllerTests
     {
         _configuration = Config(null);
         _systemConfig.IsInitialized.Returns(false);
-        _setupService.AuthenticateAdminAsync("admin", "wrong").Returns((string?)null);
+        _setupService.AuthenticateAdminAsync("admin", "wrong").Returns(((string?)null, false));
 
         var result = Assert.IsType<BadRequestObjectResult>(await CreateController().Authenticate(new SetupAuthenticateRequest("admin", "wrong")));
 
@@ -183,7 +195,7 @@ public class SystemSetupControllerTests
     public async Task Apply_InvalidToken_ReturnsBadRequest()
     {
         _systemConfig.IsInitialized.Returns(false);
-        _sessionService.RedeemSession("not-a-valid-session").Returns((ValueTuple<string, string>?)null);
+        _sessionService.RedeemSession("not-a-valid-session").Returns((ValueTuple<string, string, DateTimeOffset>?)null);
         var controller = CreateController();
         var request = new SetupApplyRequest
         {
@@ -203,8 +215,8 @@ public class SystemSetupControllerTests
     {
         _systemConfig.IsInitialized.Returns(false);
         _sessionService.RedeemSession("valid-session")
-            .Returns(("admin", "secret"), (ValueTuple<string, string>?)null);
-        _setupService.AuthenticateAdminAsync("admin", "secret").Returns("kc-token");
+            .Returns(("admin", "secret", DateTimeOffset.UtcNow.AddMinutes(10)), (ValueTuple<string, string, DateTimeOffset>?)null);
+        _setupService.AuthenticateAdminAsync("admin", "secret").Returns(((string?)"kc-token", false));
         _setupService.ApplySetupAsync(Arg.Any<SetupApplyRequest>(), "kc-token", "admin", Arg.Any<CancellationToken>())
             .Returns(new SetupApplyResponse(true, null));
         var controller = CreateController();
@@ -231,7 +243,7 @@ public class SystemSetupControllerTests
         var sessions = new SetupSessionService();
         var token = sessions.CreateSession("admin", "secret");
         _systemConfig.IsInitialized.Returns(false);
-        _setupService.AuthenticateAdminAsync("admin", "secret").Returns("kc-token");
+        _setupService.AuthenticateAdminAsync("admin", "secret").Returns(((string?)"kc-token", false));
         _setupService.ApplySetupAsync(Arg.Any<SetupApplyRequest>(), "kc-token", "admin", Arg.Any<CancellationToken>())
             .Returns(new SetupApplyResponse(false, "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną."), new SetupApplyResponse(true, null));
         var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _configuration, _logger);
@@ -255,7 +267,7 @@ public class SystemSetupControllerTests
         var sessions = new SetupSessionService();
         var token = sessions.CreateSession("admin", "secret");
         _systemConfig.IsInitialized.Returns(false);
-        _setupService.AuthenticateAdminAsync("admin", "secret").Returns((string?)null);
+        _setupService.AuthenticateAdminAsync("admin", "secret").Returns(((string?)null, true));
         var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _configuration, _logger);
         var request = new SetupApplyRequest
         {
@@ -269,5 +281,39 @@ public class SystemSetupControllerTests
 
         Assert.Equal(SystemSetupService.KeycloakUnreachableMessage, Assert.IsType<SetupApplyResponse>(result.Value).Error);
         Assert.NotNull(sessions.RedeemSession(token));
+    }
+
+    [Fact]
+    public async Task Apply_KeycloakRejectsCredentials_SaysSoInPolish_AndDropsTheToken()
+    {
+        var sessions = new SetupSessionService();
+        var token = sessions.CreateSession("admin", "changed");
+        _systemConfig.IsInitialized.Returns(false);
+        _setupService.AuthenticateAdminAsync("admin", "changed").Returns(((string?)null, false));
+        var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _configuration, _logger);
+        var request = new SetupApplyRequest
+        {
+            ExternalBaseUrl = "http://localhost:8080",
+            KSeFBaseUrl = "test",
+            AdminEmail = "admin@example.com",
+            AdminPassword = "Test1234!",
+        };
+
+        var result = Assert.IsType<BadRequestObjectResult>(await controller.Apply(token, request, CancellationToken.None));
+
+        Assert.Equal(SystemSetupService.KeycloakInvalidCredentialsMessage, Assert.IsType<SetupApplyResponse>(result.Value).Error);
+        Assert.Null(sessions.RedeemSession(token));
+    }
+
+    [Fact]
+    public void RestoreSession_KeepsTheOriginalExpiry()
+    {
+        var sessions = new SetupSessionService();
+        var token = sessions.CreateSession("admin", "secret");
+        var redeemed = sessions.RedeemSession(token)!.Value;
+
+        sessions.RestoreSession(token, redeemed with { ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(-1) });
+
+        Assert.Null(sessions.RedeemSession(token));
     }
 }
