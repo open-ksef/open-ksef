@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using NSubstitute;
 using OpenKSeF.Api.Controllers;
+using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
@@ -9,33 +11,45 @@ using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 
-namespace OpenKSeF.Api.Tests.Controllers;
+namespace OpenKSeF.Api.IntegrationTests;
 
-public class InvoicesControllerTests : IDisposable
+[Collection(TestcontainersCollection.Name)]
+public class InvoicesControllerTests : IAsyncLifetime
 {
     private const string ValidAccount = "PL61 1090 1014 0000 0712 1981 2874";
 
-    private readonly ApplicationDbContext _db;
+    private readonly TestcontainersFixture _fixture;
+    private readonly string _database = $"invoices_ctrl_{Guid.NewGuid():N}";
     private readonly ICurrentUserService _currentUser;
     private readonly ITransferDetailsService _transferDetails;
     private readonly IQrCodeService _qrCode;
     private readonly string _userId = "user-1";
     private readonly Guid _tenantId = Guid.NewGuid();
+    private ApplicationDbContext _db = null!;
 
-    public InvoicesControllerTests()
+    public InvoicesControllerTests(TestcontainersFixture fixture)
     {
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
-        _db = new ApplicationDbContext(options);
-
+        _fixture = fixture;
         _currentUser = Substitute.For<ICurrentUserService>();
         _currentUser.UserId.Returns(_userId);
 
         _transferDetails = new TransferDetailsService();
         _qrCode = Substitute.For<IQrCodeService>();
         _qrCode.GenerateTransferQr(Arg.Any<TransferData>()).Returns(new byte[] { 0x89, 0x50 });
+    }
 
+    public async Task InitializeAsync()
+    {
+        await using (var admin = new NpgsqlConnection(_fixture.PostgresConnectionString))
+        {
+            await admin.OpenAsync();
+            await new NpgsqlCommand($"CREATE DATABASE {_database}", admin).ExecuteNonQueryAsync();
+        }
+
+        _db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(new NpgsqlConnectionStringBuilder(_fixture.PostgresConnectionString) { Database = _database }.ConnectionString)
+            .Options);
+        await _db.Database.MigrateAsync();
         _db.Tenants.Add(new Tenant
         {
             Id = _tenantId,
@@ -45,7 +59,16 @@ public class InvoicesControllerTests : IDisposable
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         });
-        _db.SaveChanges();
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task DisposeAsync()
+    {
+        NpgsqlConnection.ClearPool((NpgsqlConnection)_db.Database.GetDbConnection());
+        await _db.DisposeAsync();
+        await using var admin = new NpgsqlConnection(_fixture.PostgresConnectionString);
+        await admin.OpenAsync();
+        await new NpgsqlCommand($"DROP DATABASE IF EXISTS {_database} WITH (FORCE)", admin).ExecuteNonQueryAsync();
     }
 
     private InvoicesController CreateController() =>
@@ -396,6 +419,4 @@ public class InvoicesControllerTests : IDisposable
         var result = await controller.SetPaid(Guid.NewGuid(), Guid.NewGuid(), new SetInvoicePaidRequest(true));
         Assert.IsType<ForbidResult>(result);
     }
-
-    public void Dispose() => _db.Dispose();
 }

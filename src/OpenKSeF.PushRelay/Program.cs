@@ -14,6 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSingleton<InstanceStore>();
 builder.Services.AddSingleton<ApnsClient>();
+builder.Services.AddSingleton<FcmSender>();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -115,6 +116,8 @@ app.MapPost("/api/push", async (
     HttpContext context,
     IConfiguration config,
     InstanceStore store,
+    FcmSender fcm,
+    ApnsClient apnsClient,
     ILoggerFactory loggerFactory) =>
 {
     var logger = loggerFactory.CreateLogger("PushRelay");
@@ -200,7 +203,7 @@ app.MapPost("/api/push", async (
     var rejected = false;
     var failed = false;
 
-    if (FirebaseApp.DefaultInstance is not null && platform != "ios")
+    if (fcm.Enabled && platform != "ios")
     {
         try
         {
@@ -217,7 +220,7 @@ app.MapPost("/api/push", async (
                 Data = request.Data
             };
 
-            await FirebaseMessaging.DefaultInstance.SendAsync(message);
+            await fcm.SendAsync(message);
             sent = true;
             logger.LogDebug("FCM push sent for token {Token}", shortToken);
         }
@@ -239,7 +242,6 @@ app.MapPost("/api/push", async (
 
     if (!sent && platform != "android")
     {
-        var apnsClient = app.Services.GetRequiredService<ApnsClient>();
         try
         {
             switch (await apnsClient.SendAsync(request))
@@ -381,13 +383,18 @@ class ApnsClient
     private readonly string _bundleId;
 
     public ApnsClient(IConfiguration config, ILogger<ApnsClient> logger)
+        : this(config, logger, new HttpClientHandler())
+    {
+    }
+
+    internal ApnsClient(IConfiguration config, ILogger<ApnsClient> logger, HttpMessageHandler handler)
     {
         _config = config;
         _logger = logger;
         _bundleId = config["APNs:BundleId"] ?? "com.openksef.mobile";
 
         var baseUrl = config["APNs:BaseUrl"] ?? "https://api.push.apple.com";
-        _httpClient = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        _httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseUrl) };
     }
 
     /// <returns>HTTP status from APNs (400 BadDeviceToken mapped to 410), or null when APNs is not configured.</returns>
@@ -421,6 +428,13 @@ class ApnsClient
             return 410;
         return status;
     }
+}
+
+class FcmSender
+{
+    public virtual bool Enabled => FirebaseApp.DefaultInstance is not null;
+
+    public virtual Task<string> SendAsync(Message message) => FirebaseMessaging.DefaultInstance.SendAsync(message);
 }
 
 public partial class Program;

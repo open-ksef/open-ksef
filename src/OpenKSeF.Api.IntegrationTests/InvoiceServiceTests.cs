@@ -1,34 +1,65 @@
 using System.Data.Common;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 using NSubstitute;
+using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.DTOs;
+using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Events;
 using OpenKSeF.Domain.Services;
 
-namespace OpenKSeF.Domain.Tests.Services;
+namespace OpenKSeF.Api.IntegrationTests;
 
-public class InvoiceServiceTests : IDisposable
+[Collection(TestcontainersCollection.Name)]
+public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
 {
-    private readonly ApplicationDbContext _db = new(
-        new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options);
-
+    private readonly string _database = $"invoice_svc_{Guid.NewGuid():N}";
+    private readonly Guid _tenantId = Guid.NewGuid();
     private readonly RecordingNotificationService _notifications = new();
+    private string _connection = null!;
+    private ApplicationDbContext _db = null!;
+
+    public async Task InitializeAsync()
+    {
+        await using (var admin = new NpgsqlConnection(fixture.PostgresConnectionString))
+        {
+            await admin.OpenAsync();
+            await new NpgsqlCommand($"CREATE DATABASE {_database}", admin).ExecuteNonQueryAsync();
+        }
+
+        _connection = new NpgsqlConnectionStringBuilder(fixture.PostgresConnectionString) { Database = _database }.ConnectionString;
+        _db = NewContext();
+        await _db.Database.MigrateAsync();
+        _db.Tenants.Add(new Tenant { Id = _tenantId, UserId = "user-1", Nip = "1111111111", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+    }
+
+    public async Task DisposeAsync()
+    {
+        await _db.DisposeAsync();
+        await using (var own = new NpgsqlConnection(_connection))
+            NpgsqlConnection.ClearPool(own);
+        await using var admin = new NpgsqlConnection(fixture.PostgresConnectionString);
+        await admin.OpenAsync();
+        await new NpgsqlCommand($"DROP DATABASE IF EXISTS {_database} WITH (FORCE)", admin).ExecuteNonQueryAsync();
+    }
+
+    private ApplicationDbContext NewContext(params IInterceptor[] interceptors) => new(
+        new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(_connection).AddInterceptors(interceptors).Options);
 
     [Fact]
     public async Task UpsertInvoicesAsync_StoresWithoutNotifying()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
 
-        var newIds = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()]);
+        var newIds = await sut.UpsertInvoicesAsync(_tenantId, [CreateInvoice()]);
 
         Assert.Single(newIds);
         Assert.Equal(0, _notifications.Count);
@@ -43,7 +74,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task NotifyNewInvoicesAsync_NotifiesNewestTenByAcquisitionDate_SummarisesRest(int stored, int expectedSingles, int? expectedSummary)
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var tenantId = Guid.NewGuid();
+        var tenantId = _tenantId;
         var start = new DateTime(2026, 11, 1, 8, 0, 0, DateTimeKind.Utc);
         var ids = await sut.UpsertInvoicesAsync(tenantId, Enumerable.Range(0, stored)
             .Select(i => CreateInvoice() with { Number = $"KSEF-{i}", AcquisitionDate = start.AddHours(i) })
@@ -63,7 +94,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task ApplyInvoiceXmlAsync_FillsDueDate_UpsertKeepsIt_AndNeitherTouchesPaid()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var tenantId = Guid.NewGuid();
+        var tenantId = _tenantId;
         var paidAt = new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
         var ids = await sut.UpsertInvoicesAsync(tenantId, [CreateInvoice()]);
         var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
@@ -86,11 +117,11 @@ public class InvoiceServiceTests : IDisposable
     public async Task UpsertInvoicesAsync_SameNumberAgain_UpdatesRowInPlace_KeepsIdIssueDateAndPaid_NoNotification()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var tenantId = Guid.NewGuid();
+        var tenantId = _tenantId;
         var first = CreateInvoice();
         var ids = await sut.UpsertInvoicesAsync(tenantId, [first]);
         var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
-        var firstSeenAt = stored.FirstSeenAt;
+        var firstSeenAt = await _db.InvoiceHeaders.Where(i => i.Id == ids[0]).Select(i => i.FirstSeenAt).SingleAsync();
         var paidAt = new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
         stored.IsPaid = true;
         stored.PaidAt = paidAt;
@@ -120,7 +151,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task NotifyNewInvoicesAsync_SyncCancelled_StopsNotifying_KeepsRows(int sentBeforeCancel)
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var tenantId = Guid.NewGuid();
+        var tenantId = _tenantId;
         var ids = await sut.UpsertInvoicesAsync(tenantId, Enumerable.Range(0, 12).Select(i => CreateInvoice() with { Number = $"KSEF-{i}" }).ToList());
         using var cts = new CancellationTokenSource();
         if (sentBeforeCancel == 0)
@@ -139,7 +170,7 @@ public class InvoiceServiceTests : IDisposable
     {
         var throwing = new ThrowingNotificationService();
         var sut = new InvoiceService(_db, throwing, NullLogger<InvoiceService>.Instance);
-        var tenantId = Guid.NewGuid();
+        var tenantId = _tenantId;
         var ids = await sut.UpsertInvoicesAsync(tenantId, Enumerable.Range(0, 12).Select(i => CreateInvoice() with { Number = $"KSEF-{i}" }).ToList());
 
         await sut.NotifyNewInvoicesAsync(tenantId, ids);
@@ -151,18 +182,10 @@ public class InvoiceServiceTests : IDisposable
     [Fact]
     public async Task UpsertInvoicesAsync_PageOfExistingAndNew_LoadsExistingRowsInOneSelect()
     {
-        await using var connection = new SqliteConnection("Data Source=:memory:");
-        await connection.OpenAsync();
         var selects = new SelectCounter();
-        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlite(connection)
-            .AddInterceptors(selects)
-            .Options);
-        await db.Database.EnsureCreatedAsync();
+        await using var db = NewContext(selects);
         var sut = new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance);
-        var tenantId = Guid.NewGuid();
-        db.Tenants.Add(new Entities.Tenant { Id = tenantId, UserId = "user-1", Nip = "1111111111", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        await db.SaveChangesAsync();
+        var tenantId = _tenantId;
         var existing = Enumerable.Range(0, 3).Select(i => CreateInvoice() with { Number = $"KSEF-{i}" }).ToList();
         await sut.UpsertInvoicesAsync(tenantId, existing);
         db.ChangeTracker.Clear();
@@ -181,7 +204,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task UpsertInvoicesAsync_SameNumberTwiceInOnePage_StoresOneRow()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var tenantId = Guid.NewGuid();
+        var tenantId = _tenantId;
 
         var newIds = await sut.UpsertInvoicesAsync(tenantId, [CreateInvoice(), CreateInvoice() with { VendorName = "Vendor 2" }]);
 
@@ -193,7 +216,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task UpsertInvoicesAsync_ExistingOtherDirectionAndNewRows_InsertsOnlyNew_LeavesExistingUntouched()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var tenantId = Guid.NewGuid();
+        var tenantId = _tenantId;
         var issued = CreateInvoice() with { Direction = InvoiceDirection.Issued };
         var issuedId = (await sut.UpsertInvoicesAsync(tenantId, [issued]))[0];
         _db.ChangeTracker.Clear();
@@ -216,7 +239,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task UpsertInvoicesAsync_OtherDirection_LeavesExistingRowUntouched()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var tenantId = Guid.NewGuid();
+        var tenantId = _tenantId;
         var received = CreateInvoice();
         var ids = await sut.UpsertInvoicesAsync(tenantId, [received]);
         var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
@@ -245,7 +268,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task ApplyInvoiceXmlAsync_IssuedRow_GetsLinesOnly()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice() with { Direction = InvoiceDirection.Issued }]);
+        var ids = await sut.UpsertInvoicesAsync(_tenantId, [CreateInvoice() with { Direction = InvoiceDirection.Issued }]);
 
         await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails("PL61109010140000071219812874", [Line()], new DateOnly(2026, 11, 20)));
 
@@ -261,7 +284,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task ApplyInvoiceXmlAsync_KeepsStoredAccountAndLines()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()]);
+        var ids = await sut.UpsertInvoicesAsync(_tenantId, [CreateInvoice()]);
         await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails("PL61109010140000071219812874", [Line()], null));
         var lineId = (await _db.InvoiceLines.SingleAsync()).Id;
 
@@ -277,7 +300,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task ApplyInvoiceXmlAsync_Reread_SetsPaymentFlags_ReplacesInvalidAccount_KeepsLinesAndPaid()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()]);
+        var ids = await sut.UpsertInvoicesAsync(_tenantId, [CreateInvoice()]);
         await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails("DE12000000000000000001", [Line()], null));
         var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
         stored.IsPaid = true;
@@ -308,7 +331,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task RecordFailedInvoiceXmlAsync_KeepsKnownSettlement()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()]);
+        var ids = await sut.UpsertInvoicesAsync(_tenantId, [CreateInvoice()]);
         await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails(null, [], null, SettlementState.Overpaid, 300m));
 
         await sut.RecordFailedInvoiceXmlAsync(ids[0], xmlReceived: true);
@@ -322,7 +345,7 @@ public class InvoiceServiceTests : IDisposable
     public async Task RecordFailedInvoiceXmlAsync_CountsOnlyReceivedXml_ResetOnRead()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()]);
+        var ids = await sut.UpsertInvoicesAsync(_tenantId, [CreateInvoice()]);
 
         await sut.RecordFailedInvoiceXmlAsync(ids[0], xmlReceived: false);
         Assert.Null((await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == ids[0])).XmlFailedReads);
@@ -340,7 +363,7 @@ public class InvoiceServiceTests : IDisposable
     {
         var logger = Substitute.For<ILogger<InvoiceService>>();
         var sut = new InvoiceService(_db, _notifications, logger);
-        var ids = await sut.UpsertInvoicesAsync(Guid.NewGuid(), [CreateInvoice()]);
+        var ids = await sut.UpsertInvoicesAsync(_tenantId, [CreateInvoice()]);
         logger.ClearReceivedCalls();
 
         for (var i = 0; i < InvoiceService.MaxFailedXmlReads + 2; i++)
@@ -365,7 +388,7 @@ public class InvoiceServiceTests : IDisposable
     {
         var dueDate = due is null ? (DateOnly?)null : DateOnly.Parse(due, System.Globalization.CultureInfo.InvariantCulture);
 
-        Assert.Equal(expected, Entities.InvoiceHeader.IsOverdue(isPaid, dueDate, DateTimeOffset.Parse(now, System.Globalization.CultureInfo.InvariantCulture)));
+        Assert.Equal(expected, InvoiceHeader.IsOverdue(isPaid, dueDate, DateTimeOffset.Parse(now, System.Globalization.CultureInfo.InvariantCulture)));
     }
 
     private static InvoiceDto CreateInvoice() => new(
@@ -379,11 +402,9 @@ public class InvoiceServiceTests : IDisposable
         AmountVat: 23m,
         AmountGross: 123m,
         Currency: "PLN",
-        IssueDate: DateTime.UtcNow,
-        AcquisitionDate: DateTime.UtcNow,
+        IssueDate: new DateTime(2026, 11, 1, 8, 0, 0, DateTimeKind.Utc),
+        AcquisitionDate: new DateTime(2026, 11, 1, 8, 0, 0, DateTimeKind.Utc),
         InvoiceType: "VAT");
-
-    public void Dispose() => _db.Dispose();
 
     private sealed class SelectCounter : DbCommandInterceptor
     {
