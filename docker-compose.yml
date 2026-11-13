@@ -23,10 +23,10 @@ services:
       retries: 20
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0
+    image: ghcr.io/open-ksef/openksef-keycloak:${OPENKSEF_VERSION:-latest}
     container_name: openksef-keycloak
     restart: unless-stopped
-    command: start --features=token-exchange,admin-fine-grained-authz
+    command: start
     depends_on:
       postgres:
         condition: service_healthy

@@ -107,7 +107,7 @@ describe('Self-host compose and release', () => {
   const block = (name: string) => compose.split(`\n  ${name}:\n`)[1].split(/\n {2}[a-z-]+:\n|\nvolumes:/)[0]
 
   it('tags every own image with OPENKSEF_VERSION and never a literal :latest', () => {
-    for (const image of ['api', 'worker', 'portal-web', 'gateway']) {
+    for (const image of ['api', 'worker', 'portal-web', 'gateway', 'keycloak']) {
       expect(compose).toContain(`image: ghcr.io/open-ksef/openksef-${image}:\${OPENKSEF_VERSION:-latest}`)
     }
     expect(compose).not.toMatch(/image: \S+:latest\s/)
@@ -121,6 +121,14 @@ describe('Self-host compose and release', () => {
     expect(compose.match(/^ {4}ports:$/gm)).toHaveLength(1)
     expect(block('gateway')).toContain('- "${APP_HOST_PORT:-8080}:8080"')
     expect(block('gateway')).toContain('KEYCLOAK_ADMIN_ALLOW: ${KEYCLOAK_ADMIN_ALLOW:-}')
+  })
+
+  it('runs Keycloak from the theme image without preview features', () => {
+    expect(block('keycloak')).toMatch(/^ {4}command: start$/m)
+    expect(compose).not.toContain('--features')
+    expect(read('docker-compose.dev.yml')).not.toContain('--features')
+    expect(read('docker-compose.dev.yml')).toContain('./infra/keycloak/themes/openksef:/opt/keycloak/themes/openksef:ro')
+    expect(read('infra/keycloak/Dockerfile')).toContain('FROM quay.io/keycloak/keycloak:26.0.8')
   })
 
   it('starts the worker after a healthy API', () => {
@@ -141,6 +149,7 @@ describe('Self-host compose and release', () => {
     expect(pin).toBeLessThan(release.indexOf('docker compose -f docker-compose.yml config -q'))
     expect(release.indexOf('docker compose -f docker-compose.yml config -q')).toBeLessThan(release.indexOf('Attach docker-compose.yml to release'))
     expect(release).toContain('openksef-push-relay:${{ github.ref_name }}')
-    expect(release).toContain('for image in api worker portal-web gateway push-relay; do')
+    expect(release).toContain('for image in api worker portal-web gateway keycloak push-relay; do')
+    expect(release).toContain('openksef-keycloak:${{ github.ref_name }}')
   })
 })

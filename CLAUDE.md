@@ -92,7 +92,7 @@ The project uses direct `ApplicationDbContext` injection -- there is no generic 
 
 `docker-compose.dev.yml` provides local-build dev stack (6 services):
 - **Postgres** (:5432) - shared by Keycloak and app
-- **Keycloak** (:8082) - identity provider (vanilla image; `openksef` realm created by admin setup wizard)
+- **Keycloak** (:8082) - identity provider (stock image + mounted `openksef` theme; `openksef` realm created by admin setup wizard)
 - **API** (:8081) - .NET 10 REST API with Swagger
 - **Worker** - background KSeF sync
 - **Portal Web** (:8083) - React SPA
@@ -157,7 +157,7 @@ Run standalone: `./scripts/setup-test-data.ps1` (requires Docker stack + test us
 
 ### Custom login page
 
-Portal `/login` uses ROPC grant (no Keycloak redirect), Google IdP brokering, and a registration endpoint. Requires `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `API_CLIENT_SECRET` in `.env`. Setup: [docs/login-page-setup.md](docs/login-page-setup.md).
+Portal login is the Keycloak-hosted page (code + PKCE) in the `openksef` theme: `infra/keycloak` (image `openksef-keycloak`; the dev compose mounts the theme on the stock image). The realm uses it after a Settings save (`loginTheme=openksef`). `/mobile-setup` takes the phone's pairing code and opens `{authority}/device?user_code=`. Google and the mobile register endpoint: [docs/login-page-setup.md](docs/login-page-setup.md).
 
 ## MCP servers for agent testing
 
