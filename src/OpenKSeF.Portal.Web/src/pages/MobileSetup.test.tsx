@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { listDevices, sendTestNotification, unregisterDevice } from '@/api/endpoints/devices'
 import { listTenants } from '@/api/endpoints/tenants'
+import { signOutAllDevices } from '@/auth/signOutAll'
+import toast from 'react-hot-toast'
 import { MobileSetupPage } from './MobileSetup'
 
 const { qrValue } = vi.hoisted(() => ({ qrValue: vi.fn() }))
@@ -19,6 +21,7 @@ vi.mock('qrcode.react', () => ({
 }))
 vi.mock('@/api/endpoints/devices', () => ({ listDevices: vi.fn(), sendTestNotification: vi.fn(), unregisterDevice: vi.fn() }))
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
+vi.mock('@/auth/signOutAll', () => ({ signOutAllDevices: vi.fn() }))
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 
 const RAW_TOKEN = 'fcm-token-abcdefghijklmnopqrstuvwxyz-1234'
@@ -114,5 +117,32 @@ describe('Telefon', () => {
     expect(dialog.textContent).toContain('Telefon: Android, dodany 12.10.2026')
     await act(async () => dialog.querySelector<HTMLElement>('.ui-button--danger')?.click())
     expect(vi.mocked(unregisterDevice).mock.calls[0][0]).toBe('d-1')
+  })
+
+  it('signs out all devices after a confirm that warns about the remaining token time', async () => {
+    vi.mocked(signOutAllDevices).mockResolvedValue()
+    await render()
+
+    act(() => by('sign-out-all-button')!.click())
+    const dialog = container.querySelector('[role="alertdialog"]')!
+    expect(dialog.textContent).toContain('może działać jeszcze kilka minut')
+    expect(signOutAllDevices).not.toHaveBeenCalled()
+
+    await act(async () => [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'Wyloguj wszystkie')!.click())
+
+    expect(signOutAllDevices).toHaveBeenCalledTimes(1)
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('shows an error and no success when sign-out-all fails', async () => {
+    vi.mocked(signOutAllDevices).mockRejectedValue(new Error('Sesja wygasła. Zaloguj się ponownie.'))
+    await render()
+
+    act(() => by('sign-out-all-button')!.click())
+    await act(async () => [...container.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent === 'Wyloguj wszystkie')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+
+    expect(toast.error).toHaveBeenCalledWith('Nie udało się wylogować wszystkich urządzeń: Sesja wygasła. Zaloguj się ponownie.')
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull()
   })
 })
