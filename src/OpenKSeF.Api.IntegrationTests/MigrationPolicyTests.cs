@@ -13,7 +13,7 @@ public class MigrationPolicyTests
 
     private static readonly Dictionary<string, string> AllowList = new()
     {
-        ["20261106101846_AlignSyncColumnsWithKsef"] = "AlterColumn widens numeric(18,6)->numeric(22,6) and varchar lengths to match KSeF; no data loss, but rewrites InvoiceLines/InvoiceHeaders columns.",
+        ["20261106101846_AlignSyncColumnsWithKsef"] = "AlterColumn widens numeric(18,6)->numeric(22,6), Unit varchar(50)->256, VendorName/BuyerName varchar(500)->512 to match KSeF; no rewrite, no data loss. Down narrows and fails once wider values exist: roll back by image only.",
         ["20261106132321_DeviceTokenUniqueCascade"] = "Raw Sql deletes duplicate DeviceTokens rows (keeps newest per Token), then unique index on Token and FK re-created with cascade. Deleted rows are not restorable.",
     };
 
@@ -96,7 +96,7 @@ public class MigrationPolicyTests
     private static bool IsAdditive(MigrationOperation op, HashSet<string> created) => op switch
     {
         CreateTableOperation => true,
-        AddColumnOperation c => c.IsNullable || c.DefaultValue is not null || c.DefaultValueSql is not null || c.ComputedColumnSql is not null,
+        AddColumnOperation c => c.IsNullable || c.DefaultValue is not null || c.DefaultValueSql is not null,
         CreateIndexOperation i => !i.IsUnique || created.Contains(i.Table),
         AddPrimaryKeyOperation k => created.Contains(k.Table),
         AddForeignKeyOperation f => created.Contains(f.Table),
