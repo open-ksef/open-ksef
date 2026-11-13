@@ -22,6 +22,7 @@ vi.mock('qrcode.react', () => ({
 vi.mock('@/api/endpoints/devices', () => ({ listDevices: vi.fn(), sendTestNotification: vi.fn(), unregisterDevice: vi.fn() }))
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/auth/signOutAll', () => ({ signOutAllDevices: vi.fn() }))
+vi.mock('@/auth/config', () => ({ oidcConfig: { authority: '/auth/realms/openksef' } }))
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 
 const RAW_TOKEN = 'fcm-token-abcdefghijklmnopqrstuvwxyz-1234'
@@ -144,5 +145,56 @@ describe('Telefon', () => {
     expect(toast.error).toHaveBeenCalledWith('Nie udało się wylogować wszystkich urządzeń: Sesja wygasła. Zaloguj się ponownie. Sesje mogą nadal działać. Spróbuj ponownie.')
     expect(toast.success).not.toHaveBeenCalled()
     expect(container.querySelector('[role="alertdialog"]')).toBeNull()
+  })
+
+  describe('pairing code', () => {
+    const assign = vi.fn()
+
+    beforeEach(() => {
+      vi.stubGlobal('location', { ...window.location, origin: 'https://ksef.example.test', assign })
+    })
+
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    async function submit(value: string): Promise<void> {
+      const input = by('pairing-code-input') as HTMLInputElement
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      await act(async () => by('pairing-code-submit')!.click())
+    }
+
+    it.each(['abcd-efgh', 'ABCDEFGH', 'ab cd ef gh'])('opens the Keycloak device page for %j', async (value) => {
+      await render()
+      await submit(value)
+
+      expect(assign).toHaveBeenCalledWith('/auth/realms/openksef/device?user_code=ABCD-EFGH')
+      expect(container.querySelector('#pairing-code-error')).toBeNull()
+    })
+
+    it('shows an inline message and goes nowhere for a wrong code', async () => {
+      await render()
+      await submit('ABC-123')
+
+      expect(assign).not.toHaveBeenCalled()
+      expect(container.querySelector('#pairing-code-error')?.textContent).toContain('8 liter')
+      expect(by('pairing-code-input')?.getAttribute('aria-invalid')).toBe('true')
+    })
+
+    it('warns about foreign codes, the app version and the server address, with no copyable link', async () => {
+      await render()
+      const text = container.textContent ?? ''
+
+      expect(text).toContain('Wpisuj tylko kod z własnego telefonu')
+      expect(text).toContain('Sparuj z portalem')
+      expect(text).toContain('najnowszej wersji aplikacji')
+      expect(text).toContain('tym samym adresem')
+      expect(text).toContain('https://ksef.example.test')
+      expect(text).not.toContain('/device')
+      expect(container.querySelector('a[href*="device"]')).toBeNull()
+    })
   })
 })

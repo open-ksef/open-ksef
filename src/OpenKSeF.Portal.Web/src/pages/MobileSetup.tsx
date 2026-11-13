@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { useState, type ReactElement } from 'react'
+import { useState, type FormEvent, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
 import { useNavigate } from 'react-router-dom'
 
 import { listDevices, sendTestNotification, unregisterDevice } from '@/api/endpoints/devices'
 import { listTenants } from '@/api/endpoints/tenants'
 import type { DeviceTokenResponse } from '@/api/types'
+import { deviceVerificationUrl, normalizePairingCode } from '@/auth/pairing'
 import { signOutAllDevices } from '@/auth/signOutAll'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
@@ -35,6 +36,19 @@ export function MobileSetupPage(): ReactElement {
   const [testingId, setTestingId] = useState<string | null>(null)
   const [confirmSignOutAll, setConfirmSignOutAll] = useState(false)
   const navigate = useNavigate()
+  const [pairingCode, setPairingCode] = useState('')
+  const [pairingError, setPairingError] = useState<string | null>(null)
+
+  function submitPairingCode(event: FormEvent): void {
+    event.preventDefault()
+    const code = normalizePairingCode(pairingCode)
+    if (!code) {
+      setPairingError('Kod ma 8 liter, na przykład ABCD-EFGH.')
+      return
+    }
+    setPairingError(null)
+    globalThis.location.assign(deviceVerificationUrl(code))
+  }
 
   const devicesQuery = useQuery({ queryKey: ['devices'], queryFn: () => listDevices() })
   const tenantsQuery = useQuery({ queryKey: ['tenants'], queryFn: () => listTenants() })
@@ -149,6 +163,42 @@ export function MobileSetupPage(): ReactElement {
               </ol>
             </div>
           </div>
+        </section>
+
+        <section className="ui-card" aria-labelledby="code-title">
+          <h2 id="code-title">Zaloguj telefon kodem</h2>
+          <p>W aplikacji OpenKSeF dotknij <b>Sparuj z portalem</b> i wpisz tutaj kod widoczny na telefonie. Ta funkcja wymaga najnowszej wersji aplikacji.</p>
+          <p className="pairing-warning">Wpisuj tylko kod z własnego telefonu. Kod od innej osoby da jej dostęp do Twoich firm i faktur.</p>
+          <form className="pairing-form" onSubmit={submitPairingCode} noValidate>
+            <div className="ui-form-group">
+              <label htmlFor="pairing-code">Kod z telefonu</label>
+              <input
+                id="pairing-code"
+                value={pairingCode}
+                onChange={(event) => setPairingCode(event.target.value)}
+                placeholder="ABCD-EFGH"
+                autoComplete="off"
+                autoCapitalize="characters"
+                spellCheck={false}
+                maxLength={12}
+                aria-invalid={pairingError ? true : undefined}
+                aria-describedby={pairingError ? 'pairing-code-error pairing-code-hint' : 'pairing-code-hint'}
+                data-testid="pairing-code-input"
+              />
+              {pairingError && (
+                <span className="inv-field-error" id="pairing-code-error">
+                  {pairingError}
+                </span>
+              )}
+              <span className="ui-form-hint" id="pairing-code-hint">
+                Strona logowania może poprosić o hasło, a potem o zatwierdzenie telefonu.
+              </span>
+            </div>
+            <Button type="submit" data-testid="pairing-code-submit">Dalej</Button>
+          </form>
+          <p className="inv-help">
+            Portal musi być otwarty pod tym samym adresem, który aplikacja ma ustawiony jako adres serwera: <b>{serverUrl}</b>. Inaczej telefon nie zostanie zalogowany.
+          </p>
         </section>
 
         <section className="ui-card" aria-labelledby="devices-title">

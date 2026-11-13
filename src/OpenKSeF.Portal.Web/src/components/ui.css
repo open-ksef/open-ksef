@@ -2078,6 +2078,37 @@ input.nip-input {
   list-style: decimal;
 }
 
+.pairing-warning {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-warning-bg);
+  color: var(--ui-warning);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.pairing-form {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.pairing-form .ui-form-group {
+  flex: 1 1 220px;
+}
+
+.pairing-form .ui-button {
+  margin-top: 23px;
+}
+
+#pairing-code {
+  font-family: var(--ui-font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 .ui-card .ui-table th {
   text-transform: none;
   letter-spacing: 0;
@@ -2596,108 +2627,9 @@ input.nip-input {
   color: var(--ui-error);
 }
 
-/* ─── Auth Card Form ──────────────────────────────────────────────────── */
-.auth-card__form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: 100%;
-  margin-top: 8px;
-}
-
-.auth-card__form .ui-form-group {
-  gap: 4px;
-}
-
-.auth-card__form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
 .auth-card__error {
   width: 100%;
   margin-top: 4px;
-}
-
-.auth-card__footer {
-  font-size: 13px;
-  color: var(--ui-muted);
-  margin: 12px 0 0;
-  text-align: center;
-}
-
-.auth-card__link-btn {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--ui-primary);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: none;
-}
-
-.auth-card__link-btn:hover {
-  text-decoration: underline;
-}
-
-/* ─── Auth Divider ────────────────────────────────────────────────────── */
-.auth-divider {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  gap: 12px;
-  margin: 8px 0;
-}
-
-.auth-divider::before,
-.auth-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--ui-border);
-}
-
-.auth-divider span {
-  font-size: 12px;
-  color: var(--ui-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-}
-
-/* ─── Google Sign-In Button ──────────────────────────────────────────── */
-.auth-google-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  padding: 12px 20px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--ui-text);
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border-strong);
-  border-radius: var(--ui-radius-md);
-  cursor: pointer;
-  transition: background var(--ui-transition), box-shadow var(--ui-transition);
-}
-
-.auth-google-btn:hover:not(:disabled) {
-  background: var(--ui-surface-2);
-}
-
-.auth-google-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.auth-google-btn__icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
 }
 
 /* Spinner for Callback loading state */

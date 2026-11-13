@@ -16,7 +16,6 @@ import { IssuedInvoiceListPage } from '@/pages/IssuedInvoiceList'
 import { LoginPage } from '@/pages/Login'
 import { NotFoundPage } from '@/pages/NotFound'
 import { SellerProfilePage } from '@/pages/SellerProfile'
-import { SilentCallbackPage } from '@/pages/SilentCallback'
 import { StartPage } from '@/pages/Start'
 
 export const appRoutes: RouteObject[] = [
@@ -69,7 +68,6 @@ export const appRoutes: RouteObject[] = [
         children: [{ path: '/onboarding', lazy: () => loadRoute(() => import('@/pages/Onboarding')).then((m) => ({ Component: m.OnboardingPage })) }],
       },
       { path: '/callback', element: <Callback /> },
-      { path: '/silent-callback', element: <SilentCallbackPage /> },
       { path: '/login', element: <LoginPage /> },
       { path: '/admin-setup', lazy: () => loadRoute(() => import('@/pages/AdminSetup')).then((m) => ({ Component: m.AdminSetupPage })) },
       { path: '*', element: <NotFoundPage /> },
