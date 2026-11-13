@@ -174,6 +174,77 @@ public class SystemSettingsApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AccessTokenWithOnlyAccountAudience_IsStillAccepted()
+    {
+        await _fixture.DeleteApiAudienceMappersAsync("openksef-portal-web");
+        await _fixture.AddAudienceMapperAsync("openksef-portal-web", "qa-account-audience",
+            new() { ["included.custom.audience"] = "account", ["access.token.claim"] = "true" });
+        try
+        {
+            var token = await _fixture.GetAccessTokenAsync(clientId: "openksef-portal-web");
+            Assert.Equal(["account"], TestcontainersFixture.AccessTokenAudiences(token));
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/api/tenants");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(request)).StatusCode);
+        }
+        finally
+        {
+            using var http = new HttpClient();
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await _fixture.GetAdminTokenAsync());
+            var realm = $"{_fixture.Keycloak.GetBaseAddress().ToString().TrimEnd('/')}/admin/realms/openksef";
+            var portal = (await http.GetFromJsonAsync<JsonElement[]>($"{realm}/clients?clientId=openksef-portal-web"))!.Single().GetProperty("id").GetString();
+            var mappers = (await http.GetFromJsonAsync<JsonElement[]>($"{realm}/clients/{portal}/protocol-mappers/models"))!;
+            foreach (var mapper in mappers.Where(m => m.GetProperty("name").GetString() == "qa-account-audience"))
+                await http.DeleteAsync($"{realm}/clients/{portal}/protocol-mappers/models/{mapper.GetProperty("id").GetString()}");
+            await PutSettingsAsync(new { kcAdminUsername = "admin", kcAdminPassword = "admin" });
+        }
+    }
+
+    [Fact]
+    public async Task SavingSettings_KeycloakRejectsMapperWrite_ReturnsBadRequest_LoginStillWorks()
+    {
+        const string limitedAdmin = "qa-limited-admin";
+        const string limitedPassword = "Qa-Limited-2026!";
+        var kc = _fixture.Keycloak.GetBaseAddress().ToString().TrimEnd('/');
+        using var http = new HttpClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await _fixture.GetAdminTokenAsync());
+        (await http.PostAsJsonAsync($"{kc}/admin/realms/master/users", new
+        {
+            username = limitedAdmin,
+            enabled = true,
+            credentials = new[] { new { type = "password", value = limitedPassword, temporary = false } },
+        })).EnsureSuccessStatusCode();
+        var userId = (await http.GetFromJsonAsync<JsonElement[]>($"{kc}/admin/realms/master/users?username={limitedAdmin}&exact=true"))!.Single().GetProperty("id").GetString();
+        var realmClient = (await http.GetFromJsonAsync<JsonElement[]>($"{kc}/admin/realms/master/clients?clientId=openksef-realm"))!.Single().GetProperty("id").GetString();
+        var roles = (await http.GetFromJsonAsync<JsonElement[]>($"{kc}/admin/realms/master/clients/{realmClient}/roles"))!
+            .Where(r => r.GetProperty("name").GetString() is "manage-realm" or "view-realm" or "view-clients" or "query-clients" or "view-users")
+            .ToArray();
+        (await http.PostAsJsonAsync($"{kc}/admin/realms/master/users/{userId}/role-mappings/clients/{realmClient}", roles)).EnsureSuccessStatusCode();
+        await _fixture.DeleteApiAudienceMappersAsync("openksef-portal-web");
+        try
+        {
+            var response = await PutSettingsAsync(new { kcAdminUsername = limitedAdmin, kcAdminPassword = limitedPassword });
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.False(body.GetProperty("success").GetBoolean());
+            Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("error").GetString()));
+            Assert.Empty(await _fixture.GetApiAudienceMappersAsync("openksef-portal-web"));
+            var token = await _fixture.GetAccessTokenAsync(clientId: "openksef-portal-web");
+            Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/api/tenants")
+            {
+                Headers = { Authorization = new AuthenticationHeaderValue("Bearer", token) },
+            })).StatusCode);
+        }
+        finally
+        {
+            await http.DeleteAsync($"{kc}/admin/realms/master/users/{userId}");
+            await PutSettingsAsync(new { kcAdminUsername = "admin", kcAdminPassword = "admin" });
+        }
+    }
+
+    [Fact]
     public async Task SavingWithoutTheRelayKey_KeepsIt()
     {
         await SetConfigAsync(new() { [SystemConfigKeys.PushRelayUrl] = "https://relay.example", [SystemConfigKeys.PushRelayApiKey] = RelayKey });
