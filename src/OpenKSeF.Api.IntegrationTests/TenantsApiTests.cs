@@ -176,6 +176,43 @@ public class TenantsApiTests : IDisposable
         Assert.Equal(expectedEmail, fetched.NotificationEmail);
     }
 
+    [Theory]
+    [InlineData("   ", null)]
+    [InlineData(" jan@example.com ", "jan@example.com")]
+    public async Task CreateAndUpdateTenant_NotificationEmail_StoredTrimmedOrNull(string email, string? expected)
+    {
+        await AuthenticateAsync();
+
+        var createResponse = await _client.PostAsJsonAsync("/api/tenants", new { nip = TestNip.New(), notificationEmail = email });
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<TenantDto>();
+        Assert.NotNull(created);
+        Assert.Equal(expected, (await _client.GetFromJsonAsync<TenantDto>($"/api/tenants/{created.Id}"))!.NotificationEmail);
+
+        var reset = await _client.PutAsJsonAsync($"/api/tenants/{created.Id}", new { notificationEmail = "other@example.com" });
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+        var update = await _client.PutAsJsonAsync($"/api/tenants/{created.Id}", new { notificationEmail = email });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        Assert.Equal(expected, (await _client.GetFromJsonAsync<TenantDto>($"/api/tenants/{created.Id}"))!.NotificationEmail);
+    }
+
+    [Theory]
+    [InlineData(" not-an-email ")]
+    [InlineData(" @example.com")]
+    [InlineData("jan@ ")]
+    public async Task CreateAndUpdateTenant_EmailInvalidAfterTrim_Returns400(string email)
+    {
+        await AuthenticateAsync();
+
+        var createResponse = await _client.PostAsJsonAsync("/api/tenants", new { nip = TestNip.New(), notificationEmail = email });
+        Assert.Equal(HttpStatusCode.BadRequest, createResponse.StatusCode);
+
+        var valid = await _client.PostAsJsonAsync("/api/tenants", new { nip = TestNip.New(), notificationEmail = "keep@example.com" });
+        var created = await valid.Content.ReadFromJsonAsync<TenantDto>();
+        var update = await _client.PutAsJsonAsync($"/api/tenants/{created!.Id}", new { notificationEmail = email });
+        Assert.Equal(HttpStatusCode.BadRequest, update.StatusCode);
+    }
+
     [Fact]
     public async Task UpdateTenant_InvalidNotificationEmail_Returns400AndKeepsValue()
     {
