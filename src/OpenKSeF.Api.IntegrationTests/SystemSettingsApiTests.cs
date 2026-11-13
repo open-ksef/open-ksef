@@ -125,6 +125,26 @@ public class SystemSettingsApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SavingSettings_RealmWithoutAudienceMappers_AddsOnePerPublicClient_Idempotent()
+    {
+        string[] clientIds = ["openksef-portal-web", "openksef-mobile"];
+        foreach (var clientId in clientIds)
+        {
+            await _fixture.DeleteApiAudienceMappersAsync(clientId);
+            Assert.DoesNotContain("openksef-api", TestcontainersFixture.AccessTokenAudiences(await _fixture.GetAccessTokenAsync(clientId: clientId)));
+        }
+
+        Assert.Equal(HttpStatusCode.OK, (await PutSettingsAsync(new { kcAdminUsername = "admin", kcAdminPassword = "admin" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await PutSettingsAsync(new { kcAdminUsername = "admin", kcAdminPassword = "admin" })).StatusCode);
+
+        foreach (var clientId in clientIds)
+        {
+            Assert.Single(await _fixture.GetApiAudienceMappersAsync(clientId));
+            Assert.Contains("openksef-api", TestcontainersFixture.AccessTokenAudiences(await _fixture.GetAccessTokenAsync(clientId: clientId)));
+        }
+    }
+
+    [Fact]
     public async Task SavingWithoutTheRelayKey_KeepsIt()
     {
         await SetConfigAsync(new() { [SystemConfigKeys.PushRelayUrl] = "https://relay.example", [SystemConfigKeys.PushRelayApiKey] = RelayKey });

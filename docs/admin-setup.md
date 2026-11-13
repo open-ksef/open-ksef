@@ -329,6 +329,8 @@ Then run `docker compose up -d`.
 
 Keycloak builds the token issuer (`iss`) and every absolute link (login redirects, email verification, password reset) from what the gateway sends it. The gateway takes the host and port from the `Host` header. It takes the scheme from `APP_EXTERNAL_BASE_URL` when that is set in `.env`, otherwise from `X-Forwarded-Proto`. It ignores `X-Forwarded-Host` and `X-Forwarded-Port` from the client. `Host`, and `X-Forwarded-Proto` when `APP_EXTERNAL_BASE_URL` is not set, must come from a proxy that overwrites them; with direct access, or a proxy that passes the client's value, a request can still change the host or port in its own links, and without `APP_EXTERNAL_BASE_URL` also the scheme. The issuer must equal `APP_EXTERNAL_BASE_URL/auth/realms/openksef` (or the URL saved by the wizard), otherwise the API answers 401.
 
+The wizard creates the realm with `sslRequired: external`: Keycloak refuses login over plain `http://` from a public client address and allows it only from localhost and private networks. Serve the gateway over HTTPS for any access from outside your LAN.
+
 | Setup | What the gateway needs | Issuer |
 |---|---|---|
 | Direct, `APP_HOST_PORT=18480` | Nothing | `http://<host>:18480/auth/realms/openksef` |

@@ -146,6 +146,7 @@ public sealed class SystemSetupService : ISystemSetupService
             _logger.LogInformation("Keycloak realm verified/created");
 
             await EnsureClientsExistAsync(client, kcBase, adminToken, ct);
+            await EnsureApiAudienceMappersAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Keycloak clients verified/created");
 
             var apiClientSecret = await FetchApiClientSecretAsync(client, kcBase, adminToken, ct);
@@ -699,7 +700,42 @@ public sealed class SystemSetupService : ISystemSetupService
             new { type = "password", value = newPassword, temporary = false }, ct);
     }
 
-    private async Task<string?> GetClientUuidAsync(
+    internal static async Task EnsureApiAudienceMappersAsync(
+        HttpClient client, string kcBase, string adminToken, CancellationToken ct)
+    {
+        foreach (var clientId in new[] { "openksef-mobile", "openksef-portal-web" })
+        {
+            var uuid = await GetClientUuidAsync(client, kcBase, adminToken, clientId, ct);
+            if (uuid == null) continue;
+
+            var mappersUrl = $"{kcBase}/admin/realms/openksef/clients/{uuid}/protocol-mappers/models";
+            using var getReq = new HttpRequestMessage(HttpMethod.Get, mappersUrl);
+            getReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+            using var getResp = await client.SendAsync(getReq, ct);
+            getResp.EnsureSuccessStatusCode();
+            var mappers = await getResp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
+            if (mappers.Any(m => m.GetProperty("protocolMapper").GetString() == "oidc-audience-mapper"
+                    && m.TryGetProperty("config", out var config)
+                    && config.TryGetProperty("included.client.audience", out var audience) && audience.GetString() == "openksef-api"
+                    && config.TryGetProperty("access.token.claim", out var inAccessToken) && inAccessToken.GetString() == "true"))
+                continue;
+
+            await SendKeycloakJsonAsync(client, HttpMethod.Post, mappersUrl, adminToken, new Dictionary<string, object>
+            {
+                ["name"] = "openksef-api-audience",
+                ["protocol"] = "openid-connect",
+                ["protocolMapper"] = "oidc-audience-mapper",
+                ["config"] = new Dictionary<string, string>
+                {
+                    ["included.client.audience"] = "openksef-api",
+                    ["access.token.claim"] = "true",
+                    ["id.token.claim"] = "false",
+                },
+            }, ct);
+        }
+    }
+
+    private static async Task<string?> GetClientUuidAsync(
         HttpClient client, string kcBase, string adminToken, string clientId, CancellationToken ct)
     {
         var url = $"{kcBase}/admin/realms/openksef/clients?clientId={clientId}";

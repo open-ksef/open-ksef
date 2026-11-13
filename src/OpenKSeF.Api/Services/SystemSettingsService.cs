@@ -135,6 +135,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
 
             // Update Keycloak realm settings
             await UpdateRealmConfigAsync(client, kcBase, kcAdminToken, request, ct);
+            await SystemSetupService.EnsureApiAudienceMappersAsync(client, kcBase, kcAdminToken, ct);
             _logger.LogInformation("Updated Keycloak realm settings");
 
             // Update Google IdP

@@ -352,7 +352,7 @@ public sealed class TenantSyncService : ITenantSyncService
                 ErrorMessage: ex switch
                 {
                     DbUpdateException => "Invoice data could not be stored.",
-                    KsefApiException => ex.Message,
+                    KsefApiException or TimeoutException => ex.Message,
                     _ => "Synchronization failed. Details are in the server log.",
                 },
                 ErrorStatusCode: statusCode.HasValue ? (int)statusCode.Value : null);

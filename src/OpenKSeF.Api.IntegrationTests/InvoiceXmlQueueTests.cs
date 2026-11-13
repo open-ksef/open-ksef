@@ -811,6 +811,10 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         Assert.Equal("rate limited", ksefFailure.ErrorMessage);
         Assert.Equal(429, ksefFailure.ErrorStatusCode);
+
+        _received = _ => throw new TimeoutException("KSeF auth status 450");
+
+        Assert.Equal("KSeF auth status 450", (await ManualSyncAsync()).ErrorMessage);
     }
 
     [Fact]
