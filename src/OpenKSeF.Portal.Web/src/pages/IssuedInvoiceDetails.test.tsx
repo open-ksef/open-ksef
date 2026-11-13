@@ -530,6 +530,7 @@ describe('issue and detail pages', () => {
 
   it.each([
     ['no write permission', 403, 'Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie do zapisu.'],
+    ['KSeF login 415 (no permissions)', 415, 'Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie do zapisu.'],
     ['invalid token', 450, 'KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.'],
     ['missing token', null, 'Wysyłka faktur wymaga tokenu lub certyfikatu KSeF w ustawieniach firmy'],
     ['rejected certificate', 450, 'KSeF odrzucił certyfikat (nieprawidłowy, wygasły lub unieważniony). Wgraj nowy certyfikat KSeF w ustawieniach firmy.'],
@@ -548,6 +549,24 @@ describe('issue and detail pages', () => {
     expect(buttonByText(container, 'Kopiuj jako nową')).toBeUndefined()
     expect(panel.querySelector('[role="alert"]')?.textContent).toBe(statusMessage)
     expect(panel.querySelector('[data-testid="ksef-code"]')?.textContent ?? null).toBe(statusCode === null ? null : `Kod KSeF ${statusCode}`)
+  })
+
+  it.each([
+    [425, 'Uwierzytelnienie unieważnione'],
+    [450, 'Uwierzytelnianie zakończone niepowodzeniem z powodu błędnego tokenu: Nieprawidłowy czas tokena'],
+    [480, 'Uwierzytelnienie zablokowane: Podejrzenie incydentu bezpieczeństwa.'],
+  ])('Rejected by a neutral KSeF login refusal %s: no token advice, KSeF details shown', async (statusCode, statusDetails) => {
+    const statusMessage = 'KSeF odmówił logowania. Przyczynę podaje KSeF w szczegółach.'
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Rejected', ksef: { ...ksef, statusCode, statusMessage, statusDetails } }))
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => container.textContent?.includes(statusMessage) ?? false)
+
+    const panel = container.querySelector<HTMLElement>('section[aria-labelledby="ksef-panel-title"]')!
+    expect(panel.querySelector('[role="alert"]')?.textContent).toBe(statusMessage)
+    expect(panel.querySelector('[data-testid="replace-token-link"]')).toBeNull()
+    expect(panel.textContent).not.toContain('Wygeneruj nowy token')
+    expect(panel.querySelector('[data-testid="ksef-details"]')?.textContent).toContain(statusDetails)
+    expect(panel.querySelector('[data-testid="ksef-code"]')?.textContent).toBe(`Kod KSeF ${statusCode}`)
   })
 
   it('a word like token in a data rejection does not switch the next action', async () => {
