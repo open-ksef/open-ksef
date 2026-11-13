@@ -1,4 +1,4 @@
-import { getAccessToken } from '@/auth/accessToken'
+import { endSession, getAccessToken, renewSession } from '@/auth/accessToken'
 import { normalizeError } from './errors'
 
 export type QueryValue = string | number | boolean | null | undefined
@@ -16,15 +16,24 @@ interface ClientRequestInit extends RequestOptions {
 
 export interface ApiClientOptions {
   getToken?: () => string | null | undefined
+  renewToken?: () => Promise<string | null>
+  endSession?: () => Promise<void>
 }
+
+const isBearerChallenge = (response: Response): boolean =>
+  response.status === 401 && (response.headers.get('WWW-Authenticate') ?? '').startsWith('Bearer')
 
 export class ApiClient {
   private readonly baseUrl: string
   private readonly getToken?: () => string | null | undefined
+  private readonly renewToken?: () => Promise<string | null>
+  private readonly endSession?: () => Promise<void>
 
   constructor(baseUrl: string, options?: ApiClientOptions) {
     this.baseUrl = baseUrl.replace(/\/+$/, '')
     this.getToken = options?.getToken
+    this.renewToken = options?.renewToken
+    this.endSession = options?.endSession
   }
 
   async request<TResponse>(path: string, init?: ClientRequestInit): Promise<TResponse> {
@@ -42,12 +51,19 @@ export class ApiClient {
     const body = this.serializeBody(init?.body, headers)
 
     try {
-      const response = await fetch(url, {
-        method,
-        headers,
-        body,
-        signal: init?.signal,
-      })
+      const send = () => fetch(url, { method, headers, body, signal: init?.signal })
+      let response = await send()
+
+      if (this.renewToken && isBearerChallenge(response)) {
+        const token = await this.renewToken()
+        if (token) {
+          headers.set('Authorization', `Bearer ${token}`)
+          response = await send()
+          if (isBearerChallenge(response)) {
+            await this.endSession?.()
+          }
+        }
+      }
 
       if (!response.ok) {
         throw await normalizeError(response)
@@ -144,4 +160,6 @@ function resolveApiBaseUrl(): string {
 
 export const apiClient = new ApiClient(resolveApiBaseUrl(), {
   getToken: () => getAccessToken(),
+  renewToken: renewSession,
+  endSession,
 })

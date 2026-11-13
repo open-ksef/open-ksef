@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactElement } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '@/auth/useAuth'
 import { BrandMark } from '@/components/BrandMark'
@@ -10,6 +10,7 @@ type AuthTab = 'login' | 'register'
 export function LoginPage(): ReactElement {
   const { isAuthenticated, isLoading, loginWithCredentials, loginWithGoogle, register } = useAuth()
   const navigate = useNavigate()
+  const returnTo = (useLocation().state as { from?: string } | null)?.from ?? '/'
   const registrationAllowed = useSetupStatus().data?.registrationAllowed !== false
   const [tab, setTab] = useState<AuthTab>('login')
   const [error, setError] = useState<string | null>(null)
@@ -29,7 +30,7 @@ export function LoginPage(): ReactElement {
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/" replace />
+    return <Navigate to={returnTo} replace />
   }
 
   async function handleLogin(e: FormEvent): Promise<void> {
@@ -38,7 +39,7 @@ export function LoginPage(): ReactElement {
     setIsSubmitting(true)
     try {
       await loginWithCredentials(loginEmail, loginPassword)
-      navigate('/', { replace: true })
+      navigate(returnTo, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nieprawidłowy email lub hasło.')
     } finally {
@@ -68,7 +69,7 @@ export function LoginPage(): ReactElement {
         firstName: regFirstName || undefined,
         lastName: regLastName || undefined,
       })
-      navigate('/', { replace: true })
+      navigate(returnTo, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Rejestracja nie powiodła się.')
     } finally {
@@ -149,7 +150,7 @@ export function LoginPage(): ReactElement {
             <button
               type="button"
               className="auth-google-btn auth-card__btn"
-              onClick={() => void loginWithGoogle()}
+              onClick={() => void loginWithGoogle(returnTo)}
               disabled={isSubmitting}
               data-testid="login-google"
             >
@@ -268,7 +269,7 @@ export function LoginPage(): ReactElement {
             <button
               type="button"
               className="auth-google-btn auth-card__btn"
-              onClick={() => void loginWithGoogle()}
+              onClick={() => void loginWithGoogle(returnTo)}
               disabled={isSubmitting}
               data-testid="register-google"
             >

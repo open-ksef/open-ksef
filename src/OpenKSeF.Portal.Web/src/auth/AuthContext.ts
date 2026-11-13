@@ -14,11 +14,11 @@ export interface AuthContextValue {
   isAuthenticated: boolean
   login: () => Promise<void>
   loginWithCredentials: (username: string, password: string) => Promise<void>
-  loginWithGoogle: () => Promise<void>
+  loginWithGoogle: (returnTo?: string) => Promise<void>
   register: (data: RegisterData) => Promise<void>
   logout: () => Promise<void>
   getAccessToken: () => Promise<string | null>
-  handleOidcCallback: () => Promise<void>
+  handleOidcCallback: () => Promise<string>
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined)

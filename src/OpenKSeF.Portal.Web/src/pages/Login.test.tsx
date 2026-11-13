@@ -1,20 +1,20 @@
 // @vitest-environment jsdom
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { LoginPage } from './Login'
 
-vi.mock('@/auth/useAuth', () => ({
-  useAuth: () => ({
-    isAuthenticated: false,
-    isLoading: false,
-    loginWithCredentials: vi.fn(),
-    loginWithGoogle: vi.fn(),
-    register: vi.fn(),
-  }),
+const auth = vi.hoisted(() => ({
+  isAuthenticated: false,
+  isLoading: false,
+  loginWithCredentials: vi.fn(),
+  loginWithGoogle: vi.fn(),
+  register: vi.fn(),
 }))
+
+vi.mock('@/auth/useAuth', () => ({ useAuth: () => auth }))
 
 const setupStatus = vi.hoisted(() => ({ data: undefined as { isInitialized: boolean; registrationAllowed?: boolean } | undefined }))
 
@@ -67,5 +67,30 @@ describe('LoginPage', () => {
 
     expect(container.querySelector('[data-testid="switch-to-register"]') !== null).toBe(shown)
     expect(container.textContent?.includes('Nie masz konta?')).toBe(shown)
+  })
+
+  it('after form login goes to the route it came from, and Google gets it too', async () => {
+    auth.loginWithCredentials.mockResolvedValue(undefined)
+    function Where() {
+      return <div>at={useLocation().pathname + useLocation().search}</div>
+    }
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={[{ pathname: '/login', state: { from: '/telefon?x=1' } }]}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="*" element={<Where />} />
+          </Routes>
+        </MemoryRouter>,
+      )
+    })
+
+    act(() => container.querySelector<HTMLButtonElement>('[data-testid="login-google"]')!.click())
+    expect(auth.loginWithGoogle).toHaveBeenCalledWith('/telefon?x=1')
+
+    await act(async () => {
+      container.querySelector('[data-testid="login-submit"]')!.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    })
+    expect(container.textContent).toBe('at=/telefon?x=1')
   })
 })

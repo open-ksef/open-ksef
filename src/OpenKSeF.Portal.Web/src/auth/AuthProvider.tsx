@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PropsWithChildren, type ReactElement } from 'react'
-import { UserManager, type User } from 'oidc-client-ts'
+import { ErrorResponse, UserManager, type User } from 'oidc-client-ts'
 
+import { queryClient } from '@/api/queryClient'
 import { AuthContext, type RegisterData } from './AuthContext'
-import { clearAccessTokenProvider, setAccessTokenProvider } from './accessToken'
+import { clearAccessTokenProvider, clearSessionHandlers, setAccessTokenProvider, setSessionHandlers } from './accessToken'
 import { oidcConfig } from './config'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
@@ -17,21 +18,40 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
   // eslint-disable-next-line react-hooks/refs
   const manager = managerRef.current
   const userRef = useRef<User | null>(null)
+  const renewInFlight = useRef<Promise<string | null> | null>(null)
   const [user, setUserState] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const setUser = useCallback((nextUser: User | null) => {
+    const previous = userRef.current
+    if (previous && previous.profile.sub !== nextUser?.profile.sub) queryClient.clear()
     userRef.current = nextUser
     setAccessTokenProvider(() => nextUser?.access_token ?? null)
     setUserState(nextUser)
   }, [])
 
+  const renew = useCallback(() => {
+    renewInFlight.current ??= manager.signinSilent()
+      .then((renewed) => renewed?.access_token ?? null)
+      .catch(async (error: unknown) => {
+        if (error instanceof ErrorResponse) await manager.removeUser()
+        return null
+      })
+      .finally(() => {
+        renewInFlight.current = null
+      })
+    return renewInFlight.current
+  }, [manager])
+
   useEffect(() => {
     setAccessTokenProvider(() => userRef.current?.access_token ?? null)
+    setSessionHandlers({ renew, end: () => manager.removeUser() })
     return () => {
       clearAccessTokenProvider()
+      clearSessionHandlers()
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/refs
+  }, [manager, renew])
 
   useEffect(() => {
     let isMounted = true
@@ -49,19 +69,6 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
       }
     }
 
-    async function renewSilently(): Promise<void> {
-      try {
-        const renewedUser = await manager.signinSilent()
-        if (isMounted) {
-          setUser(renewedUser)
-        }
-      } catch {
-        if (isMounted) {
-          setUser(null)
-        }
-      }
-    }
-
     const onUserLoaded = (loadedUser: User) => {
       if (isMounted) {
         setUser(loadedUser)
@@ -74,28 +81,14 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
       }
     }
 
-    const onAccessTokenExpiring = () => {
-      void renewSilently()
-    }
-
-    const onAccessTokenExpired = () => {
-      void renewSilently()
-    }
-
     manager.events.addUserLoaded(onUserLoaded)
     manager.events.addUserUnloaded(onUserUnloaded)
-    manager.events.addAccessTokenExpiring(onAccessTokenExpiring)
-    manager.events.addAccessTokenExpired(onAccessTokenExpired)
-    manager.startSilentRenew()
     void initializeAuth()
 
     return () => {
       isMounted = false
       manager.events.removeUserLoaded(onUserLoaded)
       manager.events.removeUserUnloaded(onUserUnloaded)
-      manager.events.removeAccessTokenExpiring(onAccessTokenExpiring)
-      manager.events.removeAccessTokenExpired(onAccessTokenExpired)
-      manager.stopSilentRenew()
     }
     // eslint-disable-next-line react-hooks/refs
   }, [manager, setUser])
@@ -112,9 +105,10 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
     })
   }, [manager])
 
-  const loginWithGoogle = useCallback(async () => {
+  const loginWithGoogle = useCallback(async (returnTo?: string) => {
     await manager.signinRedirect({
       extraQueryParams: { kc_idp_hint: 'google' },
+      state: { returnTo },
     })
   }, [manager])
 
@@ -127,7 +121,7 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
 
     if (!response.ok) {
       const body = await response.json().catch(() => ({})) as Record<string, unknown>
-      throw new Error((body.error as string) ?? 'Registration failed.')
+      throw new Error((body.error as string) ?? 'Rejestracja nie powiodła się.')
     }
 
     try {
@@ -150,6 +144,7 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
   const handleOidcCallback = useCallback(async () => {
     const callbackUser = await manager.signinRedirectCallback()
     setUser(callbackUser)
+    return (callbackUser.state as { returnTo?: string } | undefined)?.returnTo ?? '/'
   }, [manager, setUser])
 
   const value = useMemo(
