@@ -33,6 +33,7 @@ public sealed class IssuedInvoiceSendProcessor(
     public const string EnvironmentChangedMessage = "Środowisko KSeF zmienione";
     public const string InvalidTokenMessage = "KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.";
     public const string InvalidCertificateMessage = "KSeF odrzucił certyfikat (nieprawidłowy, wygasły lub unieważniony). Wgraj nowy certyfikat KSeF w ustawieniach firmy.";
+    public const string LoginRefusedMessage = "KSeF odmówił logowania. Przyczynę podaje KSeF w szczegółach.";
     public const string NumberTakenMessage = "Ten numer faktury jest już użyty w KSeF. Sprawdź tę fakturę w KSeF, zanim wystawisz ją pod nowym numerem.";
     public const string DuplicateUnresolvedMessage = "Nie można jeszcze potwierdzić wyniku wysyłki w KSeF. Wcześniejsza próba mogła zostać przyjęta, więc faktura czeka na wyjaśnienie i sprawdzimy ją ponownie.";
     public const string MissingTokenMessage = "Wysyłka faktur wymaga tokenu lub certyfikatu KSeF w ustawieniach firmy";
@@ -107,7 +108,7 @@ public sealed class IssuedInvoiceSendProcessor(
         catch (KSeFAuthRejectedException e)
         {
             logger.LogWarning("KSeF rejected the {CredentialType} of tenant {TenantId}: {Code} {Reason}", credential.Type, tenantId, e.Code, e.Message);
-            await RejectSendableAsync(invoices, e.Code, credential.Type == CredentialType.Certificate ? InvalidCertificateMessage : InvalidTokenMessage, e.Message, ct);
+            await RejectSendableAsync(invoices, e.Code, AuthRejectedMessage(credential.Type, e), e.Message, ct);
             return;
         }
         catch (StoredCertificateUnreadableException e)
@@ -351,12 +352,22 @@ public sealed class IssuedInvoiceSendProcessor(
         foreach (var invoice in invoices)
         {
             if (MayExistInKSeF(invoice))
-                invoice.ScheduleRetry(description, Now().Add(MaxBackoff), Now());
+                invoice.ScheduleRetry(details is null ? description : $"{description} {details}", Now().Add(MaxBackoff), Now());
             else
                 invoice.MarkRejected(code, description, details, Now());
             await db.SaveChangesAsync(ct);
         }
     }
+
+    private static readonly string[] TokenFaults = ["Nieprawidłowy token", "Token unieważniony", "Token nieaktywny", "Token nie może być użyty"];
+
+    private static string AuthRejectedMessage(CredentialType type, KSeFAuthRejectedException e) => (type, e.Code) switch
+    {
+        (CredentialType.Certificate, 460) => InvalidCertificateMessage,
+        (CredentialType.Token, 450) when TokenFaults.Any(e.Message.Contains) => InvalidTokenMessage,
+        (_, 415) => NoWritePermissionMessage,
+        _ => LoginRefusedMessage,
+    };
 
     private static bool MayExistInKSeF(IssuedInvoice invoice) =>
         invoice.Status == IssuedInvoiceStatus.Accepted || invoice.SendStartedAt is not null;

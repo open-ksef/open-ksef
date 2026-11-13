@@ -5,7 +5,7 @@ namespace OpenKSeF.Domain.Abstractions;
 /// <summary>KSeF login and online session operations for sending issued invoices.</summary>
 public interface IKSeFInvoiceSubmitter
 {
-    /// <summary>Returns the access token. Throws <see cref="KSeFAuthRejectedException"/> when KSeF refuses the token or certificate.</summary>
+    /// <summary>Returns the access token. Throws <see cref="KSeFAuthRejectedException"/> when KSeF refuses the login.</summary>
     Task<string> LoginAsync(string nip, KSeFCredential credential, CancellationToken ct = default);
 
     Task<KSeFOnlineSession> OpenSessionAsync(string accessToken, CancellationToken ct = default);

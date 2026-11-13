@@ -98,7 +98,7 @@ public class KSeFTestSendTests(ITestOutputHelper output)
         var sent = await ksef.ProcessOnceAsync(started, ksef.TokenCredential(corrupted));
         output.WriteLine($"sent: status={sent.Status} lastError={sent.LastError}");
         Assert.Equal(IssuedInvoiceStatus.Sending, sent.Status);
-        Assert.Equal(IssuedInvoiceSendProcessor.InvalidTokenMessage, sent.LastError);
+        Assert.StartsWith(IssuedInvoiceSendProcessor.InvalidTokenMessage, sent.LastError);
     }
 
     [KSeFTestFact]

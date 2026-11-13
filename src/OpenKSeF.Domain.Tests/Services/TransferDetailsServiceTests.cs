@@ -10,14 +10,14 @@ public class TransferDetailsServiceTests
 {
     private const string ValidAccount = "PL61 1090 1014 0000 0712 1981 2874";
     private const string CorrectionMessage = "Faktura korygująca: kwota to różnica. Sprawdź, czy jest coś do zapłaty.";
-    private const string TypeMessage = "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).";
+    private const string TypeMessage = "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Dostęp do KSeF i pobieranie).";
     private const string AccountMessage = "Brak poprawnego numeru rachunku na fakturze.";
     private const string AccountPendingMessage = "Numer rachunku pobieramy jeszcze z KSeF. Sprawdź ponownie za kilka minut.";
-    private const string XmlUnreadableMessage = "Nie udało się odczytać tej faktury z KSeF, więc nie znamy numeru rachunku. Sprawdź dane do zapłaty na fakturze w KSeF. Ponowimy próbę automatycznie w ciągu 7 dni. Możesz też uruchomić pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).";
+    private const string XmlUnreadableMessage = "Nie udało się odczytać tej faktury z KSeF, więc nie znamy numeru rachunku. Sprawdź dane do zapłaty na fakturze w KSeF. Ponowimy próbę automatycznie w ciągu 7 dni. Możesz też uruchomić pełną resynchronizację (portal: Firma, zakładka Dostęp do KSeF i pobieranie).";
     private const string NameOrTitleMessage = "Nie można utworzyć kodu QR: brak czytelnej nazwy sprzedawcy lub numeru faktury.";
     private const string ManualMessage = "Zaliczka/rozliczenie: wpisz kwotę ręcznie.";
     private const string MppMessage = "Sprawdź, czy faktura nie wymaga podzielonej płatności (MPP).";
-    private const string NotReadMessage = "Nie odczytano jeszcze rozliczeń z tej faktury: wpisz kwotę ręcznie, sprawdź ją na fakturze. Aby uzyskać kwotę w kodzie QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).";
+    private const string NotReadMessage = "Nie odczytano jeszcze rozliczeń z tej faktury: wpisz kwotę ręcznie, sprawdź ją na fakturze. Aby uzyskać kwotę w kodzie QR, uruchom pełną resynchronizację (portal: Firma, zakładka Dostęp do KSeF i pobieranie).";
     private const string UnconfirmedMessage = "Faktura zawiera dodatkowe rozliczenia i nie można potwierdzić kwoty do zapłaty: wpisz kwotę ręcznie, sprawdź ją na fakturze.";
     private const string ConfirmedNotice = "Kwota w kodzie QR to kwota do zapłaty z faktury, po uwzględnieniu dodatkowych rozliczeń.";
     private const string PartialMessage = "Faktura opłacona w części: wpisz pozostałą kwotę ręcznie, sprawdź ją na fakturze.";
