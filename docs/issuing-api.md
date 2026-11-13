@@ -13,6 +13,7 @@ GET  /api/tenants/{tenantId}/seller-profile                 -> 200 SellerProfile
 PUT  /api/tenants/{tenantId}/seller-profile                 SellerProfileRequest -> 200 SellerProfileResponse | 400 ValidationEnvelope | 409 (next number too low: ValidationEnvelope; concurrent write: { message })
 GET  /api/nip-lookup/{nip}                                  -> 200 NipLookupResponse | 400 | 404 | 503
 GET  /api/tenants/{tenantId}/issued-invoices?page=&pageSize=&status=&month=&q=   -> 200 PagedResult<IssuedInvoiceListItemResponse> | 400 ValidationEnvelope
+GET  /api/tenants/{tenantId}/issued-invoices/feed?page=&pageSize=&status=&month=&q=   -> 200 IssuedFeedPageResponse (own invoices plus `source` `External` sales read from KSeF, External only with no status or `Accepted`; `issuedFetchIncomplete`) | 400 ValidationEnvelope
 POST /api/tenants/{tenantId}/issued-invoices                IssuedInvoiceDraftRequest -> 201 IssuedInvoiceResponse | 400 ValidationEnvelope
 GET  /api/tenants/{tenantId}/issued-invoices/exchange-rate?currency=&issueDate=&saleDate=   -> 200 ExchangeRateProposalResponse | 400 ValidationEnvelope (INV-VAL-090)
 GET  /api/tenants/{tenantId}/issued-invoices/{id}           -> 200 IssuedInvoiceResponse
@@ -37,7 +38,7 @@ List filters:
 
 The `ksef` block:
 - `environment`: `test`, `demo` or `production`. The environment the invoice was sent to; while it is Draft or Rejected, the current one.
-- `statusCode`, `statusMessage`, `statusDetails`: the KSeF result, filled by the send worker only. A rejection carries the KSeF code and text. A token without write permission gives code 403 and the message "Token KSeF nie ma uprawnienia do wystawiania faktur. Wygeneruj token z uprawnieniem do zapisu i podmień go w ustawieniach firmy."
+- `statusCode`, `statusMessage`, `statusDetails`: the KSeF result, filled by the send worker only. A rejection carries the KSeF code and text. A token or certificate without write permission gives code 403 and the message "Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie do zapisu."
 - `lastError`: a retryable problem while the invoice stays Sending, or a missing UPO on an Accepted invoice.
 - `verificationUrl`: the KOD I link, only when Accepted. Built at issue time by KSeF.Client `IVerificationLinkService` from seller NIP, `issueDate` and the SHA-256 of the stored XML.
 - `hasUpo`: `upo` is downloadable.
@@ -204,7 +205,7 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | SP-VAL-007 | `numberingPattern` | Wzorzec numeracji musi zawierać {RRRR}, inaczej numery powtórzą się w kolejnym roku (seller profile PUT 400) |
 | SP-VAL-008 | `foreignBankAccount` | Niepoprawny numer IBAN rachunku zagranicznego (seller profile PUT 400) |
 | SP-VAL-009 | `bankSwift`, `foreignBankSwift` | Kod SWIFT musi mieć 8 lub 11 znaków (seller profile PUT 400) |
-| NIP-INVALID | `nip` | Niepoprawny NIP (nip-lookup 400) |
+| NIP-INVALID | `nip` | Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną. (nip-lookup 400) |
 | NIP-NOT-FOUND | `nip` | Brak podmiotu w wykazie podatników VAT, wpisz dane ręcznie (nip-lookup 404) |
 | NIP-LOOKUP-UNAVAILABLE | `nip` | Wyszukiwarka MF niedostępna, wpisz dane ręcznie (nip-lookup 503) |
 

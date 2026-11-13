@@ -73,8 +73,9 @@ SELECT encode(sha256("SentXml"), 'base64') FROM "IssuedInvoices" WHERE "Id" = '<
 | `KSeF nie odpowiada, ponowimy wysyłkę` | Network error or KSeF 5xx | Check the KSeF status pages. No action; retries recover it |
 | `KSeF ogranicza liczbę żądań, ponowimy wysyłkę` | 429 | No action unless it lasts: look for another client using the same NIP |
 | `KSeF odrzucił token...` | Token invalid or revoked | Owner generates a new token and replaces it in company settings. The next cycle recovers the invoice without a new POST if the element is known |
-| `Token KSeF nie ma uprawnienia...` | Token has no write permission | As above, with write permission |
-| `Wysyłka faktur wymaga tokenu KSeF...` | Token credential removed | Owner adds a token |
+| `KSeF odrzucił certyfikat...` | Certificate invalid, expired, revoked or unreadable | Owner uploads a new KSeF certificate in company settings. Recovery as above |
+| `Brak uprawnienia do wystawiania faktur w KSeF...` (older rows: `Token KSeF nie ma uprawnienia...`) | Token or certificate has no write permission | As above, with write permission |
+| `Wysyłka faktur wymaga tokenu lub certyfikatu KSeF...` (older rows: `Wysyłka faktur wymaga tokenu KSeF...`) | Credential removed | Owner adds a token or certificate |
 | `Środowisko KSeF zmienione` | The invoice was sent to another environment than the current one; re-checked daily | Admin setup refuses a `ksef_environment` change while any invoice exists. Check the invoice in KSeF using `{base}` of the invoice, then escalate to the principal engineer. It cannot resolve while the environment differs |
 | `Nie można jeszcze potwierdzić wyniku wysyłki w KSeF...` | More than one POST, and either an unresolved 440 or a failure status | `KsefElementRef` empty: "Failure status after a resend". `KsefElementRef` set: "Unresolved 440", unless the next cycle has not polled the new post yet |
 | `UPO jeszcze niedostępne, ponowimy pobranie` | Accepted, no UPO yet | Usually KSeF lag. See "Missing UPO" |
