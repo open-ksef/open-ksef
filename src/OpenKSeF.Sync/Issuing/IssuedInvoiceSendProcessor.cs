@@ -359,7 +359,7 @@ public sealed class IssuedInvoiceSendProcessor(
         }
     }
 
-    private static readonly string[] TokenFaults = ["Nieprawidłowy token", "Token unieważniony", "Token nieaktywny", "Token nie może być użyty"];
+    private static readonly string[] TokenFaults = ["Nieprawidłowy token", "Token unieważniony", "Token nieaktywny", "Token nie może być użyty", "nie został znaleziony"];
 
     private static string AuthRejectedMessage(CredentialType type, KSeFAuthRejectedException e) => (type, e.Code) switch
     {
