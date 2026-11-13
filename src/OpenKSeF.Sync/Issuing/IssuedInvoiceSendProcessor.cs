@@ -352,7 +352,7 @@ public sealed class IssuedInvoiceSendProcessor(
         foreach (var invoice in invoices)
         {
             if (MayExistInKSeF(invoice))
-                invoice.ScheduleRetry(description, Now().Add(MaxBackoff), Now());
+                invoice.ScheduleRetry(details is null ? description : $"{description} {details}", Now().Add(MaxBackoff), Now());
             else
                 invoice.MarkRejected(code, description, details, Now());
             await db.SaveChangesAsync(ct);
@@ -365,6 +365,7 @@ public sealed class IssuedInvoiceSendProcessor(
     {
         (CredentialType.Certificate, 460) => InvalidCertificateMessage,
         (CredentialType.Token, 450) when TokenFaults.Any(e.Message.Contains) => InvalidTokenMessage,
+        (_, 415) => NoWritePermissionMessage,
         _ => LoginRefusedMessage,
     };
 

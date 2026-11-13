@@ -940,7 +940,7 @@ public class IssuedInvoiceSendProcessorTests
 
         var invoice = await LoadAsync(id);
         Assert.Equal(IssuedInvoiceStatus.Sending, invoice.Status);
-        Assert.Equal(IssuedInvoiceSendProcessor.InvalidTokenMessage, invoice.LastError);
+        Assert.Equal($"{IssuedInvoiceSendProcessor.InvalidTokenMessage} Nieprawidłowy token", invoice.LastError);
         Assert.Null(invoice.KsefStatusCode);
         Assert.Equal(_time.UtcNow.AddMinutes(15), invoice.NextAttemptAt);
 
@@ -1356,14 +1356,14 @@ public class IssuedInvoiceSendProcessorTests
 
     [Theory]
     [InlineData(CredentialType.Certificate, 460, "Uwierzytelnianie zakończone niepowodzeniem z powodu błędu certyfikatu: Certyfikat odwołany", IssuedInvoiceSendProcessor.InvalidCertificateMessage)]
-    [InlineData(CredentialType.Certificate, 415, "Uwierzytelnianie zakończone niepowodzeniem: Brak przypisanych uprawnień", IssuedInvoiceSendProcessor.LoginRefusedMessage)]
+    [InlineData(CredentialType.Certificate, 415, "Uwierzytelnianie zakończone niepowodzeniem: Brak przypisanych uprawnień", IssuedInvoiceSendProcessor.NoWritePermissionMessage)]
     [InlineData(CredentialType.Certificate, 480, "Uwierzytelnienie zablokowane: Podejrzenie incydentu bezpieczeństwa.", IssuedInvoiceSendProcessor.LoginRefusedMessage)]
     [InlineData(CredentialType.Token, 450, "Uwierzytelnianie zakończone niepowodzeniem z powodu błędnego tokenu: Token unieważniony", IssuedInvoiceSendProcessor.InvalidTokenMessage)]
     [InlineData(CredentialType.Token, 450, "Uwierzytelnianie zakończone niepowodzeniem z powodu błędnego tokenu: Token nie może być użyty w kontekście 1111111111", IssuedInvoiceSendProcessor.InvalidTokenMessage)]
     [InlineData(CredentialType.Token, 450, "Uwierzytelnianie zakończone niepowodzeniem z powodu błędnego tokenu: Nieprawidłowy czas tokena", IssuedInvoiceSendProcessor.LoginRefusedMessage)]
     [InlineData(CredentialType.Token, 450, "Uwierzytelnianie zakończone niepowodzeniem z powodu błędnego tokenu: Nieprawidłowe wyzwanie autoryzacyjne", IssuedInvoiceSendProcessor.LoginRefusedMessage)]
     [InlineData(CredentialType.Token, 450, "Uwierzytelnianie zakończone niepowodzeniem z powodu błędnego tokenu: Nieprawidłowe szyfrowanie tokena", IssuedInvoiceSendProcessor.LoginRefusedMessage)]
-    [InlineData(CredentialType.Token, 415, "Uwierzytelnianie zakończone niepowodzeniem: Brak przypisanych uprawnień", IssuedInvoiceSendProcessor.LoginRefusedMessage)]
+    [InlineData(CredentialType.Token, 415, "Uwierzytelnianie zakończone niepowodzeniem: Brak przypisanych uprawnień", IssuedInvoiceSendProcessor.NoWritePermissionMessage)]
     [InlineData(CredentialType.Token, 425, "Uwierzytelnienie unieważnione", IssuedInvoiceSendProcessor.LoginRefusedMessage)]
     [InlineData(CredentialType.Token, 480, "Uwierzytelnienie zablokowane: Podejrzenie incydentu bezpieczeństwa.", IssuedInvoiceSendProcessor.LoginRefusedMessage)]
     public async Task AuthRejected_MessageFitsCause_UnsentRejectedWithDetails_SentStaysSending(CredentialType credentialType, int code, string reason, string expected)
@@ -1381,7 +1381,7 @@ public class IssuedInvoiceSendProcessorTests
         Assert.Equal(reason, rejected.KsefStatusDetails);
         var sending = await LoadAsync(sent);
         Assert.Equal(IssuedInvoiceStatus.Sending, sending.Status);
-        Assert.Equal(expected, sending.LastError);
+        Assert.Equal($"{expected} {reason}", sending.LastError);
         Assert.NotNull(sending.NextAttemptAt);
         Assert.Equal(0, _submitter.Sends);
     }
