@@ -152,6 +152,68 @@ public sealed class TestcontainersFixture : IAsyncLifetime
         return mapped.Select(r => r.GetProperty("name").GetString()!).ToArray();
     }
 
+    public async Task<JsonElement[]> GetApiAudienceMappersAsync(string clientId)
+    {
+        using var http = await CreateAdminClientAsync();
+        var mappers = await http.GetFromJsonAsync<JsonElement[]>(await ProtocolMappersUrlAsync(http, clientId));
+        return mappers!.Where(m => m.GetProperty("protocolMapper").GetString() == "oidc-audience-mapper"
+            && m.GetProperty("config") is var config
+            && (config.TryGetProperty("included.client.audience", out var audience) && audience.GetString() == "openksef-api"
+                || config.TryGetProperty("included.custom.audience", out var custom) && custom.GetString() == "openksef-api")).ToArray();
+    }
+
+    public async Task AddAudienceMapperAsync(string clientId, string name, Dictionary<string, string> config)
+    {
+        using var http = await CreateAdminClientAsync();
+        (await http.PostAsJsonAsync(await ProtocolMappersUrlAsync(http, clientId), new
+        {
+            name,
+            protocol = "openid-connect",
+            protocolMapper = "oidc-audience-mapper",
+            config,
+        })).EnsureSuccessStatusCode();
+    }
+
+    public async Task DeleteApiAudienceMappersAsync(string clientId)
+    {
+        var mappers = await GetApiAudienceMappersAsync(clientId);
+        using var http = await CreateAdminClientAsync();
+        var url = await ProtocolMappersUrlAsync(http, clientId);
+        foreach (var mapper in mappers)
+            (await http.DeleteAsync($"{url}/{mapper.GetProperty("id").GetString()}")).EnsureSuccessStatusCode();
+    }
+
+    public async Task DeleteRealmAsync()
+    {
+        using var http = await CreateAdminClientAsync();
+        (await http.DeleteAsync(AdminRealmUrl)).EnsureSuccessStatusCode();
+    }
+
+    public async Task RestoreTestRealmAsync()
+    {
+        using var http = await CreateAdminClientAsync();
+        await http.DeleteAsync(AdminRealmUrl);
+        using var content = new StringContent(
+            await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "realm-test.json")),
+            System.Text.Encoding.UTF8, "application/json");
+        (await http.PostAsync($"{Keycloak.GetBaseAddress().ToString().TrimEnd('/')}/admin/realms", content)).EnsureSuccessStatusCode();
+    }
+
+    public static string[] AccessTokenAudiences(string accessToken)
+    {
+        var payload = accessToken.Split('.')[1].Replace('-', '+').Replace('_', '/');
+        var json = JsonDocument.Parse(Convert.FromBase64String(payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '='))).RootElement;
+        if (!json.TryGetProperty("aud", out var aud))
+            return [];
+        return aud.ValueKind == JsonValueKind.Array ? aud.EnumerateArray().Select(a => a.GetString()!).ToArray() : [aud.GetString()!];
+    }
+
+    private async Task<string> ProtocolMappersUrlAsync(HttpClient http, string clientId)
+    {
+        var client = (await http.GetFromJsonAsync<JsonElement[]>($"{AdminRealmUrl}/clients?clientId={clientId}"))!.Single();
+        return $"{AdminRealmUrl}/clients/{client.GetProperty("id").GetString()}/protocol-mappers/models";
+    }
+
     private string AdminRealmUrl => $"{Keycloak.GetBaseAddress().ToString().TrimEnd('/')}/admin/realms/openksef";
 
     private async Task<HttpClient> CreateAdminClientAsync()

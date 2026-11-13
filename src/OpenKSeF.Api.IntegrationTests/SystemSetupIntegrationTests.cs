@@ -303,6 +303,41 @@ public class SystemSetupIntegrationTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Apply_NewRealm_PortalAndMobileAccessTokensCarryApiAudience()
+    {
+        await ClearSystemConfigAsync();
+        await _fixture.DeleteRealmAsync();
+        try
+        {
+            var authResp = await _client.PostAsJsonAsync("/api/system/setup/authenticate", new SetupAuthenticateRequest("admin", "admin"));
+            authResp.EnsureSuccessStatusCode();
+            var auth = await authResp.Content.ReadFromJsonAsync<SetupAuthenticateResponse>();
+            var request = new SetupApplyRequest
+            {
+                ExternalBaseUrl = "http://localhost:8080",
+                KSeFBaseUrl = "test",
+                AdminEmail = "new-realm-admin@open-ksef.pl",
+                AdminPassword = "NewRealm-2026!",
+            };
+
+            var response = await ApplyAsync(auth!.SetupToken, request);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            foreach (var clientId in new[] { "openksef-portal-web", "openksef-mobile" })
+            {
+                var token = await _fixture.GetAccessTokenAsync(request.AdminEmail, request.AdminPassword, clientId);
+                Assert.Contains("openksef-api", TestcontainersFixture.AccessTokenAudiences(token));
+                Assert.Single(await _fixture.GetApiAudienceMappersAsync(clientId));
+            }
+        }
+        finally
+        {
+            await _fixture.RestoreTestRealmAsync();
+            await ClearSystemConfigAsync();
+        }
+    }
+
     private Task<HttpResponseMessage> ApplyAsync(string setupToken, SetupApplyRequest request)
     {
         var message = new HttpRequestMessage(HttpMethod.Post, "/api/system/setup/apply") { Content = JsonContent.Create(request) };

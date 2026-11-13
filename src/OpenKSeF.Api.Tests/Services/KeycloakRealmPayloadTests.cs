@@ -387,6 +387,9 @@ public class KeycloakRealmPayloadTests
             if (url.EndsWith("/roles/openksef-admin"))
                 return Json("""{"id":"role-1","name":"openksef-admin"}""");
 
+            if (url.EndsWith("/protocol-mappers/models"))
+                return Json("[]");
+
             if (url.Contains("/clients/uuid-"))
                 return Json("""{"id":"user-1","value":"client-secret","redirectUris":["/*"],"serviceAccountsEnabled":true}""");
 
