@@ -68,7 +68,7 @@ public class TransferDetailsService : ITransferDetailsService
         if (invoice.PartialPayment == 1)
             notices.Add("Faktura opłacona w części: wpisz pozostałą kwotę ręcznie, sprawdź ją na fakturze.");
         if (invoice.Settlement is null)
-            notices.Add("Nie odczytano jeszcze rozliczeń z tej faktury: wpisz kwotę ręcznie, sprawdź ją na fakturze. Aby uzyskać kwotę w kodzie QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).");
+            notices.Add("Nie odczytano jeszcze rozliczeń z tej faktury: wpisz kwotę ręcznie, sprawdź ją na fakturze. Aby uzyskać kwotę w kodzie QR, uruchom pełną resynchronizację (portal: Firma, zakładka Dostęp do KSeF i pobieranie).");
         if (invoice.Settlement == SettlementState.Unconfirmed)
             notices.Add("Faktura zawiera dodatkowe rozliczenia i nie można potwierdzić kwoty do zapłaty: wpisz kwotę ręcznie, sprawdź ją na fakturze.");
         data.ManualAmount = notices.Count > 0;
@@ -94,7 +94,7 @@ public class TransferDetailsService : ITransferDetailsService
         if (invoice.InvoiceType?.StartsWith("Kor", StringComparison.OrdinalIgnoreCase) == true)
             return "Faktura korygująca: kwota to różnica. Sprawdź, czy jest coś do zapłaty.";
         if (string.IsNullOrWhiteSpace(invoice.InvoiceType))
-            return "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).";
+            return "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Dostęp do KSeF i pobieranie).";
         if (!QrTypes.Any(t => IsType(invoice, t)))
             return invoice.InvoiceType.ToUpperInvariant() switch
             {
@@ -116,7 +116,7 @@ public class TransferDetailsService : ITransferDetailsService
             return "Sprzedawca oznaczył fakturę jako zapłaconą w całości, w częściach.";
         if (string.IsNullOrWhiteSpace(invoice.VendorBankAccount) && invoice.XmlFetchedAt is null && invoice.DueDate is null)
             return invoice.XmlFailedReads >= InvoiceService.MaxFailedXmlReads
-                ? $"Nie udało się odczytać tej faktury z KSeF, więc nie znamy numeru rachunku. Sprawdź dane do zapłaty na fakturze w KSeF. Ponowimy próbę automatycznie w ciągu {InvoiceService.CappedXmlRetryAfter.Days} dni. Możesz też uruchomić pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie)."
+                ? $"Nie udało się odczytać tej faktury z KSeF, więc nie znamy numeru rachunku. Sprawdź dane do zapłaty na fakturze w KSeF. Ponowimy próbę automatycznie w ciągu {InvoiceService.CappedXmlRetryAfter.Days} dni. Możesz też uruchomić pełną resynchronizację (portal: Firma, zakładka Dostęp do KSeF i pobieranie)."
                 : "Numer rachunku pobieramy jeszcze z KSeF. Sprawdź ponownie za kilka minut.";
         if (QrCodeService.SanitizeAccount(data.RecipientAccount).Length == 0)
             return "Brak poprawnego numeru rachunku na fakturze.";

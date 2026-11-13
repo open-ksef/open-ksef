@@ -42,7 +42,7 @@ public class TransferAfterFullResyncTests : IDisposable
         var before = await GetTransfer(invoice.Id);
         Assert.Null(before.QrCodeBase64);
         Assert.Equal(
-            "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Token KSeF i pobieranie).",
+            "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Dostęp do KSeF i pobieranie).",
             before.QrMessage);
 
         _gateway.DownloadInvoiceAsync(Arg.Any<KSeFSession>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
