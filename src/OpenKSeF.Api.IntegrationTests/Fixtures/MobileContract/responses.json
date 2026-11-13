@@ -1,7 +1,7 @@
 {
   "GET /api/account/me": {
     "userId": "string",
-    "email": "string",
+    "email": "string|null",
     "name": "string|null"
   },
   "GET /api/account/onboarding-status": {

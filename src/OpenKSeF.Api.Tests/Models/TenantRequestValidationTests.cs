@@ -58,6 +58,17 @@ public class TenantRequestValidationTests
         Assert.True(update.NotificationEmailSet);
     }
 
+    [Theory]
+    [InlineData("not-an-email")]
+    [InlineData(" not-an-email ")]
+    public void NotificationEmail_Invalid_IsRejectedByCreateAndUpdate(string email)
+    {
+        var json = JsonSerializer.Serialize(new { nip = "1111111111", notificationEmail = email });
+
+        Assert.False(Validate(JsonSerializer.Deserialize<CreateTenantRequest>(json, JsonSerializerOptions.Web)!).IsValid);
+        Assert.False(Validate(JsonSerializer.Deserialize<UpdateTenantRequest>(json, JsonSerializerOptions.Web)!).IsValid);
+    }
+
     private static Microsoft.AspNetCore.Mvc.ModelBinding.ModelStateDictionary Validate(object model)
     {
         var services = new ServiceCollection().AddLogging().AddControllers().Services.BuildServiceProvider();
