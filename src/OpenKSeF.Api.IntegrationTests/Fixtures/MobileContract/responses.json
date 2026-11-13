@@ -51,6 +51,8 @@
     "items[].firstSeenAt": "string",
     "items[].isPaid": "boolean",
     "items[].paidAt": "string",
+    "items[].dueDate": "string",
+    "items[].isOverdue": "boolean",
     "page": "number",
     "pageSize": "number",
     "totalCount": "number"
@@ -75,6 +77,8 @@
     "firstSeenAt": "string",
     "isPaid": "boolean",
     "paidAt": "string",
+    "dueDate": "string",
+    "isOverdue": "boolean",
     "lines[].lineNumber": "number",
     "lines[].name": "string",
     "lines[].unit": "string",

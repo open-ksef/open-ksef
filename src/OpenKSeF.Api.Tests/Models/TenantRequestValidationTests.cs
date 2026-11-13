@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
@@ -38,6 +39,34 @@ public class TenantRequestValidationTests
     public void DisplayName_Of200_IsValid(object request)
     {
         Assert.True(Validate(request).IsValid);
+    }
+
+    [Theory]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData(" jan@example.com ", "jan@example.com")]
+    public void NotificationEmail_CreateAndUpdate_NormalizeTheSame(string email, string? expected)
+    {
+        var json = JsonSerializer.Serialize(new { nip = "1111111111", notificationEmail = email });
+        var create = JsonSerializer.Deserialize<CreateTenantRequest>(json, JsonSerializerOptions.Web)!;
+        var update = JsonSerializer.Deserialize<UpdateTenantRequest>(json, JsonSerializerOptions.Web)!;
+
+        Assert.True(Validate(create).IsValid);
+        Assert.True(Validate(update).IsValid);
+        Assert.Equal(expected, create.NotificationEmail);
+        Assert.Equal(expected, update.NotificationEmail);
+        Assert.True(update.NotificationEmailSet);
+    }
+
+    [Theory]
+    [InlineData("not-an-email")]
+    [InlineData(" not-an-email ")]
+    public void NotificationEmail_Invalid_IsRejectedByCreateAndUpdate(string email)
+    {
+        var json = JsonSerializer.Serialize(new { nip = "1111111111", notificationEmail = email });
+
+        Assert.False(Validate(JsonSerializer.Deserialize<CreateTenantRequest>(json, JsonSerializerOptions.Web)!).IsValid);
+        Assert.False(Validate(JsonSerializer.Deserialize<UpdateTenantRequest>(json, JsonSerializerOptions.Web)!).IsValid);
     }
 
     private static Microsoft.AspNetCore.Mvc.ModelBinding.ModelStateDictionary Validate(object model)

@@ -75,12 +75,13 @@ public class MobileContractApiTests : IDisposable
         var invoiceId = await SeedInvoiceAsync(tenantId, "PLN");
         var eurInvoiceId = await SeedInvoiceAsync(tenantId, "EUR");
 
-        await Read("GET /api/account/me", await _client.GetAsync("/api/account/me"));
+        var me = await Read("GET /api/account/me", await _client.GetAsync("/api/account/me"));
+        Assert.Equal("testuser@openksef.test", me.GetProperty("email").GetString());
         await Read("GET /api/account/onboarding-status", await _client.GetAsync("/api/account/onboarding-status"));
         await Read("GET /api/tenants", await _client.GetAsync("/api/tenants"));
         await Read("PUT /api/tenants/{id}", await _client.PutAsJsonAsync($"/api/tenants/{tenantId}", new { displayName = "Mobile contract 2", notificationEmail = "mobile@example.com" }));
         await Read("GET /api/tenants/{id}/invoices", await _client.GetAsync($"/api/tenants/{tenantId}/invoices?page=1&pageSize=20"));
-        await Read("GET /api/tenants/{id}/invoices/{invoiceId}", await _client.GetAsync($"/api/tenants/{tenantId}/invoices/{invoiceId}"));
+        var detail = await Read("GET /api/tenants/{id}/invoices/{invoiceId}", await _client.GetAsync($"/api/tenants/{tenantId}/invoices/{invoiceId}"));
         await Read("GET /api/tenants/{id}/invoices/{invoiceId}/transfer", await _client.GetAsync($"/api/tenants/{tenantId}/invoices/{invoiceId}/transfer"));
         await Read("GET /api/tenants/{id}/invoices/{invoiceId}/transfer (QR blocked)", await _client.GetAsync($"/api/tenants/{tenantId}/invoices/{eurInvoiceId}/transfer"));
 
@@ -120,6 +121,7 @@ public class MobileContractApiTests : IDisposable
                 .Select(field => $"{endpoint.Key} {field.Key}: expected {field.Value}, got {string.Join('|', actual[endpoint.Key].GetValueOrDefault(field.Key, ["missing"]))}"))
             .ToList();
         Assert.True(broken.Count == 0, string.Join(Environment.NewLine, broken));
+        Assert.Matches(@"^\d{4}-\d{2}-\d{2}$", detail.GetProperty("dueDate").GetString());
     }
 
     private async Task<JsonElement> HubFrameAsync(Func<NotificationService, Task> notify)
@@ -165,6 +167,7 @@ public class MobileContractApiTests : IDisposable
             IssueDate = now,
             AcquisitionDate = now,
             InvoiceType = "Vat",
+            DueDate = DateOnly.FromDateTime(now).AddDays(14),
             Settlement = SettlementState.None,
             IsPaid = true,
             PaidAt = now,
