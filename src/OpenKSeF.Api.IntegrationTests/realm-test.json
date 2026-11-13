@@ -48,6 +48,7 @@
       "directAccessGrantsEnabled": true,
       "redirectUris": ["/*", "openksef://auth/*"],
       "webOrigins": ["+"],
+      "attributes": { "post.logout.redirect.uris": "+" },
       "protocolMappers": [
         {
           "name": "audience-api",

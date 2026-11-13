@@ -101,7 +101,7 @@ Review all settings and click "Apply". The wizard:
 
 ### Keycloak realm policy
 
-The wizard and every Settings save apply the same values with partial updates, so other realm and client fields stay. A second save changes nothing. Existing installs get them on the next Settings save.
+The wizard and every Settings save apply the same values with partial updates, so other realm and client fields stay. A second save changes nothing. Existing installs get them on the next Settings save. Changes to these values in the Keycloak console are overwritten on the next Settings save.
 
 | Where | Value |
 |-------|-------|
