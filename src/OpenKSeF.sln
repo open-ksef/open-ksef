@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenKSeF.Api.IntegrationTes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenKSeF.PushRelay", "OpenKSeF.PushRelay\OpenKSeF.PushRelay.csproj", "{BCFB8C2E-F411-4A67-BCFF-AA75FE4750E3}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenKSeF.PushRelay.Tests", "OpenKSeF.PushRelay.Tests\OpenKSeF.PushRelay.Tests.csproj", "{46E04180-A413-4645-951B-8F04BD658F09}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -125,6 +127,18 @@ Global
 		{BCFB8C2E-F411-4A67-BCFF-AA75FE4750E3}.Release|x64.Build.0 = Release|Any CPU
 		{BCFB8C2E-F411-4A67-BCFF-AA75FE4750E3}.Release|x86.ActiveCfg = Release|Any CPU
 		{BCFB8C2E-F411-4A67-BCFF-AA75FE4750E3}.Release|x86.Build.0 = Release|Any CPU
+		{46E04180-A413-4645-951B-8F04BD658F09}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{46E04180-A413-4645-951B-8F04BD658F09}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{46E04180-A413-4645-951B-8F04BD658F09}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{46E04180-A413-4645-951B-8F04BD658F09}.Debug|x64.Build.0 = Debug|Any CPU
+		{46E04180-A413-4645-951B-8F04BD658F09}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{46E04180-A413-4645-951B-8F04BD658F09}.Debug|x86.Build.0 = Debug|Any CPU
+		{46E04180-A413-4645-951B-8F04BD658F09}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{46E04180-A413-4645-951B-8F04BD658F09}.Release|Any CPU.Build.0 = Release|Any CPU
+		{46E04180-A413-4645-951B-8F04BD658F09}.Release|x64.ActiveCfg = Release|Any CPU
+		{46E04180-A413-4645-951B-8F04BD658F09}.Release|x64.Build.0 = Release|Any CPU
+		{46E04180-A413-4645-951B-8F04BD658F09}.Release|x86.ActiveCfg = Release|Any CPU
+		{46E04180-A413-4645-951B-8F04BD658F09}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

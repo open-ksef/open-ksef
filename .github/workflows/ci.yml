@@ -42,6 +42,7 @@ jobs:
           dotnet restore OpenKSeF.Domain/OpenKSeF.Domain.csproj
           dotnet restore OpenKSeF.Domain.Tests/OpenKSeF.Domain.Tests.csproj
           dotnet restore OpenKSeF.Api.Tests/OpenKSeF.Api.Tests.csproj
+          dotnet restore OpenKSeF.PushRelay.Tests/OpenKSeF.PushRelay.Tests.csproj
           dotnet restore OpenKSeF.Api.IntegrationTests/OpenKSeF.Api.IntegrationTests.csproj
 
       - name: Build
@@ -51,12 +52,14 @@ jobs:
           dotnet build OpenKSeF.PushRelay/OpenKSeF.PushRelay.csproj --no-restore -c Release
           dotnet build OpenKSeF.Domain.Tests/OpenKSeF.Domain.Tests.csproj --no-restore -c Release
           dotnet build OpenKSeF.Api.Tests/OpenKSeF.Api.Tests.csproj --no-restore -c Release
+          dotnet build OpenKSeF.PushRelay.Tests/OpenKSeF.PushRelay.Tests.csproj --no-restore -c Release
           dotnet build OpenKSeF.Api.IntegrationTests/OpenKSeF.Api.IntegrationTests.csproj --no-restore -c Release
 
       - name: Test
         run: |
           dotnet test OpenKSeF.Domain.Tests/OpenKSeF.Domain.Tests.csproj --no-build -c Release --verbosity normal
           dotnet test OpenKSeF.Api.Tests/OpenKSeF.Api.Tests.csproj --no-build -c Release --verbosity normal
+          dotnet test OpenKSeF.PushRelay.Tests/OpenKSeF.PushRelay.Tests.csproj --no-build -c Release --verbosity normal
 
       - name: Integration test
         timeout-minutes: 20

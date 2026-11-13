@@ -94,6 +94,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 // --- Registration endpoint ---
 app.MapPost("/api/register", async (
     [FromBody] RegisterRequest req,
+    HttpContext context,
     InstanceStore store,
     ILoggerFactory loggerFactory) =>
 {
@@ -102,7 +103,8 @@ app.MapPost("/api/register", async (
     if (string.IsNullOrWhiteSpace(req.InstanceUrl))
         return Results.BadRequest(new { error = "instanceUrl is required" });
 
-    var (instanceId, apiKey) = await store.RegisterAsync(req.InstanceUrl);
+    var replacesInstanceId = await ProvenInstanceIdAsync(context, store, logger);
+    var (instanceId, apiKey) = await store.RegisterAsync(req.InstanceUrl, replacesInstanceId);
     logger.LogInformation("New instance registered: {InstanceId} from {Url}", instanceId, req.InstanceUrl);
 
     return Results.Ok(new { instanceId, apiKey });
@@ -326,6 +328,29 @@ adminGroup.MapPost("/instances/{instanceId}/enable", async (string instanceId, I
 
 app.Run();
 
+static async Task<string?> ProvenInstanceIdAsync(HttpContext context, InstanceStore store, ILogger logger)
+{
+    var instanceId = context.Request.Headers["X-Relay-Instance"].FirstOrDefault();
+    if (string.IsNullOrEmpty(instanceId))
+        return null;
+
+    var timestamp = context.Request.Headers["X-Relay-Timestamp"].FirstOrDefault() ?? "";
+    var signature = context.Request.Headers["X-Relay-Signature"].FirstOrDefault() ?? "";
+    context.Request.Body.Position = 0;
+    var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
+
+    var instance = await store.GetAsync(instanceId);
+    var fresh = long.TryParse(timestamp, out var ts) && Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ts) <= 300;
+    if (instance is null || !fresh || string.IsNullOrEmpty(signature) || !CryptographicOperations.FixedTimeEquals(
+        Encoding.UTF8.GetBytes(signature), Encoding.UTF8.GetBytes(ComputeHmac(body, timestamp, instance.ApiKey))))
+    {
+        logger.LogWarning("Re-registration without valid proof for instance {InstanceId} from {RemoteIp}; old instance left unchanged", instanceId, context.Connection.RemoteIpAddress);
+        return null;
+    }
+
+    return instance.InstanceId;
+}
+
 static string ComputeHmac(string payload, string timestamp, string apiKey)
 {
     var key = Encoding.UTF8.GetBytes(apiKey);
@@ -397,3 +422,5 @@ class ApnsClient
         return status;
     }
 }
+
+public partial class Program;

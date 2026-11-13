@@ -3,7 +3,7 @@
 .SYNOPSIS
     Runs all unit and integration tests across the solution (.NET + Portal Web).
 .DESCRIPTION
-    Executes dotnet test for Api, Domain, and Api.IntegrationTests projects,
+    Executes dotnet test for Api, Domain, PushRelay, and Api.IntegrationTests projects,
     then npm test for Portal.Web. Reports pass/fail summary.
     Integration tests use Testcontainers (requires Docker Desktop).
 #>
@@ -32,6 +32,10 @@ Invoke-TestStep 'Api.Tests' {
 
 Invoke-TestStep 'Domain.Tests' {
     dotnet test (Join-Path $root 'src/OpenKSeF.Domain.Tests/OpenKSeF.Domain.Tests.csproj') --nologo --verbosity minimal
+}
+
+Invoke-TestStep 'PushRelay.Tests' {
+    dotnet test (Join-Path $root 'src/OpenKSeF.PushRelay.Tests/OpenKSeF.PushRelay.Tests.csproj') --nologo --verbosity minimal
 }
 
 Invoke-TestStep 'Api.IntegrationTests' {

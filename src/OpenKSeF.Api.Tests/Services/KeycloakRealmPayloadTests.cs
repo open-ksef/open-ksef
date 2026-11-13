@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Api.Services;
+using OpenKSeF.Domain.Push;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Tests.Services;
@@ -308,6 +309,34 @@ public class KeycloakRealmPayloadTests
             Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData("https://relay.invalid/", true)]
+    [InlineData("https://other-relay.invalid", false)]
+    public async Task UpdateSettings_ReRegisterRelay_SignsWithTheOldKeyOnlyForTheSameRelay(string requestedRelay, bool expectProof)
+    {
+        var systemConfig = Substitute.For<ISystemConfigService>();
+        systemConfig.GetValue(SystemConfigKeys.PushRelayUrl).Returns("https://relay.invalid");
+        systemConfig.GetValue(SystemConfigKeys.PushRelayInstanceId).Returns("old-instance");
+        systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey).Returns("old-key");
+        systemConfig.GetValue(SystemConfigKeys.ExternalBaseUrl).Returns("https://instance.invalid");
+
+        var result = await CreateSettingsService(systemConfig).UpdateSettingsAsync(
+            new SettingsUpdateRequest { PushRelayUrl = requestedRelay, ReRegisterRelay = true }, "token");
+
+        Assert.True(result.Success, result.Error);
+        var (body, headers) = _keycloak.Register!.Value;
+        Assert.Equal(expectProof, headers.Contains("X-Relay-Instance"));
+        if (expectProof)
+        {
+            Assert.Equal("old-instance", headers.GetValues("X-Relay-Instance").Single());
+            var timestamp = headers.GetValues("X-Relay-Timestamp").Single();
+            Assert.Equal(RelayPushProvider.ComputeHmac(body, timestamp, "old-key"), headers.GetValues("X-Relay-Signature").Single());
+        }
+        await systemConfig.Received().SetValuesAsync(
+            Arg.Is<IDictionary<string, string>>(v => v[SystemConfigKeys.PushRelayInstanceId] == "new-instance" && v[SystemConfigKeys.PushRelayApiKey] == "new-key"),
+            Arg.Any<CancellationToken>());
+    }
+
     private SystemSetupService CreateSetupService(ISystemConfigService systemConfig, string? encryptionKey) => new(
         _httpClientFactory,
         new ConfigurationBuilder()
@@ -327,7 +356,7 @@ public class KeycloakRealmPayloadTests
     };
 
     private SystemSettingsService CreateSettingsService(ISystemConfigService? systemConfig = null, KSeFClientOptions? options = null) => new(
-        _httpClientFactory, new ConfigurationBuilder().Build(), systemConfig ?? Substitute.For<ISystemConfigService>(),
+        _httpClientFactory, new ConfigurationBuilder().Build(), systemConfig ?? Substitute.For<ISystemConfigService>(), new RelayHealth(),
         options ?? new KSeFClientOptions(), Substitute.For<IServiceScopeFactory>(), NullLogger<SystemSettingsService>.Instance);
 
     private sealed class FakeKeycloak : HttpMessageHandler
@@ -346,6 +375,8 @@ public class KeycloakRealmPayloadTests
 
         public HttpStatusCode TokenStatus { get; set; } = HttpStatusCode.OK;
 
+        public (string Body, System.Net.Http.Headers.HttpRequestHeaders Headers)? Register { get; private set; }
+
         public JsonElement Body(HttpMethod method, string url) => Assert.Single(Bodies(method, url));
 
         public List<JsonElement> Bodies(HttpMethod method, string url, bool prefix = false) => _requests
@@ -360,6 +391,12 @@ public class KeycloakRealmPayloadTests
             _requests.Add((request.Method, url, body));
             if (Unreachable)
                 throw new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (keycloak:8080)");
+
+            if (url.EndsWith("/api/register"))
+            {
+                Register = (body!, request.Headers);
+                return Json("""{"instanceId":"new-instance","apiKey":"new-key"}""");
+            }
 
             if (url.EndsWith("/protocol/openid-connect/token"))
                 return TokenStatus == HttpStatusCode.OK ? Json("""{"access_token":"kc-token"}""") : new HttpResponseMessage(TokenStatus);
