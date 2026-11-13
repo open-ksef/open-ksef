@@ -165,15 +165,89 @@ public class KeycloakRealmPayloadTests
             new SettingsUpdateRequest { ExternalBaseUrl = "https://ksef.example.com/" }, "token");
 
         Assert.True(result.Success, result.Error);
-        var realm = _keycloak.Body(HttpMethod.Put, RealmUrl);
+        var realm = _keycloak.RealmUpdate();
         Assert.True(realm.GetProperty("bruteForceProtected").GetBoolean());
         Assert.False(realm.GetProperty("permanentLockout").GetBoolean());
         Assert.Equal(10, realm.GetProperty("failureFactor").GetInt32());
 
-        var clientUpdates = _keycloak.Bodies(HttpMethod.Put, $"{RealmUrl}/clients/uuid-", prefix: true);
+        var clientUpdates = _keycloak.Bodies(HttpMethod.Put, $"{RealmUrl}/clients/uuid-", prefix: true).Where(c => c.TryGetProperty("webOrigins", out _)).ToList();
         Assert.Equal(3, clientUpdates.Count);
         Assert.All(clientUpdates, c => Assert.Equal(
             ["https://ksef.example.com"], c.GetProperty("webOrigins").EnumerateArray().Select(o => o.GetString())));
+    }
+
+    [Fact]
+    public async Task ApplySetup_AppliesRealmPolicyAfterConfigureRealm()
+    {
+        _keycloak.RealmJson = "{}";
+
+        var result = await CreateSetupService(Substitute.For<ISystemConfigService>(), ValidKey).ApplySetupAsync(NewSetupRequest(), "token", "admin");
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal(300, _keycloak.RealmUpdate().GetProperty("accessTokenLifespan").GetInt32());
+        var realmPuts = _keycloak.Requests.Where(r => r.Method == HttpMethod.Put && r.Url == RealmUrl).ToList();
+        Assert.Equal(2, realmPuts.Count);
+        var bodies = _keycloak.Bodies(HttpMethod.Put, RealmUrl);
+        Assert.True(bodies[0].TryGetProperty("registrationAllowed", out _));
+        Assert.True(bodies[1].TryGetProperty("loginTheme", out _));
+        AssertRealmPolicy();
+    }
+
+    [Fact]
+    public async Task UpdateSettings_NoExternalBaseUrl_AppliesRealmPolicy()
+    {
+        _keycloak.RealmJson = """{"bruteForceProtected":true,"failureFactor":10}""";
+
+        var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest(), "token");
+
+        Assert.True(result.Success, result.Error);
+        AssertRealmPolicy();
+        Assert.DoesNotContain(_keycloak.Requests, r => r.Url.Contains("/optional-client-scopes/"));
+    }
+
+    [Fact]
+    public async Task UpdateSettings_OfflineAccessNotOptional_AddsItToMobileClient()
+    {
+        _keycloak.RealmJson = """{"bruteForceProtected":true,"failureFactor":10}""";
+        _keycloak.OptionalScopesJson = """[{"id":"scope-roles","name":"roles"}]""";
+
+        var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest(), "token");
+
+        Assert.True(result.Success, result.Error);
+        Assert.Contains((HttpMethod.Put, $"{RealmUrl}/clients/uuid-openksef-mobile/optional-client-scopes/scope-offline"), _keycloak.Requests);
+    }
+
+    private void AssertRealmPolicy()
+    {
+        var realm = _keycloak.RealmPolicy();
+        Assert.Equal("openksef", realm.GetProperty("loginTheme").GetString());
+        Assert.Equal("OpenKSeF", realm.GetProperty("displayName").GetString());
+        Assert.True(realm.GetProperty("internationalizationEnabled").GetBoolean());
+        Assert.Equal(["pl"], realm.GetProperty("supportedLocales").EnumerateArray().Select(l => l.GetString()));
+        Assert.Equal("pl", realm.GetProperty("defaultLocale").GetString());
+        Assert.Equal(300, realm.GetProperty("accessTokenLifespan").GetInt32());
+        Assert.Equal(2592000, realm.GetProperty("offlineSessionIdleTimeout").GetInt32());
+        Assert.True(realm.GetProperty("offlineSessionMaxLifespanEnabled").GetBoolean());
+        Assert.Equal(31536000, realm.GetProperty("offlineSessionMaxLifespan").GetInt32());
+        Assert.True(realm.GetProperty("eventsEnabled").GetBoolean());
+        Assert.Equal(2592000, realm.GetProperty("eventsExpiration").GetInt32());
+        Assert.Equal(
+            ["LOGIN", "LOGIN_ERROR", "OAUTH2_DEVICE_VERIFY_USER_CODE", "OAUTH2_DEVICE_CODE_TO_TOKEN", "REVOKE_GRANT"],
+            realm.GetProperty("enabledEventTypes").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(12, realm.EnumerateObject().Count());
+
+        Assert.Equal(
+            SystemSetupService.PolishLoginTexts.Keys.Select(k => $"{RealmUrl}/localization/pl/{k}").Order(),
+            _keycloak.Requests.Where(r => r.Method == HttpMethod.Put && r.Url.Contains("/localization/pl/")).Select(r => r.Url).Order());
+        Assert.Equal(12, SystemSetupService.PolishLoginTexts.Count);
+
+        var mobile = Assert.Single(_keycloak.Bodies(HttpMethod.Put, $"{RealmUrl}/clients/uuid-openksef-mobile"), b => b.TryGetProperty("attributes", out _));
+        Assert.Equal(["name", "attributes"], mobile.EnumerateObject().Select(p => p.Name));
+        Assert.Equal("Aplikacja mobilna OpenKSeF", mobile.GetProperty("name").GetString());
+        var attributes = mobile.GetProperty("attributes");
+        Assert.Equal("true", attributes.GetProperty("oauth2.device.authorization.grant.enabled").GetString());
+        Assert.Equal("300", attributes.GetProperty("oauth2.device.code.lifespan").GetString());
+        Assert.Equal("S256", attributes.GetProperty("pkce.code.challenge.method").GetString());
     }
 
     private static SmtpConfig Smtp(string? password) =>
@@ -190,7 +264,7 @@ public class KeycloakRealmPayloadTests
         var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest { Smtp = Smtp(password) }, "token");
 
         Assert.True(result.Success, result.Error);
-        Assert.Equal(sent, _keycloak.Body(HttpMethod.Put, RealmUrl).GetProperty("smtpServer").GetProperty("password").GetString());
+        Assert.Equal(sent, _keycloak.RealmUpdate().GetProperty("smtpServer").GetProperty("password").GetString());
     }
 
     [Theory]
@@ -216,7 +290,7 @@ public class KeycloakRealmPayloadTests
             new SettingsUpdateRequest { RegistrationAllowed = false }, "token");
 
         Assert.True(result.Success, result.Error);
-        var realm = _keycloak.Body(HttpMethod.Put, RealmUrl);
+        var realm = _keycloak.RealmUpdate();
         Assert.False(realm.TryGetProperty("bruteForceProtected", out _));
         Assert.False(realm.TryGetProperty("failureFactor", out _));
     }
@@ -229,7 +303,7 @@ public class KeycloakRealmPayloadTests
         var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest(), "token");
 
         Assert.True(result.Success, result.Error);
-        var realm = _keycloak.Body(HttpMethod.Put, RealmUrl);
+        var realm = _keycloak.RealmUpdate();
         Assert.Equal(10, realm.GetProperty("failureFactor").GetInt32());
         Assert.False(realm.TryGetProperty("permanentLockout", out _));
         Assert.Single(realm.EnumerateObject());
@@ -243,7 +317,7 @@ public class KeycloakRealmPayloadTests
         var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest(), "token");
 
         Assert.True(result.Success, result.Error);
-        var realm = _keycloak.Body(HttpMethod.Put, RealmUrl);
+        var realm = _keycloak.RealmUpdate();
         Assert.False(realm.GetProperty("permanentLockout").GetBoolean());
         Assert.Single(realm.EnumerateObject());
     }
@@ -256,7 +330,7 @@ public class KeycloakRealmPayloadTests
         var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest(), "token");
 
         Assert.True(result.Success, result.Error);
-        Assert.Empty(_keycloak.Bodies(HttpMethod.Put, RealmUrl));
+        Assert.Empty(_keycloak.RealmUpdates());
     }
 
     [Fact]
@@ -269,7 +343,7 @@ public class KeycloakRealmPayloadTests
             new SettingsUpdateRequest { RegistrationAllowed = false }, "token");
 
         Assert.True(result.Success, result.Error);
-        var realm = _keycloak.Body(HttpMethod.Put, RealmUrl);
+        var realm = _keycloak.RealmUpdate();
         Assert.False(realm.GetProperty("registrationAllowed").GetBoolean());
         Assert.False(realm.TryGetProperty("bruteForceProtected", out _));
         Assert.False(realm.TryGetProperty("failureFactor", out _));
@@ -397,6 +471,16 @@ public class KeycloakRealmPayloadTests
 
         public JsonElement Body(HttpMethod method, string url) => Assert.Single(Bodies(method, url));
 
+        public string OptionalScopesJson { get; set; } = """[{"id":"scope-offline","name":"offline_access"}]""";
+
+        public List<(HttpMethod Method, string Url)> Requests => _requests.Select(r => (r.Method, r.Url)).ToList();
+
+        public List<JsonElement> RealmUpdates() => Bodies(HttpMethod.Put, RealmUrl).Where(b => !b.TryGetProperty("loginTheme", out _)).ToList();
+
+        public JsonElement RealmUpdate() => Assert.Single(RealmUpdates());
+
+        public JsonElement RealmPolicy() => Assert.Single(Bodies(HttpMethod.Put, RealmUrl), b => b.TryGetProperty("loginTheme", out _));
+
         public List<JsonElement> Bodies(HttpMethod method, string url, bool prefix = false) => _requests
             .Where(r => r.Method == method && r.Body != null && (prefix ? r.Url.StartsWith(url) : r.Url == url))
             .Select(r => JsonDocument.Parse(r.Body!).RootElement)
@@ -444,6 +528,12 @@ public class KeycloakRealmPayloadTests
 
             if (url.EndsWith("/protocol-mappers/models"))
                 return Json("[]");
+
+            if (url.EndsWith("/optional-client-scopes"))
+                return Json(OptionalScopesJson);
+
+            if (url.EndsWith("/client-scopes"))
+                return Json("""[{"id":"scope-roles","name":"roles"},{"id":"scope-offline","name":"offline_access"}]""");
 
             if (url.Contains("/clients/uuid-"))
                 return Json("""{"id":"user-1","value":"client-secret","redirectUris":["/*"],"serviceAccountsEnabled":true}""");

@@ -68,7 +68,7 @@ If you enable email verification or password reset, SMTP is required. The wizard
 
 ### Step 4: Security
 
-The wizard fetches the **API client secret** from the Keycloak `openksef-api` client and stores it in the database. The API never returns it to the browser. If you need it, for example for `API_CLIENT_SECRET`, read it in the Keycloak admin console: **Clients > openksef-api > Credentials**, see [login page setup](login-page-setup.md). Do not regenerate it there: the API prefers the copy in the database, and setup-token exchange then fails.
+The wizard fetches the **API client secret** from the Keycloak `openksef-api` client and stores it in the database. The API never returns it to the browser. If you need it, for example for `API_CLIENT_SECRET`, read it in the Keycloak admin console: **Clients > openksef-api > Credentials**, see [login page setup](login-page-setup.md). Do not regenerate it there: the API prefers the copy in the database, and registration then fails.
 
 The **AES-256 encryption key** is not part of the wizard, and no API response contains it. Get it from your copy outside the database, or from `ENCRYPTION_KEY` in `.env` or the stack environment. An installation that has not adopted yet also holds it in the `encryption_key` row of `SystemConfigs`. If you cannot find it, do not generate a new one: step 1 of the [upgrade](#upgrade-from-v007-or-earlier) says where to recover it. Set `ENCRYPTION_KEY` (or `ENCRYPTION_KEY_FILE`) on the API and Worker before you start the stack, and back it up outside the database. Without it the wizard stops at step 1, after the Keycloak login. Shipped `docker-compose.yml` forwards only `ENCRYPTION_KEY` and refuses to start without it, so `ENCRYPTION_KEY_FILE` needs your own compose file. An override file alone is not enough, because the check in the base file still runs. See [Encryption key](#encryption-key) for the upgrade and rotation steps.
 
@@ -92,13 +92,25 @@ Review all settings and click "Apply". The wizard:
 1. Creates the `openksef` realm in Keycloak if it does not exist
 2. Creates the OAuth clients `openksef-api`, `openksef-mobile` and `openksef-portal-web`
 3. Fetches the Keycloak API client secret
-4. Enables token-exchange for the service account
-5. Updates client redirect URIs with the external URL
-6. Configures the Keycloak realm (login policy, password policy, SMTP)
-7. Creates the admin user in Keycloak, creates the realm role `openksef-admin` and assigns it to that user
-8. Configures Google IdP (if provided)
-9. Stores all configuration in the database
-10. Redirects to the login page
+4. Updates client redirect URIs with the external URL
+5. Configures the Keycloak realm (login policy, password policy, SMTP), then the [realm policy](#keycloak-realm-policy)
+6. Creates the admin user in Keycloak, creates the realm role `openksef-admin` and assigns it to that user
+7. Configures Google IdP (if provided)
+8. Stores all configuration in the database
+9. Redirects to the login page
+
+### Keycloak realm policy
+
+The wizard and every Settings save apply the same values with partial updates, so other realm and client fields stay. A second save changes nothing. Existing installs get them on the next Settings save. Changes to these values in the Keycloak console are overwritten on the next Settings save.
+
+| Where | Value |
+|-------|-------|
+| Realm | `displayName` OpenKSeF, `loginTheme` openksef, internationalization on, locale `pl` only, access token 300 s, offline session idle 30 d and max 365 d |
+| Realm events | On, kept 30 d: `LOGIN`, `LOGIN_ERROR`, `OAUTH2_DEVICE_VERIFY_USER_CODE`, `OAUTH2_DEVICE_CODE_TO_TOKEN`, `REVOKE_GRANT` |
+| Realm localization `pl` | 12 device-pairing and consent texts, including the phishing warning |
+| `openksef-mobile` | Name "Aplikacja mobilna OpenKSeF", device authorization grant on, device code 300 s, PKCE S256, `offline_access` optional scope |
+
+Direct grants and redirect URIs are not changed. `loginTheme` openksef on the stock Keycloak image falls back to the built-in theme and logs `Failed to find LOGIN theme openksef`. See [ADR-002](adr/adr-002-hosted-login-device-pairing.md).
 
 ## Encryption key
 
@@ -106,7 +118,7 @@ Review all settings and click "Apply". The wizard:
 >
 > Already adopted (the query in its step 1 returns 0)? Keep that value, because it is the only copy of the key, and [rotate the key](#rotate-the-key) only if you want a new one. Is the value empty? Do not generate a key and do not run `docker compose up -d`. Step 1 of the procedure says where to recover it.
 
-The key encrypts stored KSeF tokens and certificates, and the wizard secrets in `SystemConfigs` (service account secret, relay API key, Firebase credentials, Google client secret, setup token signing key), stored as `enc:...`. Each start encrypts any plaintext wizard secret, in one transaction. Losing the key loses all of them: tenants must enter tokens again and the admin must run the wizard again. Update API and Worker together, and roll back only to v0.0.12 or newer: older images read `enc:` values as the secret itself. After this release, run `rotate-encryption-key` only with this image or newer: older images rotate KSeF credentials only and leave the wizard secrets under the old key.
+The key encrypts stored KSeF tokens and certificates, and the wizard secrets in `SystemConfigs` (service account secret, relay API key, Firebase credentials, Google client secret, and the unused setup token signing key), stored as `enc:...`. Each start encrypts any plaintext wizard secret, in one transaction. Losing the key loses all of them: tenants must enter tokens again and the admin must run the wizard again. Update API and Worker together, and roll back only to v0.0.12 or newer: older images read `enc:` values as the secret itself. After this release, run `rotate-encryption-key` only with this image or newer: older images rotate KSeF credentials only and leave the wizard secrets under the old key.
 
 A valid key is 32 bytes in base64, which is 44 characters. Generate it with one of these commands:
 

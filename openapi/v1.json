@@ -986,34 +986,6 @@
         },
         "type": "object"
       },
-      "RedeemSetupTokenRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "setupToken": {
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "RedeemTokenResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "accessToken": {
-            "nullable": true,
-            "type": "string"
-          },
-          "expiresIn": {
-            "format": "int32",
-            "type": "integer"
-          },
-          "refreshToken": {
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
       "RegisterDeviceRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1530,20 +1502,6 @@
         },
         "type": "object"
       },
-      "SetupTokenResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "expiresInSeconds": {
-            "format": "int32",
-            "type": "integer"
-          },
-          "setupToken": {
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
       "SmtpConfig": {
         "additionalProperties": false,
         "properties": {
@@ -2017,74 +1975,6 @@
         ]
       }
     },
-    "/api/Account/redeem-setup-token": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/*+json": {
-              "schema": {
-                "$ref": "#/components/schemas/RedeemSetupTokenRequest"
-              }
-            },
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RedeemSetupTokenRequest"
-              }
-            },
-            "text/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RedeemSetupTokenRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RedeemTokenResponse"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RedeemTokenResponse"
-                }
-              },
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/RedeemTokenResponse"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Bad Request"
-          }
-        },
-        "tags": [
-          "Account"
-        ]
-      }
-    },
     "/api/Account/register": {
       "post": {
         "requestBody": {
@@ -2206,58 +2096,6 @@
               }
             },
             "description": "Too Many Requests"
-          },
-          "503": {
-            "description": "Service Unavailable"
-          }
-        },
-        "tags": [
-          "Account"
-        ]
-      }
-    },
-    "/api/Account/setup-token": {
-      "post": {
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupTokenResponse"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupTokenResponse"
-                }
-              },
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupTokenResponse"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Unauthorized"
           },
           "503": {
             "description": "Service Unavailable"
