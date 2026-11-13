@@ -124,13 +124,13 @@ async function extractResponseMessage(response: Response): Promise<string | null
 
     if (contentType.includes('json')) {
       const parsed = (await clonedResponse.json()) as Record<string, unknown>
-      const message = parsed.message ?? parsed.error
+      const fieldErrors = parsed.errors && typeof parsed.errors === 'object' && !Array.isArray(parsed.errors)
+        ? Object.values(parsed.errors).flat().filter((value) => typeof value === 'string').join(' ')
+        : null
+      const message = [parsed.message, parsed.error, parsed.detail, fieldErrors, response.status in DEFAULT_MESSAGES ? null : parsed.title]
+        .find((value) => typeof value === 'string' && value.trim().length > 0)
 
-      if (typeof message === 'string' && message.trim().length > 0) {
-        return message
-      }
-
-      return null
+      return typeof message === 'string' ? message : null
     }
 
     if (response.status === 413) {

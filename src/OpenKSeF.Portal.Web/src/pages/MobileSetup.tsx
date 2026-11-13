@@ -2,10 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { useState, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
+import { useNavigate } from 'react-router-dom'
 
 import { listDevices, sendTestNotification, unregisterDevice } from '@/api/endpoints/devices'
 import { listTenants } from '@/api/endpoints/tenants'
 import type { DeviceTokenResponse } from '@/api/types'
+import { signOutAllDevices } from '@/auth/signOutAll'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -31,6 +33,8 @@ export function MobileSetupPage(): ReactElement {
   const queryClient = useQueryClient()
   const [pendingRemoval, setPendingRemoval] = useState<DeviceTokenResponse | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
+  const [confirmSignOutAll, setConfirmSignOutAll] = useState(false)
+  const navigate = useNavigate()
 
   const devicesQuery = useQuery({ queryKey: ['devices'], queryFn: () => listDevices() })
   const tenantsQuery = useQuery({ queryKey: ['tenants'], queryFn: () => listTenants() })
@@ -43,6 +47,16 @@ export function MobileSetupPage(): ReactElement {
     },
     onError: (error) => notifyMutationError('delete', 'Device', error),
     onSettled: () => setPendingRemoval(null),
+  })
+
+  const signOutAll = useMutation({
+    mutationFn: signOutAllDevices,
+    onSuccess: () => navigate('/login', { replace: true }),
+    onError: async (error) => {
+      toast.error(`Nie udało się wylogować wszystkich urządzeń: ${error.message} Sesje mogą nadal działać. Spróbuj ponownie.`)
+      setConfirmSignOutAll(false)
+      await queryClient.invalidateQueries({ queryKey: ['devices'] })
+    },
   })
 
   const sendTest = useMutation({
@@ -150,6 +164,14 @@ export function MobileSetupPage(): ReactElement {
             <Table testId="device-table" columns={columns} data={devicesQuery.data ?? []} />
           </AsyncStateView>
           <p className="inv-help">Powiadomienia o nowych fakturach przychodzą na urządzenia z tej listy.</p>
+          <button
+            type="button"
+            className="ui-button ui-button--danger-outline ui-button--md"
+            data-testid="sign-out-all-button"
+            onClick={() => setConfirmSignOutAll(true)}
+          >
+            Wyloguj wszystkie urządzenia
+          </button>
         </section>
       </div>
 
@@ -166,6 +188,18 @@ export function MobileSetupPage(): ReactElement {
         isPending={remove.isPending}
         onConfirm={() => pendingRemoval && remove.mutate(pendingRemoval.id)}
         onCancel={() => setPendingRemoval(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmSignOutAll}
+        title="Wylogować wszystkie urządzenia?"
+        message="Aplikacja mobilna zostanie wylogowana na każdym telefonie, a telefony przestaną dostawać powiadomienia. Portal zostanie wylogowany we wszystkich przeglądarkach, także w tej. Token dostępu wydany wcześniej może działać jeszcze do 30 minut."
+        confirmLabel="Wyloguj wszystkie"
+        pendingLabel="Wylogowywanie…"
+        variant="danger"
+        isPending={signOutAll.isPending}
+        onConfirm={() => signOutAll.mutate()}
+        onCancel={() => setConfirmSignOutAll(false)}
       />
     </section>
   )

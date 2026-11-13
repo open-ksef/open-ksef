@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { act } from 'react'
+import { act, StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockNavigate = vi.fn()
-const mockHandleOidcCallback = vi.fn<() => Promise<void>>()
+const mockHandleOidcCallback = vi.fn<() => Promise<string>>()
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
@@ -29,18 +29,19 @@ describe('Callback page', () => {
     root = createRoot(container)
   })
 
-  it('processes callback and navigates to home on success', async () => {
-    mockHandleOidcCallback.mockResolvedValue(undefined)
+  it('exchanges the code once under StrictMode and lands on the requested route', async () => {
+    mockHandleOidcCallback.mockResolvedValue('/firmy/1/faktury?strona=2')
 
     const { Callback } = await import('./Callback')
 
     await act(async () => {
-      root.render(<Callback />)
+      root.render(<StrictMode><Callback /></StrictMode>)
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
 
     expect(mockHandleOidcCallback).toHaveBeenCalledTimes(1)
-    expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true })
+    expect(mockNavigate).toHaveBeenCalledTimes(1)
+    expect(mockNavigate).toHaveBeenCalledWith('/firmy/1/faktury?strona=2', { replace: true })
   })
 
   it('renders error state on callback failure', async () => {
@@ -49,10 +50,11 @@ describe('Callback page', () => {
     const { Callback } = await import('./Callback')
 
     await act(async () => {
-      root.render(<Callback />)
+      root.render(<StrictMode><Callback /></StrictMode>)
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
 
-    expect(container.textContent).toContain('Authentication failed')
+    expect(container.textContent).toContain('Logowanie nie powiodło się')
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('invalid_grant')
   })
 })

@@ -26,7 +26,7 @@ export function ProtectedRoute({ children }: PropsWithChildren): ReactElement {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }} />
   }
 
   if (onboarding.isLoading) {

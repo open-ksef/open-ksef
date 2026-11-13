@@ -68,7 +68,10 @@ describe('Firma routes', () => {
     ['/devices', '/mobile-setup', ''],
   ])('%s moves to its new place and keeps the query', async (from, pathname, search) => {
     const router = await open(from)
-    expect(router.state.location.pathname).toBe(pathname)
+    await vi.waitFor(async () => {
+      await act(flush)
+      expect(router.state.location.pathname).toBe(pathname)
+    }, { timeout: 5000 })
     expect(router.state.location.search).toBe(search)
   })
 

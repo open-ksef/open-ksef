@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useAuth } from '@/auth/useAuth'
@@ -118,5 +118,30 @@ describe('ProtectedRoute', () => {
 
     expect(container.textContent).toContain('Login page')
     expect(container.textContent).not.toContain('Protected content')
+  })
+
+  it('passes the requested path, search and hash to login', async () => {
+    vi.mocked(useAuth).mockReturnValue({ isLoading: false, isAuthenticated: false } as ReturnType<typeof useAuth>)
+    function LoginProbe() {
+      return <div>from={(useLocation().state as { from: string }).from}</div>
+    }
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={['/firmy/1/faktury?strona=2#f-9']}>
+            <Routes>
+              <Route path="/firmy/1/faktury" element={<ProtectedRoute><div>Protected content</div></ProtectedRoute>} />
+              <Route path="/login" element={<LoginProbe />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      )
+    })
+    await act(async () => {
+      await flushPromises()
+    })
+
+    expect(container.textContent).toBe('from=/firmy/1/faktury?strona=2#f-9')
   })
 })

@@ -27,6 +27,18 @@ describe('normalizeError', () => {
     expect(error.message).toBe('Nie znaleziono.')
   })
 
+  it.each([
+    [{ title: 'Bad Request', detail: 'Szczegół', errors: { Nip: ['Zły NIP'] } }, 400, 'Szczegół'],
+    [{ title: 'One or more validation errors occurred.', errors: { Nip: ['Zły NIP'], Name: ['Brak nazwy'] } }, 400, 'Zły NIP Brak nazwy'],
+    [{ title: 'Validation', errors: [{ code: 'INV-VAL-020', message: 'NIP' }] }, 422, 'Serwer nie przyjął danych.'],
+    [{ title: 'Payment Required' }, 402, 'Payment Required'],
+    [{ title: 'Unauthorized' }, 401, 'Sesja wygasła. Zaloguj się ponownie.'],
+  ])('reads ProblemDetails %j with status %i as %s', async (body, status, expected) => {
+    const response = new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/problem+json' } })
+
+    expect((await normalizeError(response)).message).toBe(expected)
+  })
+
   it('uses default message when HTTP response has no body', async () => {
     const response = new Response('', { status: 404 })
 
