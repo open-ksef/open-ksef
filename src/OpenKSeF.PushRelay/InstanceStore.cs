@@ -23,7 +23,7 @@ public sealed class InstanceStore : IDisposable
 {
     private readonly SqliteConnection _db;
     private readonly ILogger<InstanceStore> _logger;
-    private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private readonly SemaphoreSlim _lock = new(1, 1);
 
     public InstanceStore(IConfiguration config, ILogger<InstanceStore> logger)
     {
@@ -64,7 +64,7 @@ public sealed class InstanceStore : IDisposable
         var apiKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         var now = DateTimeOffset.UtcNow.ToString("o");
 
-        await _writeLock.WaitAsync();
+        await _lock.WaitAsync();
         try
         {
             await using var tx = (SqliteTransaction)await _db.BeginTransactionAsync();
@@ -96,7 +96,7 @@ public sealed class InstanceStore : IDisposable
         }
         finally
         {
-            _writeLock.Release();
+            _lock.Release();
         }
 
         if (replacesInstanceId is null)
@@ -107,6 +107,19 @@ public sealed class InstanceStore : IDisposable
     }
 
     public async Task<InstanceRecord?> GetAsync(string instanceId)
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            return await ReadOneAsync(instanceId);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    private async Task<InstanceRecord?> ReadOneAsync(string instanceId)
     {
         await using var cmd = _db.CreateCommand();
         cmd.CommandText = "SELECT instance_id, api_key, instance_url, registered_at, last_seen_at, enabled FROM instances WHERE instance_id = $id";
@@ -129,7 +142,7 @@ public sealed class InstanceStore : IDisposable
 
     public async Task UpdateLastSeenAsync(string instanceId)
     {
-        await _writeLock.WaitAsync();
+        await _lock.WaitAsync();
         try
         {
             await using var cmd = _db.CreateCommand();
@@ -140,13 +153,13 @@ public sealed class InstanceStore : IDisposable
         }
         finally
         {
-            _writeLock.Release();
+            _lock.Release();
         }
     }
 
     public async Task SetEnabledAsync(string instanceId, bool enabled)
     {
-        await _writeLock.WaitAsync();
+        await _lock.WaitAsync();
         try
         {
             await using var cmd = _db.CreateCommand();
@@ -157,13 +170,26 @@ public sealed class InstanceStore : IDisposable
         }
         finally
         {
-            _writeLock.Release();
+            _lock.Release();
         }
 
         _logger.LogInformation("Instance {InstanceId} enabled={Enabled}", instanceId, enabled);
     }
 
     public async Task<List<InstanceRecord>> ListAsync()
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            return await ReadAllAsync();
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    private async Task<List<InstanceRecord>> ReadAllAsync()
     {
         var results = new List<InstanceRecord>();
 
@@ -189,7 +215,7 @@ public sealed class InstanceStore : IDisposable
 
     public void Dispose()
     {
-        _writeLock.Dispose();
+        _lock.Dispose();
         _db.Dispose();
     }
 }
