@@ -53,6 +53,28 @@ public sealed class RegisterTests : IDisposable
     }
 
     [Fact]
+    public async Task ReRegister_WithProofFromDisabledInstance_StillIssuesANewInstance()
+    {
+        var old = await Register();
+        await Register(Proof(old.InstanceId, old.ApiKey));
+
+        var recovered = await Register(Proof(old.InstanceId, old.ApiKey));
+
+        Assert.True((await Store.GetAsync(recovered.InstanceId))!.Enabled);
+        Assert.False((await Store.GetAsync(old.InstanceId))!.Enabled);
+    }
+
+    [Fact]
+    public async Task ReRegister_WithAPushSignature_LeavesTheOldInstanceEnabled()
+    {
+        var old = await Register();
+
+        await Register(Proof(old.InstanceId, old.ApiKey, prefix: ""));
+
+        Assert.True((await Store.GetAsync(old.InstanceId))!.Enabled);
+    }
+
+    [Fact]
     public async Task ReRegister_WithoutProof_LeavesTheOldInstanceEnabled()
     {
         var old = await Register();
@@ -111,15 +133,15 @@ public sealed class RegisterTests : IDisposable
     {
         const string body = """{"pushToken":"token","platform":"android"}""";
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/push") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-        foreach (var (name, value) in Proof(instanceId, apiKey, body: body))
+        foreach (var (name, value) in Proof(instanceId, apiKey, body: body, prefix: ""))
             request.Headers.Add(name, value);
         return await _client.SendAsync(request);
     }
 
-    private static Dictionary<string, string> Proof(string instanceId, string apiKey, DateTimeOffset? at = null, string body = Body)
+    private static Dictionary<string, string> Proof(string instanceId, string apiKey, DateTimeOffset? at = null, string body = Body, string prefix = "register.")
     {
         var timestamp = (at ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds().ToString();
-        var signature = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(apiKey), Encoding.UTF8.GetBytes($"{timestamp}.{body}"))).ToLowerInvariant();
+        var signature = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(apiKey), Encoding.UTF8.GetBytes($"{prefix}{timestamp}.{body}"))).ToLowerInvariant();
         return new() { ["X-Relay-Instance"] = instanceId, ["X-Relay-Timestamp"] = timestamp, ["X-Relay-Signature"] = signature };
     }
 }

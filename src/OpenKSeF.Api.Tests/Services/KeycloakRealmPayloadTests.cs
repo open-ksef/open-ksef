@@ -330,11 +330,29 @@ public class KeycloakRealmPayloadTests
         {
             Assert.Equal("old-instance", headers.GetValues("X-Relay-Instance").Single());
             var timestamp = headers.GetValues("X-Relay-Timestamp").Single();
-            Assert.Equal(RelayPushProvider.ComputeHmac(body, timestamp, "old-key"), headers.GetValues("X-Relay-Signature").Single());
+            Assert.Equal(RelayPushProvider.ComputeHmac(body, $"register.{timestamp}", "old-key"), headers.GetValues("X-Relay-Signature").Single());
         }
         await systemConfig.Received().SetValuesAsync(
             Arg.Is<IDictionary<string, string>>(v => v[SystemConfigKeys.PushRelayInstanceId] == "new-instance" && v[SystemConfigKeys.PushRelayApiKey] == "new-key"),
             Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(true, null, true)]
+    [InlineData(false, "typed-key", true)]
+    [InlineData(false, null, false)]
+    public async Task UpdateSettings_NewRelayKey_ClearsTheRelayFailure(bool reRegister, string? typedKey, bool cleared)
+    {
+        var systemConfig = Substitute.For<ISystemConfigService>();
+        systemConfig.GetValue(SystemConfigKeys.ExternalBaseUrl).Returns("https://instance.invalid");
+        var health = new RelayHealth();
+        health.Failed(403);
+
+        var result = await CreateSettingsService(systemConfig, relayHealth: health).UpdateSettingsAsync(
+            new SettingsUpdateRequest { PushRelayUrl = "https://relay.invalid", ReRegisterRelay = reRegister, PushRelayApiKey = typedKey }, "token");
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal(cleared, health.LastFailure is null);
     }
 
     private SystemSetupService CreateSetupService(ISystemConfigService systemConfig, string? encryptionKey) => new(
@@ -355,8 +373,8 @@ public class KeycloakRealmPayloadTests
         AdminPassword = "Secret123!",
     };
 
-    private SystemSettingsService CreateSettingsService(ISystemConfigService? systemConfig = null, KSeFClientOptions? options = null) => new(
-        _httpClientFactory, new ConfigurationBuilder().Build(), systemConfig ?? Substitute.For<ISystemConfigService>(), new RelayHealth(),
+    private SystemSettingsService CreateSettingsService(ISystemConfigService? systemConfig = null, KSeFClientOptions? options = null, RelayHealth? relayHealth = null) => new(
+        _httpClientFactory, new ConfigurationBuilder().Build(), systemConfig ?? Substitute.For<ISystemConfigService>(), relayHealth ?? new RelayHealth(),
         options ?? new KSeFClientOptions(), Substitute.For<IServiceScopeFactory>(), NullLogger<SystemSettingsService>.Instance);
 
     private sealed class FakeKeycloak : HttpMessageHandler

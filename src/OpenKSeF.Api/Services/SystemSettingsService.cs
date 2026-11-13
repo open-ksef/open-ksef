@@ -190,7 +190,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
                         try
                         {
                             var externalUrl = _systemConfig.GetValue(SystemConfigKeys.ExternalBaseUrl) ?? "";
-                            var (instanceId, relayApiKey) = await RegisterWithRelayAsync(request.PushRelayUrl, externalUrl, ct);
+                            var (instanceId, relayApiKey) = await RegisterWithRelayAsync(request.PushRelayUrl, externalUrl, CancellationToken.None);
                             configValues[SystemConfigKeys.PushRelayApiKey] = relayApiKey;
                             configValues[SystemConfigKeys.PushRelayInstanceId] = instanceId;
                             _logger.LogInformation("Re-registered with push relay, instanceId: {InstanceId}", instanceId);
@@ -212,8 +212,10 @@ public sealed class SystemSettingsService : ISystemSettingsService
 
             if (configValues.Count > 0)
             {
-                await _systemConfig.SetValuesAsync(configValues, ct);
-                await _systemConfig.RefreshCacheAsync(ct);
+                await _systemConfig.SetValuesAsync(configValues, CancellationToken.None);
+                await _systemConfig.RefreshCacheAsync(CancellationToken.None);
+                if (request.ReRegisterRelay || request.PushRelayApiKey != null)
+                    _relayHealth.Succeeded();
             }
 
             if (requestedEnv != null)
@@ -508,7 +510,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
             request.Headers.Add("X-Relay-Instance", oldInstanceId);
             request.Headers.Add("X-Relay-Timestamp", timestamp);
-            request.Headers.Add("X-Relay-Signature", RelayPushProvider.ComputeHmac(json, timestamp, oldApiKey));
+            request.Headers.Add("X-Relay-Signature", RelayPushProvider.ComputeHmac(json, $"register.{timestamp}", oldApiKey));
         }
 
         var response = await client.SendAsync(request, ct);

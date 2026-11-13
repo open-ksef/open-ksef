@@ -342,7 +342,7 @@ static async Task<string?> ProvenInstanceIdAsync(HttpContext context, InstanceSt
     var instance = await store.GetAsync(instanceId);
     var fresh = long.TryParse(timestamp, out var ts) && Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ts) <= 300;
     if (instance is null || !fresh || string.IsNullOrEmpty(signature) || !CryptographicOperations.FixedTimeEquals(
-        Encoding.UTF8.GetBytes(signature), Encoding.UTF8.GetBytes(ComputeHmac(body, timestamp, instance.ApiKey))))
+        Encoding.UTF8.GetBytes(signature), Encoding.UTF8.GetBytes(ComputeHmac(body, $"register.{timestamp}", instance.ApiKey))))
     {
         logger.LogWarning("Re-registration without valid proof for instance {InstanceId} from {RemoteIp}; old instance left unchanged", instanceId, context.Connection.RemoteIpAddress);
         return null;
