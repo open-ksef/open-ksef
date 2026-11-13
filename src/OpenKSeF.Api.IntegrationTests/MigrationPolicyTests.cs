@@ -15,6 +15,7 @@ public class MigrationPolicyTests
     {
         ["20261106101846_AlignSyncColumnsWithKsef"] = "AlterColumn widens numeric(18,6)->numeric(22,6), Unit varchar(50)->256, VendorName/BuyerName varchar(500)->512 to match KSeF; no rewrite, no data loss. Down narrows and fails once wider values exist: roll back by image only.",
         ["20261106132321_DeviceTokenUniqueCascade"] = "Raw Sql deletes duplicate DeviceTokens rows (keeps newest per Token), then unique index on Token and FK re-created with cascade. Deleted rows are not restorable.",
+        ["20261113094140_UniqueCredentialPerTenant"] = "T-090: raw Sql deletes duplicate KSeFCredentials rows of the same tenant (keeps newest UpdatedAt, tie-break Id), then the TenantId index is recreated unique. Prod had 0 duplicates on 2026-11-13. Down only drops uniqueness; deleted duplicates are not restorable.",
     };
 
     [Fact]

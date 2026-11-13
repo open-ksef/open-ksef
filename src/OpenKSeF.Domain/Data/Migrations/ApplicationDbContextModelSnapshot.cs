@@ -300,7 +300,8 @@ namespace OpenKSeF.Domain.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TenantId");
+                    b.HasIndex("TenantId")
+                        .IsUnique();
 
                     b.ToTable("KSeFCredentials");
                 });

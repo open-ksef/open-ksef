@@ -42,6 +42,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<KSeFCredential>(entity =>
         {
             entity.HasKey(k => k.Id);
+            entity.HasIndex(k => k.TenantId).IsUnique();
             entity.Property(k => k.Type)
                 .HasDefaultValue(CredentialType.Token)
                 .HasConversion<int>();
