@@ -93,4 +93,18 @@ describe('LoginPage', () => {
     })
     expect(container.textContent).toBe('at=/telefon?x=1')
   })
+
+  it.each(['//evil.com', 'https://evil.com'])('ignores an off-site return path %s', async (from) => {
+    auth.loginWithGoogle.mockClear()
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={[{ pathname: '/login', state: { from } }]}>
+          <LoginPage />
+        </MemoryRouter>,
+      )
+    })
+
+    act(() => container.querySelector<HTMLButtonElement>('[data-testid="login-google"]')!.click())
+    expect(auth.loginWithGoogle).toHaveBeenCalledWith('/')
+  })
 })

@@ -53,7 +53,7 @@ export function MobileSetupPage(): ReactElement {
     mutationFn: signOutAllDevices,
     onSuccess: () => navigate('/login', { replace: true }),
     onError: async (error) => {
-      toast.error(`Nie udało się wylogować wszystkich urządzeń: ${error.message}`)
+      toast.error(`Nie udało się wylogować wszystkich urządzeń: ${error.message} Sesje mogą nadal działać. Spróbuj ponownie.`)
       setConfirmSignOutAll(false)
       await queryClient.invalidateQueries({ queryKey: ['devices'] })
     },
@@ -193,7 +193,7 @@ export function MobileSetupPage(): ReactElement {
       <ConfirmDialog
         open={confirmSignOutAll}
         title="Wylogować wszystkie urządzenia?"
-        message="Aplikacja mobilna zostanie wylogowana na każdym telefonie, a telefony przestaną dostawać powiadomienia. Portal zostanie wylogowany we wszystkich przeglądarkach, także w tej. Token dostępu wydany wcześniej może działać jeszcze kilka minut."
+        message="Aplikacja mobilna zostanie wylogowana na każdym telefonie, a telefony przestaną dostawać powiadomienia. Portal zostanie wylogowany we wszystkich przeglądarkach, także w tej. Token dostępu wydany wcześniej może działać jeszcze do 30 minut."
         confirmLabel="Wyloguj wszystkie"
         pendingLabel="Wylogowywanie…"
         variant="danger"

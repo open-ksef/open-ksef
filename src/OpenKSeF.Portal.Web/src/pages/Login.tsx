@@ -10,7 +10,8 @@ type AuthTab = 'login' | 'register'
 export function LoginPage(): ReactElement {
   const { isAuthenticated, isLoading, loginWithCredentials, loginWithGoogle, register } = useAuth()
   const navigate = useNavigate()
-  const returnTo = (useLocation().state as { from?: string } | null)?.from ?? '/'
+  const from = (useLocation().state as { from?: string } | null)?.from
+  const returnTo = from?.startsWith('/') && !from.startsWith('//') ? from : '/'
   const registrationAllowed = useSetupStatus().data?.registrationAllowed !== false
   const [tab, setTab] = useState<AuthTab>('login')
   const [error, setError] = useState<string | null>(null)

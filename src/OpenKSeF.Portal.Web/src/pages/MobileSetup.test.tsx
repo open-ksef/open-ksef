@@ -125,7 +125,7 @@ describe('Telefon', () => {
 
     act(() => by('sign-out-all-button')!.click())
     const dialog = container.querySelector('[role="alertdialog"]')!
-    expect(dialog.textContent).toContain('może działać jeszcze kilka minut')
+    expect(dialog.textContent).toContain('może działać jeszcze do 30 minut')
     expect(signOutAllDevices).not.toHaveBeenCalled()
 
     await act(async () => [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'Wyloguj wszystkie')!.click())
@@ -141,7 +141,7 @@ describe('Telefon', () => {
     act(() => by('sign-out-all-button')!.click())
     await act(async () => [...container.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent === 'Wyloguj wszystkie')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
 
-    expect(toast.error).toHaveBeenCalledWith('Nie udało się wylogować wszystkich urządzeń: Sesja wygasła. Zaloguj się ponownie.')
+    expect(toast.error).toHaveBeenCalledWith('Nie udało się wylogować wszystkich urządzeń: Sesja wygasła. Zaloguj się ponownie. Sesje mogą nadal działać. Spróbuj ponownie.')
     expect(toast.success).not.toHaveBeenCalled()
     expect(container.querySelector('[role="alertdialog"]')).toBeNull()
   })
