@@ -8,8 +8,8 @@ Status: accepted (2026-11-03). Numbers 002 and 003 are reserved by T-133 and T-1
 - The mobile models lost no public property from `v1.0.0` to `v1.0.4`, so the `v1.0.4` models cover every released build.
 - Mobile deserializes `Platform` as `int` (`open-ksef-mobile: Models/DeviceTokenDto.cs:14`). The server sends it as a number, because only `CredentialType` has a string converter (`Domain/Entities/CredentialType.cs:5`).
 - A contract meaning can break without a shape change: mobile omitted `notificationEmail` on tenant PUT and wiped the stored value (T-067).
-- The API is the only migrator, at startup, under an advisory lock (`Api/Program.cs:317-325`, `Domain/Data/MigrationHelper.cs:24-31`). The Worker never migrates.
-- API and Worker start together. There is no real deploy order: on `v0.0.7` the Worker hit `42P01` on `IssuedInvoices` in the same second the API migrated (T-329, `Worker/Services/IssuedInvoiceSendService.cs:32`). The Worker has no dependency on the API (`docker-compose.yml:75-79`).
+- The API is the only migrator, at startup, under an advisory lock (`Api/Program.cs:299`, `Domain/Data/MigrationHelper.cs:31`). The Worker never migrates.
+- API and Worker start together. There is no real deploy order: on `v0.0.7` the Worker hit `42P01` on `IssuedInvoices` in the same second the API migrated (T-329). Since then the Worker loops wait for migrations (`Worker/Services/IssuedInvoiceSendService.cs:23`, `Domain/Data/MigrationHelper.cs:74`). The shipped compose starts the Worker after a healthy API (`docker-compose.yml:89-95`); the prod stack has no such dependency.
 - Rollback by image works on an expanded schema. T-217 on a copy of a `v0.0.6` database: 3 migrations applied, row hashes unchanged, `v0.0.6` API and Worker ran on the migrated schema (sync, paid flag), then head ran forward again.
 - Not all data changes are EF migrations. T-026 moves the encryption key at startup. Its rollback depends on config: going back works only if the env key is kept.
 - A model change without a migration stops EF 9+ `Migrate` at startup (T-152). With `restart: unless-stopped`, any startup throw is a crash loop (T-026).
@@ -18,7 +18,7 @@ Status: accepted (2026-11-03). Numbers 002 and 003 are reserved by T-133 and T-1
 
 ### Contract
 
-The mobile surface is what any Play build uses: `open-ksef-mobile` `ApiService.cs` and `AuthService.cs` REST calls, their JSON fields, and SignalR `ReceiveNotification` (`Api/Push/SignalRPushProvider.cs:28`). Baseline: models at tag `v1.0.4`, plus each later tag that reaches Play.
+The mobile surface is what any Play build uses: `open-ksef-mobile` `ApiService.cs` and `AuthService.cs` REST calls, their JSON fields, and SignalR `ReceiveNotification` (`Api/Push/SignalRPushProvider.cs:31`). Baseline: models at tag `v1.0.4`, plus each later tag that reaches Play.
 
 | # | Rule | Check |
 |---|---|---|
@@ -36,7 +36,7 @@ The mobile surface is what any Play build uses: `open-ksef-mobile` `ApiService.c
 | # | Rule | Check |
 |---|---|---|
 | M1 | Every PR with a migration or a startup data step states 4 lines in its body: forward, rollback, data on prod, deploy order. | Principal rejects a PR without them. |
-| M2 | Expand by default. `Up` may only create tables and their indexes and keys, add nullable columns or columns with a default, and add non-unique indexes on existing tables. | `MigrationPolicyTests` reads `UpOperations` of every migration after `20261102093230` and fails on anything else. |
+| M2 | Expand by default. `Up` may only create tables and their indexes and keys, add nullable columns or columns with a default, and add non-unique indexes on existing tables. | `MigrationPolicyTests` (`src/OpenKSeF.Api.IntegrationTests/MigrationPolicyTests.cs`, CI) reads `UpOperations` of every migration after `20261102093230` and fails on anything else. |
 | M3 | Anything else (drop, rename, type change, unique index on an existing table, raw `Sql`) is non-additive. It goes on the allow-list in that test with a reason, and triggers D3. | Same test. |
 | M4 | A column or table is dropped only when the rollback target no longer maps it. So a removal takes two releases: unmap, then drop. | `git show <previous tag>:src/OpenKSeF.Domain/Data/Migrations/ApplicationDbContextModelSnapshot.cs` has no match. Paste it in the PR. |
 | M5 | The model and the snapshot match. | T-152. |
@@ -56,11 +56,11 @@ Breaking a rule needs a `decisions.md` entry or a new ADR.
 
 ## Consequences
 
-- Until T-079, T-127, T-086, T-152, T-329 and `MigrationPolicyTests` land, the rules above rest on principal review alone.
+- The automated checks named above exist: T-079, T-127, T-086, T-152, T-329 and `MigrationPolicyTests`. Rules checked by "Principal review" rest on review alone.
 - Dropping a column takes two releases. A mobile field stays until a CEO cut-off, even when unused.
-- Known users of M3 and D3: T-090 (dedupe, unique index) and T-161 (backfill SQL). `SyncState.Watermark` is still mapped at `v0.0.7`, so its drop needs M4.
+- Allow-listed under M3: `20261106101846_AlignSyncColumnsWithKsef` (column widening) and `20261106132321_DeviceTokenUniqueCascade` (T-090: deletes duplicate rows, unique index). T-161 (backfill SQL) will need an entry. `SyncState.Watermark` is still mapped at `v0.0.7`, so its drop needs M4.
 - Rollback has been rehearsed only on a copy of the database, never on prod. A restore has not been rehearsed.
-- The prod stack uses `:latest`. A failure while moving `:latest` can leave images mixed (`release.yml:143`), which D2 also recovers from.
+- The `docker-compose.yml` attached to a release pins every image to that tag (`release.yml:155-159`), so installs from it never see a moving `:latest`. The prod stack still uses `:latest`. `:latest` moves one image at a time after all images are pushed (`release.yml:167-175`). A failure inside that loop leaves `:latest` mixed across images, which D2 recovers from.
 
 ## Rejected
 
