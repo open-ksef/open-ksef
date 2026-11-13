@@ -157,7 +157,21 @@ public sealed class TestcontainersFixture : IAsyncLifetime
         using var http = await CreateAdminClientAsync();
         var mappers = await http.GetFromJsonAsync<JsonElement[]>(await ProtocolMappersUrlAsync(http, clientId));
         return mappers!.Where(m => m.GetProperty("protocolMapper").GetString() == "oidc-audience-mapper"
-            && m.GetProperty("config").GetProperty("included.client.audience").GetString() == "openksef-api").ToArray();
+            && m.GetProperty("config") is var config
+            && (config.TryGetProperty("included.client.audience", out var audience) && audience.GetString() == "openksef-api"
+                || config.TryGetProperty("included.custom.audience", out var custom) && custom.GetString() == "openksef-api")).ToArray();
+    }
+
+    public async Task AddAudienceMapperAsync(string clientId, string name, Dictionary<string, string> config)
+    {
+        using var http = await CreateAdminClientAsync();
+        (await http.PostAsJsonAsync(await ProtocolMappersUrlAsync(http, clientId), new
+        {
+            name,
+            protocol = "openid-connect",
+            protocolMapper = "oidc-audience-mapper",
+            config,
+        })).EnsureSuccessStatusCode();
     }
 
     public async Task DeleteApiAudienceMappersAsync(string clientId)

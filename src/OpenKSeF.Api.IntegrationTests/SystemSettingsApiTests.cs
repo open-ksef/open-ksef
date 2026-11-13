@@ -128,6 +128,8 @@ public class SystemSettingsApiTests : IAsyncLifetime
     public async Task SavingSettings_RealmWithoutAudienceMappers_AddsOnePerPublicClient_Idempotent()
     {
         string[] clientIds = ["openksef-portal-web", "openksef-mobile"];
+        Assert.Equal(HttpStatusCode.OK, (await PutSettingsAsync(new { kcAdminUsername = "admin", kcAdminPassword = "admin" })).StatusCode);
+        Assert.Single(await _fixture.GetApiAudienceMappersAsync("openksef-mobile"));
         foreach (var clientId in clientIds)
         {
             await _fixture.DeleteApiAudienceMappersAsync(clientId);
@@ -141,6 +143,33 @@ public class SystemSettingsApiTests : IAsyncLifetime
         {
             Assert.Single(await _fixture.GetApiAudienceMappersAsync(clientId));
             Assert.Contains("openksef-api", TestcontainersFixture.AccessTokenAudiences(await _fixture.GetAccessTokenAsync(clientId: clientId)));
+        }
+    }
+
+    [Fact]
+    public async Task SavingSettings_OwnMapperNameWithOtherConfig_OrCustomAudience_AddsNoSecondMapper()
+    {
+        string[] clientIds = ["openksef-portal-web", "openksef-mobile"];
+        foreach (var clientId in clientIds)
+            await _fixture.DeleteApiAudienceMappersAsync(clientId);
+        try
+        {
+            await _fixture.AddAudienceMapperAsync("openksef-portal-web", "openksef-api-audience",
+                new() { ["included.client.audience"] = "openksef-api", ["access.token.claim"] = "false" });
+            await _fixture.AddAudienceMapperAsync("openksef-mobile", "custom-api-audience",
+                new() { ["included.custom.audience"] = "openksef-api", ["access.token.claim"] = "true" });
+
+            Assert.Equal(HttpStatusCode.OK, (await PutSettingsAsync(new { kcAdminUsername = "admin", kcAdminPassword = "admin" })).StatusCode);
+
+            foreach (var clientId in clientIds)
+                Assert.Single(await _fixture.GetApiAudienceMappersAsync(clientId));
+            Assert.Contains("openksef-api", TestcontainersFixture.AccessTokenAudiences(await _fixture.GetAccessTokenAsync(clientId: "openksef-mobile")));
+        }
+        finally
+        {
+            foreach (var clientId in clientIds)
+                await _fixture.DeleteApiAudienceMappersAsync(clientId);
+            await PutSettingsAsync(new { kcAdminUsername = "admin", kcAdminPassword = "admin" });
         }
     }
 

@@ -714,10 +714,12 @@ public sealed class SystemSetupService : ISystemSetupService
             using var getResp = await client.SendAsync(getReq, ct);
             getResp.EnsureSuccessStatusCode();
             var mappers = await getResp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
-            if (mappers.Any(m => m.GetProperty("protocolMapper").GetString() == "oidc-audience-mapper"
+            if (mappers.Any(m => m.TryGetProperty("name", out var name) && name.GetString() == "openksef-api-audience"
+                    || m.GetProperty("protocolMapper").GetString() == "oidc-audience-mapper"
                     && m.TryGetProperty("config", out var config)
-                    && config.TryGetProperty("included.client.audience", out var audience) && audience.GetString() == "openksef-api"
-                    && config.TryGetProperty("access.token.claim", out var inAccessToken) && inAccessToken.GetString() == "true"))
+                    && (config.TryGetProperty("included.client.audience", out var audience) && audience.GetString() == "openksef-api"
+                        || config.TryGetProperty("included.custom.audience", out var custom) && custom.GetString() == "openksef-api")
+                    && !(config.TryGetProperty("access.token.claim", out var inAccessToken) && inAccessToken.GetString() == "false")))
                 continue;
 
             await SendKeycloakJsonAsync(client, HttpMethod.Post, mappersUrl, adminToken, new Dictionary<string, object>
