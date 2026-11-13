@@ -244,5 +244,10 @@ describe('AuthProvider', () => {
 
     mockManager.signinRedirectCallback.mockResolvedValueOnce(userOf('a'))
     expect(await context.handleOidcCallback()).toBe('/')
+
+    for (const returnTo of ['//evil.com', '/\\evil.com', 'https://evil.com']) {
+      mockManager.signinRedirectCallback.mockResolvedValueOnce({ ...userOf('a'), state: { returnTo } } as User)
+      expect(await context.handleOidcCallback()).toBe('/')
+    }
   })
 })

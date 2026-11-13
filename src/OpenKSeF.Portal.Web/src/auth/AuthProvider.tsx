@@ -112,7 +112,8 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
   const handleOidcCallback = useCallback(async () => {
     const callbackUser = await manager.signinRedirectCallback()
     setUser(callbackUser)
-    return (callbackUser.state as { returnTo?: string } | undefined)?.returnTo ?? '/'
+    const returnTo = (callbackUser.state as { returnTo?: string } | undefined)?.returnTo
+    return returnTo?.startsWith('/') && !returnTo.startsWith('//') && !returnTo.startsWith('/\\') ? returnTo : '/'
   }, [manager, setUser])
 
   const value = useMemo(
