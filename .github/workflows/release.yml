@@ -46,7 +46,7 @@ jobs:
         run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
       - name: Create draft release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           draft: true
           generate_release_notes: true
@@ -159,7 +159,7 @@ jobs:
           POSTGRES_USER=x POSTGRES_PASSWORD=x KEYCLOAK_ADMIN=x KEYCLOAK_ADMIN_PASSWORD=x ENCRYPTION_KEY=x docker compose -f docker-compose.yml config -q
 
       - name: Attach docker-compose.yml to release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           draft: true
           files: docker-compose.yml
@@ -185,6 +185,6 @@ jobs:
       contents: write
     steps:
       - name: Publish draft release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           draft: false
