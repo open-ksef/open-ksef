@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using KSeF.Client.DI;
 using Microsoft.EntityFrameworkCore;
@@ -5,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Push;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
 
@@ -22,6 +24,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ISystemConfigService _systemConfig;
+    private readonly RelayHealth _relayHealth;
     private readonly KSeFClientOptions _ksefOptions;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SystemSettingsService> _logger;
@@ -30,6 +33,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ISystemConfigService systemConfig,
+        RelayHealth relayHealth,
         KSeFClientOptions ksefOptions,
         IServiceScopeFactory scopeFactory,
         ILogger<SystemSettingsService> logger)
@@ -37,6 +41,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _systemConfig = systemConfig;
+        _relayHealth = relayHealth;
         _ksefOptions = ksefOptions;
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -64,6 +69,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
         var (hasInvoices, hasCredentials) = await GetKSeFEnvironmentLockStatusAsync(ct);
 
         var ksefEnv = StoredKSeFEnvironmentForDisplay();
+        var relayFailure = _relayHealth.LastFailure;
 
         string? lockReason = null;
         var locked = false;
@@ -96,6 +102,8 @@ public sealed class SystemSettingsService : ISystemSettingsService
             PushRelayUrl = _systemConfig.GetValue(SystemConfigKeys.PushRelayUrl),
             PushRelayApiKeyConfigured = !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey)),
             PushRelayInstanceId = _systemConfig.GetValue(SystemConfigKeys.PushRelayInstanceId),
+            PushRelayLastFailureStatus = relayFailure?.StatusCode,
+            PushRelayLastFailureAt = relayFailure?.At,
             FirebaseConfigured = !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.FirebaseCredentialsJson)),
         };
     }
@@ -486,8 +494,24 @@ public sealed class SystemSettingsService : ISystemSettingsService
         var client = _httpClientFactory.CreateClient("push-relay");
         var registerUrl = $"{relayUrl.TrimEnd('/')}/api/register";
 
-        var payload = new { instanceUrl = externalBaseUrl.TrimEnd('/') };
-        var response = await client.PostAsJsonAsync(registerUrl, payload, ct);
+        var json = JsonSerializer.Serialize(new { instanceUrl = externalBaseUrl.TrimEnd('/') });
+        using var request = new HttpRequestMessage(HttpMethod.Post, registerUrl)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        };
+
+        var oldInstanceId = _systemConfig.GetValue(SystemConfigKeys.PushRelayInstanceId);
+        var oldApiKey = _systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey);
+        var sameRelay = string.Equals(_systemConfig.GetValue(SystemConfigKeys.PushRelayUrl)?.TrimEnd('/'), relayUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+        if (sameRelay && !string.IsNullOrEmpty(oldInstanceId) && !string.IsNullOrEmpty(oldApiKey))
+        {
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+            request.Headers.Add("X-Relay-Instance", oldInstanceId);
+            request.Headers.Add("X-Relay-Timestamp", timestamp);
+            request.Headers.Add("X-Relay-Signature", RelayPushProvider.ComputeHmac(json, timestamp, oldApiKey));
+        }
+
+        var response = await client.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);

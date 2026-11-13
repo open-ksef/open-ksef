@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
 
         services.AddHttpClient("push-relay");
+        services.AddSingleton<RelayHealth>();
         services.AddSingleton<IPushProvider, RelayPushProvider>();
         services.AddSingleton<IPushProvider, FcmPushProvider>();
         services.AddSingleton<IPushProvider, ApnsPushProvider>(sp =>

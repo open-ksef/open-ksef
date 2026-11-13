@@ -12,7 +12,7 @@ namespace OpenKSeF.Domain.Push;
 public class FcmPushProvider : IPushProvider
 {
     private static readonly object InitLock = new();
-    private static string? _rejectedCredentials;
+    private static volatile string? _rejectedCredentials;
 
     private readonly ISystemConfigService _systemConfig;
     private readonly ILogger<FcmPushProvider> _logger;
@@ -63,6 +63,8 @@ public class FcmPushProvider : IPushProvider
             return result;
         }
     }
+
+    public static bool IsRejected(string credentialsJson) => credentialsJson == _rejectedCredentials;
 
     /// <summary>Only an error naming the token deletes it; InvalidArgument also covers payload errors, which must keep the token.</summary>
     internal static PushResult Classify(MessagingErrorCode? code, string? message) => code switch

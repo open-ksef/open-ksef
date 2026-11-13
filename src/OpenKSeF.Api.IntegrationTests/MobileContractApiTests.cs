@@ -21,6 +21,7 @@ using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Events;
 using OpenKSeF.Domain.Invoicing;
+using OpenKSeF.Domain.Push;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.IntegrationTests;
@@ -136,7 +137,7 @@ public class MobileContractApiTests : IDisposable
                 [],
                 Substitute.For<IEmailService>(),
                 NullLogger<NotificationService>.Instance,
-                new SignalRPushProvider(hub, _factory.Services.GetRequiredService<ISystemConfigService>(), NullLogger<SignalRPushProvider>.Instance)));
+                new SignalRPushProvider(hub, _factory.Services.GetRequiredService<ISystemConfigService>(), new RelayHealth(), NullLogger<SignalRPushProvider>.Instance)));
         }
         var call = proxy.ReceivedCalls().Single().GetArguments();
         var protocol = _factory.Services.GetServices<IHubProtocol>().Single(p => p.Name == "json");

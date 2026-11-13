@@ -150,6 +150,18 @@ describe('Ustawienia', () => {
       expect(lastRequest().pushRelayApiKey).toBeUndefined()
     })
 
+    it('shows the last relay failure only when the API reports one', async () => {
+      expect(by('settings-relay-failure')).toBeNull()
+
+      act(() => root.unmount())
+      root = createRoot(container)
+      vi.mocked(getSettings).mockResolvedValue({ ...settings, pushRelayLastFailureStatus: 403, pushRelayLastFailureAt: '2026-11-13T10:00:00Z' })
+      await render(<SettingsAdminPage />)
+      await login()
+
+      expect(by('settings-relay-failure')?.textContent).toContain('HTTP 403')
+    })
+
     it('hides the hints when nothing is stored', async () => {
       act(() => root.unmount())
       root = createRoot(container)

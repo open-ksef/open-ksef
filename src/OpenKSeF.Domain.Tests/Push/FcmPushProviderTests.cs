@@ -48,7 +48,8 @@ public sealed class FcmPushProviderTests : IDisposable
     public async Task BadCredentialsJson_LogsOncePerProcess()
     {
         var config = Substitute.For<ISystemConfigService>();
-        config.GetValue(SystemConfigKeys.FirebaseCredentialsJson).Returns($"{{\"not-a-service-account\":\"{Guid.NewGuid()}\"}}");
+        var json = $"{{\"not-a-service-account\":\"{Guid.NewGuid()}\"}}";
+        config.GetValue(SystemConfigKeys.FirebaseCredentialsJson).Returns(json);
         var logger = Substitute.For<ILogger<FcmPushProvider>>();
         var notification = new PushNotification { Title = "t", Body = "b" };
 
@@ -57,6 +58,8 @@ public sealed class FcmPushProviderTests : IDisposable
 
         Assert.Single(logger.ReceivedCalls(), c => c.GetMethodInfo().Name == nameof(ILogger.Log) && (LogLevel)c.GetArguments()[0]! == LogLevel.Warning);
         Assert.Null(FirebaseApp.DefaultInstance);
+        Assert.True(FcmPushProvider.IsRejected(json));
+        Assert.False(FcmPushProvider.IsRejected(json + " "));
     }
 
     [Theory]

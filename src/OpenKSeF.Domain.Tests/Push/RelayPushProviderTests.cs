@@ -17,7 +17,7 @@ public sealed class RelayPushProviderTests
 {
     private static readonly PushNotification Notification = new() { Title = "t", Body = "b" };
 
-    private static RelayPushProvider Relay(HttpStatusCode status)
+    private static RelayPushProvider Relay(HttpStatusCode status, RelayHealth? health = null)
     {
         var config = Substitute.For<ISystemConfigService>();
         config.GetValue(SystemConfigKeys.PushRelayUrl).Returns("https://relay.example.invalid");
@@ -25,7 +25,7 @@ public sealed class RelayPushProviderTests
         config.GetValue(SystemConfigKeys.PushRelayInstanceId).Returns("instance");
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("push-relay").Returns(_ => new HttpClient(new StubHandler(status)));
-        return new RelayPushProvider(factory, config, NullLogger<RelayPushProvider>.Instance);
+        return new RelayPushProvider(factory, config, health ?? new RelayHealth(), NullLogger<RelayPushProvider>.Instance);
     }
 
     [Theory]
@@ -46,6 +46,31 @@ public sealed class RelayPushProviderTests
     [InlineData(HttpStatusCode.ServiceUnavailable)]
     public async Task TransientStatus_Throws_SoNotificationServiceRetries(HttpStatusCode status) =>
         await Assert.ThrowsAsync<HttpRequestException>(() => Relay(status).SendAsync("token-123456789", Platform.Android, Notification));
+
+    [Fact]
+    public async Task Forbidden_IsRememberedUntilTheNextSuccessfulRelaySend()
+    {
+        var health = new RelayHealth();
+
+        await Relay(HttpStatusCode.Forbidden, health).SendAsync("token-123456789", Platform.Android, Notification);
+        Assert.Equal(403, health.LastFailure?.StatusCode);
+
+        await Relay(HttpStatusCode.Gone, health).SendAsync("token-123456789", Platform.Android, Notification);
+        Assert.Equal(403, health.LastFailure?.StatusCode);
+
+        await Relay(HttpStatusCode.OK, health).SendAsync("token-123456789", Platform.Android, Notification);
+        Assert.Null(health.LastFailure);
+    }
+
+    [Fact]
+    public async Task TransientFailure_IsRemembered()
+    {
+        var health = new RelayHealth();
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => Relay(HttpStatusCode.BadGateway, health).SendAsync("token-123456789", Platform.Android, Notification));
+
+        Assert.Equal(502, health.LastFailure?.StatusCode);
+    }
 
     [Theory]
     [InlineData(HttpStatusCode.BadGateway, true)]

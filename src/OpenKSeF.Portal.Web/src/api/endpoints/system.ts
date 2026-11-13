@@ -103,6 +103,8 @@ export interface SettingsResponse {
   pushRelayUrl?: string
   pushRelayApiKeyConfigured: boolean
   pushRelayInstanceId?: string
+  pushRelayLastFailureStatus?: number | null
+  pushRelayLastFailureAt?: string | null
   firebaseConfigured: boolean
 }
 

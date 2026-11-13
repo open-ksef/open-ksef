@@ -14,15 +14,18 @@ public class RelayPushProvider : IPushProvider
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ISystemConfigService _systemConfig;
+    private readonly RelayHealth _health;
     private readonly ILogger<RelayPushProvider> _logger;
 
     public RelayPushProvider(
         IHttpClientFactory httpClientFactory,
         ISystemConfigService systemConfig,
+        RelayHealth health,
         ILogger<RelayPushProvider> logger)
     {
         _httpClientFactory = httpClientFactory;
         _systemConfig = systemConfig;
+        _health = health;
         _logger = logger;
     }
 
@@ -74,6 +77,7 @@ public class RelayPushProvider : IPushProvider
 
             if (response.IsSuccessStatusCode)
             {
+                _health.Succeeded();
                 _logger.LogDebug("Relay push sent for token {Token}", deviceToken[..Math.Min(8, deviceToken.Length)]);
                 return PushResult.Sent;
             }
@@ -92,22 +96,25 @@ public class RelayPushProvider : IPushProvider
                     null, response.StatusCode);
             }
 
+            _health.Failed(statusCode);
             _logger.LogWarning("Relay push failed: {Status} {Body}",
                 response.StatusCode, body[..Math.Min(200, body.Length)]);
             return PushResult.Failed;
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
+            _health.Failed((int?)ex.StatusCode);
             throw;
         }
         catch (Exception ex)
         {
+            _health.Failed(null);
             _logger.LogWarning(ex, "Relay push request failed");
             return PushResult.Failed;
         }
     }
 
-    private static string ComputeHmac(string payload, string timestamp, string apiKey)
+    public static string ComputeHmac(string payload, string timestamp, string apiKey)
     {
         var key = Encoding.UTF8.GetBytes(apiKey);
         var message = Encoding.UTF8.GetBytes($"{timestamp}.{payload}");

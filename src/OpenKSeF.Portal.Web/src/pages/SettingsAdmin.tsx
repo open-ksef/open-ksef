@@ -527,6 +527,14 @@ export function SettingsAdminPage(): ReactElement {
                   </div>
                 )}
 
+                {settings?.pushRelayLastFailureAt && (
+                  <div className="onboarding-instruction" data-testid="settings-relay-failure" style={{ color: 'var(--ui-warning)', marginBottom: '8px' }}>
+                    Ostatnia wysyłka przez relay nie powiodła się
+                    {settings.pushRelayLastFailureStatus ? ` (HTTP ${settings.pushRelayLastFailureStatus})` : ''}
+                    {' '}{new Date(settings.pushRelayLastFailureAt).toLocaleString('pl-PL')}. Powiadomienia push nie docierają do czasu udanej wysyłki.
+                  </div>
+                )}
+
                 {pushRelayUrl === DEFAULT_RELAY_URL ? (
                   <>
                     {!pushRelayInstanceId && (

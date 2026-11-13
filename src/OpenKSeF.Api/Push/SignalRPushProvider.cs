@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.SignalR;
 using OpenKSeF.Api.Hubs;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Models;
+using OpenKSeF.Domain.Push;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Push;
@@ -15,12 +16,14 @@ public class SignalRPushProvider : IUserPushProvider
 {
     private readonly IHubContext<NotificationHub> _hubContext;
     private readonly ISystemConfigService _systemConfig;
+    private readonly RelayHealth _relayHealth;
     private readonly ILogger<SignalRPushProvider> _logger;
 
-    public SignalRPushProvider(IHubContext<NotificationHub> hubContext, ISystemConfigService systemConfig, ILogger<SignalRPushProvider> logger)
+    public SignalRPushProvider(IHubContext<NotificationHub> hubContext, ISystemConfigService systemConfig, RelayHealth relayHealth, ILogger<SignalRPushProvider> logger)
     {
         _hubContext = hubContext;
         _systemConfig = systemConfig;
+        _relayHealth = relayHealth;
         _logger = logger;
     }
 
@@ -46,8 +49,12 @@ public class SignalRPushProvider : IUserPushProvider
         }
     }
 
-    private bool NativePushConfigured() =>
-        (!string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.PushRelayUrl))
-            && !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey)))
-        || !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.FirebaseCredentialsJson));
+    private bool NativePushConfigured()
+    {
+        var firebase = _systemConfig.GetValue(SystemConfigKeys.FirebaseCredentialsJson);
+        return (!string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.PushRelayUrl))
+                && !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.PushRelayApiKey))
+                && _relayHealth.LastFailure is null)
+            || (!string.IsNullOrEmpty(firebase) && !FcmPushProvider.IsRejected(firebase));
+    }
 }
