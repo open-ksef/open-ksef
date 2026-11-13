@@ -55,12 +55,15 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
 
         var encryption = new AesGcmEncryptionService(credentialKey);
         var tenantId = Guid.NewGuid();
+        var certificateTenantId = Guid.NewGuid();
         _tokenCredentialId = Guid.NewGuid();
         _certificateCredentialId = Guid.NewGuid();
-        db.Tenants.Add(new Tenant { Id = tenantId, UserId = "user-1", Nip = "1234563218", CreatedAt = Now, UpdatedAt = Now });
+        db.Tenants.AddRange(
+            new Tenant { Id = tenantId, UserId = "user-1", Nip = "1234563218", CreatedAt = Now, UpdatedAt = Now },
+            new Tenant { Id = certificateTenantId, UserId = "user-1", Nip = "1111111111", CreatedAt = Now, UpdatedAt = Now });
         db.KSeFCredentials.AddRange(
             new KSeFCredential { Id = _tokenCredentialId, TenantId = tenantId, Type = CredentialType.Token, EncryptedToken = encryption.Encrypt(Token), CreatedAt = Now, UpdatedAt = Now },
-            new KSeFCredential { Id = _certificateCredentialId, TenantId = tenantId, Type = CredentialType.Certificate, EncryptedCertificateData = encryption.Encrypt(Certificate), CreatedAt = Now, UpdatedAt = Now });
+            new KSeFCredential { Id = _certificateCredentialId, TenantId = certificateTenantId, Type = CredentialType.Certificate, EncryptedCertificateData = encryption.Encrypt(Certificate), CreatedAt = Now, UpdatedAt = Now });
         db.SystemConfigs.Add(new SystemConfig { Key = SystemConfigKeys.IsInitialized, Value = "true", UpdatedAt = Now });
         if (withRow)
             db.SystemConfigs.Add(new SystemConfig { Key = SystemConfigKeys.EncryptionKey, Value = OldKey, UpdatedAt = Now });
@@ -129,6 +132,17 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         db.Tenants.Add(new Tenant { Id = tenantId, UserId = "user-1", Nip = "5260250274", CreatedAt = Now, UpdatedAt = Now });
         await db.SaveChangesAsync();
         return tenantId;
+    }
+
+    private async Task<Guid> AddCorruptCredentialAsync()
+    {
+        var id = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        await using var db = NewContext();
+        db.Tenants.Add(new Tenant { Id = tenantId, UserId = $"user-{tenantId:N}", Nip = "1111111111", CreatedAt = Now, UpdatedAt = Now });
+        db.KSeFCredentials.Add(new KSeFCredential { Id = id, TenantId = tenantId, EncryptedToken = Convert.ToBase64String(new byte[64]), CreatedAt = Now, UpdatedAt = Now });
+        await db.SaveChangesAsync();
+        return id;
     }
 
     private static async Task<IActionResult> PostTokenAsync(ServiceProvider host, Guid tenantId, string token, ApplicationDbContext? db = null)
@@ -525,13 +539,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     public async Task OneCorruptCiphertext_ChangesNothing_AndNamesTheCredential()
     {
         await SeedAsync(_oldKey, withRow: true);
-        var corruptId = Guid.NewGuid();
-        await using (var db = NewContext())
-        {
-            var tenantId = (await db.KSeFCredentials.FirstAsync()).TenantId;
-            db.KSeFCredentials.Add(new KSeFCredential { Id = corruptId, TenantId = tenantId, EncryptedToken = Convert.ToBase64String(new byte[64]), CreatedAt = Now, UpdatedAt = Now });
-            await db.SaveChangesAsync();
-        }
+        var corruptId = await AddCorruptCredentialAsync();
         var before = await CiphertextAsync();
 
         await AdoptAsync(NewKey);
@@ -547,13 +555,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     public async Task FailedAdoption_HostRunsOnEnvKey_NextAdoptionKeepsItsWrite()
     {
         await SeedAsync(_oldKey, withRow: true);
-        var corruptId = Guid.NewGuid();
-        await using (var db = NewContext())
-        {
-            var tenantId = (await db.KSeFCredentials.FirstAsync()).TenantId;
-            db.KSeFCredentials.Add(new KSeFCredential { Id = corruptId, TenantId = tenantId, EncryptedToken = Convert.ToBase64String(new byte[64]), CreatedAt = Now, UpdatedAt = Now });
-            await db.SaveChangesAsync();
-        }
+        var corruptId = await AddCorruptCredentialAsync();
 
         Assert.True(await AdoptAsync(NewKey));
         Assert.True(await RowExistsAsync());
@@ -907,12 +909,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     public async Task RotateCommand_CorruptCredential_ExitsOne_NothingWritten()
     {
         await SeedAsync(_oldKey, withRow: false);
-        await using (var db = NewContext())
-        {
-            var tenantId = (await db.KSeFCredentials.FirstAsync()).TenantId;
-            db.KSeFCredentials.Add(new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, EncryptedToken = Convert.ToBase64String(new byte[64]), CreatedAt = Now, UpdatedAt = Now });
-            await db.SaveChangesAsync();
-        }
+        await AddCorruptCredentialAsync();
         var before = await CiphertextAsync();
 
         await using var rotateDb = NewContext();

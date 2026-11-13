@@ -153,16 +153,7 @@ public class CredentialsController : ControllerBase
         var existing = await _db.KSeFCredentials
             .FirstOrDefaultAsync(c => c.TenantId == tenantId);
 
-        if (existing is not null)
-        {
-            existing.Type = request.Type;
-            existing.EncryptedToken = encryptedToken;
-            existing.EncryptedCertificateData = encryptedCertData;
-            existing.CertificateFingerprint = fingerprint;
-            existing.UpdatedAt = now;
-            _logger.LogInformation("KSeF credential updated for tenant {TenantId} (type: {Type})", tenantId, request.Type);
-        }
-        else
+        if (existing is null)
         {
             _db.KSeFCredentials.Add(new KSeFCredential
             {
@@ -175,10 +166,27 @@ public class CredentialsController : ControllerBase
                 CreatedAt = now,
                 UpdatedAt = now
             });
-            _logger.LogInformation("KSeF credential created for tenant {TenantId} (type: {Type})", tenantId, request.Type);
+
+            try
+            {
+                await _db.SaveChangesAsync();
+                _logger.LogInformation("KSeF credential created for tenant {TenantId} (type: {Type})", tenantId, request.Type);
+                return Ok(new { message = "Credential saved." });
+            }
+            catch (DbUpdateException e) when (IssuedInvoiceService.IsUniqueViolation(e))
+            {
+                _db.ChangeTracker.Clear();
+                existing = await _db.KSeFCredentials.FirstAsync(c => c.TenantId == tenantId);
+            }
         }
 
+        existing.Type = request.Type;
+        existing.EncryptedToken = encryptedToken;
+        existing.EncryptedCertificateData = encryptedCertData;
+        existing.CertificateFingerprint = fingerprint;
+        existing.UpdatedAt = now;
         await _db.SaveChangesAsync();
+        _logger.LogInformation("KSeF credential updated for tenant {TenantId} (type: {Type})", tenantId, request.Type);
         return Ok(new { message = "Credential saved." });
     }
 

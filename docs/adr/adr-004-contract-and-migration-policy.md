@@ -58,7 +58,7 @@ Breaking a rule needs a `decisions.md` entry or a new ADR.
 
 - The automated checks named above exist: T-079, T-127, T-086, T-152, T-329 and `MigrationPolicyTests`. Rules checked by "Principal review" rest on review alone.
 - Dropping a column takes two releases. A mobile field stays until a CEO cut-off, even when unused.
-- Allow-listed under M3: `20261106101846_AlignSyncColumnsWithKsef` (column widening) and `20261106132321_DeviceTokenUniqueCascade` (T-037: deletes duplicate rows, unique index). T-090 (unique index) and T-161 (backfill SQL) will need entries. `SyncState.Watermark` is still mapped at `v0.0.7`, so its drop needs M4.
+- Allow-listed under M3: `20261106101846_AlignSyncColumnsWithKsef` (column widening), `20261106132321_DeviceTokenUniqueCascade` (T-037: deletes duplicate rows, unique index) and `20261113094140_UniqueCredentialPerTenant` (T-090: deletes duplicate credentials per tenant, unique index on TenantId). T-161 (backfill SQL) will need an entry. `SyncState.Watermark` is still mapped at `v0.0.7`, so its drop needs M4.
 - Rollback has been rehearsed only on a copy of the database, never on prod. A restore has not been rehearsed.
 - The `docker-compose.yml` attached to a release pins every image to that tag (`release.yml:155-159`), so installs from it never see a moving `:latest`. The prod stack runs `:latest` (`OPENKSEF_VERSION` unset; set only to roll back). `:latest` moves one image at a time after all images are pushed (`release.yml:167-175`). A failure inside that loop leaves `:latest` mixed across images, which D2 recovers from.
 
