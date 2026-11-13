@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -66,7 +67,7 @@ public class AccountController : ControllerBase
     {
         var response = new UserInfoResponse(
             UserId: _currentUser.UserId,
-            Email: User.FindFirst("email")?.Value,
+            Email: User.FindFirst(ClaimTypes.Email)?.Value ?? User.FindFirst("email")?.Value,
             Name: User.FindFirst("name")?.Value);
 
         return Ok(response);
@@ -104,7 +105,7 @@ public class AccountController : ControllerBase
     public async Task<IActionResult> GenerateSetupToken()
     {
         var userId = _currentUser.UserId;
-        var email = User.FindFirst("email")?.Value;
+        var email = User.FindFirst(ClaimTypes.Email)?.Value ?? User.FindFirst("email")?.Value;
         var name = User.FindFirst("name")?.Value;
 
         string token;

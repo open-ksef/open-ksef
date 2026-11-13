@@ -10,7 +10,10 @@ public record CreateTenantRequest(
     [param: MaxLength(200, ErrorMessage = "Nazwa może mieć najwyżej 200 znaków.")]
     string? DisplayName,
     [param: EmailAddress]
-    string? NotificationEmail);
+    string? NotificationEmail)
+{
+    public string? NotificationEmail { get; init; } = string.IsNullOrWhiteSpace(NotificationEmail) ? null : NotificationEmail.Trim();
+}
 
 public record UpdateTenantRequest(
     [param: MaxLength(200, ErrorMessage = "Nazwa może mieć najwyżej 200 znaków.")]
@@ -24,7 +27,7 @@ public record UpdateTenantRequest(
         get => _notificationEmail;
         init
         {
-            _notificationEmail = string.IsNullOrWhiteSpace(value) ? null : value;
+            _notificationEmail = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
             NotificationEmailSet = true;
         }
     }
