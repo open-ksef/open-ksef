@@ -1360,6 +1360,7 @@ public class IssuedInvoiceSendProcessorTests
     [InlineData(CredentialType.Certificate, 480, "Uwierzytelnienie zablokowane: Podejrzenie incydentu bezpieczeństwa.", IssuedInvoiceSendProcessor.LoginRefusedMessage)]
     [InlineData(CredentialType.Token, 450, "Uwierzytelnianie zakończone niepowodzeniem z powodu błędnego tokenu: Token unieważniony", IssuedInvoiceSendProcessor.InvalidTokenMessage)]
     [InlineData(CredentialType.Token, 450, "Uwierzytelnianie zakończone niepowodzeniem z powodu błędnego tokenu: Token nie może być użyty w kontekście 1111111111", IssuedInvoiceSendProcessor.InvalidTokenMessage)]
+    [InlineData(CredentialType.Token, 450, "Uwierzytelnianie zakończone niepowodzeniem z powodu błędnego tokenu: Token o numerze referencyjnym 20261113-EC-0000000000-0000000000-00 nie został znaleziony.", IssuedInvoiceSendProcessor.InvalidTokenMessage)]
     [InlineData(CredentialType.Token, 450, "Uwierzytelnianie zakończone niepowodzeniem z powodu błędnego tokenu: Nieprawidłowy czas tokena", IssuedInvoiceSendProcessor.LoginRefusedMessage)]
     [InlineData(CredentialType.Token, 450, "Uwierzytelnianie zakończone niepowodzeniem z powodu błędnego tokenu: Nieprawidłowe wyzwanie autoryzacyjne", IssuedInvoiceSendProcessor.LoginRefusedMessage)]
     [InlineData(CredentialType.Token, 450, "Uwierzytelnianie zakończone niepowodzeniem z powodu błędnego tokenu: Nieprawidłowe szyfrowanie tokena", IssuedInvoiceSendProcessor.LoginRefusedMessage)]
