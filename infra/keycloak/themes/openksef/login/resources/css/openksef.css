@@ -150,8 +150,15 @@ body#keycloak-bg {
   color: var(--ok-text);
 }
 
-.pf-v5-c-login__main-header {
+.pf-v5-c-login__header {
+  display: flex;
+  justify-content: center;
+}
+
+.pf-v5-c-login__main-header,
+div.pf-v5-c-login__main-header {
   --pf-v5-c-login__main-header--PaddingTop: 28px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 #kc-page-title {
@@ -339,4 +346,10 @@ a:hover {
   border: 1px solid var(--ok-border-strong);
   border-radius: var(--ok-radius-md);
   color: var(--ok-text);
+}
+
+#kc-info-wrapper {
+  margin-top: 16px;
+  color: var(--ok-muted);
+  font-size: 14px;
 }

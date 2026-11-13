@@ -2088,21 +2088,6 @@ input.nip-input {
   font-weight: 500;
 }
 
-.pairing-form {
-  display: flex;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.pairing-form .ui-form-group {
-  flex: 1 1 220px;
-}
-
-.pairing-form .ui-button {
-  margin-top: 23px;
-}
-
 #pairing-code {
   font-family: var(--ui-font-mono);
   letter-spacing: 0.1em;

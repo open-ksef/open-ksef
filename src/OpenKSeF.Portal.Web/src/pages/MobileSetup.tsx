@@ -169,11 +169,12 @@ export function MobileSetupPage(): ReactElement {
           <h2 id="code-title">Zaloguj telefon kodem</h2>
           <p>W aplikacji OpenKSeF dotknij <b>Sparuj z portalem</b> i wpisz tutaj kod widoczny na telefonie. Ta funkcja wymaga najnowszej wersji aplikacji.</p>
           <p className="pairing-warning">Wpisuj tylko kod z własnego telefonu. Kod od innej osoby da jej dostęp do Twoich firm i faktur.</p>
-          <form className="pairing-form" onSubmit={submitPairingCode} noValidate>
+          <form onSubmit={submitPairingCode} noValidate>
             <div className="ui-form-group">
               <label htmlFor="pairing-code">Kod z telefonu</label>
               <input
                 id="pairing-code"
+                type="text"
                 value={pairingCode}
                 onChange={(event) => setPairingCode(event.target.value)}
                 placeholder="ABCD-EFGH"
