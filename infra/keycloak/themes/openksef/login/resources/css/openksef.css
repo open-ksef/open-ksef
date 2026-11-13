@@ -1,0 +1,342 @@
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../fonts/inter-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../fonts/inter-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+:root {
+  color-scheme: light;
+  --ok-primary: #4f46e5;
+  --ok-primary-hover: #4338ca;
+  --ok-on-primary: #ffffff;
+  --ok-primary-subtle: #eef2ff;
+  --ok-link: #4338ca;
+  --ok-focus: #6366f1;
+  --ok-success: #047857;
+  --ok-success-bg: #d1fae5;
+  --ok-warning: #92400e;
+  --ok-warning-bg: #fef3c7;
+  --ok-error: #b91c1c;
+  --ok-error-bg: #fee2e2;
+  --ok-info: #1d4ed8;
+  --ok-info-bg: #dbeafe;
+  --ok-bg: #f4f6f9;
+  --ok-surface: #ffffff;
+  --ok-surface-2: #f3f4f8;
+  --ok-text: #111827;
+  --ok-muted: #5b6474;
+  --ok-border: #e5e7eb;
+  --ok-border-strong: #8b93a3;
+  --ok-radius-md: 8px;
+  --ok-radius-lg: 12px;
+  --ok-font: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  --pf-v5-global--FontFamily--text: var(--ok-font);
+  --pf-v5-global--FontFamily--heading: var(--ok-font);
+  --pf-v5-global--FontFamily--text--vf: var(--ok-font);
+  --pf-v5-global--FontFamily--heading--vf: var(--ok-font);
+  --pf-v5-global--Color--100: var(--ok-text);
+  --pf-v5-global--Color--200: var(--ok-muted);
+  --pf-v5-global--Color--dark-100: var(--ok-text);
+  --pf-v5-global--Color--dark-200: var(--ok-muted);
+  --pf-v5-global--BackgroundColor--100: var(--ok-surface);
+  --pf-v5-global--BackgroundColor--200: var(--ok-bg);
+  --pf-v5-global--BackgroundColor--light-100: var(--ok-surface);
+  --pf-v5-global--BorderColor--100: var(--ok-border);
+  --pf-v5-global--BorderColor--200: var(--ok-border-strong);
+  --pf-v5-global--BorderColor--300: var(--ok-border-strong);
+  --pf-v5-global--primary-color--100: var(--ok-primary);
+  --pf-v5-global--primary-color--200: var(--ok-primary-hover);
+  --pf-v5-global--link--Color: var(--ok-link);
+  --pf-v5-global--link--Color--hover: var(--ok-primary-hover);
+  --pf-v5-global--active-color--100: var(--ok-focus);
+  --pf-v5-global--danger-color--100: var(--ok-error);
+  --pf-v5-global--success-color--100: var(--ok-success);
+  --pf-v5-global--warning-color--100: var(--ok-warning);
+  --pf-v5-global--info-color--100: var(--ok-info);
+  --pf-v5-global--BorderRadius--sm: var(--ok-radius-md);
+}
+
+:root.pf-v5-theme-dark {
+  color-scheme: dark;
+  --ok-primary: #a5b4fc;
+  --ok-primary-hover: #c7d2fe;
+  --ok-on-primary: #11132a;
+  --ok-primary-subtle: #232657;
+  --ok-link: #a5b4fc;
+  --ok-focus: #a5b4fc;
+  --ok-success: #34d399;
+  --ok-success-bg: #0c2f25;
+  --ok-warning: #fbbf24;
+  --ok-warning-bg: #33260a;
+  --ok-error: #f87171;
+  --ok-error-bg: #3a1414;
+  --ok-info: #60a5fa;
+  --ok-info-bg: #10264a;
+  --ok-bg: #0b0d17;
+  --ok-surface: #151827;
+  --ok-surface-2: #1c2033;
+  --ok-text: #e5e7eb;
+  --ok-muted: #a1a7b8;
+  --ok-border: #2a2f45;
+  --ok-border-strong: #6a7192;
+}
+
+.login-pf body,
+body#keycloak-bg {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  font-family: var(--ok-font);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ok-focus);
+  outline-offset: 2px;
+}
+
+.pf-v5-c-login__container {
+  grid-template-columns: minmax(0, 28rem);
+  padding-inline: 16px;
+}
+
+#kc-header-wrapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--ok-text) !important;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+
+#kc-header-wrapper::before {
+  content: '';
+  width: 32px;
+  height: 32px;
+  flex: none;
+  background-color: var(--ok-primary);
+  -webkit-mask: url('../img/logo.svg') center / contain no-repeat;
+  mask: url('../img/logo.svg') center / contain no-repeat;
+}
+
+.pf-v5-c-login {
+  --pf-v5-c-login__main--BackgroundColor: var(--ok-surface);
+  --pf-v5-c-login__main--BoxShadow: 0 0 0 1px var(--ok-border);
+}
+
+.pf-v5-c-login__main {
+  border-radius: var(--ok-radius-lg);
+  color: var(--ok-text);
+}
+
+.pf-v5-c-login__header,
+.pf-v5-c-login__footer {
+  color: var(--ok-text);
+}
+
+.pf-v5-c-login__main-header {
+  --pf-v5-c-login__main-header--PaddingTop: 28px;
+}
+
+#kc-page-title {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ok-text);
+}
+
+.pf-v5-c-login__main-footer-band {
+  --pf-v5-c-login__main-footer-band--BorderTopColor: var(--ok-border);
+  color: var(--ok-muted);
+}
+
+.pf-v5-c-form__label-text,
+.pf-v5-c-form__label {
+  color: var(--ok-text);
+  font-weight: 500;
+}
+
+.pf-v5-c-form-control {
+  --pf-v5-c-form-control--BackgroundColor: var(--ok-surface);
+  --pf-v5-c-form-control--Color: var(--ok-text);
+  --pf-v5-c-form-control--before--BorderTopColor: var(--ok-border-strong);
+  --pf-v5-c-form-control--before--BorderRightColor: var(--ok-border-strong);
+  --pf-v5-c-form-control--before--BorderBottomColor: var(--ok-border-strong);
+  --pf-v5-c-form-control--before--BorderLeftColor: var(--ok-border-strong);
+  --pf-v5-c-form-control--before--BorderBottomWidth: 1px;
+  --pf-v5-c-form-control--after--BorderBottomColor: transparent;
+  --pf-v5-c-form-control--hover--after--BorderBottomColor: transparent;
+  --pf-v5-c-form-control--focus--after--BorderBottomColor: transparent;
+  --pf-v5-c-form-control--m-error--after--BorderBottomColor: var(--ok-error);
+  --pf-v5-c-form-control--m-readonly--BackgroundColor: var(--ok-surface-2);
+  --pf-v5-c-form-control--m-readonly--hover--after--BorderBottomColor: transparent;
+  --pf-v5-c-form-control--m-readonly--focus--after--BorderBottomColor: transparent;
+  --pf-v5-c-form-control--m-placeholder--Color: var(--ok-muted);
+  --pf-v5-c-form-control__toggle-icon--Color: var(--ok-text);
+  border-radius: var(--ok-radius-md);
+}
+
+.pf-v5-c-form-control::before,
+.pf-v5-c-form-control::after {
+  border-radius: var(--ok-radius-md);
+}
+
+.pf-v5-c-form-control:focus-within {
+  outline: 2px solid var(--ok-focus);
+  outline-offset: 1px;
+}
+
+.pf-v5-c-form-control > :is(input, select, textarea)::placeholder {
+  color: var(--ok-muted);
+}
+
+.pf-v5-c-input-group .pf-v5-c-input-group__item:not(:last-child) .pf-v5-c-form-control,
+.pf-v5-c-input-group .pf-v5-c-input-group__item:not(:last-child) .pf-v5-c-form-control::before {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.pf-v5-c-input-group .pf-v5-c-input-group__item:last-child > .pf-v5-c-button.pf-m-control,
+.pf-v5-c-input-group .pf-v5-c-input-group__item:last-child > .pf-v5-c-button.pf-m-control::after {
+  border-start-end-radius: var(--ok-radius-md);
+  border-end-end-radius: var(--ok-radius-md);
+}
+
+.pf-v5-c-button {
+  --pf-v5-c-button--BorderRadius: var(--ok-radius-md);
+  --pf-v5-c-button--FontWeight: 600;
+  --pf-v5-c-button--m-primary--BackgroundColor: var(--ok-primary);
+  --pf-v5-c-button--m-primary--Color: var(--ok-on-primary);
+  --pf-v5-c-button--m-primary--hover--BackgroundColor: var(--ok-primary-hover);
+  --pf-v5-c-button--m-primary--hover--Color: var(--ok-on-primary);
+  --pf-v5-c-button--m-primary--focus--BackgroundColor: var(--ok-primary-hover);
+  --pf-v5-c-button--m-primary--focus--Color: var(--ok-on-primary);
+  --pf-v5-c-button--m-primary--active--BackgroundColor: var(--ok-primary-hover);
+  --pf-v5-c-button--m-primary--active--Color: var(--ok-on-primary);
+  --pf-v5-c-button--m-secondary--BackgroundColor: transparent;
+  --pf-v5-c-button--m-secondary--Color: var(--ok-text);
+  --pf-v5-c-button--m-secondary--after--BorderColor: var(--ok-border-strong);
+  --pf-v5-c-button--m-secondary--hover--BackgroundColor: var(--ok-surface-2);
+  --pf-v5-c-button--m-secondary--hover--Color: var(--ok-text);
+  --pf-v5-c-button--m-secondary--hover--after--BorderColor: var(--ok-border-strong);
+  --pf-v5-c-button--m-secondary--focus--Color: var(--ok-text);
+  --pf-v5-c-button--m-secondary--focus--after--BorderColor: var(--ok-border-strong);
+  --pf-v5-c-button--m-secondary--active--Color: var(--ok-text);
+  --pf-v5-c-button--m-secondary--active--after--BorderColor: var(--ok-border-strong);
+  --pf-v5-c-button--m-link--Color: var(--ok-link);
+  --pf-v5-c-button--m-link--hover--Color: var(--ok-primary-hover);
+  --pf-v5-c-button--m-link--focus--Color: var(--ok-primary-hover);
+  --pf-v5-c-button--m-control--BackgroundColor: var(--ok-surface);
+  --pf-v5-c-button--m-control--Color: var(--ok-muted);
+  --pf-v5-c-button--m-control--hover--BackgroundColor: var(--ok-surface-2);
+  --pf-v5-c-button--m-control--focus--BackgroundColor: var(--ok-surface-2);
+  --pf-v5-c-button--m-control--active--BackgroundColor: var(--ok-surface-2);
+  --pf-v5-c-button--m-control--after--BorderTopColor: var(--ok-border-strong);
+  --pf-v5-c-button--m-control--after--BorderRightColor: var(--ok-border-strong);
+  --pf-v5-c-button--m-control--after--BorderBottomColor: var(--ok-border-strong);
+  --pf-v5-c-button--m-control--after--BorderLeftColor: var(--ok-border-strong);
+  --pf-v5-c-button--m-control--hover--after--BorderBottomColor: var(--ok-border-strong);
+  --pf-v5-c-button--m-control--focus--after--BorderBottomColor: var(--ok-border-strong);
+  --pf-v5-c-button--m-control--active--after--BorderBottomColor: var(--ok-border-strong);
+  --pf-v5-c-button--m-control--hover--after--BorderBottomWidth: 1px;
+  --pf-v5-c-button--m-control--focus--after--BorderBottomWidth: 1px;
+  --pf-v5-c-button--m-control--active--after--BorderBottomWidth: 1px;
+}
+
+.pf-v5-c-button.pf-m-block {
+  min-height: 40px;
+}
+
+a,
+.pf-v5-c-login a {
+  color: var(--ok-link);
+}
+
+a:hover {
+  color: var(--ok-primary-hover);
+}
+
+.pf-v5-c-check__input {
+  accent-color: var(--ok-primary);
+}
+
+.pf-v5-c-check__label,
+.pf-v5-c-helper-text__item-text {
+  color: var(--ok-text);
+}
+
+.pf-v5-c-helper-text__item-text.pf-m-error,
+.pf-v5-c-helper-text__item.pf-m-error {
+  color: var(--ok-error);
+}
+
+.pf-v5-c-alert {
+  --pf-v5-c-alert--BackgroundColor: var(--ok-info-bg);
+  --pf-v5-c-alert--BoxShadow: none;
+  --pf-v5-c-alert--BorderTopWidth: 0;
+  --pf-v5-c-alert__title--Color: var(--ok-info);
+  --pf-v5-c-alert__icon--Color: var(--ok-info);
+  border-radius: var(--ok-radius-md);
+}
+
+.pf-v5-c-alert.pf-m-danger {
+  --pf-v5-c-alert--BackgroundColor: var(--ok-error-bg);
+  --pf-v5-c-alert__title--Color: var(--ok-error);
+  --pf-v5-c-alert__icon--Color: var(--ok-error);
+}
+
+.pf-v5-c-alert.pf-m-warning {
+  --pf-v5-c-alert--BackgroundColor: var(--ok-warning-bg);
+  --pf-v5-c-alert__title--Color: var(--ok-warning);
+  --pf-v5-c-alert__icon--Color: var(--ok-warning);
+}
+
+.pf-v5-c-alert.pf-m-success {
+  --pf-v5-c-alert--BackgroundColor: var(--ok-success-bg);
+  --pf-v5-c-alert__title--Color: var(--ok-success);
+  --pf-v5-c-alert__icon--Color: var(--ok-success);
+}
+
+.pf-v5-c-alert__title {
+  font-weight: 500;
+}
+
+#kc-oauth ul,
+#kc-oauth li,
+.pf-v5-c-list {
+  color: var(--ok-text);
+}
+
+#kc-info-message,
+#kc-error-message,
+.instruction {
+  color: var(--ok-text);
+}
+
+#user_code {
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.pf-v5-c-login__main-footer-links-item-link {
+  border: 1px solid var(--ok-border-strong);
+  border-radius: var(--ok-radius-md);
+  color: var(--ok-text);
+}

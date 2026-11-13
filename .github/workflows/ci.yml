@@ -113,6 +113,20 @@ jobs:
           grep -qi '^x-content-type-options: nosniff' headers.txt
           grep -qi '^content-security-policy:' headers.txt
 
+  keycloak:
+    name: Keycloak theme image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build Keycloak image
+        run: docker build -q -t openksef-keycloak:ci infra/keycloak
+
+      - name: Theme is in the image
+        run: docker run --rm --entrypoint ls openksef-keycloak:ci /opt/keycloak/themes/openksef/login/theme.properties
+
   # ─────────────────────────────────────────────────────────────────
   # Push :dev images to GHCR on every commit to main.
   # Gateway infra image is only rebuilt when its source files change.
@@ -134,6 +148,8 @@ jobs:
           filters: |
             nginx:
               - 'infra/nginx/**'
+            keycloak:
+              - 'infra/keycloak/**'
 
       - uses: docker/login-action@v4
         with:
@@ -193,5 +209,15 @@ jobs:
           context: ./infra/nginx
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/openksef-gateway:dev
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Keycloak :dev
+        if: steps.changes.outputs.keycloak == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ./infra/keycloak
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-keycloak:dev
           cache-from: type=gha
           cache-to: type=gha,mode=max

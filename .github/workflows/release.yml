@@ -75,6 +75,7 @@ jobs:
             - `ghcr.io/${{ github.repository_owner }}/openksef-worker:${{ github.ref_name }}`
             - `ghcr.io/${{ github.repository_owner }}/openksef-portal-web:${{ github.ref_name }}`
             - `ghcr.io/${{ github.repository_owner }}/openksef-gateway:${{ github.ref_name }}`
+            - `ghcr.io/${{ github.repository_owner }}/openksef-keycloak:${{ github.ref_name }}`
             - `ghcr.io/${{ github.repository_owner }}/openksef-push-relay:${{ github.ref_name }}` (team-hosted relay, `docker-compose.push-relay.yml`)
 
             ---
@@ -143,6 +144,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build & push Keycloak
+        uses: docker/build-push-action@v7
+        with:
+          context: ./infra/keycloak
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/openksef-keycloak:${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Build & push Push Relay
         uses: docker/build-push-action@v7
         with:
@@ -168,7 +178,7 @@ jobs:
         env:
           OWNER: ${{ github.repository_owner }}
         run: |
-          for image in api worker portal-web gateway push-relay; do
+          for image in api worker portal-web gateway keycloak push-relay; do
             docker buildx imagetools create \
               -t "ghcr.io/$OWNER/openksef-$image:latest" \
               "ghcr.io/$OWNER/openksef-$image:$GITHUB_REF_NAME"
