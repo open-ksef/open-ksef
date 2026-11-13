@@ -2,7 +2,7 @@
   "realm": "openksef",
   "enabled": true,
   "displayName": "openksef",
-  "accessTokenLifespan": 1800,
+  "accessTokenLifespan": 300,
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
   "registrationAllowed": true,
@@ -46,7 +46,7 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
-      "redirectUris": ["*"],
+      "redirectUris": ["/*", "openksef://auth/*"],
       "webOrigins": ["+"],
       "protocolMappers": [
         {

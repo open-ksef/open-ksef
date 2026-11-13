@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using KSeF.Client.DI;
 using Microsoft.EntityFrameworkCore;
@@ -152,13 +153,11 @@ public sealed class SystemSetupService : ISystemSetupService
             var apiClientSecret = await FetchApiClientSecretAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Fetched API client secret");
 
-            await EnableTokenExchangeAsync(client, kcBase, adminToken, ct);
-            _logger.LogInformation("Token exchange configured");
-
             await UpdateClientRedirectUrisAsync(client, kcBase, adminToken, request.ExternalBaseUrl, ct);
             _logger.LogInformation("Updated client redirect URIs");
 
             await ConfigureRealmAsync(client, kcBase, adminToken, request, ct);
+            await EnsureRealmPolicyAsync(client, kcBase, adminToken, ct);
             _logger.LogInformation("Configured Keycloak realm settings");
 
             // Keycloak 26+ enables VERIFY_PROFILE by default, and it blocks login.
@@ -266,7 +265,7 @@ public sealed class SystemSetupService : ISystemSetupService
             ["enabled"] = true,
             ["displayName"] = "openksef",
             ["sslRequired"] = "external",
-            ["accessTokenLifespan"] = 1800,
+            ["accessTokenLifespan"] = 300,
             ["ssoSessionIdleTimeout"] = 1800,
             ["ssoSessionMaxLifespan"] = 36000,
             ["registrationAllowed"] = true,
@@ -402,48 +401,6 @@ public sealed class SystemSetupService : ISystemSetupService
         return secret;
     }
 
-    private async Task EnableTokenExchangeAsync(
-        HttpClient client, string kcBase, string adminToken, CancellationToken ct)
-    {
-        var apiClientUuid = await GetClientUuidAsync(client, kcBase, adminToken, "openksef-api", ct);
-
-        // Enable permissions on the client
-        var permUrl = $"{kcBase}/admin/realms/openksef/clients/{apiClientUuid}/management/permissions";
-        await SendKeycloakJsonAsync(client, HttpMethod.Put, permUrl, adminToken,
-            new { enabled = true }, ct, throwOnError: false);
-
-        // Get service account user
-        var saUrl = $"{kcBase}/admin/realms/openksef/clients/{apiClientUuid}/service-account-user";
-        using var saReq = new HttpRequestMessage(HttpMethod.Get, saUrl);
-        saReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
-        var saResp = await client.SendAsync(saReq, ct);
-        saResp.EnsureSuccessStatusCode();
-        var saJson = await saResp.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
-        var saUserId = saJson.GetProperty("id").GetString()!;
-
-        // Get realm-management client UUID
-        var rmUuid = await GetClientUuidAsync(client, kcBase, adminToken, "realm-management", ct);
-        if (rmUuid == null) return;
-
-        // Get available roles and assign token-exchange
-        var availUrl = $"{kcBase}/admin/realms/openksef/users/{saUserId}/role-mappings/clients/{rmUuid}/available";
-        using var availReq = new HttpRequestMessage(HttpMethod.Get, availUrl);
-        availReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
-        var availResp = await client.SendAsync(availReq, ct);
-        availResp.EnsureSuccessStatusCode();
-
-        var roles = await availResp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
-        var tokenExchangeRole = roles.FirstOrDefault(r =>
-            r.GetProperty("name").GetString() == "token-exchange");
-
-        if (tokenExchangeRole.ValueKind != JsonValueKind.Undefined)
-        {
-            var rolePayload = new[] { new { id = tokenExchangeRole.GetProperty("id").GetString(), name = "token-exchange" } };
-            var assignUrl = $"{kcBase}/admin/realms/openksef/users/{saUserId}/role-mappings/clients/{rmUuid}";
-            await SendKeycloakJsonAsync(client, HttpMethod.Post, assignUrl, adminToken, rolePayload, ct);
-        }
-    }
-
     private async Task UpdateClientRedirectUrisAsync(
         HttpClient client, string kcBase, string adminToken, string externalBaseUrl, CancellationToken ct)
     {
@@ -487,7 +444,7 @@ public sealed class SystemSetupService : ISystemSetupService
             ["verifyEmail"] = request.VerifyEmail,
             ["loginWithEmailAllowed"] = request.LoginWithEmailAllowed,
             ["resetPasswordAllowed"] = request.ResetPasswordAllowed,
-            ["accessTokenLifespan"] = 1800,
+            ["accessTokenLifespan"] = 300,
             ["ssoSessionIdleTimeout"] = 1800,
             ["ssoSessionMaxLifespan"] = 36000,
         };
@@ -735,6 +692,87 @@ public sealed class SystemSetupService : ISystemSetupService
                 },
             }, ct);
         }
+    }
+
+    public static readonly IReadOnlyDictionary<string, string> PolishLoginTexts = new Dictionary<string, string>
+    {
+        ["oauthGrantTitle"] = "Zezwolić na logowanie: {0}?",
+        ["oauthGrantRequest"] = "Zatwierdź tylko, jeśli ten kod widzisz teraz na swoim telefonie. Jeśli ktoś podał Ci kod lub link, wybierz Nie: ta osoba dostałaby dostęp do Twoich firm i faktur, także do wystawiania faktur w KSeF, bez Twojego hasła, nawet na rok. Aplikacja otrzyma:",
+        ["oauth2DeviceVerificationTitle"] = "Logowanie telefonu",
+        ["verifyOAuth2DeviceUserCode"] = "Wpisz kod widoczny w aplikacji na Twoim telefonie i wybierz Zatwierdź",
+        ["oauth2DeviceInvalidUserCodeMessage"] = "Nieprawidłowy kod. Spróbuj ponownie.",
+        ["oauth2DeviceExpiredUserCodeMessage"] = "Kod wygasł. Wróć do telefonu i poproś o nowy kod.",
+        ["oauth2DeviceVerificationCompleteHeader"] = "Telefon zalogowany",
+        ["oauth2DeviceVerificationCompleteMessage"] = "Możesz zamknąć tę kartę i wrócić do telefonu.",
+        ["oauth2DeviceVerificationFailedHeader"] = "Nie zalogowano telefonu",
+        ["oauth2DeviceVerificationFailedMessage"] = "Możesz zamknąć tę kartę, wrócić do telefonu i spróbować ponownie.",
+        ["oauth2DeviceConsentDeniedMessage"] = "Odmówiono logowania telefonu.",
+        ["oauth2DeviceAuthorizationGrantDisabledMessage"] = "Ten serwer nie obsługuje parowania kodem.",
+    };
+
+    internal static async Task EnsureRealmPolicyAsync(
+        HttpClient client, string kcBase, string adminToken, CancellationToken ct)
+    {
+        var realmUrl = $"{kcBase}/admin/realms/openksef";
+        await SendKeycloakJsonAsync(client, HttpMethod.Put, realmUrl, adminToken, new Dictionary<string, object>
+        {
+            ["displayName"] = "OpenKSeF",
+            ["loginTheme"] = "openksef",
+            ["internationalizationEnabled"] = true,
+            ["supportedLocales"] = new[] { "pl" },
+            ["defaultLocale"] = "pl",
+            ["accessTokenLifespan"] = 300,
+            ["offlineSessionIdleTimeout"] = 2592000,
+            ["offlineSessionMaxLifespanEnabled"] = true,
+            ["offlineSessionMaxLifespan"] = 31536000,
+            ["eventsEnabled"] = true,
+            ["eventsExpiration"] = 2592000,
+            ["enabledEventTypes"] = new[] { "LOGIN", "LOGIN_ERROR", "OAUTH2_DEVICE_VERIFY_USER_CODE", "OAUTH2_DEVICE_CODE_TO_TOKEN", "REVOKE_GRANT" },
+        }, ct);
+
+        foreach (var (key, text) in PolishLoginTexts)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Put, $"{realmUrl}/localization/pl/{key}");
+            req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+            req.Content = new StringContent(text, Encoding.UTF8, "text/plain");
+            using var resp = await client.SendAsync(req, ct);
+            resp.EnsureSuccessStatusCode();
+        }
+
+        var uuid = await GetClientUuidAsync(client, kcBase, adminToken, "openksef-mobile", ct);
+        if (uuid == null) return;
+
+        var clientUrl = $"{realmUrl}/clients/{uuid}";
+        await SendKeycloakJsonAsync(client, HttpMethod.Put, clientUrl, adminToken, new Dictionary<string, object>
+        {
+            ["name"] = "Aplikacja mobilna OpenKSeF",
+            ["attributes"] = new Dictionary<string, string>
+            {
+                ["oauth2.device.authorization.grant.enabled"] = "true",
+                ["oauth2.device.code.lifespan"] = "300",
+                ["pkce.code.challenge.method"] = "S256",
+            },
+        }, ct);
+
+        using var scopesReq = new HttpRequestMessage(HttpMethod.Get, $"{clientUrl}/optional-client-scopes");
+        scopesReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+        using var scopesResp = await client.SendAsync(scopesReq, ct);
+        scopesResp.EnsureSuccessStatusCode();
+        var optional = await scopesResp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
+        if (optional.Any(s => s.GetProperty("name").GetString() == "offline_access"))
+            return;
+
+        using var allReq = new HttpRequestMessage(HttpMethod.Get, $"{realmUrl}/client-scopes");
+        allReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+        using var allResp = await client.SendAsync(allReq, ct);
+        allResp.EnsureSuccessStatusCode();
+        var scopes = await allResp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
+        var offlineAccess = scopes.Single(s => s.GetProperty("name").GetString() == "offline_access").GetProperty("id").GetString();
+
+        using var addReq = new HttpRequestMessage(HttpMethod.Put, $"{clientUrl}/optional-client-scopes/{offlineAccess}");
+        addReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+        using var addResp = await client.SendAsync(addReq, ct);
+        addResp.EnsureSuccessStatusCode();
     }
 
     private static async Task<string?> GetClientUuidAsync(

@@ -67,6 +67,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromSeconds(60),
             ValidIssuers = validIssuers,
             ValidAudiences = new[] { "openksef-api", "account" }
         };
@@ -130,9 +131,7 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ISetupSessionService, SetupSessionService>();
 builder.Services.AddSingleton<SetupAuthAttemptLimiter>();
 
-builder.Services.AddSingleton<ISetupTokenService, SetupTokenService>();
 builder.Services.AddHttpClient("keycloak");
-builder.Services.AddSingleton<IKeycloakTokenExchangeService, KeycloakTokenExchangeService>();
 builder.Services.AddSingleton<IKeycloakUserService, KeycloakUserService>();
 
 builder.Services.AddScoped<ITransferDetailsService, TransferDetailsService>();
