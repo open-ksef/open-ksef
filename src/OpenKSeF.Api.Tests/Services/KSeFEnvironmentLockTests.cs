@@ -7,6 +7,7 @@ using NSubstitute;
 using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Invoicing;
+using OpenKSeF.Domain.Push;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Tests.Services;
@@ -24,6 +25,7 @@ public class KSeFEnvironmentLockTests
             Substitute.For<IHttpClientFactory>(),
             new ConfigurationBuilder().Build(),
             Substitute.For<ISystemConfigService>(),
+            new RelayHealth(),
             new KSeFClientOptions(),
             provider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<SystemSettingsService>.Instance);

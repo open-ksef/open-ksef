@@ -84,7 +84,7 @@ The **AES-256 encryption key** is not part of the wizard, and no API response co
 
 SignalR local push is always active regardless of which mode you choose. The mode only affects remote (background) delivery.
 
-The settings page says only whether a relay key is stored, and no API response contains it. On the default relay, **Zarejestruj ponownie** and then saving issues a new key. On a custom relay, type the new key; an empty field keeps the stored one. An empty SMTP password also keeps the stored one.
+The settings page says only whether a relay key is stored, and no API response contains it. On the default relay, **Zarejestruj ponownie** and then saving issues a new key. When the instance still holds its old key for the same relay, the request is signed with it and the relay disables the old instance in the same step, so the old key stops working at once. Without a valid old key (none stored, or a different relay URL) the relay issues a new key and leaves the old instance as it was. If saving fails after the relay answered, click **Zarejestruj ponownie** and save again: the stored old key still proves the disabled instance, and the relay issues a fresh key. If the last relay send failed (for example HTTP 403, instance disabled), the push section shows the status and time until a relay send succeeds again. On a custom relay, type the new key; an empty field keeps the stored one. An empty SMTP password also keeps the stored one.
 
 ### Step 6: Summary & Apply
 

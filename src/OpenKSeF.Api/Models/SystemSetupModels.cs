@@ -93,6 +93,8 @@ public record SettingsResponse
     public string? PushRelayUrl { get; init; }
     public bool PushRelayApiKeyConfigured { get; init; }
     public string? PushRelayInstanceId { get; init; }
+    public int? PushRelayLastFailureStatus { get; init; }
+    public DateTimeOffset? PushRelayLastFailureAt { get; init; }
     public bool FirebaseConfigured { get; init; }
 }
 

@@ -1263,6 +1263,16 @@
             "nullable": true,
             "type": "string"
           },
+          "pushRelayLastFailureAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "pushRelayLastFailureStatus": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
           "pushRelayUrl": {
             "nullable": true,
             "type": "string"

@@ -57,7 +57,8 @@ public sealed class InstanceStore : IDisposable
         cmd.ExecuteNonQuery();
     }
 
-    public async Task<(string InstanceId, string ApiKey)> RegisterAsync(string instanceUrl)
+    /// <summary>Inserts a new instance; <paramref name="replacesInstanceId"/>, when given, is disabled in the same transaction and must only come from a caller that proved it holds that instance's key.</summary>
+    public async Task<(string InstanceId, string ApiKey)> RegisterAsync(string instanceUrl, string? replacesInstanceId = null)
     {
         var instanceId = Guid.NewGuid().ToString("N");
         var apiKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
@@ -66,23 +67,42 @@ public sealed class InstanceStore : IDisposable
         await _writeLock.WaitAsync();
         try
         {
-            await using var cmd = _db.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO instances (instance_id, api_key, instance_url, registered_at, last_seen_at, enabled)
-                VALUES ($id, $key, $url, $now, $now, 1)
-                """;
-            cmd.Parameters.AddWithValue("$id", instanceId);
-            cmd.Parameters.AddWithValue("$key", apiKey);
-            cmd.Parameters.AddWithValue("$url", (object?)instanceUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$now", now);
-            await cmd.ExecuteNonQueryAsync();
+            await using var tx = (SqliteTransaction)await _db.BeginTransactionAsync();
+
+            await using (var insert = _db.CreateCommand())
+            {
+                insert.Transaction = tx;
+                insert.CommandText = """
+                    INSERT INTO instances (instance_id, api_key, instance_url, registered_at, last_seen_at, enabled)
+                    VALUES ($id, $key, $url, $now, $now, 1)
+                    """;
+                insert.Parameters.AddWithValue("$id", instanceId);
+                insert.Parameters.AddWithValue("$key", apiKey);
+                insert.Parameters.AddWithValue("$url", (object?)instanceUrl ?? DBNull.Value);
+                insert.Parameters.AddWithValue("$now", now);
+                await insert.ExecuteNonQueryAsync();
+            }
+
+            if (replacesInstanceId is not null)
+            {
+                await using var disable = _db.CreateCommand();
+                disable.Transaction = tx;
+                disable.CommandText = "UPDATE instances SET enabled = 0 WHERE instance_id = $id";
+                disable.Parameters.AddWithValue("$id", replacesInstanceId);
+                await disable.ExecuteNonQueryAsync();
+            }
+
+            await tx.CommitAsync();
         }
         finally
         {
             _writeLock.Release();
         }
 
-        _logger.LogInformation("Registered instance {InstanceId} from {Url}", instanceId, instanceUrl);
+        if (replacesInstanceId is null)
+            _logger.LogInformation("Registered instance {InstanceId} from {Url}", instanceId, instanceUrl);
+        else
+            _logger.LogInformation("Registered instance {InstanceId} from {Url}, disabled replaced instance {OldInstanceId}", instanceId, instanceUrl, replacesInstanceId);
         return (instanceId, apiKey);
     }
 
