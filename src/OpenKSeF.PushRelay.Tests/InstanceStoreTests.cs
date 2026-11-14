@@ -16,7 +16,6 @@ public sealed class InstanceStoreTests : IDisposable
 
     public void Dispose()
     {
-        _store.Dispose();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         try
         {

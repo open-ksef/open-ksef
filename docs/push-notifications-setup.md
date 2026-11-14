@@ -43,7 +43,7 @@ The OpenKSeF team operates a lightweight relay service at `https://push.open-kse
 
 **Why this works:** The official OpenKSeF mobile app is built with the team's Firebase project (`google-services.json`). The relay service holds the corresponding Firebase server credentials. Self-hosted admins never need to touch Firebase.
 
-**Security:** Each instance registers with the relay during the admin setup wizard and receives a unique HMAC API key. Requests are signed with this key, timestamps are validated (5-minute window), and per-instance rate limits are enforced. The relay runs behind Cloudflare with additional WAF protection.
+**Security:** Each instance registers with the relay during the admin setup wizard and receives a unique HMAC API key. Requests are signed with this key, timestamps are validated (5-minute window), and a limit of 60 pushes/min per verified instance is enforced. The relay runs behind Cloudflare with additional WAF protection.
 
 **Setup:** In the admin wizard (Step 5 - Integrations), select "Relay OpenKSeF" (it's the default). The relay URL is pre-filled. Registration happens automatically when you complete the wizard — no manual key management needed.
 
@@ -282,7 +282,9 @@ Headers:
 | SignalR not connecting | Auth token expired or wrong server URL | Re-login in the mobile app |
 | Relay returns 401 | Invalid HMAC signature or unregistered instance | **Ustawienia** > **Administracja instancji** > **Powiadomienia push**: **Zarejestruj ponownie** |
 | Relay returns 403 | Instance has been disabled on the relay | Contact OpenKSeF team |
-| Relay returns 429 | Rate limit exceeded | Reduce push frequency or contact OpenKSeF team |
+| Relay returns 400 | Signed body is not valid JSON | Check the instance version; payload is built by `RelayPushProvider` |
+| Relay returns 413 | Body over 64 KB | Shorten notification data |
+| Relay returns 429 | Over 60 pushes/min for this instance, or over 600 requests/min from one IP | Reduce push frequency or contact OpenKSeF team |
 | Relay returns 502 | Firebase/APNs credentials invalid on relay | Check relay logs, verify Firebase JSON |
 | FCM token invalid | Device token expired or wrong Firebase project | Re-register device; check `google-services.json` matches |
 | iOS push returns 403 | Missing APNs JWT auth | Use relay (handles APNs auth) or implement JWT in `ApnsPushProvider` |

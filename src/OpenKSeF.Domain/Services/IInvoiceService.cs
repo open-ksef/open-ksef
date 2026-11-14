@@ -4,10 +4,14 @@ namespace OpenKSeF.Domain.Services;
 
 public interface IInvoiceService
 {
-    Task<List<Guid>> UpsertInvoicesAsync(Guid tenantId, IEnumerable<InvoiceDto> invoices);
+    /// <param name="notify">False stores new rows as already notified, so no push is ever owed for them.</param>
+    Task<List<Guid>> UpsertInvoicesAsync(Guid tenantId, IEnumerable<InvoiceDto> invoices, bool notify = false);
 
-    /// <remarks>REQ-0010 cap: the newest <see cref="InvoiceService.NotificationCap"/> by AcquisitionDate notify one by one, one summary covers the rest.</remarks>
-    Task NotifyNewInvoicesAsync(Guid tenantId, IReadOnlyCollection<Guid> invoiceIds, CancellationToken cancellationToken = default);
+    /// <remarks>REQ-0010 cap: the newest <see cref="InvoiceService.NotificationCap"/> by AcquisitionDate notify one by one, one summary covers the rest. Rows whose push settled get <c>NotifiedAt</c>.</remarks>
+    Task NotifyNewInvoicesAsync(Guid tenantId, IReadOnlyCollection<Guid> invoiceIds, CancellationToken cancellationToken = default, bool email = true);
+
+    /// <summary>Push-only retry of rows still owing a push, first seen within <see cref="InvoiceService.PushRetryWindow"/>.</summary>
+    Task NotifyPendingAsync(Guid tenantId, CancellationToken cancellationToken = default);
 
     /// <remarks>Never writes <c>IsPaid</c>/<c>PaidAt</c>; adds lines only when the invoice has none.</remarks>
     Task ApplyInvoiceXmlAsync(Guid invoiceId, InvoiceXmlDetails details, CancellationToken cancellationToken = default);

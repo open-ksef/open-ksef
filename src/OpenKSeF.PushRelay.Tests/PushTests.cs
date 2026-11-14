@@ -88,12 +88,59 @@ public sealed class PushTests : IDisposable
     }
 
     [Fact]
-    public async Task Push_IsRateLimitedPerInstance()
+    public async Task Push_SpoofedInstanceWithBadSignature_DoesNotDrainTheRealInstanceBucket()
     {
-        for (var i = 0; i < 60; i++)
-            Assert.Equal(HttpStatusCode.Unauthorized, (await Push("unknown-instance", "key")).StatusCode);
+        var instance = await Register();
 
-        Assert.Equal(HttpStatusCode.TooManyRequests, (await Push("unknown-instance", "key")).StatusCode);
+        for (var i = 0; i < 100; i++)
+            Assert.Equal(HttpStatusCode.Unauthorized, (await Push(instance.InstanceId, "wrong-key")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await Push(instance.InstanceId, instance.ApiKey)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Push_IsRateLimitedPerVerifiedInstance_OtherInstanceUnaffected()
+    {
+        var noisy = await Register();
+        var quiet = await Register();
+
+        for (var i = 0; i < 60; i++)
+            Assert.Equal(HttpStatusCode.OK, (await Push(noisy.InstanceId, noisy.ApiKey)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await Push(noisy.InstanceId, noisy.ApiKey)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Push(quiet.InstanceId, quiet.ApiKey)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Push_MalformedJson_Returns400WhenSigned_401WhenNot()
+    {
+        var instance = await Register();
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await Push(instance.InstanceId, instance.ApiKey, body: "{not json")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Push(instance.InstanceId, "wrong-key", body: "{not json")).StatusCode);
+        Assert.Empty(_fcm.Sent);
+    }
+
+    [Fact]
+    public async Task Push_ConcurrentLoad_AllDelivered_NoStoreErrors()
+    {
+        var instances = new List<(string InstanceId, string ApiKey)>();
+        for (var i = 0; i < 5; i++)
+            instances.Add(await Register());
+        var store = _factory.Services.GetRequiredService<InstanceStore>();
+
+        var pushes = instances.SelectMany(inst => Enumerable.Range(0, 10).Select(_ => Task.Run(() => Push(inst.InstanceId, inst.ApiKey))));
+        var storeCalls = instances.Select(inst => Task.Run(async () =>
+        {
+            Assert.NotNull(await store.GetAsync(inst.InstanceId));
+            await store.UpdateLastSeenAsync(inst.InstanceId);
+        }));
+
+        var responses = await Task.WhenAll(pushes);
+        await Task.WhenAll(storeCalls);
+
+        Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
+        Assert.Equal(50, _fcm.Sent.Count);
     }
 
     [Theory]
@@ -136,9 +183,9 @@ public sealed class PushTests : IDisposable
         return (json.GetProperty("instanceId").GetString()!, json.GetProperty("apiKey").GetString()!);
     }
 
-    private async Task<HttpResponseMessage> Push(string instanceId, string apiKey, DateTimeOffset? at = null, string platform = "android")
+    private async Task<HttpResponseMessage> Push(string instanceId, string apiKey, DateTimeOffset? at = null, string platform = "android", string? body = null)
     {
-        var body = $$"""{"pushToken":"token","platform":"{{platform}}","title":"t","body":"b"}""";
+        body ??= $$"""{"pushToken":"token","platform":"{{platform}}","title":"t","body":"b"}""";
         var timestamp = (at ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds().ToString();
         var signature = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(apiKey), Encoding.UTF8.GetBytes($"{timestamp}.{body}"))).ToLowerInvariant();
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/push") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
@@ -161,7 +208,7 @@ public sealed class PushTests : IDisposable
 
     private sealed class FakeFcm : FcmSender
     {
-        public List<Message> Sent { get; } = [];
+        public System.Collections.Concurrent.ConcurrentQueue<Message> Sent { get; } = [];
 
         public Exception? Error { get; set; }
 
@@ -171,7 +218,7 @@ public sealed class PushTests : IDisposable
         {
             if (Error is not null)
                 throw Error;
-            Sent.Add(message);
+            Sent.Enqueue(message);
             return Task.FromResult("message-id");
         }
     }
