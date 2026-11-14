@@ -124,6 +124,31 @@ describe('Ustawienia > Bezpieczeństwo', () => {
     expect(startAction).toHaveBeenCalledWith('CONFIGURE_RECOVERY_AUTHN_CODES')
   })
 
+  it('deletes one credential at a time, because Keycloak rejects parallel deletes', async () => {
+    let inFlight = 0
+    vi.mocked(deleteCredential).mockImplementation(async () => {
+      inFlight++
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      inFlight--
+      if (inFlight > 0) throw new Error('optimistic lock')
+    })
+    await render([password, otp('old', 'new'), codes(12)], { path: '/settings/security?action=CONFIGURE_TOTP&kc_action_status=success' })
+
+    expect(vi.mocked(deleteCredential).mock.calls).toEqual([['old'], ['rc']])
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(startAction).toHaveBeenCalledWith('CONFIGURE_RECOVERY_AUTHN_CODES')
+  })
+
+  it('stops, says so and reloads the credentials when a delete fails', async () => {
+    vi.mocked(deleteCredential).mockRejectedValueOnce(new Error('409'))
+    await render([password, otp('old', 'new'), codes(12)], { path: '/settings/security?action=CONFIGURE_TOTP&kc_action_status=success' })
+
+    expect(vi.mocked(deleteCredential).mock.calls).toEqual([['old']])
+    expect(toast.error).toHaveBeenCalledWith('Nie udało się usunąć starej aplikacji uwierzytelniającej. Odśwież stronę i spróbuj ponownie.')
+    expect(startAction).not.toHaveBeenCalled()
+    expect(getCredentials).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps the codes after a first setup', async () => {
     await render([password, otp('new'), codes(12)], { path: '/settings/security?action=CONFIGURE_TOTP&kc_action_status=success' })
 

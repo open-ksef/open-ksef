@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -54,6 +54,7 @@ function lowCodesText(left: number): string {
 export function SettingsSecurityPage(): ReactElement {
   const { startAction } = useAuth()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const { credentials, linked, password, google } = useSignInMethods()
   const devices = useQuery({ queryKey: ['account', 'sessions'], queryFn: getSessionDevices })
@@ -76,12 +77,20 @@ export function SettingsSecurityPage(): ReactElement {
     if (actionStatus !== 'success') return
     toast.success('Zapisano.')
     const older = startedAction === 'CONFIGURE_TOTP' ? otp.slice(1) : []
-    if (older.length) {
-      void Promise.all([...older, ...credentialsOf(credentials.data, 'recovery-authn-codes')].map((credential) => deleteCredential(credential.id)))
-        .then(() => startAction('CONFIGURE_RECOVERY_AUTHN_CODES'))
-        .catch(() => toast.error('Nie udało się usunąć starej aplikacji uwierzytelniającej. Odśwież stronę i spróbuj ponownie.'))
-    }
-  }, [actionStatus, credentials.data, navigate, otp, startAction, startedAction])
+    if (!older.length) return
+    const stale = [...older, ...credentialsOf(credentials.data, 'recovery-authn-codes')]
+    void (async () => {
+      try {
+        // Keycloak re-orders credential priorities on each delete, so parallel deletes fail on its optimistic lock.
+        for (const credential of stale) await deleteCredential(credential.id)
+      } catch {
+        toast.error('Nie udało się usunąć starej aplikacji uwierzytelniającej. Odśwież stronę i spróbuj ponownie.')
+        await queryClient.invalidateQueries({ queryKey: ['account', 'credentials'] })
+        return
+      }
+      await startAction('CONFIGURE_RECOVERY_AUTHN_CODES')
+    })()
+  }, [actionStatus, credentials.data, navigate, otp, queryClient, startAction, startedAction])
 
   const action = useMutation({
     mutationFn: (name: AccountAction) => startAction(name),
