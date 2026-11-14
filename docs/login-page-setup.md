@@ -50,4 +50,6 @@ API_CLIENT_SECRET=<paste-secret-here>
 7. With realm **Verify email** on, set **Realm settings > General > Frontend URL** to the public URL, `https://<your-host>/auth`. Otherwise the confirmation link in the email is unreachable and the user cannot log in. The API container must be able to reach this URL, because Keycloak then publishes its signing keys there. If it cannot, every authenticated API call returns 401 from the next API start. Check before you restart, and remove the Frontend URL to recover.
 8. Restart API: `docker compose -f docker-compose.dev.yml up -d api`. `restart` does not reread `.env`.
 
+The same `manage-users` role enables **Ustawienia > Administracja > Resetuj weryfikację dwuetapową**. Without it the reset returns `409` `reset_unavailable` and the portal shows the Keycloak console steps; the API never grants the role itself.
+
 Without `API_CLIENT_SECRET` or these roles, Settings save keeps registration off and register returns `403` `registration_disabled`. Roles removed after the last save give `503 Service Unavailable`. Login and Google sign-in work independently.

@@ -1,6 +1,9 @@
 using System.Net;
 using System.Text.Json;
 using Microsoft.IdentityModel.Tokens;
+using OpenKSeF.Api.Models;
+using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Services;
@@ -9,9 +12,15 @@ public interface IKeycloakUserService
 {
     Task<CreateUserResult> CreateUserAsync(string email, string password, string? firstName, string? lastName);
     Task<bool> CanRegisterAsync(string? clientSecret);
+    Task<TwoFactorLookupResult> GetTwoFactorAsync(string email);
+    Task<TwoFactorResetResult> ResetTwoFactorAsync(string userId, string actorUserId, string? actorEmail);
 }
 
 public record CreateUserResult(bool Success, string? ErrorMessage, HttpStatusCode StatusCode, string? ErrorCode = null);
+
+public record TwoFactorLookupResult(bool KeycloakUnavailable, bool UserNotFound, TwoFactorUserResponse? User);
+
+public enum TwoFactorResetResult { Reset, UserNotFound, ResetUnavailable, KeycloakUnavailable }
 
 public class KeycloakUserService : IKeycloakUserService
 {
@@ -21,16 +30,22 @@ public class KeycloakUserService : IKeycloakUserService
     private readonly string _adminUsersEndpoint;
     private readonly string _clientId;
     private readonly ISystemConfigService _systemConfig;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<KeycloakUserService> _logger;
 
     public KeycloakUserService(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ISystemConfigService systemConfig,
+        IServiceScopeFactory scopeFactory,
+        TimeProvider timeProvider,
         ILogger<KeycloakUserService> logger)
     {
         _httpClient = httpClientFactory.CreateClient("keycloak");
         _systemConfig = systemConfig;
+        _scopeFactory = scopeFactory;
+        _timeProvider = timeProvider;
         _logger = logger;
 
         var authority = configuration["Auth:Authority"]?.TrimEnd('/') ?? "";
@@ -148,10 +163,7 @@ public class KeycloakUserService : IKeycloakUserService
             if (policy is not { RegistrationAllowed: true })
                 return false;
 
-            var claims = JsonDocument.Parse(Base64UrlEncoder.Decode(adminToken.Split('.')[1])).RootElement;
-            var canManageUsers = claims.TryGetProperty("resource_access", out var access)
-                && access.TryGetProperty("realm-management", out var realmManagement)
-                && realmManagement.GetProperty("roles").EnumerateArray().Any(r => r.GetString() == "manage-users");
+            var canManageUsers = HasRealmManagementRole(adminToken, "manage-users");
             if (!canManageUsers)
                 _logger.LogWarning("Registration stays off: the service account needs realm-management manage-users.");
             return canManageUsers;
@@ -161,6 +173,144 @@ public class KeycloakUserService : IKeycloakUserService
             _logger.LogWarning(ex, "Registration probe failed");
             return false;
         }
+    }
+
+    public async Task<TwoFactorLookupResult> GetTwoFactorAsync(string email)
+    {
+        var adminToken = await TryGetServiceAccountTokenAsync();
+        if (adminToken is null)
+            return new TwoFactorLookupResult(true, false, null);
+
+        var canManage = HasRealmManagementRole(adminToken, "manage-users");
+        if (!canManage && !HasRealmManagementRole(adminToken, "view-users"))
+            return new TwoFactorLookupResult(false, false, new TwoFactorUserResponse(false, TwoFactorUserResponse.ManageUsersMissing));
+
+        try
+        {
+            var users = await GetAdminJsonAsync(adminToken, $"{_adminUsersEndpoint}?email={Uri.EscapeDataString(email)}&exact=true");
+            if (users is null || users.Value.GetArrayLength() == 0)
+                return new TwoFactorLookupResult(false, true, null);
+
+            var user = users.Value[0];
+            var userId = user.GetProperty("id").GetString()!;
+            var credentials = (await GetAdminJsonAsync(adminToken, $"{_adminUsersEndpoint}/{userId}/credentials"))!.Value.EnumerateArray().ToList();
+            var identities = (await GetAdminJsonAsync(adminToken, $"{_adminUsersEndpoint}/{userId}/federated-identity"))!.Value.EnumerateArray();
+
+            var otp = credentials.FirstOrDefault(c => c.GetProperty("type").GetString() == "otp");
+            var recoveryCodes = credentials.FirstOrDefault(c => c.GetProperty("type").GetString() == "recovery-authn-codes");
+            var status = identities.Any(i => i.GetProperty("identityProvider").GetString() == "google")
+                         && credentials.All(c => c.GetProperty("type").GetString() != "password") ? "google"
+                : otp.ValueKind == JsonValueKind.Object ? "enabled"
+                : "notSet";
+
+            return new TwoFactorLookupResult(false, false, new TwoFactorUserResponse(
+                canManage,
+                canManage ? null : TwoFactorUserResponse.ManageUsersMissing,
+                userId,
+                user.TryGetProperty("firstName", out var firstName) ? firstName.GetString() : null,
+                user.TryGetProperty("lastName", out var lastName) ? lastName.GetString() : null,
+                user.TryGetProperty("email", out var userEmail) ? userEmail.GetString() : null,
+                status,
+                recoveryCodes.ValueKind == JsonValueKind.Object
+                    ? JsonDocument.Parse(recoveryCodes.GetProperty("credentialData").GetString()!).RootElement.GetProperty("remainingCodes").GetInt32()
+                    : null,
+                otp.ValueKind == JsonValueKind.Object ? DateTimeOffset.FromUnixTimeMilliseconds(otp.GetProperty("createdDate").GetInt64()) : null));
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Two-factor lookup failed");
+            return new TwoFactorLookupResult(true, false, null);
+        }
+    }
+
+    public async Task<TwoFactorResetResult> ResetTwoFactorAsync(string userId, string actorUserId, string? actorEmail)
+    {
+        var adminToken = await TryGetServiceAccountTokenAsync();
+        if (adminToken is null)
+            return TwoFactorResetResult.KeycloakUnavailable;
+        if (!HasRealmManagementRole(adminToken, "manage-users"))
+            return TwoFactorResetResult.ResetUnavailable;
+
+        try
+        {
+            var userUrl = $"{_adminUsersEndpoint}/{Uri.EscapeDataString(userId)}";
+            var user = await GetAdminJsonAsync(adminToken, userUrl);
+            if (user is null)
+                return TwoFactorResetResult.UserNotFound;
+
+            var removed = 0;
+            foreach (var credential in (await GetAdminJsonAsync(adminToken, $"{userUrl}/credentials"))!.Value.EnumerateArray()
+                         .Where(c => c.GetProperty("type").GetString() is "otp" or "recovery-authn-codes"))
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Delete, $"{userUrl}/credentials/{credential.GetProperty("id").GetString()}");
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminToken);
+                using var response = await _httpClient.SendAsync(request);
+                if (response.StatusCode != HttpStatusCode.NotFound)
+                    response.EnsureSuccessStatusCode();
+                removed++;
+            }
+
+            if (removed == 0)
+                return TwoFactorResetResult.Reset;
+
+            var targetEmail = user.Value.TryGetProperty("email", out var email) ? email.GetString() : null;
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.AuditEvents.Add(new AuditEvent
+            {
+                Id = Guid.NewGuid(),
+                OccurredAt = _timeProvider.GetUtcNow().UtcDateTime,
+                ActorUserId = actorUserId,
+                ActorEmail = actorEmail,
+                Action = AuditEvent.TwoFactorReset,
+                TargetUserId = userId,
+                TargetEmail = targetEmail,
+            });
+            await db.SaveChangesAsync();
+            _logger.LogInformation("Two-factor reset of {TargetUserId} ({TargetEmail}) by {ActorUserId} ({ActorEmail}): {Removed} credentials removed",
+                userId, targetEmail, actorUserId, actorEmail, removed);
+            return TwoFactorResetResult.Reset;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Two-factor reset of {TargetUserId} failed", userId);
+            return TwoFactorResetResult.KeycloakUnavailable;
+        }
+    }
+
+    private static bool HasRealmManagementRole(string adminToken, string role)
+    {
+        var claims = JsonDocument.Parse(Base64UrlEncoder.Decode(adminToken.Split('.')[1])).RootElement;
+        return claims.TryGetProperty("resource_access", out var access)
+            && access.TryGetProperty("realm-management", out var realmManagement)
+            && realmManagement.GetProperty("roles").EnumerateArray().Any(r => r.GetString() == role);
+    }
+
+    private async Task<string?> TryGetServiceAccountTokenAsync()
+    {
+        var clientSecret = _systemConfig.GetValue(SystemConfigKeys.ApiClientSecret);
+        if (string.IsNullOrEmpty(clientSecret))
+            return null;
+        try
+        {
+            return await GetServiceAccountTokenAsync(clientSecret);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Service account token request failed");
+            return null;
+        }
+    }
+
+    private async Task<JsonElement?> GetAdminJsonAsync(string adminToken, string url)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminToken);
+        using var response = await _httpClient.SendAsync(request);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
     private static CreateUserResult RegistrationDisabled() => new(
