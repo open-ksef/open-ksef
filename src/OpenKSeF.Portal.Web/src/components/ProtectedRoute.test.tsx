@@ -53,7 +53,9 @@ describe('ProtectedRoute', () => {
       isLoading: false,
       isAuthenticated: true,
       login: vi.fn(),
-      sessionEnded: false,
+      loginWithCredentials: vi.fn(),
+      loginWithGoogle: vi.fn(),
+      register: vi.fn(),
       logout: vi.fn(),
       getAccessToken: vi.fn(),
       handleOidcCallback: vi.fn(),
@@ -81,15 +83,53 @@ describe('ProtectedRoute', () => {
     expect(container.textContent).toContain('Protected content')
   })
 
-  async function renderAt(path: string, auth: Partial<ReturnType<typeof useAuth>>) {
-    vi.mocked(useAuth).mockReturnValue({ isLoading: false, isAuthenticated: false, sessionEnded: false, ...auth } as ReturnType<typeof useAuth>)
+  it('redirects unauthenticated users to login route', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: null,
+      isLoading: false,
+      isAuthenticated: false,
+      login: vi.fn(),
+      loginWithCredentials: vi.fn(),
+      loginWithGoogle: vi.fn(),
+      register: vi.fn(),
+      logout: vi.fn(),
+      getAccessToken: vi.fn(),
+      handleOidcCallback: vi.fn(),
+    })
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter initialEntries={['/']}>
+            <Routes>
+              <Route path="/" element={<ProtectedRoute><div>Protected content</div></ProtectedRoute>} />
+              <Route path="/login" element={<div>Login page</div>} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      )
+    })
+
+    await act(async () => {
+      await flushPromises()
+    })
+
+    expect(container.textContent).toContain('Login page')
+    expect(container.textContent).not.toContain('Protected content')
+  })
+
+  it('passes the requested path, search and hash to login', async () => {
+    vi.mocked(useAuth).mockReturnValue({ isLoading: false, isAuthenticated: false } as ReturnType<typeof useAuth>)
     function LoginProbe() {
-      return <div>login from={(useLocation().state as { from: string }).from}</div>
+      return <div>from={(useLocation().state as { from: string }).from}</div>
     }
+
     await act(async () => {
       root.render(
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <MemoryRouter initialEntries={[path]}>
+          <MemoryRouter initialEntries={['/firmy/1/faktury?strona=2#f-9']}>
             <Routes>
               <Route path="/firmy/1/faktury" element={<ProtectedRoute><div>Protected content</div></ProtectedRoute>} />
               <Route path="/login" element={<LoginProbe />} />
@@ -98,39 +138,10 @@ describe('ProtectedRoute', () => {
         </QueryClientProvider>,
       )
     })
-    for (let tick = 0; tick < 5; tick++) await act(flushPromises)
-  }
-
-  it('sends an unauthenticated user to the Keycloak login once, with path, search and hash', async () => {
-    const login = vi.fn().mockResolvedValue(undefined)
-
-    await renderAt('/firmy/1/faktury?strona=2#f-9', { login })
     await act(async () => {
       await flushPromises()
     })
 
-    expect(login).toHaveBeenCalledTimes(1)
-    expect(login).toHaveBeenCalledWith('/firmy/1/faktury?strona=2#f-9')
-    expect(container.textContent).toBe('Przekierowanie do logowania…')
-  })
-
-  it('does not redirect to Keycloak again after a final 401 ended the session', async () => {
-    const login = vi.fn().mockResolvedValue(undefined)
-
-    await renderAt('/firmy/1/faktury?strona=2', { login, sessionEnded: true })
-
-    expect(login).not.toHaveBeenCalled()
-    expect(container.textContent).toBe('login from=/firmy/1/faktury?strona=2')
-  })
-
-  it('shows the login page when the redirect to Keycloak fails', async () => {
-    const login = vi.fn().mockRejectedValue(new Error('discovery failed'))
-
-    await renderAt('/firmy/1/faktury', { login })
-    await act(async () => {
-      await flushPromises()
-    })
-
-    expect(container.textContent).toBe('login from=/firmy/1/faktury')
+    expect(container.textContent).toBe('from=/firmy/1/faktury?strona=2#f-9')
   })
 })

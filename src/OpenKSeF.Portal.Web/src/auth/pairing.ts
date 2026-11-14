@@ -1,5 +1,7 @@
 import { oidcConfig } from './config'
 
+export const PAIRING_CODE_ENABLED = false
+
 export function normalizePairingCode(raw: string): string | null {
   const code = raw.toUpperCase().replace(/[\s-]/g, '')
   return /^[A-Z]{8}$/.test(code) ? `${code.slice(0, 4)}-${code.slice(4)}` : null

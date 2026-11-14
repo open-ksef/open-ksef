@@ -15,7 +15,7 @@ export function getOidcConfig(
     authority,
     client_id: clientId,
     redirect_uri: `${origin}/callback`,
-    post_logout_redirect_uri: `${origin}/login`,
+    post_logout_redirect_uri: origin,
     response_type: 'code',
     scope: DEFAULT_SCOPE,
     automaticSilentRenew: true,

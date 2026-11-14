@@ -189,7 +189,7 @@ public class KeycloakRealmPayloadTests
         Assert.Equal(2, realmPuts.Count);
         var bodies = _keycloak.Bodies(HttpMethod.Put, RealmUrl);
         Assert.True(bodies[0].TryGetProperty("registrationAllowed", out _));
-        Assert.True(bodies[1].TryGetProperty("loginTheme", out _));
+        Assert.True(bodies[1].TryGetProperty("eventsEnabled", out _));
         AssertRealmPolicy();
     }
 
@@ -220,7 +220,7 @@ public class KeycloakRealmPayloadTests
     private void AssertRealmPolicy()
     {
         var realm = _keycloak.RealmPolicy();
-        Assert.Equal("openksef", realm.GetProperty("loginTheme").GetString());
+        Assert.False(realm.TryGetProperty("loginTheme", out _));
         Assert.Equal("OpenKSeF", realm.GetProperty("displayName").GetString());
         Assert.True(realm.GetProperty("internationalizationEnabled").GetBoolean());
         Assert.Equal(["pl"], realm.GetProperty("supportedLocales").EnumerateArray().Select(l => l.GetString()));
@@ -234,7 +234,7 @@ public class KeycloakRealmPayloadTests
         Assert.Equal(
             ["LOGIN", "LOGIN_ERROR", "OAUTH2_DEVICE_VERIFY_USER_CODE", "OAUTH2_DEVICE_CODE_TO_TOKEN", "REVOKE_GRANT"],
             realm.GetProperty("enabledEventTypes").EnumerateArray().Select(e => e.GetString()));
-        Assert.Equal(12, realm.EnumerateObject().Count());
+        Assert.Equal(11, realm.EnumerateObject().Count());
 
         Assert.Equal(
             SystemSetupService.PolishLoginTexts.Keys.Select(k => $"{RealmUrl}/localization/pl/{k}").Order(),
@@ -475,11 +475,11 @@ public class KeycloakRealmPayloadTests
 
         public List<(HttpMethod Method, string Url)> Requests => _requests.Select(r => (r.Method, r.Url)).ToList();
 
-        public List<JsonElement> RealmUpdates() => Bodies(HttpMethod.Put, RealmUrl).Where(b => !b.TryGetProperty("loginTheme", out _)).ToList();
+        public List<JsonElement> RealmUpdates() => Bodies(HttpMethod.Put, RealmUrl).Where(b => !b.TryGetProperty("eventsEnabled", out _)).ToList();
 
         public JsonElement RealmUpdate() => Assert.Single(RealmUpdates());
 
-        public JsonElement RealmPolicy() => Assert.Single(Bodies(HttpMethod.Put, RealmUrl), b => b.TryGetProperty("loginTheme", out _));
+        public JsonElement RealmPolicy() => Assert.Single(Bodies(HttpMethod.Put, RealmUrl), b => b.TryGetProperty("eventsEnabled", out _));
 
         public List<JsonElement> Bodies(HttpMethod method, string url, bool prefix = false) => _requests
             .Where(r => r.Method == method && r.Body != null && (prefix ? r.Url.StartsWith(url) : r.Url == url))

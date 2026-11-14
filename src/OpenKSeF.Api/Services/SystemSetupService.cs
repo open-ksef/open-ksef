@@ -717,7 +717,6 @@ public sealed class SystemSetupService : ISystemSetupService
         await SendKeycloakJsonAsync(client, HttpMethod.Put, realmUrl, adminToken, new Dictionary<string, object>
         {
             ["displayName"] = "OpenKSeF",
-            ["loginTheme"] = "openksef",
             ["internationalizationEnabled"] = true,
             ["supportedLocales"] = new[] { "pl" },
             ["defaultLocale"] = "pl",

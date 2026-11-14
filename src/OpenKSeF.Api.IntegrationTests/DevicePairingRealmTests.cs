@@ -18,7 +18,7 @@ public class DevicePairingRealmTests : IAsyncLifetime
 {
     private static readonly string[] RealmPolicyKeys =
     [
-        "displayName", "loginTheme", "internationalizationEnabled", "supportedLocales", "defaultLocale", "accessTokenLifespan",
+        "displayName", "internationalizationEnabled", "supportedLocales", "defaultLocale", "accessTokenLifespan",
         "offlineSessionIdleTimeout", "offlineSessionMaxLifespanEnabled", "offlineSessionMaxLifespan",
         "eventsEnabled", "eventsExpiration", "enabledEventTypes",
     ];
@@ -62,7 +62,6 @@ public class DevicePairingRealmTests : IAsyncLifetime
         foreach (var (key, value) in clientBefore["attributes"]!.AsObject().Where(p => !ClientPolicyAttributes.Contains(p.Key)))
             Assert.True(JsonNode.DeepEquals(value, clientAfter["attributes"]![key]), $"client.attributes.{key} changed");
 
-        Assert.Equal("openksef", (string?)realmAfter["loginTheme"]);
         Assert.Equal("OpenKSeF", (string?)realmAfter["displayName"]);
         Assert.Equal(["pl"], realmAfter["supportedLocales"]!.AsArray().Select(l => (string?)l));
         Assert.Equal("pl", (string?)realmAfter["defaultLocale"]);

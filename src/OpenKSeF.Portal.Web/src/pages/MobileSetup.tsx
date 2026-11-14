@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import { listDevices, sendTestNotification, unregisterDevice } from '@/api/endpoints/devices'
 import { listTenants } from '@/api/endpoints/tenants'
 import type { DeviceTokenResponse } from '@/api/types'
-import { deviceVerificationUrl, normalizePairingCode } from '@/auth/pairing'
+import { deviceVerificationUrl, normalizePairingCode, PAIRING_CODE_ENABLED } from '@/auth/pairing'
 import { signOutAllDevices } from '@/auth/signOutAll'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
@@ -165,42 +165,44 @@ export function MobileSetupPage(): ReactElement {
           </div>
         </section>
 
-        <section className="ui-card" aria-labelledby="code-title">
-          <h2 id="code-title">Zaloguj telefon kodem</h2>
-          <p>W aplikacji OpenKSeF dotknij <b>Sparuj z portalem</b> i wpisz tutaj kod widoczny na telefonie. Ta funkcja wymaga najnowszej wersji aplikacji.</p>
-          <p className="pairing-warning">Wpisuj tylko kod z własnego telefonu. Kod od innej osoby da jej dostęp do Twoich firm i faktur.</p>
-          <form onSubmit={submitPairingCode} noValidate>
-            <div className="ui-form-group">
-              <label htmlFor="pairing-code">Kod z telefonu</label>
-              <input
-                id="pairing-code"
-                type="text"
-                value={pairingCode}
-                onChange={(event) => setPairingCode(event.target.value)}
-                placeholder="ABCD-EFGH"
-                autoComplete="off"
-                autoCapitalize="characters"
-                spellCheck={false}
-                maxLength={12}
-                aria-invalid={pairingError ? true : undefined}
-                aria-describedby={pairingError ? 'pairing-code-error pairing-code-hint' : 'pairing-code-hint'}
-                data-testid="pairing-code-input"
-              />
-              {pairingError && (
-                <span className="inv-field-error" id="pairing-code-error">
-                  {pairingError}
+        {PAIRING_CODE_ENABLED && (
+          <section className="ui-card" aria-labelledby="code-title">
+            <h2 id="code-title">Zaloguj telefon kodem</h2>
+            <p>W aplikacji OpenKSeF dotknij <b>Sparuj z portalem</b> i wpisz tutaj kod widoczny na telefonie. Ta funkcja wymaga najnowszej wersji aplikacji.</p>
+            <p className="pairing-warning">Wpisuj tylko kod z własnego telefonu. Kod od innej osoby da jej dostęp do Twoich firm i faktur.</p>
+            <form onSubmit={submitPairingCode} noValidate>
+              <div className="ui-form-group">
+                <label htmlFor="pairing-code">Kod z telefonu</label>
+                <input
+                  id="pairing-code"
+                  type="text"
+                  value={pairingCode}
+                  onChange={(event) => setPairingCode(event.target.value)}
+                  placeholder="ABCD-EFGH"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  maxLength={12}
+                  aria-invalid={pairingError ? true : undefined}
+                  aria-describedby={pairingError ? 'pairing-code-error pairing-code-hint' : 'pairing-code-hint'}
+                  data-testid="pairing-code-input"
+                />
+                {pairingError && (
+                  <span className="inv-field-error" id="pairing-code-error">
+                    {pairingError}
+                  </span>
+                )}
+                <span className="ui-form-hint" id="pairing-code-hint">
+                  Strona logowania może poprosić o hasło, a potem o zatwierdzenie telefonu.
                 </span>
-              )}
-              <span className="ui-form-hint" id="pairing-code-hint">
-                Strona logowania może poprosić o hasło, a potem o zatwierdzenie telefonu.
-              </span>
-            </div>
-            <Button type="submit" data-testid="pairing-code-submit">Dalej</Button>
-          </form>
-          <p className="inv-help">
-            Portal musi być otwarty pod tym samym adresem, który aplikacja ma ustawiony jako adres serwera: <b>{serverUrl}</b>. Inaczej telefon nie zostanie zalogowany.
-          </p>
-        </section>
+              </div>
+              <Button type="submit" data-testid="pairing-code-submit">Dalej</Button>
+            </form>
+            <p className="inv-help">
+              Portal musi być otwarty pod tym samym adresem, który aplikacja ma ustawiony jako adres serwera: <b>{serverUrl}</b>. Inaczej telefon nie zostanie zalogowany.
+            </p>
+          </section>
+        )}
 
         <section className="ui-card" aria-labelledby="devices-title">
           <h2 id="devices-title">Moje urządzenia</h2>

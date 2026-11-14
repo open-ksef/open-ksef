@@ -105,12 +105,12 @@ The wizard and every Settings save apply the same values with partial updates, s
 
 | Where | Value |
 |-------|-------|
-| Realm | `displayName` OpenKSeF, `loginTheme` openksef, internationalization on, locale `pl` only, access token 300 s, offline session idle 30 d and max 365 d |
+| Realm | `displayName` OpenKSeF, internationalization on, locale `pl` only, access token 300 s, offline session idle 30 d and max 365 d |
 | Realm events | On, kept 30 d: `LOGIN`, `LOGIN_ERROR`, `OAUTH2_DEVICE_VERIFY_USER_CODE`, `OAUTH2_DEVICE_CODE_TO_TOKEN`, `REVOKE_GRANT` |
 | Realm localization `pl` | 12 device-pairing and consent texts, including the phishing warning |
 | `openksef-mobile` | Name "Aplikacja mobilna OpenKSeF", device authorization grant on, device code 300 s, PKCE S256, `offline_access` optional scope |
 
-Direct grants and redirect URIs are not changed. `loginTheme` openksef on the stock Keycloak image falls back to the built-in theme and logs `Failed to find LOGIN theme openksef`. See [ADR-002](adr/adr-002-hosted-login-device-pairing.md).
+Direct grants, redirect URIs and `loginTheme` are not changed: the portal signs in with its own `/login` form (direct grant on `openksef-portal-web`). See [ADR-002](adr/adr-002-hosted-login-device-pairing.md).
 
 ## Encryption key
 
