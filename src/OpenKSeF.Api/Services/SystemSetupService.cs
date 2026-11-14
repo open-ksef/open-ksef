@@ -742,6 +742,24 @@ public sealed class SystemSetupService : ISystemSetupService
             resp.EnsureSuccessStatusCode();
         }
 
+        using var allReq = new HttpRequestMessage(HttpMethod.Get, $"{realmUrl}/client-scopes");
+        allReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+        using var allResp = await client.SendAsync(allReq, ct);
+        allResp.EnsureSuccessStatusCode();
+        var scopes = await allResp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
+
+        // Keycloak 26.8.2+ rejects Admin API tokens without this scope; older versions do not have it.
+        var adminApiScope = scopes.FirstOrDefault(s => s.GetProperty("name").GetString() == "kc-admin-api");
+        var apiUuid = await GetClientUuidAsync(client, kcBase, adminToken, "openksef-api", ct);
+        if (adminApiScope.ValueKind == JsonValueKind.Object && apiUuid != null)
+        {
+            using var adminApiReq = new HttpRequestMessage(HttpMethod.Put,
+                $"{realmUrl}/clients/{apiUuid}/default-client-scopes/{adminApiScope.GetProperty("id").GetString()}");
+            adminApiReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
+            using var adminApiResp = await client.SendAsync(adminApiReq, ct);
+            adminApiResp.EnsureSuccessStatusCode();
+        }
+
         var uuid = await GetClientUuidAsync(client, kcBase, adminToken, "openksef-mobile", ct);
         if (uuid == null) return;
 
@@ -765,11 +783,6 @@ public sealed class SystemSetupService : ISystemSetupService
         if (optional.Any(s => s.GetProperty("name").GetString() == "offline_access"))
             return;
 
-        using var allReq = new HttpRequestMessage(HttpMethod.Get, $"{realmUrl}/client-scopes");
-        allReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
-        using var allResp = await client.SendAsync(allReq, ct);
-        allResp.EnsureSuccessStatusCode();
-        var scopes = await allResp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
         var offlineAccess = scopes.Single(s => s.GetProperty("name").GetString() == "offline_access").GetProperty("id").GetString();
 
         using var addReq = new HttpRequestMessage(HttpMethod.Put, $"{clientUrl}/optional-client-scopes/{offlineAccess}");

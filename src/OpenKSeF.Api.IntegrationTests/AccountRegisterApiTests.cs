@@ -44,6 +44,7 @@ public class AccountRegisterApiTests : IAsyncLifetime
     {
         await _fixture.UpdateRealmAsync(new { registrationAllowed = true, verifyEmail = false });
         await _fixture.GrantServiceAccountRolesAsync(TestcontainersFixture.RegistrationRoles);
+        await _fixture.SetApiAdminScopeAsync(true);
         await SetStoredConfigAsync(SystemConfigKeys.RegistrationAllowed, "true");
     }
 
@@ -168,6 +169,7 @@ public class AccountRegisterApiTests : IAsyncLifetime
     public async Task SettingsSave_RolesGrantedByHand_FlagTrueAndRegisterWorks()
     {
         await SetStoredConfigAsync(SystemConfigKeys.RegistrationAllowed, null);
+        await _fixture.SetApiAdminScopeAsync(false);
 
         using (var scope = _factory.Services.CreateScope())
         {
