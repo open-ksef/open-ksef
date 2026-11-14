@@ -22,6 +22,7 @@ public class KeycloakRealmPayloadTests
 
     private readonly FakeKeycloak _keycloak = new();
     private readonly IHttpClientFactory _httpClientFactory = Substitute.For<IHttpClientFactory>();
+    private readonly IKeycloakUserService _userService = Substitute.For<IKeycloakUserService>();
 
     public KeycloakRealmPayloadTests()
     {
@@ -153,7 +154,8 @@ public class KeycloakRealmPayloadTests
 
         Assert.True(result.Success, result.Error);
         Assert.Equal(KsefEnvironmentsUris.PROD, options.BaseUrl);
-        await systemConfig.DidNotReceiveWithAnyArgs().SetValuesAsync(default!, default);
+        await systemConfig.DidNotReceive().SetValuesAsync(
+            Arg.Is<IDictionary<string, string>>(v => v.ContainsKey(SystemConfigKeys.KSeFEnvironment)), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -349,33 +351,38 @@ public class KeycloakRealmPayloadTests
         Assert.False(realm.TryGetProperty("failureFactor", out _));
     }
 
-    [Fact]
-    public async Task ApplySetup_StoresRegistrationFlag()
+    [Theory]
+    [InlineData(false, true, "false")]
+    [InlineData(true, false, "false")]
+    [InlineData(true, true, "true")]
+    public async Task ApplySetup_StoresRegistrationFlagOnlyWhenTheServiceAccountCanRegister(bool requested, bool canRegister, string stored)
     {
         _keycloak.RealmJson = "{}";
+        _userService.CanRegisterAsync(Arg.Any<string?>()).Returns(canRegister);
         var systemConfig = Substitute.For<ISystemConfigService>();
 
         var result = await CreateSetupService(systemConfig, ValidKey)
-            .ApplySetupAsync(NewSetupRequest() with { RegistrationAllowed = false }, "token", "admin");
+            .ApplySetupAsync(NewSetupRequest() with { RegistrationAllowed = requested }, "token", "admin");
 
         Assert.True(result.Success, result.Error);
         Assert.Equal("openksef-admin", _keycloak.Body(HttpMethod.Post, $"{RealmUrl}/roles").GetProperty("name").GetString());
         Assert.Equal("role-1", _keycloak.Body(HttpMethod.Post, $"{RealmUrl}/users/admin-1/role-mappings/realm")[0].GetProperty("id").GetString());
 
         await systemConfig.Received().SetValuesAsync(
-            Arg.Is<IDictionary<string, string>>(v => v[SystemConfigKeys.RegistrationAllowed] == "false"),
+            Arg.Is<IDictionary<string, string>>(v => v[SystemConfigKeys.RegistrationAllowed] == stored),
             Arg.Any<CancellationToken>());
     }
 
     [Theory]
     [InlineData(true, "true")]
     [InlineData(false, "false")]
-    public async Task UpdateSettings_RegistrationToggle_StoresRegistrationFlag(bool allowed, string stored)
+    public async Task UpdateSettings_StoresRegistrationProbeResult(bool canRegister, string stored)
     {
         var systemConfig = Substitute.For<ISystemConfigService>();
+        systemConfig.GetValue(SystemConfigKeys.ApiClientSecret).Returns("api-secret");
+        _userService.CanRegisterAsync("api-secret").Returns(canRegister);
 
-        var result = await CreateSettingsService(systemConfig).UpdateSettingsAsync(
-            new SettingsUpdateRequest { RegistrationAllowed = allowed }, "token");
+        var result = await CreateSettingsService(systemConfig).UpdateSettingsAsync(new SettingsUpdateRequest(), "token");
 
         Assert.True(result.Success, result.Error);
         await systemConfig.Received().SetValuesAsync(
@@ -437,6 +444,7 @@ public class KeycloakRealmPayloadTests
         systemConfig,
         new KSeFClientOptions(),
         Substitute.For<IServiceScopeFactory>(),
+        _userService,
         NullLogger<SystemSetupService>.Instance);
 
     private static SetupApplyRequest NewSetupRequest() => new()
@@ -449,7 +457,7 @@ public class KeycloakRealmPayloadTests
 
     private SystemSettingsService CreateSettingsService(ISystemConfigService? systemConfig = null, KSeFClientOptions? options = null, RelayHealth? relayHealth = null) => new(
         _httpClientFactory, new ConfigurationBuilder().Build(), systemConfig ?? Substitute.For<ISystemConfigService>(), relayHealth ?? new RelayHealth(),
-        options ?? new KSeFClientOptions(), Substitute.For<IServiceScopeFactory>(), NullLogger<SystemSettingsService>.Instance);
+        options ?? new KSeFClientOptions(), Substitute.For<IServiceScopeFactory>(), _userService, NullLogger<SystemSettingsService>.Instance);
 
     private sealed class FakeKeycloak : HttpMessageHandler
     {

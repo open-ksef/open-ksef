@@ -38,6 +38,7 @@ public class SystemSetupIntegrationTests : IDisposable
         var status = await response.Content.ReadFromJsonAsync<SetupStatusResponse>();
         Assert.NotNull(status);
         Assert.False(status!.IsInitialized);
+        Assert.False(status.RegistrationAllowed);
     }
 
     [Fact]
@@ -107,6 +108,7 @@ public class SystemSetupIntegrationTests : IDisposable
         var statusResp = await _client.GetAsync("/api/system/setup-status");
         var status = await statusResp.Content.ReadFromJsonAsync<SetupStatusResponse>();
         Assert.True(status!.IsInitialized);
+        Assert.False(status.RegistrationAllowed);
 
         // 4. Verify DB has the config
         using var scope = _factory.Services.CreateScope();

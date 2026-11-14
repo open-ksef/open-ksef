@@ -36,6 +36,7 @@ public sealed class SystemSetupService : ISystemSetupService
     private readonly ISystemConfigService _systemConfig;
     private readonly KSeFClientOptions _ksefOptions;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IKeycloakUserService _keycloakUserService;
     private readonly ILogger<SystemSetupService> _logger;
 
     public SystemSetupService(
@@ -44,6 +45,7 @@ public sealed class SystemSetupService : ISystemSetupService
         ISystemConfigService systemConfig,
         KSeFClientOptions ksefOptions,
         IServiceScopeFactory scopeFactory,
+        IKeycloakUserService keycloakUserService,
         ILogger<SystemSetupService> logger)
     {
         _httpClientFactory = httpClientFactory;
@@ -51,6 +53,7 @@ public sealed class SystemSetupService : ISystemSetupService
         _systemConfig = systemConfig;
         _ksefOptions = ksefOptions;
         _scopeFactory = scopeFactory;
+        _keycloakUserService = keycloakUserService;
         _logger = logger;
     }
 
@@ -179,12 +182,13 @@ public sealed class SystemSetupService : ISystemSetupService
                 _logger.LogInformation("Keycloak admin password changed");
             }
 
+            var canRegister = request.RegistrationAllowed && await _keycloakUserService.CanRegisterAsync(apiClientSecret);
             var configValues = new Dictionary<string, string>
             {
                 [SystemConfigKeys.ApiClientSecret] = apiClientSecret,
                 [SystemConfigKeys.ExternalBaseUrl] = request.ExternalBaseUrl.TrimEnd('/'),
                 [SystemConfigKeys.KSeFEnvironment] = ksefEnv,
-                [SystemConfigKeys.RegistrationAllowed] = request.RegistrationAllowed ? "true" : "false",
+                [SystemConfigKeys.RegistrationAllowed] = canRegister ? "true" : "false",
                 [SystemConfigKeys.IsInitialized] = "true",
             };
 

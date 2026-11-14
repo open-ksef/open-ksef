@@ -26,7 +26,9 @@ GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx
 
 ## Registration endpoint
 
-`POST /api/account/register` works only after the manual steps below. The setup wizard does not do them, on purpose: `manage-users` lets whoever holds the `openksef-api` secret reset the password of any user, and the wizard's copy of that secret is in the database and its backups. On a wizard install with self-registration on, the sign-up form returns 503. Use Google sign-in or create the account in the Keycloak console.
+`POST /api/account/register` works only after the manual steps below. The setup wizard does not do them, on purpose: `manage-users` lets whoever holds the `openksef-api` secret reset the password of any user, and the wizard's copy of that secret is in the database and its backups. On a wizard install registration therefore stays off. Use Google sign-in or create the account in the Keycloak console.
+
+The portal and the mobile app hide the register link until registration works: each wizard run and Settings save checks that realm registration is on and that the service account gets a token, reads the realm and holds `manage-users`, and stores the result. After the manual steps below, open Settings and save once.
 
 Every request reads the realm, with no cache: registration off returns 403, a failed read returns 503, and no user is created in either case.
 
@@ -48,4 +50,4 @@ API_CLIENT_SECRET=<paste-secret-here>
 7. With realm **Verify email** on, set **Realm settings > General > Frontend URL** to the public URL, `https://<your-host>/auth`. Otherwise the confirmation link in the email is unreachable and the user cannot log in. The API container must be able to reach this URL, because Keycloak then publishes its signing keys there. If it cannot, every authenticated API call returns 401 from the next API start. Check before you restart, and remove the Frontend URL to recover.
 8. Restart API: `docker compose -f docker-compose.dev.yml up -d api`. `restart` does not reread `.env`.
 
-Without `API_CLIENT_SECRET` or these roles, registration returns `503 Service Unavailable`. Login and Google sign-in work independently.
+Without `API_CLIENT_SECRET` or these roles, Settings save keeps registration off and register returns `403` `registration_disabled`. Roles removed after the last save give `503 Service Unavailable`. Login and Google sign-in work independently.

@@ -27,6 +27,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
     private readonly RelayHealth _relayHealth;
     private readonly KSeFClientOptions _ksefOptions;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IKeycloakUserService _keycloakUserService;
     private readonly ILogger<SystemSettingsService> _logger;
 
     public SystemSettingsService(
@@ -36,6 +37,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
         RelayHealth relayHealth,
         KSeFClientOptions ksefOptions,
         IServiceScopeFactory scopeFactory,
+        IKeycloakUserService keycloakUserService,
         ILogger<SystemSettingsService> logger)
     {
         _httpClientFactory = httpClientFactory;
@@ -44,6 +46,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
         _relayHealth = relayHealth;
         _ksefOptions = ksefOptions;
         _scopeFactory = scopeFactory;
+        _keycloakUserService = keycloakUserService;
         _logger = logger;
     }
 
@@ -167,8 +170,9 @@ public sealed class SystemSettingsService : ISystemSettingsService
             if (requestedEnv != null)
                 configValues[SystemConfigKeys.KSeFEnvironment] = requestedEnv;
 
-            if (request.RegistrationAllowed.HasValue)
-                configValues[SystemConfigKeys.RegistrationAllowed] = request.RegistrationAllowed.Value ? "true" : "false";
+            var registrationAllowed = await _keycloakUserService.CanRegisterAsync(_systemConfig.GetValue(SystemConfigKeys.ApiClientSecret)) ? "true" : "false";
+            if (_systemConfig.GetValue(SystemConfigKeys.RegistrationAllowed) != registrationAllowed)
+                configValues[SystemConfigKeys.RegistrationAllowed] = registrationAllowed;
 
             if (request.GoogleClientId != null)
                 configValues[SystemConfigKeys.GoogleClientId] = request.GoogleClientId;
