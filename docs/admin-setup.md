@@ -302,12 +302,15 @@ Upgrade:
 
 A compose you edited to run `start-dev` or `--features=token-exchange,admin-fine-grained-authz` must use `command: start` from the attached `docker-compose.yml`. Remove `KC_HOSTNAME_STRICT_HTTPS`: Keycloak 26 ignores it.
 
-Rollback: stop Keycloak, recreate the `keycloak` database, restore the dump, then start the previous release. Everything written to Keycloak after the dump is lost: new users, password changes, realm edits. Refresh tokens issued before the dump keep working.
+Rollback: stop Keycloak, recreate the `keycloak` database owned by the Keycloak DB user (`KC_DB_USERNAME`, default `POSTGRES_USER`), restore the dump, set `OPENKSEF_VERSION` in `.env` back to the previous tag, then start. On `:latest` or the new tag, Keycloak 26.8 migrates the restored database again. Everything written to Keycloak after the dump is lost: new users, password changes, realm edits. Refresh tokens issued before the dump keep working.
 
 ```bash
 docker compose stop keycloak
-docker compose exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" keycloak && createdb -U "$POSTGRES_USER" keycloak'
-docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d keycloak --no-owner' < before-keycloak-26-8.dump
+KC_OWNER=$(docker inspect openksef-keycloak --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^KC_DB_USERNAME=//p')
+docker compose exec -T -e KC_OWNER="$KC_OWNER" postgres sh -c 'dropdb -U "$POSTGRES_USER" keycloak && createdb -U "$POSTGRES_USER" -O "$KC_OWNER" keycloak'
+docker compose exec -T -e KC_OWNER="$KC_OWNER" postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d keycloak --no-owner --role="$KC_OWNER"' < before-keycloak-26-8.dump
+# set OPENKSEF_VERSION in .env to the previous tag
+docker compose pull keycloak && docker compose up -d keycloak
 ```
 
 ## Registration flag: upgrade

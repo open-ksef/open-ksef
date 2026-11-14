@@ -16,7 +16,7 @@ public sealed class TestcontainersFixture : IAsyncLifetime
         .WithPassword("openksef_test")
         .Build();
 
-    public KeycloakContainer Keycloak { get; } = new KeycloakBuilder("quay.io/keycloak/keycloak:26.8.2")
+    public KeycloakContainer Keycloak { get; } = new KeycloakBuilder("quay.io/keycloak/keycloak:26.8.2@sha256:c68e286cacd87b942ac1939a0a1481461109d6acd3a57dc496969a319a76bbf0")
         .WithResourceMapping(
             Path.Combine(AppContext.BaseDirectory, "realm-test.json"),
             "/opt/keycloak/data/import/")
