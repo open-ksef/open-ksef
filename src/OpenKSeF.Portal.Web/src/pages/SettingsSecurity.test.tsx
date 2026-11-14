@@ -75,6 +75,8 @@ describe('Ustawienia > Bezpieczeństwo', () => {
     expect(by('tfa-regenerate')?.className).toContain('ui-button--outline')
 
     await act(async () => by('tfa-change')?.click())
+    expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain('Dotychczasowe kody zapasowe też przestaną działać.')
+    await act(async () => container.querySelector<HTMLElement>('.ui-modal-footer .ui-button--primary')?.click())
     expect(startAction).toHaveBeenCalledWith('CONFIGURE_TOTP')
 
     await act(async () => by('tfa-regenerate')?.click())
@@ -113,13 +115,20 @@ describe('Ustawienia > Bezpieczeństwo', () => {
     expect(by('tfa-setup')).toBeNull()
   })
 
-  it('removes the older authenticator after a successful app change', async () => {
+  it('removes the older authenticator and the old codes after an app change, then asks for new codes', async () => {
     vi.mocked(deleteCredential).mockResolvedValue()
     await render([password, otp('old', 'new'), codes(12)], { path: '/settings/security?action=CONFIGURE_TOTP&kc_action_status=success' })
 
     expect(toast.success).toHaveBeenCalledWith('Zapisano.')
-    expect(deleteCredential).toHaveBeenCalledTimes(1)
-    expect(deleteCredential).toHaveBeenCalledWith('old')
+    expect(vi.mocked(deleteCredential).mock.calls).toEqual([['old'], ['rc']])
+    expect(startAction).toHaveBeenCalledWith('CONFIGURE_RECOVERY_AUTHN_CODES')
+  })
+
+  it('keeps the codes after a first setup', async () => {
+    await render([password, otp('new'), codes(12)], { path: '/settings/security?action=CONFIGURE_TOTP&kc_action_status=success' })
+
+    expect(deleteCredential).not.toHaveBeenCalled()
+    expect(startAction).not.toHaveBeenCalled()
   })
 
   it('keeps older authenticators after another successful action', async () => {

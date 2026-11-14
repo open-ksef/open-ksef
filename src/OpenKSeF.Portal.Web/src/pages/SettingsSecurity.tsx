@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -54,11 +54,11 @@ function lowCodesText(left: number): string {
 export function SettingsSecurityPage(): ReactElement {
   const { startAction } = useAuth()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const { credentials, linked, password, google } = useSignInMethods()
   const devices = useQuery({ queryKey: ['account', 'sessions'], queryFn: getSessionDevices })
   const [confirmRegenerate, setConfirmRegenerate] = useState(false)
+  const [confirmChange, setConfirmChange] = useState(false)
   const [confirmSignOutAll, setConfirmSignOutAll] = useState(false)
   const handledStatus = useRef(false)
 
@@ -77,11 +77,11 @@ export function SettingsSecurityPage(): ReactElement {
     toast.success('Zapisano.')
     const older = startedAction === 'CONFIGURE_TOTP' ? otp.slice(1) : []
     if (older.length) {
-      void Promise.all(older.map((credential) => deleteCredential(credential.id)))
-        .then(() => queryClient.invalidateQueries({ queryKey: ['account', 'credentials'] }))
+      void Promise.all([...older, ...credentialsOf(credentials.data, 'recovery-authn-codes')].map((credential) => deleteCredential(credential.id)))
+        .then(() => startAction('CONFIGURE_RECOVERY_AUTHN_CODES'))
         .catch(() => toast.error('Nie udało się usunąć starej aplikacji uwierzytelniającej. Odśwież stronę i spróbuj ponownie.'))
     }
-  }, [actionStatus, credentials.data, navigate, otp, queryClient, startedAction])
+  }, [actionStatus, credentials.data, navigate, otp, startAction, startedAction])
 
   const action = useMutation({
     mutationFn: (name: AccountAction) => startAction(name),
@@ -163,7 +163,7 @@ export function SettingsSecurityPage(): ReactElement {
                 <Button variant={lowCodes ? 'primary' : 'outline'} data-testid="tfa-regenerate" onClick={() => setConfirmRegenerate(true)}>
                   <Icon name="key-round" /> Wygeneruj nowe kody
                 </Button>
-                <Button variant="outline" data-testid="tfa-change" onClick={() => action.mutate('CONFIGURE_TOTP')}>
+                <Button variant="outline" data-testid="tfa-change" onClick={() => setConfirmChange(true)}>
                   <Icon name="smartphone" /> Zmień aplikację
                 </Button>
               </div>
@@ -222,6 +222,17 @@ export function SettingsSecurityPage(): ReactElement {
         isPending={action.isPending}
         onConfirm={() => action.mutate('CONFIGURE_RECOVERY_AUTHN_CODES')}
         onCancel={() => setConfirmRegenerate(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmChange}
+        title="Zmienić aplikację uwierzytelniającą?"
+        message="Stara aplikacja przestanie działać. Dotychczasowe kody zapasowe też przestaną działać. Nowe kody zobaczysz raz, zaraz po zapisaniu nowej aplikacji."
+        confirmLabel="Zmień aplikację"
+        pendingLabel="Przekierowanie…"
+        isPending={action.isPending}
+        onConfirm={() => action.mutate('CONFIGURE_TOTP')}
+        onCancel={() => setConfirmChange(false)}
       />
 
       <ConfirmDialog

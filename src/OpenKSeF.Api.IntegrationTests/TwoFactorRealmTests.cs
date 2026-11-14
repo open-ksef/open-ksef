@@ -156,7 +156,7 @@ public class TwoFactorRealmTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ChangeApp_ByAppInitiatedAction_NeedsAUniqueLabel_ThenOlderOtpIsDeletedByAccountApi()
+    public async Task ChangeApp_NeedsAUniqueLabel_OldOtpAndCodesDeletedByAccountApi_NewCodes_OtpPageFirst_OldCodeRejected()
     {
         var email = NewEmail();
         var userId = await _fixture.CreateUserAsync(email, Password);
@@ -192,6 +192,22 @@ public class TwoFactorRealmTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
         var left = Assert.Single(await _fixture.GetUserCredentialsAsync(userId), c => c.GetProperty("type").GetString() == "otp");
         Assert.Equal("Telefon 2", left.GetProperty("userLabel").GetString());
+
+        var oldCodes = (await _fixture.GetUserCredentialsAsync(userId)).Single(c => c.GetProperty("type").GetString() == "recovery-authn-codes");
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await account.DeleteAsync($"{_fixture.KeycloakAuthority}/account/credentials/{oldCodes.GetProperty("id").GetString()}")).StatusCode);
+        await browser.GetAsync(KeycloakBrowser.AuthUrl(_fixture.KeycloakAuthority, "&kc_action=CONFIGURE_RECOVERY_AUTHN_CODES"));
+        var newCodes = browser.Hidden("kc-recovery-codes-settings-form", "generatedRecoveryAuthnCodes").Split(',');
+        await browser.SubmitAsync("kc-recovery-codes-settings-form");
+        Assert.DoesNotContain(first.RecoveryCodes[0], newCodes);
+
+        using var next = new KeycloakBrowser();
+        await next.GetAsync(KeycloakBrowser.AuthUrl(_fixture.KeycloakAuthority));
+        await next.SubmitLoginAsync(email, Password);
+        Assert.True(next.OnPage("kc-otp-login-form"), next.Html);
+        Assert.Equal(HttpStatusCode.OK, (await PasswordGrantAsync(email, replacement.Next())).StatusCode);
+        await LoginWithRecoveryCodeAsync(email, first, first.RecoveryCodes[0]);
+        await LoginWithRecoveryCodeAsync(email, new TwoFactorEnrolment(replacement, newCodes), null);
     }
 
     [Fact]

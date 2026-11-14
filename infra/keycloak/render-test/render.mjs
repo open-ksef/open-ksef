@@ -476,7 +476,13 @@ async function run(users) {
   await page.waitForURL(`${KC}/cb**`)
   const otps = (await api('GET', `/openksef/users/${users.otp}/credentials`)).filter((c) => c.type === 'otp').sort((a, b) => a.createdDate - b.createdDate)
   if (otps.length !== 2 || otps[0].userLabel === otps[1].userLabel) report.push({ name: 'otp-reenrol', findings: [`expected 2 OTPs with distinct labels, got ${JSON.stringify(otps.map((c) => c.userLabel))}`] })
-  else await api('DELETE', `/openksef/users/${users.otp}/credentials/${otps[1].id}`)
+  for (const c of (await api('GET', `/openksef/users/${users.otp}/credentials`)).filter((c) => c.id === otps[0]?.id || c.type === 'recovery-authn-codes')) {
+    await api('DELETE', `/openksef/users/${users.otp}/credentials/${c.id}`)
+  }
+  await page.goto(authUrl({ kc_action: 'CONFIGURE_RECOVERY_AUTHN_CODES' }))
+  await page.check('#kcRecoveryCodesConfirmationCheck')
+  await submit(page)
+  await page.waitForURL(`${KC}/cb**`)
   await ctx.close()
 
   ;({ ctx, page } = await fresh())
