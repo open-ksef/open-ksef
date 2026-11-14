@@ -36,6 +36,7 @@ public sealed class SystemSetupService : ISystemSetupService
     private readonly ISystemConfigService _systemConfig;
     private readonly KSeFClientOptions _ksefOptions;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IKeycloakUserService _keycloakUserService;
     private readonly ILogger<SystemSetupService> _logger;
 
     public SystemSetupService(
@@ -44,6 +45,7 @@ public sealed class SystemSetupService : ISystemSetupService
         ISystemConfigService systemConfig,
         KSeFClientOptions ksefOptions,
         IServiceScopeFactory scopeFactory,
+        IKeycloakUserService keycloakUserService,
         ILogger<SystemSetupService> logger)
     {
         _httpClientFactory = httpClientFactory;
@@ -51,6 +53,7 @@ public sealed class SystemSetupService : ISystemSetupService
         _systemConfig = systemConfig;
         _ksefOptions = ksefOptions;
         _scopeFactory = scopeFactory;
+        _keycloakUserService = keycloakUserService;
         _logger = logger;
     }
 
@@ -179,12 +182,13 @@ public sealed class SystemSetupService : ISystemSetupService
                 _logger.LogInformation("Keycloak admin password changed");
             }
 
+            var canRegister = request.RegistrationAllowed && await _keycloakUserService.CanRegisterAsync(apiClientSecret);
             var configValues = new Dictionary<string, string>
             {
                 [SystemConfigKeys.ApiClientSecret] = apiClientSecret,
                 [SystemConfigKeys.ExternalBaseUrl] = request.ExternalBaseUrl.TrimEnd('/'),
                 [SystemConfigKeys.KSeFEnvironment] = ksefEnv,
-                [SystemConfigKeys.RegistrationAllowed] = request.RegistrationAllowed ? "true" : "false",
+                [SystemConfigKeys.RegistrationAllowed] = canRegister ? "true" : "false",
                 [SystemConfigKeys.IsInitialized] = "true",
             };
 
@@ -738,8 +742,6 @@ public sealed class SystemSetupService : ISystemSetupService
             resp.EnsureSuccessStatusCode();
         }
 
-        await EnsureApiServiceAccountRolesAsync(client, kcBase, adminToken, ct);
-
         var uuid = await GetClientUuidAsync(client, kcBase, adminToken, "openksef-mobile", ct);
         if (uuid == null) return;
 
@@ -774,34 +776,6 @@ public sealed class SystemSetupService : ISystemSetupService
         addReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
         using var addResp = await client.SendAsync(addReq, ct);
         addResp.EnsureSuccessStatusCode();
-    }
-
-    internal static readonly string[] RegistrationServiceAccountRoles = ["manage-users", "view-realm"];
-
-    private static async Task EnsureApiServiceAccountRolesAsync(
-        HttpClient client, string kcBase, string adminToken, CancellationToken ct)
-    {
-        var apiUuid = await GetClientUuidAsync(client, kcBase, adminToken, "openksef-api", ct);
-        var realmManagementUuid = await GetClientUuidAsync(client, kcBase, adminToken, "realm-management", ct);
-        if (apiUuid == null || realmManagementUuid == null) return;
-
-        var realmUrl = $"{kcBase}/admin/realms/openksef";
-        using var userReq = new HttpRequestMessage(HttpMethod.Get, $"{realmUrl}/clients/{apiUuid}/service-account-user");
-        userReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
-        using var userResp = await client.SendAsync(userReq, ct);
-        userResp.EnsureSuccessStatusCode();
-        var userId = (await userResp.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct)).GetProperty("id").GetString();
-
-        var mappingsUrl = $"{realmUrl}/users/{userId}/role-mappings/clients/{realmManagementUuid}";
-        using var availableReq = new HttpRequestMessage(HttpMethod.Get, $"{mappingsUrl}/available");
-        availableReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
-        using var availableResp = await client.SendAsync(availableReq, ct);
-        availableResp.EnsureSuccessStatusCode();
-        var available = await availableResp.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
-        var missing = available.Where(r => RegistrationServiceAccountRoles.Contains(r.GetProperty("name").GetString())).ToArray();
-        if (missing.Length == 0) return;
-
-        using var _ = await SendKeycloakJsonAsync(client, HttpMethod.Post, mappingsUrl, adminToken, missing, ct);
     }
 
     private static async Task<string?> GetClientUuidAsync(

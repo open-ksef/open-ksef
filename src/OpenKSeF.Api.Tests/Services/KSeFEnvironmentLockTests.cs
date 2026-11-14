@@ -28,6 +28,7 @@ public class KSeFEnvironmentLockTests
             new RelayHealth(),
             new KSeFClientOptions(),
             provider.GetRequiredService<IServiceScopeFactory>(),
+            Substitute.For<IKeycloakUserService>(),
             NullLogger<SystemSettingsService>.Instance);
 
         Assert.False((await service.GetKSeFEnvironmentLockStatusAsync()).HasInvoices);

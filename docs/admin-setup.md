@@ -290,7 +290,7 @@ The API also stops at start when it cannot read `SystemConfigs` after 5 attempts
 
 ## Registration flag: upgrade
 
-After the upgrade, open Settings and save once. This stores the registration flag in `SystemConfigs` (`registration_allowed`) and grants the `openksef-api` service account `realm-management` `manage-users` and `view-realm`, which registration needs. Until then the login page shows the register link, and register without a service account secret returns 503. Settings is the only supported toggle for registration: the API does not see changes made in the Keycloak console.
+After the upgrade, open Settings and save once. This stores the registration flag in `SystemConfigs` (`registration_allowed`): `true` only when realm registration is on and the service account can register users ([login-page-setup.md](login-page-setup.md#registration-endpoint)). Until then the login page hides the register link and register returns 403. Settings is the only supported toggle for registration: the API does not see changes made in the Keycloak console.
 
 ## Settings admin role: upgrade
 

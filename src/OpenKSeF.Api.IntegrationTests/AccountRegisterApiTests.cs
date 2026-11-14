@@ -35,6 +35,7 @@ public class AccountRegisterApiTests : IAsyncLifetime
     public async Task DisposeAsync()
     {
         await ResetRealmAsync();
+        await SetStoredConfigAsync(SystemConfigKeys.RegistrationAllowed, null);
         _client.Dispose();
         await _factory.DisposeAsync();
     }
@@ -43,6 +44,7 @@ public class AccountRegisterApiTests : IAsyncLifetime
     {
         await _fixture.UpdateRealmAsync(new { registrationAllowed = true, verifyEmail = false });
         await _fixture.GrantServiceAccountRolesAsync(TestcontainersFixture.RegistrationRoles);
+        await SetStoredConfigAsync(SystemConfigKeys.RegistrationAllowed, "true");
     }
 
     [Fact]
@@ -142,28 +144,59 @@ public class AccountRegisterApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SettingsSave_GrantsRegistrationRolesOnce_RegistrationWorks()
+    public async Task SettingsSave_GrantsNoServiceAccountRoles()
     {
         await _fixture.RemoveServiceAccountRolesAsync(TestcontainersFixture.RegistrationRoles);
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await RegisterAsync(_client, NewEmail())).StatusCode);
 
-        await SaveSettingsAsync();
-        var afterFirst = await _fixture.GetServiceAccountRoleNamesAsync();
-        await SaveSettingsAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var settings = scope.ServiceProvider.GetRequiredService<ISystemSettingsService>();
+            var result = await settings.UpdateSettingsAsync(
+                new SettingsUpdateRequest { KcAdminUsername = "admin", KcAdminPassword = "admin" },
+                await _fixture.GetAdminTokenAsync());
+            Assert.True(result.Success, result.Error);
+        }
 
-        Assert.Equal(TestcontainersFixture.RegistrationRoles.Order(), afterFirst.Order());
-        Assert.Equal(afterFirst.Order(), (await _fixture.GetServiceAccountRoleNamesAsync()).Order());
+        Assert.Empty((await _fixture.GetServiceAccountRoleNamesAsync()).Intersect(TestcontainersFixture.RegistrationRoles));
+        Assert.False(await SetupStatusRegistrationAllowedAsync());
+        var response = await RegisterAsync(_client, NewEmail());
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("registration_disabled", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task SettingsSave_RolesGrantedByHand_FlagTrueAndRegisterWorks()
+    {
+        await SetStoredConfigAsync(SystemConfigKeys.RegistrationAllowed, null);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var result = await scope.ServiceProvider.GetRequiredService<ISystemSettingsService>().UpdateSettingsAsync(
+                new SettingsUpdateRequest { KcAdminUsername = "admin", KcAdminPassword = "admin" },
+                await _fixture.GetAdminTokenAsync());
+            Assert.True(result.Success, result.Error);
+        }
+
+        Assert.True(await SetupStatusRegistrationAllowedAsync());
         Assert.Equal(HttpStatusCode.OK, (await RegisterAsync(_client, NewEmail())).StatusCode);
     }
 
-    private async Task SaveSettingsAsync()
+    [Fact]
+    public async Task Register_NoStoredFlag_Returns403AndSetupStatusFalse()
     {
-        using var scope = _factory.Services.CreateScope();
-        var result = await scope.ServiceProvider.GetRequiredService<ISystemSettingsService>().UpdateSettingsAsync(
-            new SettingsUpdateRequest { KcAdminUsername = "admin", KcAdminPassword = "admin" },
-            await _fixture.GetAdminTokenAsync());
-        Assert.True(result.Success, result.Error);
+        await SetStoredConfigAsync(SystemConfigKeys.RegistrationAllowed, null);
+        var email = NewEmail();
+
+        var response = await RegisterAsync(_client, email);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("registration_disabled", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.False(await SetupStatusRegistrationAllowedAsync());
+        Assert.Null(await _fixture.FindUserAsync(email));
     }
+
+    private async Task<bool> SetupStatusRegistrationAllowedAsync() =>
+        (await _client.GetFromJsonAsync<SetupStatusResponse>("/api/system/setup-status"))!.RegistrationAllowed;
 
     [Fact]
     public async Task SettingsSave_WithExternalBaseUrl_KeepsServiceAccountRoles()
@@ -301,5 +334,6 @@ public class AccountRegisterApiTests : IAsyncLifetime
         if (value is not null)
             db.SystemConfigs.Add(new SystemConfig { Key = key, Value = value, UpdatedAt = DateTime.UtcNow });
         await db.SaveChangesAsync();
+        await scope.ServiceProvider.GetRequiredService<ISystemConfigService>().RefreshCacheAsync();
     }
 }

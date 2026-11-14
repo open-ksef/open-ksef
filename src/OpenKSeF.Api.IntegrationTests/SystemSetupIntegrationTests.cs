@@ -38,6 +38,7 @@ public class SystemSetupIntegrationTests : IDisposable
         var status = await response.Content.ReadFromJsonAsync<SetupStatusResponse>();
         Assert.NotNull(status);
         Assert.False(status!.IsInitialized);
+        Assert.False(status.RegistrationAllowed);
     }
 
     [Fact]
@@ -107,6 +108,7 @@ public class SystemSetupIntegrationTests : IDisposable
         var statusResp = await _client.GetAsync("/api/system/setup-status");
         var status = await statusResp.Content.ReadFromJsonAsync<SetupStatusResponse>();
         Assert.True(status!.IsInitialized);
+        Assert.False(status.RegistrationAllowed);
 
         // 4. Verify DB has the config
         using var scope = _factory.Services.CreateScope();
@@ -114,12 +116,7 @@ public class SystemSetupIntegrationTests : IDisposable
         Assert.Null(await db.SystemConfigs.FindAsync("encryption_key"));
         Assert.NotNull(await db.SystemConfigs.FindAsync("api_client_secret"));
 
-        Assert.Equal(TestcontainersFixture.RegistrationRoles.Order(), (await _fixture.GetServiceAccountRoleNamesAsync()).Order());
-        var register = await _client.PostAsJsonAsync("/api/account/register", new
-        {
-            email = $"wizard-{Guid.NewGuid():N}@openksef.test", password = "Register1234!", firstName = "Wizard", lastName = "Realm",
-        });
-        Assert.Equal(HttpStatusCode.OK, register.StatusCode);
+        Assert.Empty((await _fixture.GetServiceAccountRoleNamesAsync()).Intersect(TestcontainersFixture.RegistrationRoles));
 
         using var settings = new HttpRequestMessage(HttpMethod.Post, "/api/system/settings")
         {

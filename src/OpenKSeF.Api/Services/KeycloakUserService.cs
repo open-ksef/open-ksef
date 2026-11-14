@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.IdentityModel.Tokens;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Services;
@@ -7,6 +8,7 @@ namespace OpenKSeF.Api.Services;
 public interface IKeycloakUserService
 {
     Task<CreateUserResult> CreateUserAsync(string email, string password, string? firstName, string? lastName);
+    Task<bool> CanRegisterAsync(string? clientSecret);
 }
 
 public record CreateUserResult(bool Success, string? ErrorMessage, HttpStatusCode StatusCode, string? ErrorCode = null);
@@ -55,7 +57,7 @@ public class KeycloakUserService : IKeycloakUserService
     public async Task<CreateUserResult> CreateUserAsync(
         string email, string password, string? firstName, string? lastName)
     {
-        if (string.Equals(_systemConfig.GetValue(SystemConfigKeys.RegistrationAllowed), "false", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(_systemConfig.GetValue(SystemConfigKeys.RegistrationAllowed), "true", StringComparison.OrdinalIgnoreCase))
             return RegistrationDisabled();
 
         var clientSecret = _systemConfig.GetValue(SystemConfigKeys.ApiClientSecret);
@@ -128,6 +130,36 @@ public class KeycloakUserService : IKeycloakUserService
         {
             _logger.LogError(ex, "User creation failed for email {Email}", email);
             return Unavailable();
+        }
+    }
+
+    public async Task<bool> CanRegisterAsync(string? clientSecret)
+    {
+        if (string.IsNullOrEmpty(clientSecret))
+            return false;
+
+        try
+        {
+            var adminToken = await GetServiceAccountTokenAsync(clientSecret);
+            if (adminToken is null)
+                return false;
+
+            var policy = await GetRealmPolicyAsync(adminToken);
+            if (policy is not { RegistrationAllowed: true })
+                return false;
+
+            var claims = JsonDocument.Parse(Base64UrlEncoder.Decode(adminToken.Split('.')[1])).RootElement;
+            var canManageUsers = claims.TryGetProperty("resource_access", out var access)
+                && access.TryGetProperty("realm-management", out var realmManagement)
+                && realmManagement.GetProperty("roles").EnumerateArray().Any(r => r.GetString() == "manage-users");
+            if (!canManageUsers)
+                _logger.LogWarning("Registration stays off: the service account needs realm-management manage-users.");
+            return canManageUsers;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Registration probe failed");
+            return false;
         }
     }
 

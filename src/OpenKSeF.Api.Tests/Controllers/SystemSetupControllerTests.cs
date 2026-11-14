@@ -63,7 +63,7 @@ public class SystemSetupControllerTests
     }
 
     [Theory]
-    [InlineData(null, true)]
+    [InlineData(null, false)]
     [InlineData("true", true)]
     [InlineData("false", false)]
     public void GetSetupStatus_ReturnsStoredRegistrationFlag(string? stored, bool expected)
