@@ -110,7 +110,7 @@ The wizard and every Settings save apply the same values with partial updates, s
 | Realm localization `pl` | 12 device-pairing and consent texts, including the phishing warning |
 | `openksef-mobile` | Name "Aplikacja mobilna OpenKSeF", device authorization grant on, device code 300 s, PKCE S256, `offline_access` optional scope |
 
-Direct grants, redirect URIs and `loginTheme` are not changed: the portal signs in with its own `/login` form (direct grant on `openksef-portal-web`). See [ADR-002](adr/adr-002-hosted-login-device-pairing.md).
+`loginTheme` and `accountTheme` are set to `openksef` when Keycloak lists the theme (image `openksef-keycloak`); on Keycloak 26.4+ the policy also binds the 2FA flows. Direct grants and redirect URIs are not changed. See [ADR-003](adr/adr-003-auth-pages-2fa.md).
 
 ## Encryption key
 

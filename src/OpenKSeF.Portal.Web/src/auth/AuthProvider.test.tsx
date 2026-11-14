@@ -7,7 +7,6 @@ import type { User } from 'oidc-client-ts'
 
 const mockManager = {
   getUser: vi.fn<() => Promise<User | null>>(),
-  signinResourceOwnerCredentials: vi.fn<() => Promise<User>>(),
   signinRedirect: vi.fn<() => Promise<void>>(),
   signoutRedirect: vi.fn<() => Promise<void>>(),
   signinRedirectCallback: vi.fn<() => Promise<User>>(),
@@ -63,6 +62,11 @@ describe('AuthProvider', () => {
   })
 
   async function renderContext() {
+    const spy = await renderSpy()
+    return spy.mock.calls.at(-1)![0]!
+  }
+
+  async function renderSpy() {
     mockManager.getUser.mockResolvedValue(null)
     const { AuthProvider } = await import('./AuthProvider')
     const { AuthContext } = await import('./AuthContext')
@@ -85,31 +89,8 @@ describe('AuthProvider', () => {
       await flushPromises()
     })
 
-    return setContextValue.mock.calls.at(-1)![0]!
+    return setContextValue
   }
-
-  const registerData = { email: 'a@b.pl', password: 'Haslo1234!' }
-
-  it('shows the API error of a refused registration and does not log in', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
-      JSON.stringify({ code: 'registration_disabled', error: 'Rejestracja nowych kont jest wyłączona.' }),
-      { status: 403 },
-    )))
-
-    const context = await renderContext()
-
-    await expect(context.register(registerData)).rejects.toThrow('Rejestracja nowych kont jest wyłączona.')
-    expect(mockManager.signinResourceOwnerCredentials).not.toHaveBeenCalled()
-  })
-
-  it('says the account exists when login right after registration fails', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })))
-    mockManager.signinResourceOwnerCredentials.mockRejectedValue(new Error('Account is not fully set up'))
-
-    const context = await renderContext()
-
-    await expect(context.register(registerData)).rejects.toThrow('Konto zostało utworzone')
-  })
 
   it('exposes login/logout and access token from current user', async () => {
     mockManager.getUser.mockResolvedValue({ access_token: 'access-token', expired: false } as User)
@@ -144,7 +125,7 @@ describe('AuthProvider', () => {
     await lastContextValue?.logout()
 
     expect(mockManager.signinRedirect).toHaveBeenCalledTimes(1)
-    expect(mockManager.signinRedirect).toHaveBeenCalledWith()
+    expect(mockManager.signinRedirect).toHaveBeenCalledWith({ state: { returnTo: undefined } })
     expect(mockManager.signoutRedirect).toHaveBeenCalledTimes(1)
   })
 
@@ -222,13 +203,20 @@ describe('AuthProvider', () => {
     expect(mockManager.removeUser).not.toHaveBeenCalled()
   })
 
-  it('ends the session through removeUser', async () => {
+  it('ends the session through removeUser and marks it ended until the next login', async () => {
     const { endSession } = await import('./accessToken')
-    await mountWith(userOf('a'))
+    const context = () => setContextValue.mock.calls.at(-1)![0]!
+    const setContextValue = await renderSpy()
+    expect(context().sessionEnded).toBe(false)
 
-    await endSession()
+    await act(async () => endSession())
 
     expect(mockManager.removeUser).toHaveBeenCalledTimes(1)
+    expect(context().sessionEnded).toBe(true)
+
+    await act(async () => context().login('/telefon'))
+    expect(context().sessionEnded).toBe(false)
+    expect(mockManager.signinRedirect).toHaveBeenCalledWith({ state: { returnTo: '/telefon' } })
   })
 
   it('clears the query cache on sign-out and user switch, not on renew or sign-in', async () => {
@@ -257,12 +245,21 @@ describe('AuthProvider', () => {
     mockManager.signinRedirectCallback.mockResolvedValueOnce(userOf('a'))
     expect(await context.handleOidcCallback()).toBe('/')
 
-    await context.loginWithGoogle('/telefon')
-    expect(mockManager.signinRedirect).toHaveBeenCalledWith({ extraQueryParams: { kc_idp_hint: 'google' }, state: { returnTo: '/telefon' } })
-
     for (const returnTo of ['//evil.com', '/\\evil.com', 'https://evil.com']) {
       mockManager.signinRedirectCallback.mockResolvedValueOnce({ ...userOf('a'), state: { returnTo } } as User)
       expect(await context.handleOidcCallback()).toBe('/')
     }
+  })
+
+  it('starts a Keycloak account action and returns its status to Bezpieczeństwo', async () => {
+    const context = await renderContext()
+
+    await context.startAction('CONFIGURE_TOTP')
+    expect(mockManager.signinRedirect).toHaveBeenCalledWith({ extraQueryParams: { kc_action: 'CONFIGURE_TOTP' }, state: { returnTo: '/settings/security' } })
+
+    window.history.replaceState(null, '', '/callback?code=x&kc_action_status=cancelled')
+    mockManager.signinRedirectCallback.mockResolvedValueOnce({ ...userOf('a'), state: { returnTo: '/settings/security' } } as User)
+    expect(await context.handleOidcCallback()).toBe('/settings/security?kc_action_status=cancelled')
+    window.history.replaceState(null, '', '/')
   })
 })

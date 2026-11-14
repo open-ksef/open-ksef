@@ -1,10 +1,10 @@
 # Login Page Setup
 
-The portal `/login` page authenticates directly against Keycloak (no redirect). Three flows:
+The portal signs in on the Keycloak pages (Authorization Code + PKCE via `oidc-client-ts`, [ADR-003](adr/adr-003-auth-pages-2fa.md)). A protected route redirects there and returns to the requested route; `/login` redirects too, and shows one button only after a session ended on a final 401. Login, registration, forgot password, 2FA (TOTP and recovery codes), Google, device pairing and required actions are Keycloak pages in the `openksef` theme: FreeMarker on `base`, the same `.auth-*` markup and CSS as the portal (`infra/keycloak`, image `openksef-keycloak`; the image build copies `ui.css`, `auth.css`, `index.css`, fonts, favicon and icons from `src/OpenKSeF.Portal.Web`). The account theme sends `/account` to the portal `Ustawienia > Bezpieczeństwo`, which reads the Account REST API and starts password, TOTP and recovery-code changes with `kc_action`.
 
-- **Username/password** -- ROPC grant via `oidc-client-ts`
-- **Google sign-in** -- Keycloak IdP brokering (`kc_idp_hint=google`)
-- **Registration** -- `POST /api/account/register` (Keycloak Admin API), then auto-login via ROPC
+- **Google sign-in** -- Keycloak shows the Google button when the `google` IdP is configured.
+- **Registration** -- Keycloak register page when realm self-registration is on. `POST /api/account/register` stays for released mobile apps.
+- **Render test** -- `node infra/keycloak/render-test/render.mjs <image> [outDir]` starts the image with mailpit, walks every theme page and state, and compares key element boxes with the designer mock (CI job `keycloak`).
 
 ## Google OAuth setup (optional)
 
