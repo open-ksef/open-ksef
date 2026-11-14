@@ -170,7 +170,7 @@ public sealed class PushRetryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task OwedRowOlderThan24h_IsNotPushed_YoungerOneIs()
+    public async Task OwedRowOlderThan24h_IsStampedNotPushed_YoungerOneIs()
     {
         await WorkerCycleAsync([Bought("STALE"), Bought("FRESH")]);
         await using (var db = NewContext())
@@ -186,8 +186,28 @@ public sealed class PushRetryTests : IAsyncLifetime
         var sent = Assert.Single(_push.Sent);
         var rows = (await RowsAsync()).ToDictionary(r => r.KSeFInvoiceNumber);
         Assert.Equal(rows["FRESH"].Id.ToString(), sent.Data["invoiceId"]);
-        Assert.Null(rows["STALE"].NotifiedAt);
+        Assert.NotNull(rows["STALE"].NotifiedAt);
         Assert.NotNull(rows["FRESH"].NotifiedAt);
+
+        await WorkerCycleAsync();
+        Assert.Single(_push.Sent);
+    }
+
+    [Fact]
+    public async Task OwedIssuedRow_IsNeverPushed()
+    {
+        await WorkerCycleAsync([Bought("SOLD")]);
+        await using (var db = NewContext())
+            await db.InvoiceHeaders.ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.Direction, InvoiceDirection.Issued)
+                .SetProperty(i => i.NotifiedAt, (DateTime?)null));
+        _push.Sent.Clear();
+
+        await WorkerCycleAsync();
+        await WorkerCycleAsync();
+
+        Assert.Empty(_push.Sent);
+        Assert.Null(Assert.Single(await RowsAsync()).NotifiedAt);
     }
 
     private sealed class RecordingPushProvider : IPushProvider

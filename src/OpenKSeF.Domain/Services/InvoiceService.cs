@@ -182,9 +182,16 @@ public class InvoiceService : IInvoiceService
 
     public async Task NotifyPendingAsync(Guid tenantId, CancellationToken cancellationToken = default)
     {
-        var since = DateTime.UtcNow - PushRetryWindow;
+        var now = DateTime.UtcNow;
+        var since = now - PushRetryWindow;
+        var expired = await _db.InvoiceHeaders
+            .Where(i => i.TenantId == tenantId && i.NotifiedAt == null && i.FirstSeenAt < since)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.NotifiedAt, now), cancellationToken);
+        if (expired > 0)
+            _logger.LogWarning("Push retry window passed for {Count} invoices, tenant {TenantId}; not pushed", expired, tenantId);
+
         var pending = await _db.InvoiceHeaders
-            .Where(i => i.TenantId == tenantId && i.NotifiedAt == null && i.FirstSeenAt >= since)
+            .Where(i => i.TenantId == tenantId && i.Direction == InvoiceDirection.Received && i.NotifiedAt == null && i.FirstSeenAt >= since)
             .Select(i => i.Id)
             .ToListAsync(cancellationToken);
         if (pending.Count == 0)

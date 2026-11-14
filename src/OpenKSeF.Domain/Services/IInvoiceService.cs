@@ -10,7 +10,7 @@ public interface IInvoiceService
     /// <remarks>REQ-0010 cap: the newest <see cref="InvoiceService.NotificationCap"/> by AcquisitionDate notify one by one, one summary covers the rest. Rows whose push settled get <c>NotifiedAt</c>.</remarks>
     Task NotifyNewInvoicesAsync(Guid tenantId, IReadOnlyCollection<Guid> invoiceIds, CancellationToken cancellationToken = default, bool email = true);
 
-    /// <summary>Push-only retry of rows still owing a push, first seen within <see cref="InvoiceService.PushRetryWindow"/>.</summary>
+    /// <summary>Push-only retry of received rows still owing a push, first seen within <see cref="InvoiceService.PushRetryWindow"/>; older owed rows are stamped and never pushed.</summary>
     Task NotifyPendingAsync(Guid tenantId, CancellationToken cancellationToken = default);
 
     /// <remarks>Never writes <c>IsPaid</c>/<c>PaidAt</c>; adds lines only when the invoice has none.</remarks>
