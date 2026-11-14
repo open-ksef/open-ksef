@@ -23,6 +23,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<IssuedInvoiceLine> IssuedInvoiceLines => Set<IssuedInvoiceLine>();
     public DbSet<SellerProfile> SellerProfiles => Set<SellerProfile>();
     public DbSet<InvoiceNumberCounter> InvoiceNumberCounters => Set<InvoiceNumberCounter>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -239,6 +240,16 @@ public class ApplicationDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(c => c.TenantId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AuditEvent>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.ActorUserId).HasMaxLength(256);
+            entity.Property(a => a.ActorEmail).HasMaxLength(320);
+            entity.Property(a => a.Action).HasMaxLength(64);
+            entity.Property(a => a.TargetUserId).HasMaxLength(256);
+            entity.Property(a => a.TargetEmail).HasMaxLength(320);
         });
     }
 }

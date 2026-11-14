@@ -127,7 +127,8 @@ describe('Self-host compose and release', () => {
     expect(block('keycloak')).toMatch(/^ {4}command: start$/m)
     expect(compose).not.toContain('--features')
     expect(read('docker-compose.dev.yml')).not.toContain('--features')
-    expect(read('docker-compose.dev.yml')).toContain('./infra/keycloak/themes/openksef:/opt/keycloak/themes/openksef:ro')
+    expect(read('docker-compose.dev.yml')).toContain('  keycloak:\n    image: openksef-keycloak:dev-local\n    build:\n      context: ./infra/keycloak\n      additional_contexts:\n        portal: ./src/OpenKSeF.Portal.Web\n')
+    expect(read('infra/keycloak/Dockerfile')).toContain('COPY --from=portal src/index.css src/components/ui.css src/components/auth.css')
     expect(read('infra/keycloak/Dockerfile')).toContain('FROM quay.io/keycloak/keycloak:26.8.2@sha256:c68e286cacd87b942ac1939a0a1481461109d6acd3a57dc496969a319a76bbf0')
   })
 

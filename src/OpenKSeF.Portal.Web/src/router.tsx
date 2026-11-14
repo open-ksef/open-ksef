@@ -56,6 +56,7 @@ export const appRoutes: RouteObject[] = [
           { path: 'devices', element: <Moved to="/mobile-setup" /> },
           { path: 'mobile-setup', lazy: () => loadRoute(() => import('@/pages/MobileSetup')).then((m) => ({ Component: m.MobileSetupPage })) },
           { path: 'settings', lazy: () => loadRoute(() => import('@/pages/Settings')).then((m) => ({ Component: m.SettingsPage })) },
+          { path: 'settings/security', lazy: () => loadRoute(() => import('@/pages/SettingsSecurity')).then((m) => ({ Component: m.SettingsSecurityPage })) },
           { path: 'settings/admin', lazy: () => loadRoute(() => import('@/pages/SettingsAdmin')).then((m) => ({ Component: m.SettingsAdminPage })) },
         ],
       },

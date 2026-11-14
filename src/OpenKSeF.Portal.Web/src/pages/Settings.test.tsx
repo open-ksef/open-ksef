@@ -6,17 +6,22 @@ import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getSettings, updateSettings } from '@/api/endpoints/system'
+import { findTwoFactorUser, getSettings, resetTwoFactor, updateSettings } from '@/api/endpoints/system'
 import { ApiError } from '@/api/errors'
 import { useAuth } from '@/auth/useAuth'
 import { SettingsPage } from './Settings'
 import { SettingsAdminPage } from './SettingsAdmin'
 
 vi.mock('@/auth/useAuth', () => ({ useAuth: vi.fn() }))
-vi.mock('@/api/endpoints/system', async (original) => ({ ...(await original<object>()), getSettings: vi.fn(), updateSettings: vi.fn() }))
+vi.mock('@/api/endpoints/system', async (original) => ({ ...(await original<object>()), getSettings: vi.fn(), updateSettings: vi.fn(), findTwoFactorUser: vi.fn(), resetTwoFactor: vi.fn() }))
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/api/endpoints/devices', () => ({ registerDevice: vi.fn() }))
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
+vi.mock('@/auth/account', async (original) => ({
+  ...(await original<object>()),
+  getCredentials: vi.fn().mockResolvedValue([{ type: 'password', userCredentialMetadatas: [{ credential: { id: 'p', type: 'password', createdDate: 1 } }] }]),
+  getLinkedAccounts: vi.fn().mockResolvedValue([{ providerAlias: 'google', connected: true }]),
+}))
 
 describe('Ustawienia', () => {
   let root: Root
@@ -65,12 +70,16 @@ describe('Ustawienia', () => {
 
   it('a normal user sees Konto and no admin login form', async () => {
     await render(<SettingsPage />)
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
 
     expect(by('account-name')?.textContent).toBe('Jan Testowy')
     expect(by('account-email')?.textContent).toBe('jan@example.invalid')
     expect(by('settings-kc-user')).toBeNull()
-    expect(by('account-manage')?.getAttribute('href')).toBe('/auth/realms/openksef/account')
-    expect(container.querySelector('a[href="/settings/admin"]')?.textContent).toBe('Administracja instancji')
+    expect(by('account-manage')).toBeNull()
+    expect(container.querySelector('a[href*="/account"]')).toBeNull()
+    expect(by('account-methods')?.textContent).toBe('E-mail i hasło, Google')
+    expect(container.querySelector('.ui-tabs [aria-current="page"]')?.textContent).toBe('Konto')
+    expect(container.querySelector('.start-list a[href="/settings/admin"]')?.textContent).toBe('Administracja instancji')
 
     await act(async () => by('account-logout')?.click())
     expect(logout).toHaveBeenCalledOnce()
@@ -279,6 +288,7 @@ describe('Ustawienia', () => {
     await login()
 
     expect([...container.querySelectorAll('h2')].map((heading) => heading.textContent)).toEqual([
+      'Weryfikacja dwuetapowa użytkownika',
       'Podstawowe',
       'Autoryzacja',
       'SMTP',
@@ -291,4 +301,60 @@ describe('Ustawienia', () => {
     expect([...(by('settings-ksef-env') as HTMLSelectElement).options].map((option) => option.textContent)).toEqual(['Test', 'Demo', 'Produkcja'])
     expect(container.textContent).not.toContain('Keycloak')
   })
+
+  describe('2FA reset', () => {
+    const user = { resetAvailable: true, reason: null, userId: 'u1', firstName: 'Jan', lastName: 'Próbny', email: 'jan@firma-testowa.pl', status: 'enabled', recoveryCodesLeft: 9, enabledAt: null } as const
+
+    async function find(email = 'jan@firma-testowa.pl'): Promise<void> {
+      await render(<SettingsAdminPage />)
+      const input = by('admin-reset-email') as HTMLInputElement
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, email)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      await act(async () => by('admin-reset-find')?.click())
+      await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
+    }
+
+    it('finds a user and resets 2FA after the danger confirmation', async () => {
+      vi.mocked(findTwoFactorUser).mockResolvedValue({ ...user })
+      vi.mocked(resetTwoFactor).mockResolvedValue()
+      await find()
+
+      expect(findTwoFactorUser).toHaveBeenCalledWith('jan@firma-testowa.pl')
+      expect(by('admin-reset-user')?.textContent).toContain('Włączona, 9 kodów zapasowych')
+      await act(async () => by('admin-reset-submit')?.click())
+      expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain('Jan Próbny (jan@firma-testowa.pl) straci aplikację')
+      await act(async () => container.querySelector<HTMLElement>('.ui-modal-footer .ui-button--danger')?.click())
+      await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
+
+      expect(resetTwoFactor).toHaveBeenCalledWith('u1')
+      expect(container.textContent).toContain('Zresetowano. Jan Próbny ustawi weryfikację przy następnym logowaniu hasłem.')
+      expect(by('admin-reset-user')?.textContent).toContain('Nieustawiona')
+      expect(by('admin-reset-submit')).toBeNull()
+    })
+
+    it('says when no user has that e-mail', async () => {
+      vi.mocked(findTwoFactorUser).mockRejectedValue(new ApiError('user_not_found', 404))
+      await find('brak@firma-testowa.pl')
+
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Nie ma użytkownika z tym adresem.')
+    })
+
+    it('shows the console steps instead of the reset button when the API cannot reset', async () => {
+      vi.mocked(findTwoFactorUser).mockResolvedValue({ ...user, resetAvailable: false, reason: 'manage_users_missing' })
+      await find()
+
+      expect(by('reset-console-steps')?.textContent).toContain('manage-users')
+      expect(by('admin-reset-submit')).toBeNull()
+    })
+
+    it('tells a non-admin they have no rights', async () => {
+      vi.mocked(findTwoFactorUser).mockRejectedValue(new ApiError('Forbidden', 403))
+      await find()
+
+      expect(container.textContent).toContain('Nie masz uprawnień administratora.')
+    })
+  })
+
 })

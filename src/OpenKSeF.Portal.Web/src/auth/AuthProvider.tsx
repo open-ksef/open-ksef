@@ -2,11 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PropsWithChildr
 import { ErrorResponse, UserManager, type User } from 'oidc-client-ts'
 
 import { queryClient } from '@/api/queryClient'
-import { AuthContext, type RegisterData } from './AuthContext'
+import { AuthContext, type AccountAction } from './AuthContext'
 import { clearAccessTokenProvider, clearSessionHandlers, setAccessTokenProvider, setSessionHandlers } from './accessToken'
 import { oidcConfig } from './config'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
 export function AuthProvider({ children }: PropsWithChildren): ReactElement {
   const managerRef = useRef<UserManager | null>(null)
@@ -21,6 +19,7 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
   const renewInFlight = useRef<Promise<string | null> | null>(null)
   const [user, setUserState] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [sessionEnded, setSessionEnded] = useState(false)
 
   const setUser = useCallback((nextUser: User | null) => {
     const previous = userRef.current
@@ -45,7 +44,13 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
 
   useEffect(() => {
     setAccessTokenProvider(() => userRef.current?.access_token ?? null)
-    setSessionHandlers({ renew, end: () => manager.removeUser() })
+    setSessionHandlers({
+      renew,
+      end: async () => {
+        setSessionEnded(true)
+        await manager.removeUser()
+      },
+    })
     return () => {
       clearAccessTokenProvider()
       clearSessionHandlers()
@@ -93,46 +98,13 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
     // eslint-disable-next-line react-hooks/refs
   }, [manager, setUser])
 
-  const login = useCallback(async () => {
-    await manager.signinRedirect()
+  const login = useCallback(async (returnTo?: string) => {
+    setSessionEnded(false)
+    await manager.signinRedirect({ state: { returnTo } })
   }, [manager])
 
-  const loginWithCredentials = useCallback(async (username: string, password: string) => {
-    await manager.signinResourceOwnerCredentials({
-      username,
-      password,
-      skipUserInfo: false,
-    })
-  }, [manager])
-
-  const loginWithGoogle = useCallback(async (returnTo?: string) => {
-    await manager.signinRedirect({
-      extraQueryParams: { kc_idp_hint: 'google' },
-      state: { returnTo },
-    })
-  }, [manager])
-
-  const register = useCallback(async (data: RegisterData) => {
-    const response = await fetch(`${API_BASE_URL}/account/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    })
-
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({})) as Record<string, unknown>
-      throw new Error((body.error as string) ?? 'Rejestracja nie powiodła się.')
-    }
-
-    try {
-      await manager.signinResourceOwnerCredentials({
-        username: data.email,
-        password: data.password,
-        skipUserInfo: false,
-      })
-    } catch {
-      throw new Error('Konto zostało utworzone, ale nie udało się zalogować. Jeśli dostaniesz wiadomość e-mail, potwierdź adres, a potem zaloguj się.')
-    }
+  const startAction = useCallback(async (action: AccountAction) => {
+    await manager.signinRedirect({ extraQueryParams: { kc_action: action }, state: { returnTo: `/settings/security?action=${action}` } })
   }, [manager])
 
   const logout = useCallback(async () => {
@@ -142,10 +114,12 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
   const getAccessToken = useCallback(async () => user?.access_token ?? null, [user])
 
   const handleOidcCallback = useCallback(async () => {
+    const actionStatus = new URLSearchParams(globalThis.location?.search).get('kc_action_status')
     const callbackUser = await manager.signinRedirectCallback()
     setUser(callbackUser)
     const returnTo = (callbackUser.state as { returnTo?: string } | undefined)?.returnTo
-    return returnTo?.startsWith('/') && !returnTo.startsWith('//') && !returnTo.startsWith('/\\') ? returnTo : '/'
+    const safe = returnTo?.startsWith('/') && !returnTo.startsWith('//') && !returnTo.startsWith('/\\') ? returnTo : '/'
+    return actionStatus ? `${safe}${safe.includes('?') ? '&' : '?'}kc_action_status=${encodeURIComponent(actionStatus)}` : safe
   }, [manager, setUser])
 
   const value = useMemo(
@@ -153,15 +127,14 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
       user,
       isLoading,
       isAuthenticated: Boolean(user && !user.expired),
+      sessionEnded,
       login,
-      loginWithCredentials,
-      loginWithGoogle,
-      register,
+      startAction,
       logout,
       getAccessToken,
       handleOidcCallback,
     }),
-    [getAccessToken, handleOidcCallback, isLoading, login, loginWithCredentials, loginWithGoogle, register, logout, user],
+    [getAccessToken, handleOidcCallback, isLoading, login, logout, sessionEnded, startAction, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

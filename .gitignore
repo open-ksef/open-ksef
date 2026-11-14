@@ -76,3 +76,4 @@ Thumbs.db
 *.cer
 *.crt
 *.csr
+infra/keycloak/render-test/out/

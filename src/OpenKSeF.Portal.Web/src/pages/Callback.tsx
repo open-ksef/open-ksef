@@ -4,6 +4,12 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/useAuth'
 
 let isProcessingCallback = false
+const RETRIED_KEY = 'openksef.callback.retried'
+
+function isStaleCallback(error: unknown): boolean {
+  return (error as { error?: string } | null)?.error === 'invalid_grant'
+    || (error instanceof Error && error.message.includes('No matching state'))
+}
 
 export function Callback(): ReactElement {
   const { handleOidcCallback } = useAuth()
@@ -20,8 +26,16 @@ export function Callback(): ReactElement {
     async function processCallback(): Promise<void> {
       try {
         navigate(await handleOidcCallback(), { replace: true })
+        sessionStorage.removeItem(RETRIED_KEY)
       } catch (callbackError) {
-        setError(callbackError instanceof Error && callbackError.message ? callbackError.message : 'Nieznany błąd logowania.')
+        // A code or state used up by a double callback or back/forward: start a fresh login once instead of showing Keycloak's English error.
+        if (isStaleCallback(callbackError) && !sessionStorage.getItem(RETRIED_KEY)) {
+          sessionStorage.setItem(RETRIED_KEY, '1')
+          navigate('/login', { replace: true })
+          return
+        }
+        sessionStorage.removeItem(RETRIED_KEY)
+        setError('Nie udało się dokończyć logowania. Zaloguj się ponownie.')
       } finally {
         isProcessingCallback = false
       }

@@ -1,6 +1,8 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Networks;
 using Testcontainers.Keycloak;
 using Testcontainers.PostgreSql;
 
@@ -10,18 +12,27 @@ public sealed class TestcontainersFixture : IAsyncLifetime
 {
     public static readonly string[] RegistrationRoles = ["manage-users", "view-realm"];
 
+    public INetwork Network { get; } = new NetworkBuilder().Build();
+
     public PostgreSqlContainer Postgres { get; } = new PostgreSqlBuilder("postgres:16-alpine")
         .WithDatabase("openksef")
         .WithUsername("openksef")
         .WithPassword("openksef_test")
         .Build();
 
-    public KeycloakContainer Keycloak { get; } = new KeycloakBuilder("quay.io/keycloak/keycloak:26.8.2@sha256:c68e286cacd87b942ac1939a0a1481461109d6acd3a57dc496969a319a76bbf0")
-        .WithResourceMapping(
-            Path.Combine(AppContext.BaseDirectory, "realm-test.json"),
-            "/opt/keycloak/data/import/")
-        .WithCommand("--import-realm")
-        .Build();
+    public KeycloakContainer Keycloak { get; }
+
+    public TestcontainersFixture()
+    {
+        Keycloak = new KeycloakBuilder("quay.io/keycloak/keycloak:26.8.2@sha256:c68e286cacd87b942ac1939a0a1481461109d6acd3a57dc496969a319a76bbf0")
+            .WithResourceMapping(
+                Path.Combine(AppContext.BaseDirectory, "realm-test.json"),
+                "/opt/keycloak/data/import/")
+            .WithCommand("--import-realm")
+            .WithNetwork(Network)
+            .WithNetworkAliases("keycloak")
+            .Build();
+    }
 
     public string PostgresConnectionString => Postgres.GetConnectionString();
 
@@ -66,6 +77,7 @@ public sealed class TestcontainersFixture : IAsyncLifetime
         await Task.WhenAll(
             Postgres.DisposeAsync().AsTask(),
             Keycloak.DisposeAsync().AsTask());
+        await Network.DisposeAsync();
     }
 
     public async Task<string> GetAccessTokenAsync(
@@ -124,6 +136,29 @@ public sealed class TestcontainersFixture : IAsyncLifetime
         var users = await http.GetFromJsonAsync<JsonElement[]>(
             $"{AdminRealmUrl}/users?email={Uri.EscapeDataString(email)}&exact=true");
         return users!.Length > 0 ? users[0] : null;
+    }
+
+    public async Task<string> CreateUserAsync(string email, string password = "Test1234!")
+    {
+        using var http = await CreateAdminClientAsync();
+        var response = await http.PostAsJsonAsync($"{AdminRealmUrl}/users", new
+        {
+            username = email,
+            email,
+            firstName = "Test",
+            lastName = "User",
+            enabled = true,
+            emailVerified = true,
+            credentials = new[] { new { type = "password", value = password, temporary = false } },
+        });
+        response.EnsureSuccessStatusCode();
+        return response.Headers.Location!.Segments[^1];
+    }
+
+    public async Task<JsonElement[]> GetUserCredentialsAsync(string userId)
+    {
+        using var http = await CreateAdminClientAsync();
+        return (await http.GetFromJsonAsync<JsonElement[]>($"{AdminRealmUrl}/users/{userId}/credentials"))!;
     }
 
     public async Task GrantServiceAccountRolesAsync(IReadOnlyCollection<string> names)
@@ -224,9 +259,11 @@ public sealed class TestcontainersFixture : IAsyncLifetime
         return $"{AdminRealmUrl}/clients/{client.GetProperty("id").GetString()}/protocol-mappers/models";
     }
 
-    private string AdminRealmUrl => $"{Keycloak.GetBaseAddress().ToString().TrimEnd('/')}/admin/realms/openksef";
+    public string KeycloakBaseUrl => Keycloak.GetBaseAddress().ToString().TrimEnd('/');
 
-    private async Task<HttpClient> CreateAdminClientAsync()
+    public string AdminRealmUrl => $"{Keycloak.GetBaseAddress().ToString().TrimEnd('/')}/admin/realms/openksef";
+
+    public async Task<HttpClient> CreateAdminClientAsync()
     {
         var http = new HttpClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await GetAdminTokenAsync());

@@ -1,10 +1,10 @@
 # Login Page Setup
 
-The portal `/login` page authenticates directly against Keycloak (no redirect). Three flows:
+The portal signs in on the Keycloak pages (Authorization Code + PKCE via `oidc-client-ts`, [ADR-003](adr/adr-003-auth-pages-2fa.md)). A protected route redirects there and returns to the requested route; `/login` redirects too, and shows one button only after a session ended on a final 401. Login, registration, forgot password, 2FA (TOTP and recovery codes), Google, device pairing and required actions are Keycloak pages in the `openksef` theme: FreeMarker on `base`, the same `.auth-*` markup and CSS as the portal (`infra/keycloak`, image `openksef-keycloak`; the image build copies `ui.css`, `auth.css`, `index.css`, fonts, favicon and icons from `src/OpenKSeF.Portal.Web`). The account theme sends `/account` to the portal `Ustawienia > Bezpieczeństwo` at the `openksef-portal-web` client Base URL (set to `APP_EXTERNAL_BASE_URL` by the wizard and Settings save; relative path when empty), which reads the Account REST API and starts password, TOTP and recovery-code changes with `kc_action`.
 
-- **Username/password** -- ROPC grant via `oidc-client-ts`
-- **Google sign-in** -- Keycloak IdP brokering (`kc_idp_hint=google`)
-- **Registration** -- `POST /api/account/register` (Keycloak Admin API), then auto-login via ROPC
+- **Google sign-in** -- Keycloak shows the Google button when the `google` IdP is configured.
+- **Registration** -- Keycloak register page when realm self-registration is on. `POST /api/account/register` stays for released mobile apps.
+- **Render test** -- `node infra/keycloak/render-test/render.mjs <image> [outDir]` starts the image with mailpit, walks every theme page and state, and compares key element boxes with the designer mock (CI job `keycloak`).
 
 ## Google OAuth setup (optional)
 
@@ -49,5 +49,7 @@ API_CLIENT_SECRET=<paste-secret-here>
    - Assign `realm-management` > `manage-users` and `view-realm`
 7. With realm **Verify email** on, set **Realm settings > General > Frontend URL** to the public URL, `https://<your-host>/auth`. Otherwise the confirmation link in the email is unreachable and the user cannot log in. The API container must be able to reach this URL, because Keycloak then publishes its signing keys there. If it cannot, every authenticated API call returns 401 from the next API start. Check before you restart, and remove the Frontend URL to recover.
 8. Restart API: `docker compose -f docker-compose.dev.yml up -d api`. `restart` does not reread `.env`.
+
+The same `manage-users` role enables **Ustawienia > Administracja > Resetuj weryfikację dwuetapową**. Without it the reset returns `409` `reset_unavailable` and the portal shows the Keycloak console steps; the API never grants the role itself.
 
 Without `API_CLIENT_SECRET` or these roles, Settings save keeps registration off and register returns `403` `registration_disabled`. Roles removed after the last save give `503 Service Unavailable`. Login and Google sign-in work independently.

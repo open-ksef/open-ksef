@@ -150,3 +150,23 @@ export function updateSettings(
 ): Promise<SettingsUpdateResponse> {
   return apiClient.put<SettingsUpdateResponse>('/system/settings', request)
 }
+
+export interface TwoFactorUserResponse {
+  resetAvailable: boolean
+  reason: 'manage_users_missing' | null
+  userId: string | null
+  firstName: string | null
+  lastName: string | null
+  email: string | null
+  status: 'enabled' | 'notSet' | 'google' | null
+  recoveryCodesLeft: number | null
+  enabledAt: string | null
+}
+
+export function findTwoFactorUser(email: string): Promise<TwoFactorUserResponse> {
+  return apiClient.get<TwoFactorUserResponse>(`/system/users/two-factor?email=${encodeURIComponent(email)}`)
+}
+
+export function resetTwoFactor(userId: string): Promise<void> {
+  return apiClient.post<void>(`/system/users/${encodeURIComponent(userId)}/two-factor/reset`)
+}

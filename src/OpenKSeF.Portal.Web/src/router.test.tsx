@@ -36,15 +36,14 @@ describe('router', () => {
     root = createRoot(container)
   })
 
-  it('renders login route without authentication', async () => {
+  it('renders the login route after the session ended', async () => {
     vi.mocked(useAuth).mockReturnValue({
       user: null,
       isLoading: false,
       isAuthenticated: false,
       login: vi.fn(),
-      loginWithCredentials: vi.fn(),
-      loginWithGoogle: vi.fn(),
-      register: vi.fn(),
+      sessionEnded: true,
+      startAction: vi.fn(),
       logout: vi.fn(),
       getAccessToken: vi.fn(),
       handleOidcCallback: vi.fn(),
@@ -61,25 +60,25 @@ describe('router', () => {
       )
     })
 
-    expect(container.textContent).toContain('Zaloguj się do portalu OpenKSeF')
+    expect(container.querySelector('[data-testid="login-submit"]')?.textContent).toBe('Zaloguj się')
   })
 
-  it('redirects protected route to login when unauthenticated', async () => {
+  it('sends a protected route to the Keycloak login with its path', async () => {
+    const login = vi.fn().mockResolvedValue(undefined)
     vi.mocked(useAuth).mockReturnValue({
       user: null,
       isLoading: false,
       isAuthenticated: false,
-      login: vi.fn(),
-      loginWithCredentials: vi.fn(),
-      loginWithGoogle: vi.fn(),
-      register: vi.fn(),
+      login,
+      sessionEnded: false,
+      startAction: vi.fn(),
       logout: vi.fn(),
       getAccessToken: vi.fn(),
       handleOidcCallback: vi.fn(),
     })
 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const router = createMemoryRouter(appRoutes, { initialEntries: ['/tenants'] })
+    const router = createMemoryRouter(appRoutes, { initialEntries: ['/invoices?x=1'] })
 
     await act(async () => {
       root.render(
@@ -89,10 +88,9 @@ describe('router', () => {
       )
     })
 
-    await act(async () => {
-      await flushPromises()
-    })
+    for (let tick = 0; tick < 5; tick++) await act(flushPromises)
 
-    expect(container.textContent).toContain('Zaloguj się do portalu OpenKSeF')
+    expect(login).toHaveBeenCalledWith('/invoices?x=1')
+    expect(container.textContent).toContain('Przekierowanie do logowania')
   })
 })
