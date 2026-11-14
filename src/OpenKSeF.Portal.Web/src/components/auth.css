@@ -23,8 +23,11 @@
 .auth-card__footer .auth-card__link-btn {
   display: inline-flex;
   align-items: center;
-  min-height: 36px;
+  min-height: 44px;
+  margin: -4px 0;
 }
+.auth-secret .ui-button { position: relative; }
+.auth-secret .ui-button::after { content: ''; position: absolute; inset: -8px 0; }
 .auth-card__text strong { font-weight: 600; }
 
 .auth-card__icon--success { background: var(--ui-success-bg); color: var(--ui-success); }

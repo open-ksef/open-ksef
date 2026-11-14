@@ -306,6 +306,7 @@ async function capture(page, name, first = false) {
     if (live.smallInputs) f.push(`input<16px:${live.smallInputs}`)
     if (live.lang !== 'pl') f.push(`lang:${live.lang}`)
     if (axe.length) f.push(`axe:${axe.join(' ')}`)
+    for (const small of await smallTargets(page)) f.push(`target<44px:${small}`)
 
     if (!NO_MOCK.has(p)) {
       const ctx = await browser.newContext({ viewport, colorScheme: theme, reducedMotion: 'reduce', deviceScaleFactor: 1 })
@@ -336,6 +337,25 @@ async function capture(page, name, first = false) {
     const shown = entry.findings
     console.log(`${shown.length ? 'FAIL' : entry.known ? 'known' : 'ok  '} ${entry.file}${shown.length ? ' ' + shown.join(' ') : ''}`)
   }
+}
+
+const TARGETS = ['.auth-card__footer .auth-card__link-btn', '[data-action=copy-secret]']
+
+async function smallTargets(page) {
+  const small = []
+  for (const selector of TARGETS) {
+    for (const handle of await page.$$(selector)) {
+      await handle.scrollIntoViewIfNeeded()
+      const ok = await handle.evaluate((el) => {
+        const r = el.getBoundingClientRect()
+        const x = r.left + r.width / 2, y = r.top + r.height / 2
+        return [y - 21.5, y + 21.5].every((py) => el.contains(document.elementFromPoint(x, py)))
+      })
+      if (!ok) small.push(selector)
+    }
+  }
+  await page.evaluate(() => window.scrollTo(0, 0))
+  return small
 }
 
 async function fresh() {
@@ -517,11 +537,18 @@ async function run(users) {
   await page.fill('#device-user-code', device.user_code)
   await submit(page)
   await capture(page, 'login--device')
+  if (!(await page.isVisible('[data-pairing-notice]'))) report.push({ name: 'pairing-hint', findings: ['device grant login has no pairing hint'] })
   await signIn(page, EMAIL)
   await page.waitForLoadState('load')
   await capture(page, 'device-consent', true)
   await submit(page, 'button[name=accept]')
   await capture(page, 'device-ok', true)
+  await ctx.close()
+
+  ;({ ctx, page } = await fresh())
+  await page.goto(authUrl({}, 'openksef-mobile'))
+  await page.waitForLoadState('load')
+  if (await page.isVisible('[data-pairing-notice]')) report.push({ name: 'pairing-hint', findings: ['mobile Custom Tab login shows the pairing hint'] })
   await ctx.close()
 
   ;({ ctx, page } = await fresh())

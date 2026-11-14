@@ -4,7 +4,7 @@
 <@layout.registrationLayout displayMessage=false displayInfo=true brandH1=true pageTitle="Logowanie"; section>
     <#if section = "form">
         <p class="auth-card__desc"><#if reauth>Zaloguj się ponownie, aby kontynuować<#else>Zaloguj się do portalu OpenKSeF</#if></p>
-        <#if device && !reauth><@layout.notice "info" "smartphone">Logujesz telefon. Po zalogowaniu potwierdzisz kod z aplikacji.</@layout.notice></#if>
+        <#if device && !reauth><div data-pairing-notice hidden><@layout.notice "info" "smartphone">Logujesz telefon. Po zalogowaniu potwierdzisz kod z aplikacji.</@layout.notice></div></#if>
         <#if messagesPerField.existsError('username','password')>
             <@layout.formError>${kcSanitize(messagesPerField.getFirstError('username','password'))?no_esc}</@layout.formError>
         <#elseif message?has_content && message.summary == msg("emailSentMessage")>

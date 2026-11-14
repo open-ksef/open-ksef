@@ -21,6 +21,14 @@ function flash(button, text) {
   setTimeout(() => { label.textContent = original }, 2000)
 }
 
+// Keycloak gives login pages no sign of the device grant, so the code page marks the tab for the pairing hint.
+const pairingNotice = document.querySelector('[data-pairing-notice]')
+if (pairingNotice && sessionStorage.getItem('openksef-pairing')) pairingNotice.hidden = false
+else if (!document.getElementById('kc-form-login')) sessionStorage.removeItem('openksef-pairing')
+document.addEventListener('submit', (event) => {
+  if (event.target.id === 'kc-user-verify-device-user-code-form') sessionStorage.setItem('openksef-pairing', '1')
+})
+
 const resentNotice = document.querySelector('[data-resent-notice]')
 if (resentNotice && sessionStorage.getItem('openksef-resent')) {
   sessionStorage.removeItem('openksef-resent')
