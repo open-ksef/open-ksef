@@ -1,6 +1,6 @@
 # ADR-002: Keycloak-hosted login with code+PKCE, device-grant pairing
 
-Status: accepted (2026-11-03), amended 2026-11-13 (M2 plan: decisions 4, 8, 9, deploy order, consequences).
+Status: accepted (2026-11-03), amended 2026-11-13 (M2 plan: decisions 4, 8, 9, deploy order, consequences), amended 2026-11-14 (T-722, CEO): decision 1 suspended, portal keeps its own ROPC /login form; the realm policy does not set loginTheme; pairing card hidden in the portal.
 
 ## Context
 

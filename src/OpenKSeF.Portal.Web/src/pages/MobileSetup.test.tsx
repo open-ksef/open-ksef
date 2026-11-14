@@ -11,7 +11,7 @@ import { signOutAllDevices } from '@/auth/signOutAll'
 import toast from 'react-hot-toast'
 import { MobileSetupPage } from './MobileSetup'
 
-const { qrValue } = vi.hoisted(() => ({ qrValue: vi.fn() }))
+const { qrValue, pairing } = vi.hoisted(() => ({ qrValue: vi.fn(), pairing: { enabled: false } }))
 
 vi.mock('qrcode.react', () => ({
   QRCodeSVG: ({ value }: { value: string }) => {
@@ -23,6 +23,12 @@ vi.mock('@/api/endpoints/devices', () => ({ listDevices: vi.fn(), sendTestNotifi
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/auth/signOutAll', () => ({ signOutAllDevices: vi.fn() }))
 vi.mock('@/auth/config', () => ({ oidcConfig: { authority: '/auth/realms/openksef' } }))
+vi.mock('@/auth/pairing', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/auth/pairing')>()),
+  get PAIRING_CODE_ENABLED() {
+    return pairing.enabled
+  },
+}))
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 
 const RAW_TOKEN = 'fcm-token-abcdefghijklmnopqrstuvwxyz-1234'
@@ -147,15 +153,24 @@ describe('Telefon', () => {
     expect(container.querySelector('[role="alertdialog"]')).toBeNull()
   })
 
+  it('hides the pairing code card', async () => {
+    await render()
+
+    expect(by('pairing-code-input')).toBeNull()
+    expect(container.textContent).not.toContain('Zaloguj telefon kodem')
+  })
+
   describe('pairing code', () => {
     const assign = vi.fn()
 
     beforeEach(() => {
+      pairing.enabled = true
       vi.stubGlobal('location', { ...window.location, origin: 'https://ksef.example.test', assign })
     })
 
     afterEach(() => {
       vi.unstubAllGlobals()
+      pairing.enabled = false
     })
 
     async function submit(value: string): Promise<void> {

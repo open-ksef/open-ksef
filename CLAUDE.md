@@ -157,7 +157,7 @@ Run standalone: `./scripts/setup-test-data.ps1` (requires Docker stack + test us
 
 ### Custom login page
 
-Portal login is the Keycloak-hosted page (code + PKCE) in the `openksef` theme: `infra/keycloak` (image `openksef-keycloak`; the dev compose mounts the theme on the stock image). The realm uses it after a Settings save (`loginTheme=openksef`). `/mobile-setup` takes the phone's pairing code and opens `{authority}/device?user_code=`. Google and the mobile register endpoint: [docs/login-page-setup.md](docs/login-page-setup.md).
+Portal `/login` is our own form: ROPC grant (no Keycloak redirect), Google IdP brokering (`kc_idp_hint=google`), registration via `POST /api/account/register`. The realm policy does not set `loginTheme`; the `openksef` theme in `infra/keycloak` is not used by the portal. The `/mobile-setup` pairing-code card is hidden (`PAIRING_CODE_ENABLED` in `auth/pairing.ts`). Setup: [docs/login-page-setup.md](docs/login-page-setup.md).
 
 ## MCP servers for agent testing
 

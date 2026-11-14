@@ -42,7 +42,9 @@ describe('router', () => {
       isLoading: false,
       isAuthenticated: false,
       login: vi.fn(),
-      sessionEnded: false,
+      loginWithCredentials: vi.fn(),
+      loginWithGoogle: vi.fn(),
+      register: vi.fn(),
       logout: vi.fn(),
       getAccessToken: vi.fn(),
       handleOidcCallback: vi.fn(),
@@ -59,24 +61,25 @@ describe('router', () => {
       )
     })
 
-    expect(container.querySelector('[data-testid="login-submit"]')?.textContent).toBe('Zaloguj się')
+    expect(container.textContent).toContain('Zaloguj się do portalu OpenKSeF')
   })
 
-  it('sends a protected route to the Keycloak login with its path', async () => {
-    const login = vi.fn().mockResolvedValue(undefined)
+  it('redirects protected route to login when unauthenticated', async () => {
     vi.mocked(useAuth).mockReturnValue({
       user: null,
       isLoading: false,
       isAuthenticated: false,
-      login,
-      sessionEnded: false,
+      login: vi.fn(),
+      loginWithCredentials: vi.fn(),
+      loginWithGoogle: vi.fn(),
+      register: vi.fn(),
       logout: vi.fn(),
       getAccessToken: vi.fn(),
       handleOidcCallback: vi.fn(),
     })
 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const router = createMemoryRouter(appRoutes, { initialEntries: ['/invoices?x=1'] })
+    const router = createMemoryRouter(appRoutes, { initialEntries: ['/tenants'] })
 
     await act(async () => {
       root.render(
@@ -86,9 +89,10 @@ describe('router', () => {
       )
     })
 
-    for (let tick = 0; tick < 5; tick++) await act(flushPromises)
+    await act(async () => {
+      await flushPromises()
+    })
 
-    expect(login).toHaveBeenCalledWith('/invoices?x=1')
-    expect(container.textContent).toContain('Przekierowanie do logowania')
+    expect(container.textContent).toContain('Zaloguj się do portalu OpenKSeF')
   })
 })

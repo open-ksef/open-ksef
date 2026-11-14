@@ -1,9 +1,10 @@
 # Login Page Setup
 
-The portal signs in on the Keycloak page (Authorization Code + PKCE via `oidc-client-ts`, ADR-002). A protected route redirects there and returns to the requested route; `/login` is one button, shown after logout and when a session ends on a final 401. Login, registration, forgot password, Google and required actions are Keycloak pages in the `openksef` theme (`infra/keycloak`, image `openksef-keycloak`).
+The portal `/login` page authenticates directly against Keycloak (no redirect). Three flows:
 
-- **Google sign-in** -- Keycloak shows the Google button when the `google` IdP is configured.
-- **Registration** -- Keycloak register page when realm self-registration is on. `POST /api/account/register` stays for released mobile apps.
+- **Username/password** -- ROPC grant via `oidc-client-ts`
+- **Google sign-in** -- Keycloak IdP brokering (`kc_idp_hint=google`)
+- **Registration** -- `POST /api/account/register` (Keycloak Admin API), then auto-login via ROPC
 
 ## Google OAuth setup (optional)
 
@@ -25,7 +26,7 @@ GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx
 
 ## Registration endpoint
 
-`POST /api/account/register` works only after the manual steps below. The setup wizard does not do them, on purpose: `manage-users` lets whoever holds the `openksef-api` secret reset the password of any user, and the wizard's copy of that secret is in the database and its backups. On a wizard install with self-registration on, the sign-up form returns 503. Users register on the Keycloak register page instead.
+`POST /api/account/register` works only after the manual steps below. The setup wizard does not do them, on purpose: `manage-users` lets whoever holds the `openksef-api` secret reset the password of any user, and the wizard's copy of that secret is in the database and its backups. On a wizard install with self-registration on, the sign-up form returns 503. Use Google sign-in or create the account in the Keycloak console.
 
 Every request reads the realm, with no cache: registration off returns 403, a failed read returns 503, and no user is created in either case.
 
