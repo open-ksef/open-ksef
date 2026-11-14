@@ -128,7 +128,7 @@ describe('Self-host compose and release', () => {
     expect(compose).not.toContain('--features')
     expect(read('docker-compose.dev.yml')).not.toContain('--features')
     expect(read('docker-compose.dev.yml')).toContain('./infra/keycloak/themes/openksef:/opt/keycloak/themes/openksef:ro')
-    expect(read('infra/keycloak/Dockerfile')).toContain('FROM quay.io/keycloak/keycloak:26.0.8')
+    expect(read('infra/keycloak/Dockerfile')).toContain('FROM quay.io/keycloak/keycloak:26.8.2@sha256:c68e286cacd87b942ac1939a0a1481461109d6acd3a57dc496969a319a76bbf0')
   })
 
   it('starts the worker after a healthy API', () => {

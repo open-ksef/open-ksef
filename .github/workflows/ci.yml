@@ -101,6 +101,9 @@ jobs:
       - name: nginx -t
         run: docker run --rm openksef-gateway:ci nginx -t
 
+      - name: X-Forwarded-Prefix cleared
+        run: docker run --rm openksef-gateway:ci nginx -T | grep -q 'proxy_set_header X-Forwarded-Prefix "";'
+
       - name: 2 MB POST returns JSON 413
         run: |
           docker run -d --name gateway -p 8080:8080 openksef-gateway:ci

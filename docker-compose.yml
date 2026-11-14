@@ -43,7 +43,6 @@ services:
       KC_HTTP_RELATIVE_PATH: /auth
       KC_PROXY_HEADERS: xforwarded
       KC_HOSTNAME_STRICT: "false"
-      KC_HOSTNAME_STRICT_HTTPS: "false"
 
   api:
     image: ghcr.io/open-ksef/openksef-api:${OPENKSEF_VERSION:-latest}

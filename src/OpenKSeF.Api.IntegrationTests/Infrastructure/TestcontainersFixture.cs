@@ -16,7 +16,7 @@ public sealed class TestcontainersFixture : IAsyncLifetime
         .WithPassword("openksef_test")
         .Build();
 
-    public KeycloakContainer Keycloak { get; } = new KeycloakBuilder("quay.io/keycloak/keycloak:26.0")
+    public KeycloakContainer Keycloak { get; } = new KeycloakBuilder("quay.io/keycloak/keycloak:26.8.2@sha256:c68e286cacd87b942ac1939a0a1481461109d6acd3a57dc496969a319a76bbf0")
         .WithResourceMapping(
             Path.Combine(AppContext.BaseDirectory, "realm-test.json"),
             "/opt/keycloak/data/import/")
@@ -143,6 +143,16 @@ public sealed class TestcontainersFixture : IAsyncLifetime
         var roles = mapped.Where(r => names.Contains(r.GetProperty("name").GetString()!)).ToArray();
         using var request = new HttpRequestMessage(HttpMethod.Delete, mappingsUrl) { Content = JsonContent.Create(roles) };
         (await http.SendAsync(request)).EnsureSuccessStatusCode();
+    }
+
+    public async Task SetApiAdminScopeAsync(bool assigned)
+    {
+        using var http = await CreateAdminClientAsync();
+        var apiClient = (await http.GetFromJsonAsync<JsonElement[]>($"{AdminRealmUrl}/clients?clientId=openksef-api"))!.Single();
+        var scope = (await http.GetFromJsonAsync<JsonElement[]>($"{AdminRealmUrl}/client-scopes"))!
+            .Single(s => s.GetProperty("name").GetString() == "kc-admin-api");
+        var url = $"{AdminRealmUrl}/clients/{apiClient.GetProperty("id").GetString()}/default-client-scopes/{scope.GetProperty("id").GetString()}";
+        (assigned ? await http.PutAsync(url, null) : await http.DeleteAsync(url)).EnsureSuccessStatusCode();
     }
 
     public async Task<IReadOnlyCollection<string>> GetServiceAccountRoleNamesAsync()

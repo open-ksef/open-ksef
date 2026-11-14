@@ -288,6 +288,31 @@ A row that goes bad while the hosts run does not stop them. The Worker keeps run
 
 The API also stops at start when it cannot read `SystemConfigs` after 5 attempts, rather than running on `KSEF_BASE_URL`. Check Postgres and start it again.
 
+## Keycloak 26.8: upgrade and rollback
+
+The release with Keycloak 26.8 migrates the `keycloak` database on the first start of the new Keycloak image. The migration is forward-only: there is no downgrade, and an older Keycloak image must never start on the migrated database.
+
+Upgrade:
+
+1. Back up the Keycloak database and check the dump: `docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc keycloak' > before-keycloak-26-8.dump`, then `docker compose exec -T postgres pg_restore -l < before-keycloak-26-8.dump > /dev/null; echo "exit=$?"` must print `exit=0`.
+2. Pin `OPENKSEF_VERSION` to the release tag. Do not run Keycloak from `:latest`.
+3. `docker compose pull && docker compose up -d`. Keycloak runs `start` without `--features`. Wait for `Keycloak 26.8.2 ... started` in `docker compose logs keycloak`.
+4. Check a password login and, if set up, a Google login. Existing sessions and app refresh tokens stay valid. Browser users may need to log in once more.
+5. Registration on: open Settings and save once. Keycloak 26.8.2 accepts Admin API tokens only with the `kc-admin-api` client scope, and the save assigns it to `openksef-api`. Until then register returns 503.
+
+A compose you edited to run `start-dev` or `--features=token-exchange,admin-fine-grained-authz` must use `command: start` from the attached `docker-compose.yml`. Remove `KC_HOSTNAME_STRICT_HTTPS`: Keycloak 26 ignores it.
+
+Rollback: stop Keycloak, recreate the `keycloak` database owned by the Keycloak DB user (`KC_DB_USERNAME`, default `POSTGRES_USER`), restore the dump, set `OPENKSEF_VERSION` in `.env` back to the previous tag, then start. On `:latest` or the new tag, Keycloak 26.8 migrates the restored database again. Everything written to Keycloak after the dump is lost: new users, password changes, realm edits. Refresh tokens issued before the dump keep working.
+
+```bash
+docker compose stop keycloak
+KC_OWNER=$(docker inspect openksef-keycloak --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^KC_DB_USERNAME=//p')
+docker compose exec -T -e KC_OWNER="$KC_OWNER" postgres sh -c 'dropdb -U "$POSTGRES_USER" keycloak && createdb -U "$POSTGRES_USER" -O "$KC_OWNER" keycloak'
+docker compose exec -T -e KC_OWNER="$KC_OWNER" postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d keycloak --no-owner --role="$KC_OWNER"' < before-keycloak-26-8.dump
+# set OPENKSEF_VERSION in .env to the previous tag
+docker compose pull keycloak && docker compose up -d keycloak
+```
+
 ## Registration flag: upgrade
 
 After the upgrade, open Settings and save once. This stores the registration flag in `SystemConfigs` (`registration_allowed`): `true` only when realm registration is on and the service account can register users ([login-page-setup.md](login-page-setup.md#registration-endpoint)). Until then the login page hides the register link and register returns 403. Settings is the only supported toggle for registration: the API does not see changes made in the Keycloak console.
