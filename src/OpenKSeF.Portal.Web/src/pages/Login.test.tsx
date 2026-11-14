@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { LoginPage } from './Login'
@@ -9,22 +9,19 @@ import { LoginPage } from './Login'
 const auth = vi.hoisted(() => ({
   isAuthenticated: false,
   isLoading: false,
-  loginWithCredentials: vi.fn(),
-  loginWithGoogle: vi.fn(),
-  register: vi.fn(),
+  sessionEnded: true,
+  login: vi.fn(),
 }))
 
 vi.mock('@/auth/useAuth', () => ({ useAuth: () => auth }))
-
-const setupStatus = vi.hoisted(() => ({ data: undefined as { isInitialized: boolean; registrationAllowed?: boolean } | undefined }))
-
-vi.mock('@/hooks/useSetupStatus', () => ({ useSetupStatus: () => setupStatus }))
 
 describe('LoginPage', () => {
   let root: Root
   let container: HTMLDivElement
 
   beforeEach(() => {
+    vi.clearAllMocks()
+    auth.sessionEnded = true
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -36,86 +33,71 @@ describe('LoginPage', () => {
     container.remove()
   })
 
-  it('shows the brand mark as an SVG and no emoji', async () => {
+  async function render(from?: string, search = ''): Promise<void> {
     await act(async () => {
       root.render(
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[{ pathname: '/login', search, state: from ? { from } : null }]}>
           <LoginPage />
         </MemoryRouter>,
       )
     })
+  }
+
+  it('has one login button, no credential form and no emoji', async () => {
+    await render()
 
     const logo = container.querySelector('.auth-logo')
-    expect(logo?.textContent).toBe('')
     expect(logo?.querySelector('svg path')?.getAttribute('fill')).toBe('currentColor')
+    expect(container.querySelectorAll('button')).toHaveLength(1)
+    expect(container.querySelector('input, form')).toBeNull()
     expect(container.textContent).not.toMatch(/\p{Extended_Pictographic}/u)
   })
-  it.each([
-    [undefined, true],
-    [{ isInitialized: true }, true],
-    [{ isInitialized: true, registrationAllowed: true }, true],
-    [{ isInitialized: true, registrationAllowed: false }, false],
-  ])('register link for setup status %j shown=%s', async (data, shown) => {
-    setupStatus.data = data
-    await act(async () => {
-      root.render(
-        <MemoryRouter>
-          <LoginPage />
-        </MemoryRouter>,
-      )
-    })
 
-    expect(container.querySelector('[data-testid="switch-to-register"]') !== null).toBe(shown)
-    expect(container.textContent?.includes('Nie masz konta?')).toBe(shown)
+  it('redirects to Keycloak at once with the route it came from', async () => {
+    auth.sessionEnded = false
+    auth.login.mockResolvedValue(undefined)
+
+    await render('/telefon?x=1')
+
+    expect(auth.login).toHaveBeenCalledTimes(1)
+    expect(auth.login).toHaveBeenCalledWith('/telefon?x=1')
+    expect(container.querySelector<HTMLButtonElement>('[data-testid="login-submit"]')!.disabled).toBe(true)
   })
 
-  it('after form login goes to the route it came from, and Google gets it too', async () => {
-    auth.loginWithCredentials.mockResolvedValue(undefined)
-    function Where() {
-      return <div>at={useLocation().pathname + useLocation().search}</div>
-    }
-    await act(async () => {
-      root.render(
-        <MemoryRouter initialEntries={[{ pathname: '/login', state: { from: '/telefon?x=1' } }]}>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="*" element={<Where />} />
-          </Routes>
-        </MemoryRouter>,
-      )
-    })
+  it('takes the return path from the query when there is no router state', async () => {
+    auth.sessionEnded = false
+    auth.login.mockResolvedValue(undefined)
 
-    act(() => container.querySelector<HTMLButtonElement>('[data-testid="login-google"]')!.click())
-    expect(auth.loginWithGoogle).toHaveBeenCalledWith('/telefon?x=1')
+    await render(undefined, '?returnTo=%2Fsettings%2Fsecurity')
 
-    const type = (id: string, value: string) => {
-      const input = container.querySelector<HTMLInputElement>(`[data-testid="${id}"]`)!
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    }
-    act(() => {
-      type('login-email', 'jan@firma.pl')
-      type('login-password', 'Haslo1234!')
-    })
+    expect(auth.login).toHaveBeenCalledWith('/settings/security')
+  })
 
-    await act(async () => {
-      container.querySelector('[data-testid="login-submit"]')!.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-    })
-    expect(auth.loginWithCredentials).toHaveBeenCalledWith('jan@firma.pl', 'Haslo1234!')
-    expect(container.textContent).toBe('at=/telefon?x=1')
+  it('stays on the page after the session ended and logs in on click', async () => {
+    auth.login.mockResolvedValue(undefined)
+    await render('/telefon?x=1')
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="login-submit"]')!.click())
+
+    expect(auth.login).toHaveBeenCalledWith('/telefon?x=1')
   })
 
   it.each(['//evil.com', 'https://evil.com'])('ignores an off-site return path %s', async (from) => {
-    auth.loginWithGoogle.mockClear()
-    await act(async () => {
-      root.render(
-        <MemoryRouter initialEntries={[{ pathname: '/login', state: { from } }]}>
-          <LoginPage />
-        </MemoryRouter>,
-      )
-    })
+    auth.login.mockResolvedValue(undefined)
+    await render(from)
 
-    act(() => container.querySelector<HTMLButtonElement>('[data-testid="login-google"]')!.click())
-    expect(auth.loginWithGoogle).toHaveBeenCalledWith('/')
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="login-submit"]')!.click())
+
+    expect(auth.login).toHaveBeenCalledWith('/')
+  })
+
+  it('shows an error and enables the button again when Keycloak cannot be reached', async () => {
+    auth.login.mockRejectedValue(new Error('Failed to fetch'))
+    await render()
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="login-submit"]')!.click())
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Nie udało się otworzyć strony logowania')
+    expect(container.querySelector<HTMLButtonElement>('[data-testid="login-submit"]')!.disabled).toBe(false)
   })
 })

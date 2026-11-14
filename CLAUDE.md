@@ -92,7 +92,7 @@ The project uses direct `ApplicationDbContext` injection -- there is no generic 
 
 `docker-compose.dev.yml` provides local-build dev stack (6 services):
 - **Postgres** (:5432) - shared by Keycloak and app
-- **Keycloak** (:8082) - identity provider (stock image + mounted `openksef` theme; `openksef` realm created by admin setup wizard)
+- **Keycloak** (:8082) - identity provider (`openksef-keycloak:dev-local` built from `infra/keycloak` with the portal CSS; `openksef` realm created by admin setup wizard)
 - **API** (:8081) - .NET 10 REST API with Swagger
 - **Worker** - background KSeF sync
 - **Portal Web** (:8083) - React SPA
@@ -157,7 +157,7 @@ Run standalone: `./scripts/setup-test-data.ps1` (requires Docker stack + test us
 
 ### Custom login page
 
-Portal `/login` is our own form: ROPC grant (no Keycloak redirect), Google IdP brokering (`kc_idp_hint=google`), registration via `POST /api/account/register`. The realm policy does not set `loginTheme`; the `openksef` theme in `infra/keycloak` is not used by the portal. The `/mobile-setup` pairing-code card is hidden (`PAIRING_CODE_ENABLED` in `auth/pairing.ts`). Setup: [docs/login-page-setup.md](docs/login-page-setup.md).
+Portal login is the Keycloak-hosted page (code + PKCE) in the `openksef` theme (`infra/keycloak`: FreeMarker on `base`, CSS copied from the portal at image build, render test in `render-test/`). `/login` is a redirect shim. The realm policy sets `loginTheme`/`accountTheme` only when Keycloak lists the `openksef` theme, and on Keycloak 26.4+ binds its own 2FA flows (TOTP for password logins, recovery codes, [ADR-003](docs/adr/adr-003-auth-pages-2fa.md)). `Ustawienia > Bezpieczeństwo` uses the Account REST API and `kc_action`. Setup: [docs/login-page-setup.md](docs/login-page-setup.md).
 
 ## MCP servers for agent testing
 

@@ -510,6 +510,8 @@ public class SystemSettingsApiTests : IAsyncLifetime
         var smtp = new ContainerBuilder("alpine:3.20")
             // A Windows checkout gives this literal CRLF line ends, and the script then drops the connection after its banner.
             .WithEntrypoint("sh", "-c", FakeSmtpServer.ReplaceLineEndings("\n"))
+            .WithNetwork(_fixture.Network)
+            .WithNetworkAliases("fakesmtp")
             .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("ready"))
             .Build();
         await smtp.StartAsync();
@@ -517,7 +519,7 @@ public class SystemSettingsApiTests : IAsyncLifetime
         {
             object Config(string? password) => new
             {
-                host = smtp.IpAddress,
+                host = "fakesmtp",
                 port = "1025",
                 from = "noreply@openksef.test",
                 starttls = false,

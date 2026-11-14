@@ -1,7 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useRef, useState, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
-import { Link } from 'react-router-dom'
 
 import { registerDevice } from '@/api/endpoints/devices'
 import { listTenants } from '@/api/endpoints/tenants'
@@ -9,15 +8,21 @@ import { ApiError } from '@/api/errors'
 
 import {
   DEFAULT_RELAY_URL,
+  findTwoFactorUser,
   getSettings,
+  resetTwoFactor,
+  type TwoFactorUserResponse,
   updateSettings,
   type SettingsResponse,
   type SettingsUpdateRequest,
   type SmtpConfig,
 } from '@/api/endpoints/system'
 import { Button } from '@/components/Button'
+import { ErrorBanner } from '@/components/ErrorBanner'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Icon } from '@/components/Icon'
+import { SettingsHeader } from '@/components/SettingsHeader'
+import { polishPlural } from '@/invoicing/format'
 import { notifyMutationError, notifyMutationSuccess } from '@/notifications'
 
 function ManualDeviceRegistration(): ReactElement {
@@ -81,6 +86,138 @@ function ManualDeviceRegistration(): ReactElement {
           </Button>
         </div>
       </div>
+    </section>
+  )
+}
+
+function twoFactorText(user: TwoFactorUserResponse): string {
+  if (user.status === 'google') return 'Przez Google'
+  if (user.status === 'notSet') return 'Nieustawiona'
+  if (user.recoveryCodesLeft === null) return 'Włączona'
+  const n = user.recoveryCodesLeft
+  return `Włączona, ${n} ${polishPlural(n, ['kod zapasowy', 'kody zapasowe', 'kodów zapasowych'])}`
+}
+
+function ConsoleSteps(): ReactElement {
+  return (
+    <div className="auth-notice auth-notice--info" role="status" data-testid="reset-console-steps">
+      <Icon name="circle-alert" />
+      <span>
+        Reset w portalu jest wyłączony. Zrób go w konsoli administracyjnej Keycloak: realm <b>openksef</b>, Users, ten użytkownik, Credentials,
+        usuń <b>otp</b> i <b>recovery-authn-codes</b>. Aby włączyć reset w portalu: Clients, <b>openksef-api</b>, Service account roles,
+        przypisz <b>realm-management</b> <b>manage-users</b>. Ta rola pozwala też ustawić hasło każdemu użytkownikowi.
+      </span>
+    </div>
+  )
+}
+
+function TwoFactorReset(): ReactElement {
+  const [email, setEmail] = useState('')
+  const [user, setUser] = useState<TwoFactorUserResponse | null>(null)
+  const [notFound, setNotFound] = useState(false)
+  const [forbidden, setForbidden] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [done, setDone] = useState(false)
+  const [unavailable, setUnavailable] = useState(false)
+
+  const fail = (error: unknown) => {
+    const status = error instanceof ApiError ? error.status : 0
+    if (status === 404) setNotFound(true)
+    else if (status === 403) setForbidden(true)
+    else if (status === 409) setUnavailable(true)
+    else setFailed(true)
+  }
+
+  const find = useMutation({
+    mutationFn: (value: string) => findTwoFactorUser(value),
+    onMutate: () => {
+      setUser(null)
+      setNotFound(false)
+      setForbidden(false)
+      setFailed(false)
+      setDone(false)
+      setUnavailable(false)
+    },
+    onSuccess: (result) => {
+      setUser(result)
+      setUnavailable(!result.resetAvailable)
+    },
+    onError: fail,
+  })
+
+  const reset = useMutation({
+    mutationFn: (userId: string) => resetTwoFactor(userId),
+    onSuccess: () => {
+      setDone(true)
+      setUser((current) => current && { ...current, status: 'notSet', recoveryCodesLeft: null })
+    },
+    onError: fail,
+    onSettled: () => setConfirmOpen(false),
+  })
+
+  const name = user ? [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email : ''
+
+  return (
+    <section className="ui-card ui-card--danger" aria-labelledby="settings-2fa-reset-title">
+      <h2 id="settings-2fa-reset-title">Weryfikacja dwuetapowa użytkownika</h2>
+      <p className="settings-muted">Gdy ktoś zgubił telefon z aplikacją i kody zapasowe. Przy następnym logowaniu hasłem ustawi weryfikację od nowa.</p>
+      <form
+        className="admin-reset"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (email.trim()) find.mutate(email.trim())
+        }}
+      >
+        <div className="ui-form-group">
+          <label htmlFor="admin-reset-email">E-mail użytkownika</label>
+          <input id="admin-reset-email" data-testid="admin-reset-email" type="email" required placeholder="jan@firma.pl"
+            value={email} onChange={(event) => setEmail(event.target.value)} />
+        </div>
+        <Button type="submit" variant="outline" data-testid="admin-reset-find" disabled={find.isPending}>
+          <Icon name="search" /> {find.isPending ? 'Szukanie…' : 'Znajdź'}
+        </Button>
+      </form>
+      {notFound && (
+        <div className="ui-form-error" role="alert"><span className="ui-form-error__icon" aria-hidden="true">!</span>Nie ma użytkownika z tym adresem.</div>
+      )}
+      {forbidden && <ErrorBanner message="Nie masz uprawnień administratora." />}
+      {failed && <ErrorBanner message="Serwer logowania nie odpowiada. Spróbuj ponownie za chwilę." />}
+      {user?.email && (
+        <dl className="settings-kv" data-testid="admin-reset-user">
+          <dt>Użytkownik</dt>
+          <dd>{name}</dd>
+          <dt>E-mail</dt>
+          <dd>{user.email}</dd>
+          <dt>Weryfikacja</dt>
+          <dd>{twoFactorText(user)}</dd>
+        </dl>
+      )}
+      {done && (
+        <div className="auth-notice auth-notice--success" role="status">
+          <Icon name="circle-check" />
+          <span>Zresetowano. {name} ustawi weryfikację przy następnym logowaniu hasłem.</span>
+        </div>
+      )}
+      {unavailable && <ConsoleSteps />}
+      {user?.status === 'enabled' && !unavailable && !done && (
+        <div className="settings-actions">
+          <button type="button" className="ui-button ui-button--danger-outline ui-button--md" data-testid="admin-reset-submit" onClick={() => setConfirmOpen(true)}>
+            Resetuj weryfikację dwuetapową
+          </button>
+        </div>
+      )}
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Zresetować weryfikację dwuetapową?"
+        message={`${name} (${user?.email ?? ''}) straci aplikację uwierzytelniającą i kody zapasowe. Przy następnym logowaniu hasłem ustawi weryfikację od nowa. Zapiszemy, kto wykonał reset.`}
+        confirmLabel="Resetuj weryfikację"
+        pendingLabel="Resetowanie…"
+        variant="danger"
+        isPending={reset.isPending}
+        onConfirm={() => user?.userId && reset.mutate(user.userId)}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </section>
   )
 }
@@ -296,60 +433,52 @@ export function SettingsAdminPage(): ReactElement {
     }
   }
 
-  const backLink = (
-    <Link to="/settings" className="back-link">
-      <Icon name="arrow-left" size={14} /> Ustawienia
-    </Link>
-  )
-
   if (!authenticated) {
     return (
       <section>
-        {backLink}
-        <header className="page-header">
-          <h1>Administracja instancji</h1>
-        </header>
-
-        <section className="ui-card settings-login" aria-labelledby="settings-login-title">
-          <h2 id="settings-login-title">Zaloguj się jako administrator</h2>
-          <p className="company-muted">Tylko dla osoby, która zarządza tą instancją OpenKSeF.</p>
-          <div className="onboarding-form">
-            <div className="ui-form-group">
-              <label htmlFor="settings-kc-user">Nazwa użytkownika administratora</label>
-              <input id="settings-kc-user" data-testid="settings-kc-user" type="text" autoComplete="off"
-                value={kcUsername} onInput={e => setKcUsername((e.target as HTMLInputElement).value)} />
+        <SettingsHeader current="/settings/admin" />
+        <div className="company-grid">
+          <TwoFactorReset />
+          <section className="ui-card settings-login" aria-labelledby="settings-login-title">
+            <h2 id="settings-login-title">Zaloguj się jako administrator</h2>
+            <p className="company-muted">Tylko dla osoby, która zarządza tą instancją OpenKSeF.</p>
+            <div className="onboarding-form">
+              <div className="ui-form-group">
+                <label htmlFor="settings-kc-user">Nazwa użytkownika administratora</label>
+                <input id="settings-kc-user" data-testid="settings-kc-user" type="text" autoComplete="off"
+                  value={kcUsername} onInput={e => setKcUsername((e.target as HTMLInputElement).value)} />
+              </div>
+              <div className="ui-form-group">
+                <label htmlFor="settings-kc-pass">Hasło administratora</label>
+                <input id="settings-kc-pass" data-testid="settings-kc-pass" type="password"
+                  value={kcPassword} onInput={e => setKcPassword((e.target as HTMLInputElement).value)}
+                  onKeyDown={e => { if (e.key === 'Enter') void handleLogin() }} />
+              </div>
+              {error && <div className="ui-form-error" role="alert">{error}</div>}
+              <div>
+                <Button data-testid="settings-login" onClick={() => void handleLogin()} disabled={loading}>
+                  {loading ? 'Logowanie…' : 'Zaloguj'}
+                </Button>
+              </div>
             </div>
-            <div className="ui-form-group">
-              <label htmlFor="settings-kc-pass">Hasło administratora</label>
-              <input id="settings-kc-pass" data-testid="settings-kc-pass" type="password"
-                value={kcPassword} onInput={e => setKcPassword((e.target as HTMLInputElement).value)}
-                onKeyDown={e => { if (e.key === 'Enter') void handleLogin() }} />
-            </div>
-            {error && <div className="ui-form-error" role="alert">{error}</div>}
-            <div>
-              <Button data-testid="settings-login" onClick={() => void handleLogin()} disabled={loading}>
-                {loading ? 'Logowanie…' : 'Zaloguj'}
-              </Button>
-            </div>
-          </div>
-        </section>
+          </section>
+        </div>
       </section>
     )
   }
 
   return (
     <section>
-      {backLink}
-      <header className="page-header">
-        <h1>Administracja instancji</h1>
+      <SettingsHeader current="/settings/admin">
         <Button data-testid="settings-save" onClick={() => void handleSave()} disabled={saving}>
           {saving ? 'Zapisywanie…' : 'Zapisz zmiany'}
         </Button>
-      </header>
+      </SettingsHeader>
 
       {error && <div className="ui-form-error settings-error" role="alert">{error}</div>}
 
       <div className="company-grid">
+        <TwoFactorReset />
         <section className="ui-card" aria-labelledby="settings-basic-title">
           <h2 id="settings-basic-title">Podstawowe</h2>
           <div className="onboarding-form">

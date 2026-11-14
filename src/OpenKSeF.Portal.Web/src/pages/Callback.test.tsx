@@ -24,6 +24,7 @@ describe('Callback page', () => {
     vi.clearAllMocks()
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     window.history.replaceState({}, '', '/callback?code=abc&state=xyz')
+    sessionStorage.clear()
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -44,17 +45,35 @@ describe('Callback page', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/firmy/1/faktury?strona=2', { replace: true })
   })
 
-  it('renders error state on callback failure', async () => {
-    mockHandleOidcCallback.mockRejectedValue(new Error('invalid_grant'))
-
+  async function renderCallback(): Promise<void> {
     const { Callback } = await import('./Callback')
-
     await act(async () => {
       root.render(<StrictMode><Callback /></StrictMode>)
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
+  }
+
+  it('shows a Polish error, never the raw one', async () => {
+    mockHandleOidcCallback.mockRejectedValue(new Error('Network Error'))
+
+    await renderCallback()
 
     expect(container.textContent).toContain('Logowanie nie powiodło się')
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe('invalid_grant')
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Nie udało się dokończyć logowania. Zaloguj się ponownie.')
+  })
+
+  it('starts a fresh login once on a stale code, then shows the Polish error', async () => {
+    mockHandleOidcCallback.mockRejectedValue(Object.assign(new Error('Code not valid'), { error: 'invalid_grant' }))
+
+    await renderCallback()
+    expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true })
+    expect(container.textContent).not.toContain('Code not valid')
+
+    act(() => root.unmount())
+    root = createRoot(container)
+    mockNavigate.mockClear()
+    await renderCallback()
+    expect(mockNavigate).not.toHaveBeenCalled()
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Nie udało się dokończyć logowania. Zaloguj się ponownie.')
   })
 })

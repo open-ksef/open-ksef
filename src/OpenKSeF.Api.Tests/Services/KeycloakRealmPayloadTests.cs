@@ -219,6 +219,41 @@ public class KeycloakRealmPayloadTests
         Assert.Contains((HttpMethod.Put, $"{RealmUrl}/clients/uuid-openksef-mobile/optional-client-scopes/scope-offline"), _keycloak.Requests);
     }
 
+    [Fact]
+    public async Task UpdateSettings_KeycloakBefore264_SkipsTwoFactorAndThemeAbsent_SetsNoTheme()
+    {
+        _keycloak.RealmJson = """{"bruteForceProtected":true,"failureFactor":10}""";
+
+        var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest(), "token");
+
+        Assert.True(result.Success, result.Error);
+        Assert.DoesNotContain(_keycloak.Requests, r => r.Url.Contains("/authentication/"));
+        Assert.DoesNotContain(_keycloak.Bodies(HttpMethod.Put, RealmUrl), b => b.TryGetProperty("browserFlow", out _) || b.TryGetProperty("otpPolicyType", out _));
+        Assert.False(_keycloak.RealmPolicy().TryGetProperty("accountTheme", out _));
+    }
+
+    [Fact]
+    public async Task UpdateSettings_ThemeListed_SetsLoginAndAccountTheme()
+    {
+        _keycloak.RealmJson = """{"bruteForceProtected":true,"failureFactor":10}""";
+        _keycloak.ServerInfoJson = """{"systemInfo":{"version":"26.0.8"},"themes":{"login":[{"name":"keycloak.v2"},{"name":"openksef"}],"account":[{"name":"openksef"}]}}""";
+
+        var result = await CreateSettingsService().UpdateSettingsAsync(new SettingsUpdateRequest(), "token");
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal("openksef", _keycloak.RealmPolicy().GetProperty("loginTheme").GetString());
+        Assert.Equal("openksef", _keycloak.RealmPolicy().GetProperty("accountTheme").GetString());
+    }
+
+    [Theory]
+    [InlineData("26.8.2", 26, 8)]
+    [InlineData("26.4.0", 26, 4)]
+    [InlineData("26.3.5", 26, 3)]
+    [InlineData("999.0.0-SNAPSHOT", 999, 0)]
+    [InlineData("", 0, 0)]
+    public void KeycloakVersion_ReadsMajorMinor(string version, int major, int minor) =>
+        Assert.Equal(new Version(major, minor), SystemSetupService.KeycloakVersion(new System.Text.Json.Nodes.JsonObject { ["systemInfo"] = new System.Text.Json.Nodes.JsonObject { ["version"] = version } }));
+
     private void AssertRealmPolicy()
     {
         var realm = _keycloak.RealmPolicy();
@@ -234,7 +269,8 @@ public class KeycloakRealmPayloadTests
         Assert.True(realm.GetProperty("eventsEnabled").GetBoolean());
         Assert.Equal(2592000, realm.GetProperty("eventsExpiration").GetInt32());
         Assert.Equal(
-            ["LOGIN", "LOGIN_ERROR", "OAUTH2_DEVICE_VERIFY_USER_CODE", "OAUTH2_DEVICE_CODE_TO_TOKEN", "REVOKE_GRANT"],
+            ["LOGIN", "LOGIN_ERROR", "OAUTH2_DEVICE_VERIFY_USER_CODE", "OAUTH2_DEVICE_CODE_TO_TOKEN", "REVOKE_GRANT",
+                "UPDATE_TOTP", "REMOVE_TOTP", "UPDATE_CREDENTIAL", "REMOVE_CREDENTIAL"],
             realm.GetProperty("enabledEventTypes").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(11, realm.EnumerateObject().Count());
 
@@ -481,6 +517,8 @@ public class KeycloakRealmPayloadTests
 
         public string OptionalScopesJson { get; set; } = """[{"id":"scope-offline","name":"offline_access"}]""";
 
+        public string ServerInfoJson { get; set; } = """{"systemInfo":{"version":"26.0.8"},"themes":{"login":[{"name":"keycloak.v2"}],"account":[]}}""";
+
         public List<(HttpMethod Method, string Url)> Requests => _requests.Select(r => (r.Method, r.Url)).ToList();
 
         public List<JsonElement> RealmUpdates() => Bodies(HttpMethod.Put, RealmUrl).Where(b => !b.TryGetProperty("eventsEnabled", out _)).ToList();
@@ -514,6 +552,9 @@ public class KeycloakRealmPayloadTests
             if (request.Method != HttpMethod.Get)
                 return WriteFailureBody is null ? new HttpResponseMessage(HttpStatusCode.NoContent)
                     : new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent(WriteFailureBody, Encoding.UTF8, "application/json") };
+
+            if (url.EndsWith("/admin/serverinfo"))
+                return Json(ServerInfoJson);
 
             if (url == RealmUrl)
                 return RealmJson is null ? new HttpResponseMessage(HttpStatusCode.NotFound)
