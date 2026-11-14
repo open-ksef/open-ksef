@@ -142,21 +142,27 @@ public class AccountRegisterApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SettingsSave_GrantsNoServiceAccountRoles()
+    public async Task SettingsSave_GrantsRegistrationRolesOnce_RegistrationWorks()
     {
         await _fixture.RemoveServiceAccountRolesAsync(TestcontainersFixture.RegistrationRoles);
-
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var settings = scope.ServiceProvider.GetRequiredService<ISystemSettingsService>();
-            var result = await settings.UpdateSettingsAsync(
-                new SettingsUpdateRequest { KcAdminUsername = "admin", KcAdminPassword = "admin" },
-                await _fixture.GetAdminTokenAsync());
-            Assert.True(result.Success, result.Error);
-        }
-
-        Assert.Empty((await _fixture.GetServiceAccountRoleNamesAsync()).Intersect(TestcontainersFixture.RegistrationRoles));
         Assert.Equal(HttpStatusCode.ServiceUnavailable, (await RegisterAsync(_client, NewEmail())).StatusCode);
+
+        await SaveSettingsAsync();
+        var afterFirst = await _fixture.GetServiceAccountRoleNamesAsync();
+        await SaveSettingsAsync();
+
+        Assert.Equal(TestcontainersFixture.RegistrationRoles.Order(), afterFirst.Order());
+        Assert.Equal(afterFirst.Order(), (await _fixture.GetServiceAccountRoleNamesAsync()).Order());
+        Assert.Equal(HttpStatusCode.OK, (await RegisterAsync(_client, NewEmail())).StatusCode);
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var result = await scope.ServiceProvider.GetRequiredService<ISystemSettingsService>().UpdateSettingsAsync(
+            new SettingsUpdateRequest { KcAdminUsername = "admin", KcAdminPassword = "admin" },
+            await _fixture.GetAdminTokenAsync());
+        Assert.True(result.Success, result.Error);
     }
 
     [Fact]

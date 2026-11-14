@@ -114,7 +114,12 @@ public class SystemSetupIntegrationTests : IDisposable
         Assert.Null(await db.SystemConfigs.FindAsync("encryption_key"));
         Assert.NotNull(await db.SystemConfigs.FindAsync("api_client_secret"));
 
-        Assert.Empty((await _fixture.GetServiceAccountRoleNamesAsync()).Intersect(TestcontainersFixture.RegistrationRoles));
+        Assert.Equal(TestcontainersFixture.RegistrationRoles.Order(), (await _fixture.GetServiceAccountRoleNamesAsync()).Order());
+        var register = await _client.PostAsJsonAsync("/api/account/register", new
+        {
+            email = $"wizard-{Guid.NewGuid():N}@openksef.test", password = "Register1234!", firstName = "Wizard", lastName = "Realm",
+        });
+        Assert.Equal(HttpStatusCode.OK, register.StatusCode);
 
         using var settings = new HttpRequestMessage(HttpMethod.Post, "/api/system/settings")
         {
