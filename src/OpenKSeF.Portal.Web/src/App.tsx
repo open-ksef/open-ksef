@@ -5,6 +5,7 @@ import { RouterProvider } from 'react-router-dom'
 import { AuthProvider } from '@/auth/AuthProvider'
 import { createAppRouter } from '@/router'
 import '@/components/ui.css'
+import '@/components/auth.css'
 
 const router = createAppRouter()
 

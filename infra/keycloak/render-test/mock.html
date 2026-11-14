@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenKSeF</title>
+<link rel="stylesheet" href="assets/index.css">
+<link rel="stylesheet" href="assets/ui.css">
+<link rel="stylesheet" href="assets/auth.css">
+<style>
+  .mock-index { padding: 24px; font-size: 14px; }
+  .mock-index h1 { font-size: 22px; margin-bottom: 12px; }
+  .mock-index li { margin: 4px 0; }
+  .mock-index a { margin-right: 8px; }
+</style>
+</head>
+<body>
+<div id="sprite" hidden></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+  <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></symbol>
+</svg>
+<div id="root"></div>
+<script>
+const q = new URLSearchParams(location.search)
+const P = q.get('p'), S = q.get('s') || 'default'
+if (q.get('theme')) document.documentElement.dataset.theme = q.get('theme')
+
+const ic = (n, s = 16) => `<svg class="ui-icon" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-${n}"/></svg>`
+const mark = (s) => `<svg width="${s}" height="${s}" viewBox="0 0 32 32" aria-hidden="true"><path d="M20 2H10a8 8 0 0 0-8 8v12a8 8 0 0 0 8 8h12a8 8 0 0 0 8-8V12h-6v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2h10zM22 2v8h8z" fill="currentColor"/></svg>`
+const G = `<svg class="auth-google-btn__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.920 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.640l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>`
+const EMAIL = 'anna@firma-testowa.pl'
+
+const err = (t) => `<div class="ui-form-error auth-card__error" role="alert"><span class="ui-form-error__icon" aria-hidden="true">!</span><span>${t}</span></div>`
+const note = (k, i, t) => `<div class="auth-notice auth-notice--${k}" role="status">${ic(i)}<span>${t}</span></div>`
+const field = (id, label, type, ph, o = {}) => `<div class="ui-form-group">${o.labelRow ? `<div class="auth-label-row"><label for="${id}">${label}</label>${o.labelRow}</div>` : `<label for="${id}">${label}</label>`}<input id="${id}" type="${type}" placeholder="${ph}" value="${o.value || ''}" ${o.err ? `aria-invalid="true" aria-describedby="${id}-err"` : ''} ${o.attrs || ''}>${o.err ? `<span class="auth-field-error" id="${id}-err">${o.err}</span>` : ''}${o.hint ? `<span class="ui-form-hint">${o.hint}</span>` : ''}</div>`
+const btn = (t, o = {}) => `<button type="${o.type || 'submit'}" class="ui-button ui-button--${o.v || 'primary'} auth-card__btn" ${o.dis ? 'disabled' : ''}>${t}</button>`
+const link = (t) => `<a class="auth-card__link" href="#">${t}</a>`
+const footer = (t, l) => `<p class="auth-card__footer">${t} <button type="button" class="auth-card__link-btn">${l}</button></p>`
+const google = (t) => `<div class="auth-divider"><span>lub</span></div><button type="button" class="auth-google-btn auth-card__btn">${G}${t}</button>`
+const icon = (k, i) => `<div class="auth-card__icon auth-card__icon--${k}">${ic(i, 24)}</div>`
+const brand = (h1) => `<div class="auth-logo">${mark(40)}</div>${h1 ? '<h1 class="auth-card__title">OpenKSeF</h1>' : '<p class="auth-card__title">OpenKSeF</p>'}`
+const head = (t, d) => `${brand(false)}<h1 class="auth-card__heading">${t}</h1>${d ? `<p class="auth-card__desc">${d}</p>` : ''}`
+const form = (inner) => `<form class="auth-card__form" onsubmit="return false">${inner}</form>`
+const back = link('Wróć do OpenKSeF')
+
+function qr() {
+  let seed = 7, r = () => (seed = (seed * 9301 + 49297) % 233280) / 233280, n = 29, c = ''
+  const finder = (x, y) => `<rect x="${x}" y="${y}" width="7" height="7"/><rect x="${x + 1}" y="${y + 1}" width="5" height="5" fill="#fff"/><rect x="${x + 2}" y="${y + 2}" width="3" height="3"/>`
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const inF = (x < 8 && y < 8) || (x > n - 9 && y < 8) || (x < 8 && y > n - 9)
+    if (!inF && r() > 0.52) c += `<rect x="${x}" y="${y}" width="1" height="1"/>`
+  }
+  return `<div class="auth-qr" role="img" aria-label="Kod QR do aplikacji uwierzytelniającej"><svg viewBox="-4 -4 37 37" shape-rendering="crispEdges" fill="#111827">${c}${finder(0, 0)}${finder(n - 7, 0)}${finder(0, n - 7)}</svg></div>`
+}
+
+const CODES = ['7KQ2-M9TX-4HPA', 'R3WD-8ZNE-6CUF', 'H5YB-2LGV-9QKS', 'P8MT-4RJA-3XWE', 'C6NF-7DUH-2BZL', 'V9KE-5SQP-8GYR', 'L2XA-6MWC-4TNJ', 'E4ZU-9HFB-7RDK', 'S7GP-3VYN-5KMA', 'B8RJ-2QEX-6LCT', 'N3WH-8FKU-9ZPD', 'T5DM-4CAG-7YBS']
+
+const pages = {
+  login: () => {
+    const reauth = S === 'reauth', device = S === 'device'
+    const email = reauth ? `<div class="auth-user"><span>${EMAIL}</span><a href="#">Zmień konto</a></div>`
+      : field('login-email', 'Email', 'text', 'jan@firma.pl', { value: S === 'error' || S === 'locked' ? EMAIL : '', attrs: 'autocomplete="username"' })
+    const pwdLink = '<a href="#">Nie pamiętasz hasła?</a>'
+    return `${brand(true)}
+      <p class="auth-card__desc">${reauth ? 'Zaloguj się ponownie, aby kontynuować' : 'Zaloguj się do portalu OpenKSeF'}</p>
+      ${device ? note('info', 'smartphone', 'Logujesz telefon. Po zalogowaniu potwierdzisz kod z aplikacji.') : ''}
+      ${S === 'reset-sent' ? note('success', 'mail', 'Jeśli konto z tym adresem istnieje, wysłaliśmy na niego link do ustawienia nowego hasła. Link działa 30 minut.') : ''}
+      ${S === 'error' ? err('Nieprawidłowy email lub hasło.') : ''}
+      ${S === 'locked' ? err('Za dużo nieudanych prób logowania. Konto jest zablokowane na 15 minut. <a href="#">Ustaw nowe hasło</a>') : ''}
+      ${form(`${email}${field('login-password', 'Hasło', 'password', '••••••••', { labelRow: pwdLink, value: S === 'submitting' ? 'xxxxxxxxxx' : '', attrs: 'autocomplete="current-password"' })}
+        ${btn(S === 'submitting' ? 'Logowanie...' : 'Zaloguj się', { dis: S === 'submitting' })}`)}
+      ${S === 'no-google' || reauth ? '' : google('Zaloguj przez Google')}
+      ${S === 'no-register' || reauth || device ? '' : footer('Nie masz konta?', 'Zarejestruj się')}`
+  },
+  register: () => {
+    const e = S === 'errors'
+    return `${brand(true)}<p class="auth-card__desc">Utwórz nowe konto</p>
+      ${e ? err('Konto z tym adresem e-mail już istnieje. <a href="#">Zaloguj się</a> albo <a href="#">ustaw nowe hasło</a>.') : ''}
+      ${form(`<div class="auth-card__form-row">${field('reg-first', 'Imię', 'text', 'Jan', { value: e ? 'Anna' : '' })}${field('reg-last', 'Nazwisko', 'text', 'Kowalski', { value: e ? 'Testowa' : '' })}</div>
+        ${field('reg-email', 'Email', 'email', 'jan@firma.pl', { value: e ? EMAIL : '' })}
+        ${field('reg-pass', 'Hasło', 'password', 'Min. 8 znaków', { value: e ? 'xxxx' : '', err: e ? 'Hasło musi mieć co najmniej 8 znaków.' : '' })}
+        ${field('reg-pass2', 'Powtórz hasło', 'password', 'Powtórz hasło', { value: e ? 'xxxxx' : '', err: e ? 'Hasła nie są identyczne.' : '' })}
+        ${btn('Utwórz konto')}`)}
+      ${google('Zarejestruj przez Google')}
+      ${footer('Masz już konto?', 'Zaloguj się')}`
+  },
+  reset: () => `${head('Nie pamiętasz hasła?', 'Podaj email konta. Wyślemy link do ustawienia nowego hasła.')}
+      ${S === 'error' ? err('Wpisz adres email.') : ''}
+      ${form(`${field('reset-email', 'Email', 'email', 'jan@firma.pl', { err: S === 'error' ? 'Uzupełnij to pole.' : '' })}${btn('Wyślij link')}`)}
+      ${footer('Pamiętasz hasło?', 'Wróć do logowania')}`,
+  'update-password': () => {
+    const e = S === 'errors', aia = S === 'aia'
+    return `${head(aia ? 'Zmień hasło' : 'Ustaw nowe hasło', aia ? 'Po zapisaniu wrócisz do Ustawień.' : `Konto ${EMAIL}`)}
+      ${S === 'required' ? note('info', 'lock', 'Administrator poprosił o zmianę hasła przed dalszą pracą.') : ''}
+      ${form(`${field('pw-new', 'Nowe hasło', 'password', 'Min. 8 znaków', { value: e ? 'xxxx' : '', err: e ? 'Hasło musi mieć co najmniej 8 znaków.' : '' })}
+        ${field('pw-confirm', 'Powtórz nowe hasło', 'password', 'Powtórz hasło', { value: e ? 'xxxxx' : '', err: e ? 'Hasła nie są identyczne.' : '' })}
+        <label class="auth-check"><input type="checkbox" checked> Wyloguj mnie na innych urządzeniach</label>
+        ${btn('Zapisz hasło')}${aia ? btn('Anuluj', { v: 'outline', type: 'button' }) : ''}`)}`
+  },
+  'verify-email': () => `${icon('info', 'mail')}${head('Potwierdź adres email')}
+      <p class="auth-card__text">Wysłaliśmy link na adres <strong>${EMAIL}</strong>. Kliknij go, aby aktywować konto. Link działa 12 godzin.</p>
+      ${S === 'resent' ? note('success', 'check', 'Wysłaliśmy nowy link. Sprawdź też folder Spam.') : ''}
+      <div class="auth-card__actions">${btn('Wyślij link ponownie', { v: 'outline', type: 'button' })}</div>
+      ${footer('Zły adres?', 'Wróć do logowania')}`,
+  'email-result': () => ({
+    verified: `${icon('success', 'circle-check')}${head('Adres email potwierdzony')}<p class="auth-card__text">Konto jest aktywne. Możesz zacząć pracę.</p><div class="auth-card__actions">${btn('Przejdź do OpenKSeF', { type: 'button' })}</div>`,
+    password: `${icon('success', 'circle-check')}${head('Hasło zmienione')}<p class="auth-card__text">Następnym razem zaloguj się nowym hasłem.</p><div class="auth-card__actions">${btn('Przejdź do OpenKSeF', { type: 'button' })}</div>`,
+    confirm: `${icon('info', 'mail')}${head('Potwierdź adres email')}<p class="auth-card__text">Kliknij przycisk, aby potwierdzić adres <strong>${EMAIL}</strong>.</p><div class="auth-card__actions">${btn('Potwierdź adres', { type: 'button' })}</div>`,
+  })[S === 'default' ? 'verified' : S],
+  otp: () => `${icon('info', 'shield-check')}${head('Weryfikacja dwuetapowa', 'Wpisz 6-cyfrowy kod z aplikacji uwierzytelniającej.')}
+      ${S === 'error' ? err('Nieprawidłowy kod. Sprawdź, czy telefon ma automatyczny czas, i wpisz nowy kod.') : ''}
+      ${form(`${field('otp', 'Kod z aplikacji', 'text', '000000', { value: S === 'error' ? '482913' : '', attrs: 'class="auth-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6"' })}${btn('Potwierdź')}`)}
+      ${link('Nie masz telefonu? Użyj kodu zapasowego')}
+      ${footer('To nie Ty?', 'Wróć do logowania')}`,
+  'select-auth': () => `${head('Jak chcesz się zweryfikować?')}
+      <div class="auth-choice">
+        <button type="button">${ic('smartphone', 20)}<span class="auth-choice__main"><b>Kod z aplikacji</b><span>Google Authenticator, Microsoft Authenticator, Aegis</span></span>${ic('chevron-right')}</button>
+        <button type="button">${ic('key-round', 20)}<span class="auth-choice__main"><b>Kod zapasowy</b><span>Jeden z kodów zapisanych przy włączaniu weryfikacji</span></span>${ic('chevron-right')}</button>
+      </div>
+      ${footer('To nie Ty?', 'Wróć do logowania')}`,
+  'otp-setup': () => {
+    const aia = S === 'aia'
+    return `${head(aia ? 'Zmień aplikację uwierzytelniającą' : 'Włącz weryfikację dwuetapową', aia ? 'Stara aplikacja przestanie działać po zapisaniu.' : 'To zajmie około minuty. Bez tego nie wejdziesz do OpenKSeF.')}
+      ${S === 'error' ? err('Nieprawidłowy kod. Wpisz kod, który aplikacja pokazuje teraz.') : ''}
+      <ol class="auth-steps">
+        <li>Zainstaluj na telefonie aplikację uwierzytelniającą, np. Google Authenticator, Microsoft Authenticator albo Aegis.</li>
+        <li>Zeskanuj kod QR w aplikacji.
+          <div class="auth-steps__body">${qr()}
+            <span class="settings-muted">Nie możesz zeskanować? Wpisz klucz ręcznie:</span>
+            <div class="auth-secret"><span>JBSW Y3DP EHPK 3PXP K4ZQ 7T2M</span><button type="button" class="ui-button ui-button--outline ui-button--sm" aria-label="Kopiuj klucz">${ic('copy', 14)} Kopiuj</button></div>
+            <a href="#" class="auth-card__link" style="margin:0">Otwórz w aplikacji na tym telefonie</a>
+          </div></li>
+        <li>Wpisz 6-cyfrowy kod, który pokazuje aplikacja.
+          <div class="auth-steps__body">${form(`${field('otp-new', 'Kod z aplikacji', 'text', '000000', { value: S === 'error' ? '120394' : '', attrs: 'class="auth-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6"' })}${btn(aia ? 'Zapisz' : 'Włącz weryfikację')}${aia ? btn('Anuluj', { v: 'outline', type: 'button' }) : ''}`)}</div></li>
+      </ol>`
+  },
+  'recovery-setup': () => `${icon('warning', 'key-round')}${head('Zapisz kody zapasowe')}
+      <p class="auth-card__text">Użyj ich, gdy nie masz telefonu z aplikacją. Każdy kod działa raz.</p>
+      ${note('warning', 'triangle-alert', 'Pokazujemy je tylko teraz. Zapisz je poza telefonem.')}
+      <ol class="auth-codes">${CODES.map((c) => `<li>${c}</li>`).join('')}</ol>
+      <div class="auth-row-actions">
+        <button type="button" class="ui-button ui-button--outline ui-button--md">${ic('copy', 14)} Kopiuj</button>
+        <button type="button" class="ui-button ui-button--outline ui-button--md">${ic('download', 14)} Pobierz</button>
+        <button type="button" class="ui-button ui-button--outline ui-button--md">${ic('printer', 14)} Drukuj</button>
+      </div>
+      ${form(`<label class="auth-check"><input type="checkbox" ${S === 'checked' ? 'checked' : ''}> Zapisałem kody w bezpiecznym miejscu</label>${btn('Dalej', { dis: S !== 'checked' })}`)}`,
+  'recovery-use': () => `${icon('info', 'key-round')}${head('Kod zapasowy', 'Wpisz kod nr 4 z listy, którą zapisałeś przy włączaniu weryfikacji.')}
+      ${S === 'error' ? err('Nieprawidłowy kod zapasowy. Sprawdź, czy to kod nr 4.') : ''}
+      ${form(`${field('rc', 'Kod zapasowy nr 4', 'text', 'XXXX-XXXX-XXXX', { value: S === 'error' ? 'P8MT-4RJA-3XWF' : '', attrs: 'class="auth-code-input" autocomplete="off" autocapitalize="characters" spellcheck="false"' })}${btn('Zaloguj się')}`)}
+      ${link('Wróć do kodu z aplikacji')}
+      ${S === 'last' ? '' : `<p class="auth-card__subdesc">Nie masz ani telefonu, ani kodów? Poproś administratora OpenKSeF o reset weryfikacji.</p>`}`,
+  'device-code': () => `${icon('info', 'smartphone')}${head('Logowanie telefonu', 'Wpisz kod widoczny w aplikacji OpenKSeF na Twoim telefonie.')}
+      ${S === 'invalid' ? err('Nieprawidłowy kod. Sprawdź litery i spróbuj ponownie.') : ''}
+      ${S === 'expired' ? err('Kod wygasł. Wróć do telefonu i poproś o nowy kod.') : ''}
+      ${form(`${field('user-code', 'Kod z telefonu', 'text', 'ABCD-EFGH', { value: S === 'default' ? '' : 'WDJB-MJHT', attrs: 'class="auth-code-input" autocomplete="off" autocapitalize="characters" spellcheck="false"' })}${btn('Dalej')}`)}
+      ${note('warning', 'triangle-alert', 'Wpisz tylko kod z własnego telefonu. Nikt z OpenKSeF nie poprosi Cię o ten kod.')}
+      ${back}`,
+  'device-consent': () => `${icon('warning', 'smartphone')}${head('Zalogować telefon?', `Konto ${EMAIL}`)}
+      <p class="auth-card__text auth-card__text--left">Zatwierdź tylko, jeśli ten kod widzisz teraz na swoim telefonie. Jeśli ktoś podał Ci kod lub link, wybierz Nie.</p>
+      <p class="auth-card__text auth-card__text--left"><strong>Telefon dostanie:</strong></p>
+      <ul class="auth-scopes">
+        <li>${ic('check')}<span>dostęp do Twoich firm i faktur, także do wystawiania faktur w KSeF,</span></li>
+        <li>${ic('check')}<span>logowanie bez hasła do roku albo do wylogowania.</span></li>
+      </ul>
+      <div class="auth-card__actions">${btn('Tak, zaloguj telefon', { type: 'button' })}${btn('Nie', { v: 'outline', type: 'button' })}</div>`,
+  'device-ok': () => `${icon('success', 'circle-check')}${head('Telefon zalogowany')}<p class="auth-card__text">Wróć do telefonu. Aplikacja otworzy się sama. Tę kartę możesz zamknąć.</p>${back}`,
+  'device-denied': () => `${icon('error', 'circle-x')}${head('Nie zalogowano telefonu')}<p class="auth-card__text">Odrzuciłeś logowanie. Jeśli to pomyłka, poproś w aplikacji o nowy kod.</p>${back}`,
+  'idp-review': () => `${brand(false)}<h1 class="auth-card__heading">Uzupełnij dane konta</h1><p class="auth-card__desc">Pierwsze logowanie przez Google</p>
+      ${form(`<div class="auth-card__form-row">${field('f', 'Imię', 'text', 'Jan', { value: 'Anna' })}${field('l', 'Nazwisko', 'text', 'Kowalski', { value: S === 'errors' ? '' : 'Testowa', err: S === 'errors' ? 'Uzupełnij to pole.' : '' })}</div>
+        ${field('e', 'Email', 'email', '', { value: EMAIL, attrs: 'readonly' , hint: 'Adres z konta Google.' })}${btn('Dalej')}`)}`,
+  'idp-link': () => `${icon('info', 'user')}${head('Masz już konto OpenKSeF')}
+      <p class="auth-card__text">Konto z adresem <strong>${EMAIL}</strong> już istnieje. Połącz je z Google, aby logować się jednym kliknięciem.</p>
+      <div class="auth-card__actions">${btn('Połącz z kontem Google', { type: 'button' })}${btn('Anuluj', { v: 'outline', type: 'button' })}</div>`,
+  'idp-link-email': () => `${icon('info', 'mail')}${head('Potwierdź połączenie kont')}
+      <p class="auth-card__text">Wysłaliśmy link na <strong>${EMAIL}</strong>. Kliknij go, aby połączyć konto z Google.</p>
+      <div class="auth-card__actions">${btn('Wyślij link ponownie', { v: 'outline', type: 'button' })}</div>
+      ${link('Połącz hasłem zamiast emailem')}`,
+  'logout-confirm': () => `${head('Wylogować się?')}<p class="auth-card__text">Wylogujesz się z OpenKSeF w tej przeglądarce.</p><div class="auth-card__actions">${btn('Wyloguj', { type: 'button' })}</div>${back}`,
+  'logging-out': () => `${brand(false)}<div class="auth-spinner" role="status" aria-label="Wylogowywanie"></div><h1 class="auth-card__heading">Wylogowujemy Cię…</h1>`,
+  error: () => ({
+    'link-expired': [icon('error', 'clock'), 'Link wygasł', 'Ten link jest już nieważny. Poproś o nowy na stronie logowania.', 'Wróć do logowania'],
+    'page-expired': [icon('warning', 'clock'), 'Strona wygasła', 'Logowanie trwało za długo. Zacznij od nowa.', 'Zaloguj się ponownie'],
+    disabled: [icon('error', 'lock'), 'Konto wyłączone', 'Nie możesz się zalogować. Skontaktuj się z administratorem OpenKSeF w swojej firmie.', 'Wróć do OpenKSeF'],
+    cookie: [icon('warning', 'circle-alert'), 'Włącz pliki cookie', 'Logowanie wymaga plików cookie. Włącz je w przeglądarce i spróbuj ponownie.', 'Spróbuj ponownie'],
+    idp: [icon('error', 'circle-x'), 'Nie udało się zalogować przez Google', 'Spróbuj ponownie albo zaloguj się emailem i hasłem.', 'Wróć do logowania'],
+    generic: [icon('error', 'circle-alert'), 'Coś poszło nie tak', 'Spróbuj ponownie za chwilę. Jeśli błąd wraca, napisz do administratora OpenKSeF.', 'Wróć do OpenKSeF'],
+  })[S === 'default' ? 'link-expired' : S].reduce((a, v, i) => a + (i === 0 ? v : i === 1 ? head(v) : i === 2 ? `<p class="auth-card__text">${v}</p>` : `<div class="auth-card__actions">${btn(v, { type: 'button' })}</div>`), ''),
+  info: () => `${icon('info', 'circle-alert')}${head('Jeszcze jeden krok')}<p class="auth-card__text">Aby aktywować konto, potwierdź adres email.</p><div class="auth-card__actions">${btn('Dalej', { type: 'button' })}</div>${back}`,
+  terms: () => `${head('Regulamin')}<div class="auth-terms" tabindex="0" aria-label="Treść regulaminu"><p><b>§ 1.</b> Regulamin określa zasady korzystania z instancji OpenKSeF prowadzonej przez Firma Testowa Sp. z o.o.</p><p style="margin-top:8px"><b>§ 2.</b> Użytkownik odpowiada za tokeny KSeF dodane do swoich firm.</p><p style="margin-top:8px">Pełna treść: <a href="#">regulamin</a> i <a href="#">polityka prywatności</a>.</p></div>
+      <div class="auth-card__actions">${btn('Akceptuję', { type: 'button' })}${btn('Nie akceptuję', { v: 'outline', type: 'button' })}</div>`,
+}
+
+/* Portal pages */
+function shell(main) {
+  const nav = [['house', 'Start'], ['inbox', 'Otrzymane'], ['send', 'Wystawione'], ['building-2', 'Firma'], ['smartphone', 'Telefon']]
+  return `<div class="app-shell"><aside class="app-sidebar">
+    <a href="#" class="sidebar-brand">${mark(24)}<span>OpenKSeF</span></a>
+    <div class="company-card"><span class="company-card__caption">Firma</span><b class="company-card__name">Firma Testowa Sp. z o.o.</b><span class="company-nip">NIP 1111111111</span></div>
+    <nav class="sidebar-nav" aria-label="Nawigacja główna">${nav.map(([i, l]) => `<a href="#" class="sidebar-nav-link">${ic(i, 18)}<span>${l}</span></a>`).join('')}</nav>
+    <div class="sidebar-user"><span class="sidebar-user__name">Anna Testowa</span><a href="#" class="sidebar-user__action active" aria-label="Ustawienia" aria-current="page">${ic('settings', 18)}</a><button type="button" class="sidebar-user__action" aria-label="Wyloguj">${ic('log-out', 18)}</button></div>
+  </aside><div class="app-content"><main class="app-main">${main}</main></div></div>`
+}
+const tabs = (cur) => `<nav class="ui-tabs" aria-label="Ustawienia">${['Konto', 'Bezpieczeństwo', 'Administracja'].map((t) => `<a href="#" ${t === cur ? 'aria-current="page"' : ''}>${t}</a>`).join('')}</nav>`
+const page = (cur, body) => `<section><header class="page-header"><h1>Ustawienia</h1></header>${tabs(cur)}<div class="company-grid">${body}</div></section>`
+const card = (id, title, body, cls = '') => `<section class="ui-card ${cls}" aria-labelledby="${id}"><h2 id="${id}">${title}</h2>${body}</section>`
+const kv = (rows) => `<dl class="settings-kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`
+const pbtn = (t, v = 'outline', i) => `<button type="button" class="ui-button ui-button--${v} ui-button--md">${i ? ic(i) : ''}${t}</button>`
+const modal = (title, body, confirm, cancel = 'Anuluj') => `<div class="ui-modal-backdrop"><div class="ui-modal ui-modal--confirm" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t"><div class="ui-modal-header"><h2 class="ui-modal-title" id="dlg-t">${title}</h2><button type="button" class="ui-modal-close" aria-label="Zamknij">${ic('x')}</button></div><div class="ui-modal-body">${body}</div><div class="ui-modal-footer"><button type="button" class="ui-button ui-button--outline ui-button--md">${cancel}</button><button type="button" class="ui-button ui-button--md ui-button--danger">${confirm}</button></div></div></div>`
+
+const sessions = `<div class="ui-table-wrap" tabindex="0" role="region" aria-label="Aktywne sesje"><table class="ui-table"><thead><tr><th>Urządzenie</th><th>Ostatnia aktywność</th><th>Zalogowano</th></tr></thead><tbody>
+  <tr><td><span class="settings-session"><b>Edge, Windows</b><span>Ta przeglądarka · 192.0.2.10</span></span></td><td>teraz</td><td>14.11.2026, 08:12</td></tr>
+  <tr><td><span class="settings-session"><b>Telefon: Android</b><span>Aplikacja OpenKSeF</span></span></td><td>14.11.2026, 07:40</td><td>02.11.2026, 18:05</td></tr>
+  <tr><td><span class="settings-session"><b>Chrome, macOS</b><span>198.51.100.7</span></span></td><td>12.11.2026, 16:21</td><td>12.11.2026, 09:02</td></tr>
+</tbody></table></div>`
+
+const portal = {
+  'settings-account': () => page('Konto', card('acc', 'Konto', `${kv([['Imię i nazwisko', 'Anna Testowa'], ['E-mail', EMAIL], ['Logowanie', S === 'google' ? 'Google' : 'E-mail i hasło, Google']])}
+      <div class="settings-actions">${pbtn('Wyloguj', 'outline', 'log-out')}</div>
+      <p class="settings-muted">Adresu e-mail nie zmienisz w portalu. Napisz do administratora OpenKSeF.</p>`)),
+  'settings-security': () => {
+    const g = S === 'google', none = S === 'not-enrolled', low = S === 'low-codes'
+    const twofa = g
+      ? `<div class="settings-2fa-head"><span class="ui-status-badge ui-status-badge--success">Przez Google</span></div><p class="settings-muted">Logujesz się przez Google. Weryfikację dwuetapową ustawiasz na swoim koncie Google.</p>`
+      : none
+        ? `<div class="settings-2fa-head"><span class="ui-status-badge ui-status-badge--warning">Nieustawiona</span></div><p class="settings-muted">Ustawisz ją przy następnym logowaniu hasłem. Możesz to zrobić teraz.</p><div class="settings-actions">${pbtn('Ustaw teraz', 'primary', 'shield-check')}</div>`
+        : `<div class="settings-2fa-head"><span class="ui-status-badge ui-status-badge--success">Włączona</span></div>
+          ${kv([['Metoda', 'Aplikacja uwierzytelniająca'], ['Od', '14.11.2026'], ['Kody zapasowe', low ? 'Zostały 2 z 12' : 'Zostało 9 z 12']])}
+          ${low ? note('warning', 'triangle-alert', 'Zostały tylko 2 kody zapasowe. Wygeneruj nowe, zanim się skończą.') : ''}
+          <div class="settings-actions">${pbtn('Wygeneruj nowe kody', low ? 'primary' : 'outline', 'key-round')}${pbtn('Zmień aplikację', 'outline', 'smartphone')}</div>`
+    return page('Bezpieczeństwo', `
+      ${g ? '' : card('pwd', 'Hasło', `${kv([['Ostatnia zmiana', '03.10.2026']])}<div class="settings-actions">${pbtn('Zmień hasło', 'outline', 'key-round')}</div>`)}
+      ${card('tfa', 'Weryfikacja dwuetapowa', twofa)}
+      ${card('ses', 'Aktywne sesje i urządzenia', `${sessions}<p class="settings-muted">Pojedynczej sesji nie wylogujesz. Przycisk poniżej wylogowuje wszystkie naraz, także tę przeglądarkę.</p><div class="settings-actions">${pbtn('Wyloguj wszystkie urządzenia', 'danger-outline')}</div>`)}`)
+  },
+  'settings-regen': () => portal['settings-security']() + modal('Wygenerować nowe kody zapasowe?', 'Dotychczasowe kody przestaną działać. Nowe zobaczysz raz, na następnej stronie.', 'Wygeneruj nowe kody').replace('ui-button--danger', 'ui-button--primary'),
+  'settings-signout': () => portal['settings-security']() + modal('Wylogować wszystkie urządzenia?', 'Aplikacja mobilna zostanie wylogowana na każdym telefonie, a telefony przestaną dostawać powiadomienia. Portal zostanie wylogowany we wszystkich przeglądarkach, także w tej. Token dostępu wydany wcześniej może działać jeszcze do 30 minut.', 'Wyloguj wszystkie'),
+  'admin-reset': () => {
+    const found = S !== 'search'
+    const body = `<p class="settings-muted">Gdy ktoś zgubił telefon z aplikacją i kody zapasowe. Przy następnym logowaniu hasłem ustawi weryfikację od nowa.</p>
+      <form class="admin-reset" onsubmit="return false" style="flex-direction:row;align-items:flex-end;flex-wrap:wrap">
+        <div class="ui-form-group" style="flex:1 1 240px"><label for="ar-email">E-mail użytkownika</label><input id="ar-email" type="email" placeholder="jan@firma.pl" value="${found ? 'jan@firma-testowa.pl' : ''}"></div>
+        ${pbtn('Znajdź', 'outline', 'search')}
+      </form>
+      ${S === 'notfound' ? `<div class="ui-form-error" role="alert"><span class="ui-form-error__icon" aria-hidden="true">!</span>Nie ma użytkownika z tym adresem.</div>` : ''}
+      ${found && S !== 'notfound' ? `${kv([['Użytkownik', 'Jan Próbny'], ['E-mail', 'jan@firma-testowa.pl'], ['Weryfikacja', S === 'done' ? 'Nieustawiona' : 'Włączona, 9 kodów zapasowych']])}
+        ${S === 'done' ? note('success', 'circle-check', 'Zresetowano. Jan Próbny ustawi weryfikację przy następnym logowaniu hasłem.') : `<div class="settings-actions">${pbtn('Resetuj weryfikację dwuetapową', 'danger-outline')}</div>`}` : ''}`
+    const main = `<section><header class="page-header"><h1>Ustawienia</h1></header>${tabs('Administracja')}<div class="company-grid">${card('ar', 'Weryfikacja dwuetapowa użytkownika', body, 'ui-card--danger')}</div></section>`
+    return S === 'confirm' ? shell(main) + modal('Zresetować weryfikację dwuetapową?', 'Jan Próbny (jan@firma-testowa.pl) straci aplikację uwierzytelniającą i kody zapasowe. Przy następnym logowaniu hasłem ustawi weryfikację od nowa. Zapiszemy, kto wykonał reset.', 'Resetuj weryfikację') : shell(main)
+  },
+}
+
+async function render() {
+  document.getElementById('sprite').innerHTML = await (await fetch('assets/icons.svg')).text()
+  const root = document.getElementById('root')
+  if (pages[P]) root.innerHTML = `<main class="auth-page"><div class="auth-card">${pages[P]()}</div></main>`
+  const ico = root.querySelector('.auth-card__icon'), ttl = root.querySelector('.auth-card__title')
+  if (ico && ttl) ttl.after(ico)
+  if (portal[P]) root.innerHTML = P === 'admin-reset' ? portal[P]() : shell(portal[P]())
+  else if (!pages[P]) root.innerHTML = `<div class="mock-index"><h1>Auth mock</h1><ul>${Object.keys({ ...pages, ...portal }).map((k) => `<li><a href="?p=${k}">${k}</a><a href="?p=${k}&theme=dark">dark</a></li>`).join('')}</ul></div>`
+  document.title = { login: 'Logowanie', register: 'Rejestracja', otp: 'Weryfikacja dwuetapowa' }[P] ? `${{ login: 'Logowanie', register: 'Rejestracja', otp: 'Weryfikacja dwuetapowa' }[P]} – OpenKSeF` : 'OpenKSeF'
+  document.body.dataset.ready = '1'
+}
+render()
+</script>
+</body>
+</html>

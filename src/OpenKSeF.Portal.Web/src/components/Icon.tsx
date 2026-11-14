@@ -35,6 +35,10 @@ export type IconName =
   | 'file-down'
   | 'circle-dashed'
   | 'landmark'
+  | 'mail'
+  | 'printer'
+  | 'download'
+  | 'lock'
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }): ReactElement {
   return (
