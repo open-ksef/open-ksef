@@ -26,7 +26,7 @@ GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx
 
 ## Registration endpoint
 
-`POST /api/account/register` works only after the manual steps below. The setup wizard does not do them, on purpose: `manage-users` lets whoever holds the `openksef-api` secret reset the password of any user, and the wizard's copy of that secret is in the database and its backups. On a wizard install with self-registration on, the sign-up form returns 503. Use Google sign-in or create the account in the Keycloak console until the Keycloak-hosted register page ships.
+`POST /api/account/register` works only after the manual steps below. The setup wizard does not do them, on purpose: `manage-users` lets whoever holds the `openksef-api` secret reset the password of any user, and the wizard's copy of that secret is in the database and its backups. On a wizard install with self-registration on, the sign-up form returns 503. Use Google sign-in or create the account in the Keycloak console.
 
 Every request reads the realm, with no cache: registration off returns 403, a failed read returns 503, and no user is created in either case.
 

@@ -88,9 +88,20 @@ describe('LoginPage', () => {
     act(() => container.querySelector<HTMLButtonElement>('[data-testid="login-google"]')!.click())
     expect(auth.loginWithGoogle).toHaveBeenCalledWith('/telefon?x=1')
 
+    const type = (id: string, value: string) => {
+      const input = container.querySelector<HTMLInputElement>(`[data-testid="${id}"]`)!
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    act(() => {
+      type('login-email', 'jan@firma.pl')
+      type('login-password', 'Haslo1234!')
+    })
+
     await act(async () => {
       container.querySelector('[data-testid="login-submit"]')!.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
     })
+    expect(auth.loginWithCredentials).toHaveBeenCalledWith('jan@firma.pl', 'Haslo1234!')
     expect(container.textContent).toBe('at=/telefon?x=1')
   })
 

@@ -89,7 +89,6 @@ describe('router', () => {
       )
     })
 
-    // Wait for setup status query to resolve and trigger redirect
     await act(async () => {
       await flushPromises()
     })
