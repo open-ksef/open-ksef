@@ -157,7 +157,7 @@ Run standalone: `./scripts/setup-test-data.ps1` (requires Docker stack + test us
 
 ### Custom login page
 
-Portal `/login` is our own form: ROPC grant (no Keycloak redirect), Google IdP brokering (`kc_idp_hint=google`), registration via `POST /api/account/register`. The realm policy does not set `loginTheme`; the `openksef` theme in `infra/keycloak` is not used by the portal. The `/mobile-setup` pairing-code card is hidden (`PAIRING_CODE_ENABLED` in `auth/pairing.ts`). Setup: [docs/login-page-setup.md](docs/login-page-setup.md).
+Portal `/login` is our own form: ROPC grant (no Keycloak redirect), Google IdP brokering (`kc_idp_hint=google`), registration via `POST /api/account/register`. The realm policy sets `loginTheme`/`accountTheme` only when Keycloak lists the `openksef` theme, and on Keycloak 26.4+ binds its own 2FA flows (TOTP for password logins, recovery codes, [ADR-003](docs/adr/adr-003-auth-pages-2fa.md)); a ROPC login of a user with OTP needs `totp`. The `/mobile-setup` pairing-code card is hidden (`PAIRING_CODE_ENABLED` in `auth/pairing.ts`). Setup: [docs/login-page-setup.md](docs/login-page-setup.md).
 
 ## MCP servers for agent testing
 

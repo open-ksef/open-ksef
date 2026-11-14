@@ -5,7 +5,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Api.Models;
@@ -20,7 +19,9 @@ public class DevicePairingRealmTests : IAsyncLifetime
     [
         "displayName", "internationalizationEnabled", "supportedLocales", "defaultLocale", "accessTokenLifespan",
         "offlineSessionIdleTimeout", "offlineSessionMaxLifespanEnabled", "offlineSessionMaxLifespan",
-        "eventsEnabled", "eventsExpiration", "enabledEventTypes",
+        "eventsEnabled", "eventsExpiration", "enabledEventTypes", "loginTheme", "accountTheme",
+        "otpPolicyType", "otpPolicyAlgorithm", "otpPolicyDigits", "otpPolicyPeriod", "otpPolicyLookAheadWindow",
+        "browserFlow", "registrationFlow", "resetCredentialsFlow",
     ];
 
     private static readonly string[] ClientPolicyAttributes =
@@ -71,7 +72,7 @@ public class DevicePairingRealmTests : IAsyncLifetime
         Assert.True((bool?)realmAfter["eventsEnabled"]);
         Assert.Equal(2592000, (long?)realmAfter["eventsExpiration"]);
         Assert.Equal(
-            ["LOGIN", "LOGIN_ERROR", "OAUTH2_DEVICE_CODE_TO_TOKEN", "OAUTH2_DEVICE_VERIFY_USER_CODE", "REVOKE_GRANT"],
+            ["LOGIN", "LOGIN_ERROR", "OAUTH2_DEVICE_CODE_TO_TOKEN", "OAUTH2_DEVICE_VERIFY_USER_CODE", "REMOVE_CREDENTIAL", "REMOVE_TOTP", "REVOKE_GRANT", "UPDATE_CREDENTIAL", "UPDATE_TOTP"],
             realmAfter["enabledEventTypes"]!.AsArray().Select(e => (string)e!).Order());
         Assert.Equal("Aplikacja mobilna OpenKSeF", (string?)clientAfter["name"]);
         Assert.Equal("true", (string?)clientAfter["attributes"]!["oauth2.device.authorization.grant.enabled"]);
@@ -140,26 +141,20 @@ public class DevicePairingRealmTests : IAsyncLifetime
         await SaveSettingsAsync();
         const string redirectUri = "openksef://auth/callback";
         var (verifier, challenge) = NewPkce();
-        // Keycloak marks its cookies Secure, so a cookie container would not send them back over http.
-        using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
+        var email = $"t406-{Guid.NewGuid():N}@openksef.test";
+        await _fixture.CreateUserAsync(email);
+        using var browser = new KeycloakBrowser(redirectUri);
 
-        var authResponse = await http.GetAsync(
+        await browser.GetAsync(
             $"{_fixture.KeycloakAuthority}/protocol/openid-connect/auth?client_id=openksef-mobile&response_type=code&scope=openid" +
             $"&redirect_uri={Uri.EscapeDataString(redirectUri)}&code_challenge={challenge}&code_challenge_method=S256&state=t406");
-        Assert.Equal(HttpStatusCode.OK, authResponse.StatusCode);
-        var loginPage = await authResponse.Content.ReadAsStringAsync();
-        var action = WebUtility.HtmlDecode(Regex.Match(loginPage, "<form[^>]*id=\"kc-form-login\"[^>]*action=\"([^\"]+)\"").Groups[1].Value);
-        using var loginRequest = new HttpRequestMessage(HttpMethod.Post, action) { Content = Form(("username", "testuser"), ("password", "Test1234!")) };
-        loginRequest.Headers.Add("Cookie", string.Join("; ", authResponse.Headers.GetValues("Set-Cookie").Select(c => c.Split(';')[0])));
-        var login = await http.SendAsync(loginRequest);
+        await browser.SubmitLoginAsync(email, "Test1234!");
+        await browser.EnrolAsync();
+        Assert.False(string.IsNullOrEmpty(browser.Code));
 
-        Assert.Equal(HttpStatusCode.Found, login.StatusCode);
-        var location = login.Headers.Location!.OriginalString;
-        Assert.StartsWith(redirectUri, location);
-        var code = Uri.UnescapeDataString(Regex.Match(location, "[?&]code=([^&]+)").Groups[1].Value);
-
+        using var http = new HttpClient();
         var tokens = await http.PostAsync($"{_fixture.KeycloakAuthority}/protocol/openid-connect/token", Form(
-            ("grant_type", "authorization_code"), ("client_id", "openksef-mobile"), ("code", code),
+            ("grant_type", "authorization_code"), ("client_id", "openksef-mobile"), ("code", browser.Code!),
             ("redirect_uri", redirectUri), ("code_verifier", verifier)));
 
         Assert.Equal(HttpStatusCode.OK, tokens.StatusCode);
