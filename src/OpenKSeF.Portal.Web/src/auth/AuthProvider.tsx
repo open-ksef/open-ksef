@@ -104,7 +104,7 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
   }, [manager])
 
   const startAction = useCallback(async (action: AccountAction) => {
-    await manager.signinRedirect({ extraQueryParams: { kc_action: action }, state: { returnTo: '/settings/security' } })
+    await manager.signinRedirect({ extraQueryParams: { kc_action: action }, state: { returnTo: `/settings/security?action=${action}` } })
   }, [manager])
 
   const logout = useCallback(async () => {

@@ -63,9 +63,15 @@ public class TwoFactorRealmTests : IAsyncLifetime
 
         var reset = await ExecutionsAsync(SystemSetupService.ResetCredentialsFlowAlias);
         Assert.DoesNotContain(reset, e => (string?)e["providerId"] == "reset-otp");
-        Assert.All(reset.Where(e => (string?)e["providerId"] is "auth-otp-form" or "auth-recovery-authn-code-form"),
-            e => Assert.Equal("ALTERNATIVE", (string?)e["requirement"]));
-        Assert.Equal(2, reset.Count(e => (string?)e["providerId"] is "auth-otp-form" or "auth-recovery-authn-code-form"));
+        var resetTwoFactor = reset.Where(e => (string?)e["providerId"] is "auth-otp-form" or "auth-recovery-authn-code-form"
+            && ParentOf(reset, e) != SystemSetupService.ResetOtpIfNoTwoFactorFlowAlias).ToList();
+        Assert.Equal(2, resetTwoFactor.Count);
+        Assert.All(resetTwoFactor, e => Assert.Equal("ALTERNATIVE", (string?)e["requirement"]));
+        Assert.Equal("CONDITIONAL", (string?)reset.Single(e => (string?)e["displayName"] == SystemSetupService.ResetOtpIfNoTwoFactorFlowAlias)["requirement"]);
+        var resetInner = await ExecutionsAsync(SystemSetupService.ResetOtpIfNoTwoFactorFlowAlias);
+        Assert.Equal("REQUIRED", (string?)resetInner.Single(e => (string?)e["providerId"] == "auth-otp-form")["requirement"]);
+        var resetCondition = await AdminGetAsync($"/authentication/config/{resetInner.Single(e => (string?)e["providerId"] == "conditional-sub-flow-executed")["authenticationConfig"]}");
+        Assert.Equal("not-executed", (string?)resetCondition["config"]!["check_result"]);
 
         Assert.True((bool?)(await AdminGetAsync("/authentication/required-actions/CONFIGURE_RECOVERY_AUTHN_CODES"))["enabled"]);
         Assert.Equal("true", (string?)(await AdminGetAsync("/authentication/required-actions/CONFIGURE_TOTP/config"))["config"]!["add-recovery-codes"]);
@@ -82,6 +88,110 @@ public class TwoFactorRealmTests : IAsyncLifetime
         var flows = (await AdminGetAsync("/authentication/flows")).AsArray();
         Assert.Single(flows, f => (string?)f!["alias"] == SystemSetupService.BrowserFlowAlias);
         Assert.Single(await ExecutionsAsync(SystemSetupService.BrowserFlowAlias), e => (string?)e["displayName"] == SystemSetupService.OtpIfNoTwoFactorFlowAlias);
+    }
+
+    [Fact]
+    public async Task SettingsSave_RealmBornOn26_0_AddsRecoveryForm_AppliesTwoFactor_SecondSaveChangesNothing()
+    {
+        try
+        {
+            await ImportRealmWithBrowserFlowOf26_0Async();
+            var shaped = await ExecutionsAsync("browser");
+            var builtInOtp = shaped.Single(e => (string?)e["providerId"] == "auth-otp-form");
+            Assert.Equal("REQUIRED", (string?)builtInOtp["requirement"]);
+            Assert.DoesNotContain(shaped, e => (string?)e["providerId"] == "auth-recovery-authn-code-form");
+            Assert.Equal(["conditional-user-configured", "auth-otp-form"],
+                shaped.Where(e => ParentOf(shaped, e) == ParentOf(shaped, builtInOtp)).Select(e => (string?)e["providerId"]));
+
+            await SaveSettingsAsync();
+            var applied = await TwoFactorStateAsync();
+            await SaveSettingsAsync();
+
+            Assert.True(JsonNode.DeepEquals(applied, await TwoFactorStateAsync()));
+            Assert.Equal(SystemSetupService.BrowserFlowAlias, (string?)(await AdminGetAsync(""))["browserFlow"]);
+            var browser = await ExecutionsAsync(SystemSetupService.BrowserFlowAlias);
+            var copiedOtp = browser.Single(e => (string?)e["providerId"] == "auth-otp-form" && ParentOf(browser, e) != SystemSetupService.OtpIfNoTwoFactorFlowAlias);
+            var recovery = browser.Single(e => (string?)e["providerId"] == "auth-recovery-authn-code-form");
+            Assert.Equal(ParentOf(browser, copiedOtp), ParentOf(browser, recovery));
+            Assert.Equal("ALTERNATIVE", (string?)copiedOtp["requirement"]);
+            Assert.Equal("ALTERNATIVE", (string?)recovery["requirement"]);
+
+            var (email, _, enrolment) = await EnrolledUserAsync();
+            using var second = new KeycloakBrowser();
+            await second.GetAsync(KeycloakBrowser.AuthUrl(_fixture.KeycloakAuthority));
+            await second.SubmitLoginAsync(email, Password);
+            Assert.True(second.OnPage("kc-otp-login-form"), second.Html);
+            await LoginWithRecoveryCodeAsync(email, enrolment, null);
+        }
+        finally
+        {
+            await _fixture.RestoreTestRealmAsync();
+        }
+    }
+
+    // Built-in flows cannot be edited over the Admin API, so the realm is re-imported with the 26.0 browser flow.
+    private async Task ImportRealmWithBrowserFlowOf26_0Async()
+    {
+        using var admin = await _fixture.CreateAdminClientAsync();
+        var export = JsonNode.Parse(await (await admin.PostAsync($"{_fixture.AdminRealmUrl}/partial-export", null)).EnsureSuccessStatusCode().Content.ReadAsStringAsync())!;
+        var flows = new JsonArray(export["authenticationFlows"]!.AsArray()
+            .Where(f => !((string)f!["alias"]!).StartsWith("openksef ")).Select(f => f!.DeepClone()).ToArray());
+        var configs = new JsonArray(export["authenticatorConfig"]!.AsArray()
+            .Where(c => !((string)c!["alias"]!).StartsWith("openksef ")).Select(c => c!.DeepClone()).ToArray());
+
+        JsonNode Flow(string alias) => flows.Single(f => (string?)f!["alias"] == alias)!;
+        IEnumerable<JsonNode> Reachable(JsonNode flow) => flow["authenticationExecutions"]!.AsArray()
+            .Where(e => (bool?)e!["authenticatorFlow"] == true).SelectMany(e => Reachable(Flow((string)e!["flowAlias"]!)).Prepend(Flow((string)e["flowAlias"]!)));
+        var twoFactor = Reachable(Flow("browser")).Single(f => f["authenticationExecutions"]!.AsArray().Any(e => (string?)e!["authenticator"] == "auth-otp-form"));
+        var kept = twoFactor["authenticationExecutions"]!.AsArray()
+            .Where(e => (string?)e!["authenticator"] is "conditional-user-configured" or "auth-otp-form").Select(e => e!.DeepClone()).ToArray();
+        kept.Single(e => (string?)e["authenticator"] == "auth-otp-form")["requirement"] = "REQUIRED";
+        twoFactor["authenticationExecutions"] = new JsonArray(kept);
+
+        var realm = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "realm-test.json")))!;
+        realm["authenticationFlows"] = flows;
+        realm["authenticatorConfig"] = configs;
+        await _fixture.DeleteRealmAsync();
+        (await admin.PostAsJsonAsync($"{_fixture.KeycloakBaseUrl}/admin/realms", realm)).EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task ChangeApp_ByAppInitiatedAction_NeedsAUniqueLabel_ThenOlderOtpIsDeletedByAccountApi()
+    {
+        var email = NewEmail();
+        var userId = await _fixture.CreateUserAsync(email, Password);
+        using var browser = new KeycloakBrowser();
+        await browser.GetAsync(KeycloakBrowser.AuthUrl(_fixture.KeycloakAuthority));
+        await browser.SubmitLoginAsync(email, Password);
+        var first = await browser.EnrolAsync();
+        var firstCode = browser.Code;
+
+        await browser.GetAsync(KeycloakBrowser.AuthUrl(_fixture.KeycloakAuthority, "&kc_action=CONFIGURE_TOTP"));
+        var duplicate = new Totp(browser.Hidden("kc-totp-settings-form", "totpSecret"));
+        await browser.SubmitAsync("kc-totp-settings-form", ("totp", duplicate.Next()), ("userLabel", "Telefon"));
+        Assert.True(browser.OnPage("kc-totp-settings-form"), browser.Html);
+        var replacement = new Totp(browser.Hidden("kc-totp-settings-form", "totpSecret"));
+        await browser.SubmitAsync("kc-totp-settings-form", ("totp", replacement.Next()), ("userLabel", "Telefon 2"));
+        if (browser.OnPage("kc-recovery-codes-settings-form"))
+            await browser.SubmitAsync("kc-recovery-codes-settings-form");
+        Assert.False(string.IsNullOrEmpty(browser.Code), browser.Html);
+        Assert.NotEqual(firstCode, browser.Code);
+
+        var otps = (await _fixture.GetUserCredentialsAsync(userId)).Where(c => c.GetProperty("type").GetString() == "otp")
+            .OrderBy(c => c.GetProperty("createdDate").GetInt64()).ToList();
+        Assert.Equal(["Telefon", "Telefon 2"], otps.Select(c => c.GetProperty("userLabel").GetString()));
+
+        var token = await PasswordGrantAsync(email, first.Totp.Next(), "openksef-portal-web");
+        Assert.True(token.IsSuccessStatusCode, await token.Content.ReadAsStringAsync());
+        using var account = new HttpClient();
+        account.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        account.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer",
+            (await token.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("access_token").GetString());
+        var deleted = await account.DeleteAsync($"{_fixture.KeycloakAuthority}/account/credentials/{otps[0].GetProperty("id").GetString()}");
+
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        var left = Assert.Single(await _fixture.GetUserCredentialsAsync(userId), c => c.GetProperty("type").GetString() == "otp");
+        Assert.Equal("Telefon 2", left.GetProperty("userLabel").GetString());
     }
 
     [Fact]
@@ -166,7 +276,7 @@ public class TwoFactorRealmTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task PasswordReset_ByEmail_KeepsOtp_AndAsksForTheCode()
+    public async Task PasswordReset_ByEmail_KeepsOtp_AndAsksForTheCode_UnenrolledUserMustSetUpTotp()
     {
         var mailpit = new ContainerBuilder("axllent/mailpit:v1.30.0")
             .WithNetwork(_fixture.Network)
@@ -198,6 +308,32 @@ public class TwoFactorRealmTests : IAsyncLifetime
 
             Assert.False(string.IsNullOrEmpty(browser.Code), browser.Html);
             Assert.Contains(await _fixture.GetUserCredentialsAsync(userId), c => c.GetProperty("type").GetString() == "otp");
+
+            var unenrolled = NewEmail();
+            var unenrolledId = await _fixture.CreateUserAsync(unenrolled, Password);
+            using var fresh = new KeycloakBrowser();
+            await fresh.GetAsync(KeycloakBrowser.AuthUrl(_fixture.KeycloakAuthority));
+            await fresh.GetAsync(new Uri(fresh.Url, fresh.Link("reset-credentials")).ToString());
+            await fresh.SubmitAsync("kc-reset-password-form", ("username", unenrolled));
+            await fresh.GetAsync(await ResetLinkAsync($"http://{mailpit.Hostname}:{mailpit.GetMappedPublicPort(8025)}", unenrolled));
+            var totpShown = false;
+            for (var step = 0; step < 4 && fresh.Code is null; step++)
+            {
+                if (fresh.OnPage("kc-passwd-update-form"))
+                    await fresh.SubmitAsync("kc-passwd-update-form", ("password-new", "Changed1234!"), ("password-confirm", "Changed1234!"));
+                else if (fresh.OnPage("kc-totp-settings-form"))
+                {
+                    totpShown = true;
+                    await fresh.SubmitAsync("kc-totp-settings-form", ("totp", new Totp(fresh.Hidden("kc-totp-settings-form", "totpSecret")).Next()), ("userLabel", "Telefon"));
+                }
+                else if (fresh.OnPage("kc-recovery-codes-settings-form"))
+                    await fresh.SubmitAsync("kc-recovery-codes-settings-form");
+            }
+
+            Assert.True(totpShown, fresh.Html);
+
+            Assert.False(string.IsNullOrEmpty(fresh.Code), fresh.Html);
+            Assert.Contains(await _fixture.GetUserCredentialsAsync(unenrolledId), c => c.GetProperty("type").GetString() == "otp");
         }
         finally
         {
@@ -260,13 +396,20 @@ public class TwoFactorRealmTests : IAsyncLifetime
         return (email, userId, enrolment);
     }
 
-    private async Task<HttpResponseMessage> PasswordGrantAsync(string email, string? totp = null)
+    private static string? ParentOf(List<JsonNode> executions, JsonNode execution)
+    {
+        var level = (int)execution["level"]! - 1;
+        return level < 0 ? null : (string?)executions.Take(executions.IndexOf(execution))
+            .Last(e => (int)e["level"]! == level && (bool?)e["authenticationFlow"] == true)["displayName"];
+    }
+
+    private async Task<HttpResponseMessage> PasswordGrantAsync(string email, string? totp = null, string clientId = "openksef-mobile")
     {
         using var http = new HttpClient();
         var form = new Dictionary<string, string>
         {
             ["grant_type"] = "password",
-            ["client_id"] = "openksef-mobile",
+            ["client_id"] = clientId,
             ["username"] = email,
             ["password"] = Password,
         };

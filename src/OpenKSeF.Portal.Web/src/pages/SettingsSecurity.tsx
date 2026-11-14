@@ -67,6 +67,7 @@ export function SettingsSecurityPage(): ReactElement {
   const googleOnly = google && !password
   const lowCodes = codesLeft <= 3
   const actionStatus = searchParams.get('kc_action_status')
+  const startedAction = searchParams.get('action')
 
   useEffect(() => {
     if (!actionStatus || !credentials.data || handledStatus.current) return
@@ -74,13 +75,13 @@ export function SettingsSecurityPage(): ReactElement {
     navigate('/settings/security', { replace: true })
     if (actionStatus !== 'success') return
     toast.success('Zapisano.')
-    const older = otp.slice(1)
+    const older = startedAction === 'CONFIGURE_TOTP' ? otp.slice(1) : []
     if (older.length) {
       void Promise.all(older.map((credential) => deleteCredential(credential.id)))
         .then(() => queryClient.invalidateQueries({ queryKey: ['account', 'credentials'] }))
         .catch(() => toast.error('Nie udało się usunąć starej aplikacji uwierzytelniającej. Odśwież stronę i spróbuj ponownie.'))
     }
-  }, [actionStatus, credentials.data, navigate, otp, queryClient])
+  }, [actionStatus, credentials.data, navigate, otp, queryClient, startedAction])
 
   const action = useMutation({
     mutationFn: (name: AccountAction) => startAction(name),

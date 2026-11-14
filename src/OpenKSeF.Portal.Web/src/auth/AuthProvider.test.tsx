@@ -255,11 +255,11 @@ describe('AuthProvider', () => {
     const context = await renderContext()
 
     await context.startAction('CONFIGURE_TOTP')
-    expect(mockManager.signinRedirect).toHaveBeenCalledWith({ extraQueryParams: { kc_action: 'CONFIGURE_TOTP' }, state: { returnTo: '/settings/security' } })
+    expect(mockManager.signinRedirect).toHaveBeenCalledWith({ extraQueryParams: { kc_action: 'CONFIGURE_TOTP' }, state: { returnTo: '/settings/security?action=CONFIGURE_TOTP' } })
 
     window.history.replaceState(null, '', '/callback?code=x&kc_action_status=cancelled')
-    mockManager.signinRedirectCallback.mockResolvedValueOnce({ ...userOf('a'), state: { returnTo: '/settings/security' } } as User)
-    expect(await context.handleOidcCallback()).toBe('/settings/security?kc_action_status=cancelled')
+    mockManager.signinRedirectCallback.mockResolvedValueOnce({ ...userOf('a'), state: { returnTo: '/settings/security?action=CONFIGURE_TOTP' } } as User)
+    expect(await context.handleOidcCallback()).toBe('/settings/security?action=CONFIGURE_TOTP&kc_action_status=cancelled')
     window.history.replaceState(null, '', '/')
   })
 })

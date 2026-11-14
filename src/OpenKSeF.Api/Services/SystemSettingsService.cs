@@ -147,8 +147,6 @@ public sealed class SystemSettingsService : ISystemSettingsService
             // Update Keycloak realm settings
             await UpdateRealmConfigAsync(client, kcBase, kcAdminToken, request, ct);
             await SystemSetupService.EnsureApiAudienceMappersAsync(client, kcBase, kcAdminToken, ct);
-            await SystemSetupService.EnsureRealmPolicyAsync(client, kcBase, kcAdminToken, _logger, ct);
-            _logger.LogInformation("Updated Keycloak realm settings");
 
             // Update Google IdP
             if (!string.IsNullOrEmpty(request.GoogleClientId) && !string.IsNullOrEmpty(request.GoogleClientSecret))
@@ -166,6 +164,10 @@ public sealed class SystemSettingsService : ISystemSettingsService
                 configValues[SystemConfigKeys.ExternalBaseUrl] = url;
                 await UpdateClientRedirectUrisAsync(client, kcBase, kcAdminToken, url, ct);
             }
+
+            // After the IdP and redirect URIs, so a policy failure cannot skip them.
+            await SystemSetupService.EnsureRealmPolicyAsync(client, kcBase, kcAdminToken, _logger, ct);
+            _logger.LogInformation("Updated Keycloak realm settings");
 
             if (requestedEnv != null)
                 configValues[SystemConfigKeys.KSeFEnvironment] = requestedEnv;
@@ -477,7 +479,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
             putReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {adminToken}");
             // Keycloak 26.0 replaces the service account user, losing its roles, when a client PUT omits this field.
             var serviceAccountsEnabled = clientJson.GetProperty("serviceAccountsEnabled").GetBoolean();
-            putReq.Content = JsonContent.Create(new { redirectUris = merged, webOrigins, serviceAccountsEnabled });
+            putReq.Content = JsonContent.Create(new { redirectUris = merged, webOrigins, serviceAccountsEnabled, baseUrl = clientId == "openksef-portal-web" ? externalBaseUrl : null });
             var putResp = await client.SendAsync(putReq, ct);
             putResp.EnsureSuccessStatusCode();
         }

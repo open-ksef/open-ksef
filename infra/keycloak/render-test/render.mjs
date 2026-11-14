@@ -471,6 +471,12 @@ async function run(users) {
   await page.waitForURL(`${KC}/cb**`)
   await page.goto(authUrl({ kc_action: 'CONFIGURE_TOTP' }))
   await capture(page, 'otp-setup--aia')
+  await page.fill('#totp', totp(await page.inputValue('input[name=totpSecret]')))
+  await submit(page)
+  await page.waitForURL(`${KC}/cb**`)
+  const otps = (await api('GET', `/openksef/users/${users.otp}/credentials`)).filter((c) => c.type === 'otp').sort((a, b) => a.createdDate - b.createdDate)
+  if (otps.length !== 2 || otps[0].userLabel === otps[1].userLabel) report.push({ name: 'otp-reenrol', findings: [`expected 2 OTPs with distinct labels, got ${JSON.stringify(otps.map((c) => c.userLabel))}`] })
+  else await api('DELETE', `/openksef/users/${users.otp}/credentials/${otps[1].id}`)
   await ctx.close()
 
   ;({ ctx, page } = await fresh())
@@ -600,8 +606,12 @@ async function run(users) {
   await capture(page, 'error--disabled')
   await ctx.close()
 
-  const account = await (await fetch(`${KC}/realms/openksef/account/`)).text()
-  if (!account.includes('/settings/security')) report.push({ name: 'account-redirect', findings: ['account theme does not redirect to /settings/security'] })
+  const relative = await (await fetch(`${KC}/realms/openksef/account/`)).text()
+  const [portal] = await api('GET', '/openksef/clients?clientId=openksef-portal-web')
+  await api('PUT', `/openksef/clients/${portal.id}`, { ...portal, baseUrl: 'https://portal.example.test/' })
+  const absolute = await (await fetch(`${KC}/realms/openksef/account/`)).text()
+  if (!relative.includes('"/settings/security"') || !absolute.includes('"https://portal.example.test/settings/security"'))
+    report.push({ name: 'account-redirect', findings: ['account theme does not redirect to the portal client base URL + /settings/security'] })
 }
 
 cleanup()

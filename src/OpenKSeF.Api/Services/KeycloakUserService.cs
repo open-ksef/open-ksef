@@ -211,9 +211,7 @@ public class KeycloakUserService : IKeycloakUserService
                 user.TryGetProperty("lastName", out var lastName) ? lastName.GetString() : null,
                 user.TryGetProperty("email", out var userEmail) ? userEmail.GetString() : null,
                 status,
-                recoveryCodes.ValueKind == JsonValueKind.Object
-                    ? JsonDocument.Parse(recoveryCodes.GetProperty("credentialData").GetString()!).RootElement.GetProperty("remainingCodes").GetInt32()
-                    : null,
+                RemainingCodes(recoveryCodes),
                 otp.ValueKind == JsonValueKind.Object ? DateTimeOffset.FromUnixTimeMilliseconds(otp.GetProperty("createdDate").GetInt64()) : null));
         }
         catch (HttpRequestException ex)
@@ -238,37 +236,29 @@ public class KeycloakUserService : IKeycloakUserService
             if (user is null)
                 return TwoFactorResetResult.UserNotFound;
 
+            var targetEmail = user.Value.TryGetProperty("email", out var email) ? email.GetString() : null;
             var removed = 0;
-            foreach (var credential in (await GetAdminJsonAsync(adminToken, $"{userUrl}/credentials"))!.Value.EnumerateArray()
-                         .Where(c => c.GetProperty("type").GetString() is "otp" or "recovery-authn-codes"))
+            try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Delete, $"{userUrl}/credentials/{credential.GetProperty("id").GetString()}");
-                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminToken);
-                using var response = await _httpClient.SendAsync(request);
-                if (response.StatusCode != HttpStatusCode.NotFound)
-                    response.EnsureSuccessStatusCode();
-                removed++;
+                foreach (var credential in (await GetAdminJsonAsync(adminToken, $"{userUrl}/credentials"))!.Value.EnumerateArray()
+                             .Where(c => c.GetProperty("type").GetString() is "otp" or "recovery-authn-codes"))
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Delete, $"{userUrl}/credentials/{credential.GetProperty("id").GetString()}");
+                    request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminToken);
+                    using var response = await _httpClient.SendAsync(request);
+                    if (response.StatusCode != HttpStatusCode.NotFound)
+                        response.EnsureSuccessStatusCode();
+                    removed++;
+                }
+            }
+            catch (HttpRequestException) when (removed > 0)
+            {
+                await AuditResetAsync(AuditEvent.TwoFactorResetPartial, userId, targetEmail, actorUserId, actorEmail, removed);
+                throw;
             }
 
-            if (removed == 0)
-                return TwoFactorResetResult.Reset;
-
-            var targetEmail = user.Value.TryGetProperty("email", out var email) ? email.GetString() : null;
-            using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            db.AuditEvents.Add(new AuditEvent
-            {
-                Id = Guid.NewGuid(),
-                OccurredAt = _timeProvider.GetUtcNow().UtcDateTime,
-                ActorUserId = actorUserId,
-                ActorEmail = actorEmail,
-                Action = AuditEvent.TwoFactorReset,
-                TargetUserId = userId,
-                TargetEmail = targetEmail,
-            });
-            await db.SaveChangesAsync();
-            _logger.LogInformation("Two-factor reset of {TargetUserId} ({TargetEmail}) by {ActorUserId} ({ActorEmail}): {Removed} credentials removed",
-                userId, targetEmail, actorUserId, actorEmail, removed);
+            if (removed > 0)
+                await AuditResetAsync(AuditEvent.TwoFactorReset, userId, targetEmail, actorUserId, actorEmail, removed);
             return TwoFactorResetResult.Reset;
         }
         catch (HttpRequestException ex)
@@ -277,6 +267,33 @@ public class KeycloakUserService : IKeycloakUserService
             return TwoFactorResetResult.KeycloakUnavailable;
         }
     }
+
+    private async Task AuditResetAsync(string action, string userId, string? targetEmail, string actorUserId, string? actorEmail, int removed)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        db.AuditEvents.Add(new AuditEvent
+        {
+            Id = Guid.NewGuid(),
+            OccurredAt = _timeProvider.GetUtcNow().UtcDateTime,
+            ActorUserId = actorUserId,
+            ActorEmail = actorEmail,
+            Action = action,
+            TargetUserId = userId,
+            TargetEmail = targetEmail,
+        });
+        await db.SaveChangesAsync();
+        _logger.LogInformation("{Action} of {TargetUserId} ({TargetEmail}) by {ActorUserId} ({ActorEmail}): {Removed} credentials removed",
+            action, userId, targetEmail, actorUserId, actorEmail, removed);
+    }
+
+    private static int? RemainingCodes(JsonElement recoveryCodes) =>
+        recoveryCodes.ValueKind == JsonValueKind.Object
+        && recoveryCodes.TryGetProperty("credentialData", out var data) && data.ValueKind == JsonValueKind.String
+        && JsonDocument.Parse(data.GetString()!).RootElement is { ValueKind: JsonValueKind.Object } parsed
+        && parsed.TryGetProperty("remainingCodes", out var remaining) && remaining.TryGetInt32(out var left)
+            ? left
+            : null;
 
     private static bool HasRealmManagementRole(string adminToken, string role)
     {

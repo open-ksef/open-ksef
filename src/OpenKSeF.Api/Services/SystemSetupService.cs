@@ -436,7 +436,7 @@ public sealed class SystemSetupService : ISystemSetupService
             var serviceAccountsEnabled = clientJson.GetProperty("serviceAccountsEnabled").GetBoolean();
 
             await SendKeycloakJsonAsync(client, HttpMethod.Put, clientUrl, adminToken,
-                new { redirectUris = merged, webOrigins, serviceAccountsEnabled }, ct);
+                new { redirectUris = merged, webOrigins, serviceAccountsEnabled, baseUrl = clientId == "openksef-portal-web" ? url : null }, ct);
         }
     }
 
@@ -721,6 +721,7 @@ public sealed class SystemSetupService : ISystemSetupService
     public const string RegistrationFlowAlias = "openksef registration";
     public const string ResetCredentialsFlowAlias = "openksef reset credentials";
     public const string OtpIfNoTwoFactorFlowAlias = "openksef OTP if no 2FA";
+    public const string ResetOtpIfNoTwoFactorFlowAlias = "openksef reset OTP if no 2FA";
     internal static readonly Version TwoFactorMinVersion = new(26, 4);
 
     internal static async Task EnsureRealmPolicyAsync(
@@ -843,31 +844,50 @@ public sealed class SystemSetupService : ISystemSetupService
             await build();
         }
 
-        await EnsureFlowAsync("browser", BrowserFlowAlias, "browserFlow", async () =>
+        async Task AddOtpIfNotExecutedAsync(string parentAlias, string subFlowAlias, string checkedFlowAlias)
         {
-            var executions = await GetExecutionsAsync(client, realmUrl, BrowserFlowAlias, adminToken, ct);
-            var twoFactor = ParentFlow(executions, executions.Single(e => (string?)e["providerId"] == "auth-otp-form"));
-            var forms = ParentFlow(executions, executions.Single(e => (string?)e["providerId"] == "auth-username-password-form"));
-            await SetRequirementAsync(client, realmUrl, BrowserFlowAlias,
-                executions.Single(e => (string?)e["providerId"] == "auth-recovery-authn-code-form"), "ALTERNATIVE", adminToken, ct);
-
-            await SendKeycloakJsonAsync(client, HttpMethod.Post, $"{FlowUrl(realmUrl, (string)forms["displayName"]!)}/executions/flow", adminToken,
-                new { alias = OtpIfNoTwoFactorFlowAlias, type = "basic-flow", provider = "registration-page-form", description = "" }, ct);
-            executions = await GetExecutionsAsync(client, realmUrl, BrowserFlowAlias, adminToken, ct);
-            await SetRequirementAsync(client, realmUrl, BrowserFlowAlias,
-                executions.Single(e => (string?)e["displayName"] == OtpIfNoTwoFactorFlowAlias), "CONDITIONAL", adminToken, ct);
+            await SendKeycloakJsonAsync(client, HttpMethod.Post, $"{FlowUrl(realmUrl, parentAlias)}/executions/flow", adminToken,
+                new { alias = subFlowAlias, type = "basic-flow", provider = "registration-page-form", description = "" }, ct);
+            await SetRequirementAsync(client, realmUrl, parentAlias,
+                (await GetExecutionsAsync(client, realmUrl, parentAlias, adminToken, ct)).Single(e => (string?)e["displayName"] == subFlowAlias),
+                "CONDITIONAL", adminToken, ct);
 
             foreach (var provider in new[] { "conditional-sub-flow-executed", "auth-otp-form" })
-                await SendKeycloakJsonAsync(client, HttpMethod.Post, $"{FlowUrl(realmUrl, OtpIfNoTwoFactorFlowAlias)}/executions/execution", adminToken, new { provider }, ct);
-            var inner = await GetExecutionsAsync(client, realmUrl, OtpIfNoTwoFactorFlowAlias, adminToken, ct);
+                await SendKeycloakJsonAsync(client, HttpMethod.Post, $"{FlowUrl(realmUrl, subFlowAlias)}/executions/execution", adminToken, new { provider }, ct);
+            var inner = await GetExecutionsAsync(client, realmUrl, subFlowAlias, adminToken, ct);
             foreach (var execution in inner)
-                await SetRequirementAsync(client, realmUrl, OtpIfNoTwoFactorFlowAlias, execution, "REQUIRED", adminToken, ct);
+                await SetRequirementAsync(client, realmUrl, subFlowAlias, execution, "REQUIRED", adminToken, ct);
             var condition = inner.Single(e => (string?)e["providerId"] == "conditional-sub-flow-executed");
             await SendKeycloakJsonAsync(client, HttpMethod.Post, $"{realmUrl}/authentication/executions/{condition["id"]}/config", adminToken, new
             {
-                alias = "openksef no 2FA",
-                config = new Dictionary<string, string> { ["flow_to_check"] = (string)twoFactor["displayName"]!, ["check_result"] = "not-executed" },
+                alias = $"{subFlowAlias} condition",
+                config = new Dictionary<string, string> { ["flow_to_check"] = checkedFlowAlias, ["check_result"] = "not-executed" },
             }, ct);
+        }
+
+        async Task EnsureOtpOrRecoveryAsync(string flowAlias, string twoFactorAlias)
+        {
+            var executions = await GetExecutionsAsync(client, realmUrl, flowAlias, adminToken, ct);
+            bool InTwoFactor(JsonNode e, string provider) =>
+                (string?)e["providerId"] == provider && (string?)ParentFlow(executions, e)["displayName"] == twoFactorAlias;
+            if (!executions.Any(e => InTwoFactor(e, "auth-recovery-authn-code-form")))
+            {
+                await SendKeycloakJsonAsync(client, HttpMethod.Post, $"{FlowUrl(realmUrl, twoFactorAlias)}/executions/execution", adminToken,
+                    new { provider = "auth-recovery-authn-code-form" }, ct);
+                executions = await GetExecutionsAsync(client, realmUrl, flowAlias, adminToken, ct);
+            }
+            foreach (var execution in executions.Where(e => InTwoFactor(e, "auth-otp-form") || InTwoFactor(e, "auth-recovery-authn-code-form")))
+                await SetRequirementAsync(client, realmUrl, flowAlias, execution, "ALTERNATIVE", adminToken, ct);
+        }
+
+        // Realms created before 26.4 have OTP REQUIRED and no recovery form in the built-in browser flow; no migrator adds it.
+        await EnsureFlowAsync("browser", BrowserFlowAlias, "browserFlow", async () =>
+        {
+            var executions = await GetExecutionsAsync(client, realmUrl, BrowserFlowAlias, adminToken, ct);
+            var twoFactor = (string)ParentFlow(executions, executions.Single(e => (string?)e["providerId"] == "auth-otp-form"))["displayName"]!;
+            var forms = (string)ParentFlow(executions, executions.Single(e => (string?)e["providerId"] == "auth-username-password-form"))["displayName"]!;
+            await EnsureOtpOrRecoveryAsync(BrowserFlowAlias, twoFactor);
+            await AddOtpIfNotExecutedAsync(forms, OtpIfNoTwoFactorFlowAlias, twoFactor);
         });
 
         await EnsureFlowAsync("registration", RegistrationFlowAlias, "registrationFlow", async () =>
@@ -886,11 +906,10 @@ public sealed class SystemSetupService : ISystemSetupService
             var resetOtp = executions.Single(e => (string?)e["providerId"] == "reset-otp");
             var conditional = (string)ParentFlow(executions, resetOtp)["displayName"]!;
             (await SendKeycloakAsync(client, HttpMethod.Delete, $"{realmUrl}/authentication/executions/{resetOtp["id"]}", adminToken, ct)).Dispose();
-            foreach (var provider in new[] { "auth-otp-form", "auth-recovery-authn-code-form" })
-                await SendKeycloakJsonAsync(client, HttpMethod.Post, $"{FlowUrl(realmUrl, conditional)}/executions/execution", adminToken, new { provider }, ct);
-            foreach (var execution in (await GetExecutionsAsync(client, realmUrl, conditional, adminToken, ct))
-                         .Where(e => (string?)e["providerId"] is "auth-otp-form" or "auth-recovery-authn-code-form"))
-                await SetRequirementAsync(client, realmUrl, conditional, execution, "ALTERNATIVE", adminToken, ct);
+            await SendKeycloakJsonAsync(client, HttpMethod.Post, $"{FlowUrl(realmUrl, conditional)}/executions/execution", adminToken,
+                new { provider = "auth-otp-form" }, ct);
+            await EnsureOtpOrRecoveryAsync(ResetCredentialsFlowAlias, conditional);
+            await AddOtpIfNotExecutedAsync(ResetCredentialsFlowAlias, ResetOtpIfNoTwoFactorFlowAlias, conditional);
         });
 
         await SendKeycloakJsonAsync(client, HttpMethod.Put, realmUrl, adminToken, new Dictionary<string, object>

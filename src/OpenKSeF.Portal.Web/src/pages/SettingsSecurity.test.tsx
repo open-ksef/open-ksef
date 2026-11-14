@@ -115,11 +115,18 @@ describe('Ustawienia > Bezpieczeństwo', () => {
 
   it('removes the older authenticator after a successful app change', async () => {
     vi.mocked(deleteCredential).mockResolvedValue()
-    await render([password, otp('old', 'new'), codes(12)], { path: '/settings/security?kc_action_status=success' })
+    await render([password, otp('old', 'new'), codes(12)], { path: '/settings/security?action=CONFIGURE_TOTP&kc_action_status=success' })
 
     expect(toast.success).toHaveBeenCalledWith('Zapisano.')
     expect(deleteCredential).toHaveBeenCalledTimes(1)
     expect(deleteCredential).toHaveBeenCalledWith('old')
+  })
+
+  it('keeps older authenticators after another successful action', async () => {
+    await render([password, otp('old', 'new'), codes(12)], { path: '/settings/security?action=UPDATE_PASSWORD&kc_action_status=success' })
+
+    expect(toast.success).toHaveBeenCalledWith('Zapisano.')
+    expect(deleteCredential).not.toHaveBeenCalled()
   })
 
   it('says nothing and deletes nothing after a cancelled action', async () => {

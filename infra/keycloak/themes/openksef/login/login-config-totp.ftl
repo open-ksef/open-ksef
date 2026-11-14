@@ -11,6 +11,9 @@
         <#if messagesPerField.existsError('totp')>
             <@layout.formError>Nieprawidłowy kod. Wpisz kod, który aplikacja pokazuje teraz.</@layout.formError>
         </#if>
+        <#if messagesPerField.existsError('userLabel')>
+            <@layout.formError>${kcSanitize(messagesPerField.get('userLabel'))?no_esc}</@layout.formError>
+        </#if>
         <ol class="auth-steps">
             <li>Zainstaluj na telefonie aplikację uwierzytelniającą, np. Google Authenticator, Microsoft Authenticator albo Aegis.</li>
             <li>Zeskanuj kod QR w aplikacji.
@@ -26,7 +29,7 @@
                     <form id="kc-totp-settings-form" class="auth-card__form" action="${url.loginAction}" method="post">
                         <@layout.codeField id="totp" name="totp" label="Kod z aplikacji" placeholder="000000" numeric=true/>
                         <input type="hidden" name="totpSecret" value="${totp.totpSecret}">
-                        <input type="hidden" name="userLabel" value="Telefon">
+                        <input type="hidden" name="userLabel" value="Telefon ${.now?string('yyyy-MM-dd HH:mm:ss')}">
                         <@layout.primary text=aia?then("Zapisz", "Włącz weryfikację") pending="Zapisywanie..."/>
                         <#if aia><@layout.secondary text="Anuluj" name="cancel-aia" value="true"/></#if>
                     </form>
