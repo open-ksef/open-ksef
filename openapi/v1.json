@@ -1199,6 +1199,14 @@
       "SettingsResponse": {
         "additionalProperties": false,
         "properties": {
+          "dataControllerContact": {
+            "nullable": true,
+            "type": "string"
+          },
+          "dataControllerName": {
+            "nullable": true,
+            "type": "string"
+          },
           "externalBaseUrl": {
             "nullable": true,
             "type": "string"
@@ -1275,6 +1283,14 @@
           },
           "confirmCredentialWipe": {
             "type": "boolean"
+          },
+          "dataControllerContact": {
+            "nullable": true,
+            "type": "string"
+          },
+          "dataControllerName": {
+            "nullable": true,
+            "type": "string"
           },
           "externalBaseUrl": {
             "nullable": true,
@@ -1382,6 +1398,14 @@
           },
           "adminPassword": {
             "minLength": 1,
+            "type": "string"
+          },
+          "dataControllerContact": {
+            "nullable": true,
+            "type": "string"
+          },
+          "dataControllerName": {
+            "nullable": true,
             "type": "string"
           },
           "externalBaseUrl": {
@@ -1500,6 +1524,14 @@
       "SetupStatusResponse": {
         "additionalProperties": false,
         "properties": {
+          "dataControllerContact": {
+            "nullable": true,
+            "type": "string"
+          },
+          "dataControllerName": {
+            "nullable": true,
+            "type": "string"
+          },
           "isInitialized": {
             "type": "boolean"
           },

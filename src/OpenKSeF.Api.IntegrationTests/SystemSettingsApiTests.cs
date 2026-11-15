@@ -257,6 +257,29 @@ public class SystemSettingsApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task DataController_SavedReadAndPublic_NullKeeps_BlankIs400()
+    {
+        var saved = await PutSettingsAsync(new { kcAdminUsername = "admin", kcAdminPassword = "admin", dataControllerName = " Firma Testowa ", dataControllerContact = "rodo@example.com" });
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+
+        var kept = await PutSettingsAsync(new { kcAdminUsername = "admin", kcAdminPassword = "admin" });
+        Assert.Equal(HttpStatusCode.OK, kept.StatusCode);
+
+        var blank = await PutSettingsAsync(new { kcAdminUsername = "admin", kcAdminPassword = "admin", dataControllerName = "Inna", dataControllerContact = "  " });
+        Assert.Equal(HttpStatusCode.BadRequest, blank.StatusCode);
+        Assert.Equal("Podaj e-mail albo adres administratora danych.", (await blank.Content.ReadFromJsonAsync<SettingsUpdateResponse>())!.Error);
+
+        var settings = await (await _client.PostAsJsonAsync("/api/system/settings", new { kcAdminUsername = "admin", kcAdminPassword = "admin" })).Content.ReadFromJsonAsync<SettingsResponse>();
+        Assert.Equal("Firma Testowa", settings!.DataControllerName);
+        Assert.Equal("rodo@example.com", settings.DataControllerContact);
+
+        using var anonymous = _factory.CreateClient();
+        var status = await anonymous.GetFromJsonAsync<SetupStatusResponse>("/api/system/setup-status");
+        Assert.Equal("Firma Testowa", status!.DataControllerName);
+        Assert.Equal("rodo@example.com", status.DataControllerContact);
+    }
+
+    [Fact]
     public async Task ChangingEnvironment_WithCredentials_AsksFirst_ThenWipesOnConfirmation()
     {
         await SeedCredentialAsync();

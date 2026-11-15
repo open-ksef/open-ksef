@@ -90,6 +90,8 @@ public class SystemSetupIntegrationTests : IDisposable
             VerifyEmail = false,
             LoginWithEmailAllowed = true,
             ResetPasswordAllowed = false,
+            DataControllerName = "  Firma Testowa Sp. z o.o. ",
+            DataControllerContact = "rodo@example.com",
         };
 
         using var applyMsg = new HttpRequestMessage(HttpMethod.Post, "/api/system/setup/apply");
@@ -109,6 +111,8 @@ public class SystemSetupIntegrationTests : IDisposable
         var status = await statusResp.Content.ReadFromJsonAsync<SetupStatusResponse>();
         Assert.True(status!.IsInitialized);
         Assert.False(status.RegistrationAllowed);
+        Assert.Equal("Firma Testowa Sp. z o.o.", status.DataControllerName);
+        Assert.Equal("rodo@example.com", status.DataControllerContact);
 
         // 4. Verify DB has the config
         using var scope = _factory.Services.CreateScope();
@@ -156,6 +160,9 @@ public class SystemSetupIntegrationTests : IDisposable
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             Assert.Equal("production", (await db.SystemConfigs.FindAsync(SystemConfigKeys.KSeFEnvironment))!.Value);
             Assert.Null(await db.SystemConfigs.FindAsync(SystemConfigKeys.KSeFBaseUrl));
+            var status = await _client.GetFromJsonAsync<SetupStatusResponse>("/api/system/setup-status");
+            Assert.Null(status!.DataControllerName);
+            Assert.Null(status.DataControllerContact);
         }
         finally
         {
@@ -217,6 +224,31 @@ public class SystemSetupIntegrationTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Empty(await db.SystemConfigs.ToListAsync());
         Assert.False(await db.Tenants.AnyAsync(t => t.Nip == "1234567890"));
+    }
+
+    [Fact]
+    public async Task Apply_DataControllerNameTooLong_Is400_NothingStored()
+    {
+        await ClearSystemConfigAsync();
+        var authResp = await _client.PostAsJsonAsync("/api/system/setup/authenticate", new SetupAuthenticateRequest("admin", "admin"));
+        authResp.EnsureSuccessStatusCode();
+        var auth = await authResp.Content.ReadFromJsonAsync<SetupAuthenticateResponse>();
+
+        var response = await ApplyAsync(auth!.SetupToken, new SetupApplyRequest
+        {
+            ExternalBaseUrl = "http://localhost:8080",
+            KSeFBaseUrl = "test",
+            AdminEmail = "controller-too-long@open-ksef.pl",
+            AdminPassword = "Test1234!",
+            DataControllerName = new string('a', 201),
+            DataControllerContact = "rodo@example.com",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("Nazwa administratora danych może mieć najwyżej 200 znaków.", (await response.Content.ReadFromJsonAsync<SetupApplyResponse>())!.Error);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Empty(await db.SystemConfigs.ToListAsync());
     }
 
     [Fact]

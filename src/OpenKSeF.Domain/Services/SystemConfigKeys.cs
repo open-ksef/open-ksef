@@ -18,6 +18,8 @@ public static class SystemConfigKeys
     public const string PushRelayInstanceId = "push_relay_instance_id";
     public const string SetupTokenSigningKey = "setup_token_signing_key";
     public const string RegistrationAllowed = "registration_allowed";
+    public const string DataControllerName = "data_controller_name";
+    public const string DataControllerContact = "data_controller_contact";
 
     public const string EncryptedPrefix = "enc:";
 

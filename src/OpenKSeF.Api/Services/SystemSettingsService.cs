@@ -111,12 +111,17 @@ public sealed class SystemSettingsService : ISystemSettingsService
             PushRelayLastFailureStatus = relayFailure?.StatusCode,
             PushRelayLastFailureAt = relayFailure?.At,
             FirebaseConfigured = !string.IsNullOrEmpty(_systemConfig.GetValue(SystemConfigKeys.FirebaseCredentialsJson)),
+            DataControllerName = _systemConfig.GetValue(SystemConfigKeys.DataControllerName),
+            DataControllerContact = _systemConfig.GetValue(SystemConfigKeys.DataControllerContact),
         };
     }
 
     public async Task<SettingsUpdateResponse> UpdateSettingsAsync(
         SettingsUpdateRequest request, string kcAdminToken, CancellationToken ct = default)
     {
+        if (SystemSetupService.DataControllerError(request.DataControllerName, request.DataControllerContact, blankAllowed: false) is { } dataControllerError)
+            return new SettingsUpdateResponse(false, dataControllerError);
+
         try
         {
             var client = _httpClientFactory.CreateClient("keycloak");
@@ -222,6 +227,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
             }
             if (request.FirebaseCredentialsJson != null)
                 configValues[SystemConfigKeys.FirebaseCredentialsJson] = request.FirebaseCredentialsJson;
+            SystemSetupService.AddDataController(configValues, request.DataControllerName, request.DataControllerContact);
 
             if (configValues.Count > 0)
             {
