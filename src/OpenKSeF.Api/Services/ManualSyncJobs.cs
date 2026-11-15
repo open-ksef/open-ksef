@@ -32,7 +32,7 @@ public sealed class ManualSyncJobs : IHostedService
         _logger = logger;
     }
 
-    public Job Start(Guid tenantId, string userId, bool fullResync)
+    public Job Start(Guid tenantId, bool fullResync)
     {
         lock (_startLock)
         {
@@ -40,7 +40,7 @@ public sealed class ManualSyncJobs : IHostedService
                 return current;
 
             var job = new Job(fullResync, _time.GetUtcNow().UtcDateTime);
-            job.Completion = Task.Run(() => RunAsync(job, tenantId, userId));
+            job.Completion = Task.Run(() => RunAsync(job, tenantId));
             _jobs[tenantId] = job;
             return job;
         }
@@ -66,7 +66,7 @@ public sealed class ManualSyncJobs : IHostedService
         }
     }
 
-    private async Task<TenantSyncResult> RunAsync(Job job, Guid tenantId, string userId)
+    private async Task<TenantSyncResult> RunAsync(Job job, Guid tenantId)
     {
         try
         {
@@ -75,7 +75,7 @@ public sealed class ManualSyncJobs : IHostedService
             {
                 using var scope = _scopeFactory.CreateScope();
                 return await scope.ServiceProvider.GetRequiredService<ITenantSyncService>()
-                    .SyncTenantAsync(tenantId, userId, job.FullResync, _stopping, () => job.Running = true);
+                    .SyncTenantAsync(tenantId, job.FullResync, _stopping, () => job.Running = true);
             }
             finally
             {

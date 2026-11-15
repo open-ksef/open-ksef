@@ -49,7 +49,7 @@ public class DevicesController : ControllerBase
     {
         var userId = _currentUser.UserId;
 
-        if (request.TenantId.HasValue && !await _db.OwnsTenantAsync(request.TenantId.Value, userId))
+        if (request.TenantId.HasValue && !await _db.TenantMembers.AnyAsync(m => m.TenantId == request.TenantId.Value && m.UserId == userId))
             return BadRequest(new { error = "Invalid tenant ID." });
 
         var now = DateTime.UtcNow;

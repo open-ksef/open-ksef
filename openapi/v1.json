@@ -1725,6 +1725,17 @@
           "notificationEmail": {
             "nullable": true,
             "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "role": {
+            "nullable": true,
+            "type": "string"
           }
         },
         "type": "object"
@@ -2529,12 +2540,12 @@
         ]
       }
     },
-    "/api/Tenants/{id}": {
+    "/api/Tenants/{tenantId}": {
       "delete": {
         "parameters": [
           {
             "in": "path",
-            "name": "id",
+            "name": "tenantId",
             "required": true,
             "schema": {
               "format": "uuid",
@@ -2545,6 +2556,26 @@
         "responses": {
           "204": {
             "description": "No Content"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -2595,7 +2626,7 @@
         "parameters": [
           {
             "in": "path",
-            "name": "id",
+            "name": "tenantId",
             "required": true,
             "schema": {
               "format": "uuid",
@@ -2653,7 +2684,7 @@
         "parameters": [
           {
             "in": "path",
-            "name": "id",
+            "name": "tenantId",
             "required": true,
             "schema": {
               "format": "uuid",
@@ -2700,6 +2731,26 @@
               }
             },
             "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -2832,7 +2883,7 @@
             },
             "description": "OK"
           },
-          "403": {
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2850,7 +2901,7 @@
                 }
               }
             },
-            "description": "Forbidden"
+            "description": "Not Found"
           }
         },
         "tags": [
@@ -2898,26 +2949,6 @@
               }
             },
             "description": "OK"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Forbidden"
           },
           "404": {
             "content": {

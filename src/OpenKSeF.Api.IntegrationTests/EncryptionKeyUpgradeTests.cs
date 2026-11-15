@@ -150,7 +150,6 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         using var scope = host.CreateScope();
         var controller = new CredentialsController(
             db ?? scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
-            new TestUser(),
             scope.ServiceProvider.GetRequiredService<IEncryptionService>(),
             null!,
             NullLogger<CredentialsController>.Instance);
@@ -1088,11 +1087,6 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
             process.Kill(entireProcessTree: true);
         }
         return (process.ExitCode, await stdout + await stderr);
-    }
-
-    private sealed class TestUser : ICurrentUserService
-    {
-        public string UserId => "user-1";
     }
 
     private sealed class BeforeSave(Func<Task> before) : SaveChangesInterceptor

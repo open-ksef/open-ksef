@@ -9,6 +9,8 @@ using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Services;
 
+using OpenKSeF.Api.Tests.TestSupport;
+
 namespace OpenKSeF.Api.Tests.Controllers;
 
 public class DevicesControllerTests : IDisposable
@@ -43,6 +45,7 @@ public class DevicesControllerTests : IDisposable
             new DeviceToken { Id = Guid.NewGuid(), UserId = _userId, Token = "tok2", Platform = Platform.iOS, CreatedAt = now, UpdatedAt = now },
             new DeviceToken { Id = Guid.NewGuid(), UserId = "other-user", Token = "tok3", Platform = Platform.Android, CreatedAt = now, UpdatedAt = now }
         );
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -95,6 +98,7 @@ public class DevicesControllerTests : IDisposable
             CreatedAt = now,
             UpdatedAt = now
         });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var tenantId = Guid.NewGuid();
@@ -105,6 +109,7 @@ public class DevicesControllerTests : IDisposable
             Nip = "1234567890",
             CreatedAt = now
         });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -127,6 +132,7 @@ public class DevicesControllerTests : IDisposable
         var now = DateTime.UtcNow;
         var id = Guid.NewGuid();
         _db.DeviceTokens.Add(new DeviceToken { Id = id, UserId = "previous-user", Token = "shared-token", Platform = Platform.Android, CreatedAt = now, UpdatedAt = now });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var result = await CreateController().Register(new RegisterDeviceRequest("shared-token", Platform.Android, null));
@@ -161,6 +167,7 @@ public class DevicesControllerTests : IDisposable
             Nip = "9999999999",
             CreatedAt = now
         });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -185,6 +192,7 @@ public class DevicesControllerTests : IDisposable
             CreatedAt = now,
             UpdatedAt = now
         });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -228,6 +236,7 @@ public class DevicesControllerTests : IDisposable
             CreatedAt = now,
             UpdatedAt = now
         });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         _notificationService.SendTestNotificationAsync("test-push-token", Platform.Android)
@@ -262,6 +271,7 @@ public class DevicesControllerTests : IDisposable
             CreatedAt = now,
             UpdatedAt = now
         });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();

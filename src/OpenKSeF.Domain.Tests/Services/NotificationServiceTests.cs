@@ -339,6 +339,7 @@ public class NotificationServiceTests : IDisposable
             CreatedAt = now,
             UpdatedAt = now
         });
+        _db.TenantMembers.Add(new TenantMember { TenantId = tenantId, UserId = userId, Role = TenantRole.Owner, CreatedAt = now });
         await _db.SaveChangesAsync();
         return tenantId;
     }

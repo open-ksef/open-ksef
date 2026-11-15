@@ -516,6 +516,7 @@ public sealed class EmailNotificationTests : IAsyncLifetime
                 UpdatedAt = now,
                 KSeFCredentials = [new KSeFCredential { Id = Guid.NewGuid(), TenantId = id, EncryptedToken = "encrypted", CreatedAt = now, UpdatedAt = now }]
             });
+            db.TenantMembers.Add(new TenantMember { TenantId = id, UserId = $"user-{nip}", Role = TenantRole.Owner, CreatedAt = now });
         }
         await db.SaveChangesAsync();
         var lastSync = now.AddHours(-4);

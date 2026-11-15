@@ -2,8 +2,10 @@ using KSeF.Client.Core.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using OpenKSeF.Api.Authorization;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
@@ -37,6 +39,7 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpGet]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(typeof(PagedResult<InvoiceResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -49,9 +52,6 @@ public class InvoicesController : ControllerBase
         [FromQuery] DateTime? dateTo = null,
         [FromQuery] bool? isPaid = null)
     {
-        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
-            return Forbid();
-
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
@@ -104,14 +104,12 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(typeof(InvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Get(Guid tenantId, Guid id)
     {
-        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
-            return Forbid();
-
         var invoice = await _db.InvoiceHeaders
             .Include(i => i.Lines)
             .Where(i => i.Id == id && i.TenantId == tenantId)
@@ -121,14 +119,12 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpGet("{id:guid}/xml")]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetXml(Guid tenantId, Guid id)
     {
-        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
-            return Forbid();
-
         var xml = await _db.InvoiceXmls
             .Where(x => x.InvoiceHeaderId == id && x.InvoiceHeader.TenantId == tenantId)
             .Select(x => new { x.Content, x.InvoiceHeader.KSeFInvoiceNumber })
@@ -138,14 +134,12 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpGet("by-number/{ksefInvoiceNumber}")]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(typeof(InvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetByKSeFNumber(Guid tenantId, string ksefInvoiceNumber)
     {
-        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
-            return Forbid();
-
         var invoice = await _db.InvoiceHeaders
             .Include(i => i.Lines)
             .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber && i.TenantId == tenantId)
@@ -155,15 +149,13 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpGet("{id:guid}/transfer")]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(typeof(TransferDetailsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> GetTransferDetails(Guid tenantId, Guid id)
     {
-        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
-            return Forbid();
-
         var invoice = await _db.InvoiceHeaders
             .Include(i => i.Tenant)
             .FirstOrDefaultAsync(i => i.Id == id && i.TenantId == tenantId);
@@ -193,15 +185,13 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpPatch("{id:guid}/paid")]
+    [TenantAccess(TenantPermissions.InvoicesMarkPaid)]
     [ProducesResponseType(typeof(InvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> SetPaid(Guid tenantId, Guid id, [FromBody] SetInvoicePaidRequest request)
     {
-        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
-            return Forbid();
-
         var invoice = await _db.InvoiceHeaders
             .FirstOrDefaultAsync(i => i.Id == id && i.TenantId == tenantId);
 

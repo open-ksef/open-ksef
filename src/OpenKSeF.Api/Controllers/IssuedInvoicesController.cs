@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using OpenKSeF.Api.Authorization;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
@@ -14,12 +16,12 @@ namespace OpenKSeF.Api.Controllers;
 [Authorize]
 public class IssuedInvoicesController(
     ApplicationDbContext db,
-    ICurrentUserService currentUser,
     IIssuedInvoiceService issuedInvoices) : ControllerBase
 {
     private const int MaxFeedRows = 10_000;
 
     [HttpGet]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(typeof(PagedResult<IssuedInvoiceListItemResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -31,7 +33,7 @@ public class IssuedInvoicesController(
         [FromQuery] string? month = null,
         [FromQuery] string? q = null,
         CancellationToken ct = default) =>
-        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
         {
             page = Math.Max(page, 1);
             pageSize = pageSize < 1 ? 20 : Math.Min(pageSize, 100);
@@ -65,6 +67,7 @@ public class IssuedInvoicesController(
         });
 
     [HttpGet("feed")]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(typeof(IssuedFeedPageResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -76,7 +79,7 @@ public class IssuedInvoicesController(
         [FromQuery] string? month = null,
         [FromQuery] string? q = null,
         CancellationToken ct = default) =>
-        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
         {
             page = Math.Max(page, 1);
             pageSize = pageSize < 1 ? 20 : Math.Min(pageSize, 100);
@@ -114,6 +117,7 @@ public class IssuedInvoicesController(
         });
 
     [HttpGet("exchange-rate")]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(typeof(ExchangeRateProposalResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -123,53 +127,58 @@ public class IssuedInvoicesController(
         [FromQuery] DateOnly? issueDate = null,
         [FromQuery] DateOnly? saleDate = null,
         CancellationToken ct = default) =>
-        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
         {
             var quote = await issuedInvoices.ProposeExchangeRateAsync(currency, issueDate, saleDate, ct);
             return Ok(new ExchangeRateProposalResponse(currency!.Trim().ToUpperInvariant(), quote?.Rate, quote?.TableDate));
         });
 
     [HttpGet("{id:guid}")]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public Task<IActionResult> Get(Guid tenantId, Guid id, CancellationToken ct) =>
-        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
             await issuedInvoices.GetAsync(tenantId, id, ct) is { } view ? Ok(ToResponse(view)) : NotFound());
 
     [HttpPost]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public Task<IActionResult> Create(Guid tenantId, IssuedInvoiceDraftRequest request, CancellationToken ct) =>
-        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
             CreatedInvoice(tenantId, await issuedInvoices.CreateAsync(tenantId, ToInput(request), ct)));
 
     [HttpPut("{id:guid}")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<IActionResult> Update(Guid tenantId, Guid id, IssuedInvoiceDraftRequest request, [FromQuery] uint? version, CancellationToken ct) =>
-        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
             await issuedInvoices.UpdateAsync(tenantId, id, ToInput(request), version, ct) is { } view ? Ok(ToResponse(view)) : NotFound());
 
     [HttpDelete("{id:guid}")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<IActionResult> Delete(Guid tenantId, Guid id, [FromQuery] uint? version, CancellationToken ct) =>
-        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
             await issuedInvoices.DeleteAsync(tenantId, id, version, ct) ? NoContent() : NotFound());
 
     [HttpPost("{id:guid}/issue")]
+    [TenantAccess(TenantPermissions.IssuingSubmit)]
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<IActionResult> Issue(Guid tenantId, Guid id, [FromQuery] uint? version, CancellationToken ct) =>
-        GuardedAsync(tenantId, StatusCodes.Status422UnprocessableEntity, async () =>
+        GuardedAsync(StatusCodes.Status422UnprocessableEntity, async () =>
         {
             if (await issuedInvoices.IssueAsync(tenantId, id, version, ct) is not { } result)
                 return NotFound();
@@ -179,19 +188,21 @@ public class IssuedInvoicesController(
         });
 
     [HttpPost("{id:guid}/copy")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<IActionResult> Copy(Guid tenantId, Guid id, CancellationToken ct) =>
-        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
             await issuedInvoices.CopyAsync(tenantId, id, ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());
 
     [HttpGet("{id:guid}/xml")]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<IActionResult> GetXml(Guid tenantId, Guid id, CancellationToken ct) =>
-        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
         {
             var document = await db.IssuedInvoices
                 .Where(i => i.TenantId == tenantId && i.Id == id)
@@ -206,11 +217,12 @@ public class IssuedInvoicesController(
         });
 
     [HttpGet("{id:guid}/upo")]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<IActionResult> GetUpo(Guid tenantId, Guid id, CancellationToken ct) =>
-        GuardedAsync(tenantId, StatusCodes.Status400BadRequest, async () =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
         {
             var document = await db.IssuedInvoices
                 .Where(i => i.TenantId == tenantId && i.Id == id)
@@ -224,11 +236,8 @@ public class IssuedInvoicesController(
                 : Conflict(new { message = "UPO jest dostępne po przyjęciu faktury w KSeF, gdy KSeF je udostępni" });
         });
 
-    private async Task<IActionResult> GuardedAsync(Guid tenantId, int validationStatus, Func<Task<IActionResult>> action)
+    private async Task<IActionResult> GuardedAsync(int validationStatus, Func<Task<IActionResult>> action)
     {
-        if (!await db.OwnsTenantAsync(tenantId, currentUser.UserId, HttpContext.RequestAborted))
-            return NotFound();
-
         try
         {
             return await action();

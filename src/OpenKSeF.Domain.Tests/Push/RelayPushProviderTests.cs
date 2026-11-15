@@ -81,6 +81,7 @@ public sealed class RelayPushProviderTests
         var tenantId = Guid.NewGuid();
         var now = DateTime.UtcNow;
         db.Tenants.Add(new Tenant { Id = tenantId, UserId = "user-1", Nip = "1111111111", CreatedAt = now, UpdatedAt = now });
+        db.TenantMembers.Add(new TenantMember { TenantId = tenantId, UserId = "user-1", Role = TenantRole.Owner, CreatedAt = now });
         db.DeviceTokens.Add(new DeviceToken { Id = Guid.NewGuid(), UserId = "user-1", Token = "fcm-token-relay", Platform = Platform.Android, TenantId = tenantId, CreatedAt = now, UpdatedAt = now });
         await db.SaveChangesAsync();
 

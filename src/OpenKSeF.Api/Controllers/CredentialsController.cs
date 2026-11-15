@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using OpenKSeF.Api.Authorization;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Data;
@@ -34,7 +35,7 @@ public class CredentialsSummaryController : ControllerBase
     {
         var userId = _currentUser.UserId;
         var tenants = await _db.Tenants
-            .Where(t => t.UserId == userId)
+            .Where(t => _db.TenantMembers.Any(m => m.TenantId == t.Id && m.UserId == userId))
             .Select(t => new
             {
                 t.Id,
@@ -63,7 +64,6 @@ public class CredentialsSummaryController : ControllerBase
 public class CredentialsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
-    private readonly ICurrentUserService _currentUser;
     private readonly IEncryptionService _encryption;
     private readonly ManualSyncJobs _syncJobs;
     private readonly ILogger<CredentialsController> _logger;
@@ -84,19 +84,18 @@ public class CredentialsController : ControllerBase
 
     public CredentialsController(
         ApplicationDbContext db,
-        ICurrentUserService currentUser,
         IEncryptionService encryption,
         ManualSyncJobs syncJobs,
         ILogger<CredentialsController> logger)
     {
         _db = db;
-        _currentUser = currentUser;
         _encryption = encryption;
         _syncJobs = syncJobs;
         _logger = logger;
     }
 
     [HttpPost]
+    [TenantAccess(TenantPermissions.CredentialManage)]
     [RequestSizeLimit(MaxRequestBytes)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -105,9 +104,6 @@ public class CredentialsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> AddOrUpdate(Guid tenantId, [FromBody] AddCredentialRequest request)
     {
-        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
-            return Forbid();
-
         var now = DateTime.UtcNow;
 
         string? encryptedToken = null;
@@ -191,14 +187,12 @@ public class CredentialsController : ControllerBase
     }
 
     [HttpDelete]
+    [TenantAccess(TenantPermissions.CredentialManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid tenantId)
     {
-        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
-            return Forbid();
-
         var existing = await _db.KSeFCredentials
             .FirstOrDefaultAsync(c => c.TenantId == tenantId);
 
@@ -213,14 +207,12 @@ public class CredentialsController : ControllerBase
     }
 
     [HttpGet("status")]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(typeof(CredentialStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Status(Guid tenantId)
     {
-        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
-            return Forbid();
-
         var credential = await _db.KSeFCredentials
             .Where(c => c.TenantId == tenantId)
             .Select(c => new { c.Type, c.UpdatedAt, c.EncryptedCertificateData })
@@ -252,6 +244,7 @@ public class CredentialsController : ControllerBase
     }
 
     [HttpPost("sync")]
+    [TenantAccess(TenantPermissions.SyncRun)]
     [EnableRateLimiting(ManualSyncRateLimitPolicy)]
     [ProducesResponseType(typeof(TenantManualSyncResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(TenantSyncStatusResponse), StatusCodes.Status202Accepted)]
@@ -266,6 +259,7 @@ public class CredentialsController : ControllerBase
         StartSync(tenantId, fullResync: false, cancellationToken);
 
     [HttpPost("full-resync")]
+    [TenantAccess(TenantPermissions.SyncFullResync)]
     [EnableRateLimiting(ManualSyncRateLimitPolicy)]
     [ProducesResponseType(typeof(TenantManualSyncResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(TenantSyncStatusResponse), StatusCodes.Status202Accepted)]
@@ -280,25 +274,20 @@ public class CredentialsController : ControllerBase
         StartSync(tenantId, fullResync: true, cancellationToken);
 
     [HttpGet("sync")]
+    [TenantAccess(TenantPermissions.SyncRun)]
     [ProducesResponseType(typeof(TenantSyncStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> SyncStatus(Guid tenantId)
     {
-        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
-            return Forbid();
-
         return Ok(await StatusAsync(tenantId, _syncJobs.Find(tenantId)));
     }
 
     private async Task<IActionResult> StartSync(Guid tenantId, bool fullResync, CancellationToken cancellationToken)
     {
-        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
-            return Forbid();
-
         if (!await _db.KSeFCredentials.AnyAsync(c => c.TenantId == tenantId, cancellationToken))
             return Conflict(new { error = TenantSyncService.MissingCredentialMessage });
 
-        var job = _syncJobs.Start(tenantId, _currentUser.UserId, fullResync);
+        var job = _syncJobs.Start(tenantId, fullResync);
         var statusUrl = $"/api/tenants/{tenantId}/credentials/sync";
         if (Request.Headers["Prefer"].Any(p => p?.Contains("respond-async", StringComparison.OrdinalIgnoreCase) == true))
             return Accepted(statusUrl, await StatusAsync(tenantId, job));

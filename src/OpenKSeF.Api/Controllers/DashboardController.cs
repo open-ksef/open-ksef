@@ -33,7 +33,7 @@ public class DashboardController : ControllerBase
         var last30DaysThreshold = now.AddDays(-30);
 
         var result = await _db.Tenants
-            .Where(t => t.UserId == _currentUser.UserId)
+            .Where(t => _db.TenantMembers.Any(m => m.TenantId == t.Id && m.UserId == _currentUser.UserId))
             .OrderBy(t => t.DisplayName ?? t.Nip)
             .Select(t => new TenantDashboardSummaryResponse(
                 t.Id,

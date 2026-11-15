@@ -9,6 +9,8 @@ using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 
+using OpenKSeF.Api.Tests.TestSupport;
+
 namespace OpenKSeF.Api.Tests.Controllers;
 
 public class InvoicesSummaryControllerTests : IDisposable
@@ -59,6 +61,8 @@ public class InvoicesSummaryControllerTests : IDisposable
                 UpdatedAt = DateTime.UtcNow
             });
 
+        _db.AddOwnerMembers();
+
         _db.SaveChanges();
     }
 
@@ -88,6 +92,7 @@ public class InvoicesSummaryControllerTests : IDisposable
             MakeInvoice(_tenantAId, "A-001", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
             MakeInvoice(_tenantBId, "B-001", new DateTime(2025, 1, 2, 0, 0, 0, DateTimeKind.Utc)),
             MakeInvoice(_otherTenantId, "C-001", new DateTime(2025, 1, 3, 0, 0, 0, DateTimeKind.Utc)));
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -100,12 +105,12 @@ public class InvoicesSummaryControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task List_WithTenantFilterForOtherUserTenant_ReturnsForbid()
+    public async Task List_WithTenantFilterForOtherUserTenant_ReturnsNotFound()
     {
         var controller = CreateController();
         var result = await controller.List(tenantId: _otherTenantId);
 
-        Assert.IsType<ForbidResult>(result);
+        Assert.IsType<NotFoundResult>(result);
     }
 
     [Fact]
@@ -114,6 +119,7 @@ public class InvoicesSummaryControllerTests : IDisposable
         _db.InvoiceHeaders.AddRange(
             MakeInvoice(_tenantAId, "A-001", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
             MakeInvoice(_tenantBId, "B-001", new DateTime(2025, 1, 2, 0, 0, 0, DateTimeKind.Utc)));
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -131,6 +137,7 @@ public class InvoicesSummaryControllerTests : IDisposable
             MakeInvoice(_tenantAId, "A-001", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
             MakeInvoice(_tenantAId, "A-002", new DateTime(2025, 2, 1, 0, 0, 0, DateTimeKind.Utc)),
             MakeInvoice(_tenantAId, "A-003", new DateTime(2025, 3, 1, 0, 0, 0, DateTimeKind.Utc)));
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -154,6 +161,8 @@ public class InvoicesSummaryControllerTests : IDisposable
             _db.InvoiceHeaders.Add(MakeInvoice(_tenantAId, $"A-{i:D3}", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(i)));
         }
 
+        _db.AddOwnerMembers();
+
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -173,6 +182,7 @@ public class InvoicesSummaryControllerTests : IDisposable
         var invoice = MakeInvoice(_tenantAId, "A-ACC", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         invoice.VendorBankAccount = account;
         _db.InvoiceHeaders.Add(invoice);
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -187,6 +197,7 @@ public class InvoicesSummaryControllerTests : IDisposable
     public async Task GetByNumber_WithoutTenantId_SearchesAcrossAllOwnedTenants()
     {
         _db.InvoiceHeaders.Add(MakeInvoice(_tenantBId, "B-999", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -197,12 +208,12 @@ public class InvoicesSummaryControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task GetByNumber_WithTenantFilterForOtherUserTenant_ReturnsForbid()
+    public async Task GetByNumber_WithTenantFilterForOtherUserTenant_ReturnsNotFound()
     {
         var controller = CreateController();
         var result = await controller.GetByNumber("X-001", _otherTenantId);
 
-        Assert.IsType<ForbidResult>(result);
+        Assert.IsType<NotFoundResult>(result);
     }
 
     [Fact]

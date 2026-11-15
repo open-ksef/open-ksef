@@ -52,7 +52,7 @@ public class TransferAfterFullResyncTests : IDisposable
             .Returns(new KSeFInvoiceQueryResult(
                 [Header(invoice.KSeFInvoiceNumber, ksefType), Header("KSEF-NOT-STORED-YET", "Vat")]));
 
-        var sync = await CreateSyncService().SyncTenantAsync(_tenantId, UserId, forceFullResync: true);
+        var sync = await CreateSyncService().SyncTenantAsync(_tenantId, forceFullResync: true);
 
         Assert.Equal(TenantSyncOutcome.Success, sync.Outcome);
         Assert.Equal(1, sync.NewInvoices);

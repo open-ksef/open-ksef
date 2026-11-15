@@ -1,8 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OpenKSeF.Api.Authorization;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Abstractions;
-using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Services;
 
@@ -12,33 +13,27 @@ namespace OpenKSeF.Api.Controllers;
 [Route("api/tenants/{tenantId:guid}/seller-profile")]
 [Authorize]
 public class SellerProfileController(
-    ApplicationDbContext db,
-    ICurrentUserService currentUser,
     ISellerProfileService sellerProfiles,
     IKSeFIssuingEnvironment ksefEnvironment) : ControllerBase
 {
     [HttpGet]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(typeof(SellerProfileResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Get(Guid tenantId, CancellationToken ct)
     {
-        if (!await db.OwnsTenantAsync(tenantId, currentUser.UserId, ct))
-            return NotFound();
-
         var view = await sellerProfiles.GetAsync(tenantId, ct);
         return view is null ? NotFound() : Ok(ToResponse(view));
     }
 
     [HttpPut]
+    [TenantAccess(TenantPermissions.TenantEdit)]
     [ProducesResponseType(typeof(SellerProfileResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Put(Guid tenantId, SellerProfileRequest request, CancellationToken ct)
     {
-        if (!await db.OwnsTenantAsync(tenantId, currentUser.UserId, ct))
-            return NotFound();
-
         try
         {
             var (view, errors) = await sellerProfiles.SaveAsync(tenantId, new SellerProfileInput(

@@ -37,7 +37,7 @@ public class AccountController : ControllerBase
         var userId = _currentUser.UserId;
 
         var firstTenant = await _db.Tenants
-            .Where(t => t.UserId == userId)
+            .Where(t => _db.TenantMembers.Any(m => m.TenantId == t.Id && m.UserId == userId))
             .OrderBy(t => t.CreatedAt)
             .Select(t => new { t.Id, HasCredential = t.KSeFCredentials.Any() })
             .FirstOrDefaultAsync();

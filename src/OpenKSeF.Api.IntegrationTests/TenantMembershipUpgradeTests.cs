@@ -98,4 +98,77 @@ public sealed class TenantMembershipUpgradeTests : IAsyncLifetime
             Assert.Equal(2, await db.TenantMembers.CountAsync());
         }
     }
+
+    [Fact]
+    public async Task Rebackfill_RepairsRowsWrittenByRolledBackImage_AndIsIdempotent()
+    {
+        const string membershipMigration = "20261115144909_AddTenantMembership";
+        var created = new DateTime(2026, 11, 1, 9, 0, 0, DateTimeKind.Utc);
+        var kept = Guid.NewGuid();
+        var orphan = Guid.NewGuid();
+        string before;
+
+        await using (var db = NewContext())
+        {
+            await db.GetService<IMigrator>().MigrateAsync(membershipMigration);
+            db.Tenants.Add(new Tenant { Id = kept, UserId = "user-a", Nip = "1111111111", CreatedAt = created, UpdatedAt = created });
+            db.TenantMembers.Add(new TenantMember { TenantId = kept, UserId = "user-a", Role = TenantRole.Owner, CreatedAt = created });
+            db.TenantMembers.Add(new TenantMember { TenantId = kept, UserId = "user-e", Role = TenantRole.Employee, CreatedAt = created });
+            db.Tenants.Add(new Tenant { Id = orphan, UserId = "user-b", Nip = "1111111111", CreatedAt = created, UpdatedAt = created });
+            await db.SaveChangesAsync();
+
+            foreach (var (tenant, number, isPaid, paidBy) in new[]
+            {
+                (kept, "PAID-MARKED", true, "user-e"),
+                (kept, "PAID-OLD-IMAGE", true, (string?)null),
+                (kept, "UNPAID-STALE", false, "user-a"),
+                (orphan, "ORPHAN-PAID", true, null),
+                (orphan, "ORPHAN-UNPAID", false, null),
+            })
+            {
+                DateTime? paidAt = isPaid ? created : null;
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO "InvoiceHeaders" ("Id", "TenantId", "KSeFInvoiceNumber", "KSeFReferenceNumber", "VendorName", "VendorNip", "AmountNet", "AmountVat", "AmountGross", "IssueDate", "FirstSeenAt", "LastUpdatedAt", "IsPaid", "PaidAt", "PaidByUserId")
+                    VALUES ({Guid.NewGuid()}, {tenant}, {number}, {number}, 'Dostawca', '1111111111', 100, 23, 123, {created}, {created}, {created}, {isPaid}, {paidAt}, {paidBy})
+                    """);
+            }
+
+            before = await db.Database.SqlQueryRaw<string>(RowHash).SingleAsync();
+            await db.Database.MigrateAsync();
+        }
+
+        string afterFirst;
+        await using (var db = NewContext())
+        {
+            Assert.Equal(before, await db.Database.SqlQueryRaw<string>(RowHash).SingleAsync());
+            var paidBy = await db.InvoiceHeaders.AsNoTracking().ToDictionaryAsync(i => i.KSeFInvoiceNumber, i => i.PaidByUserId);
+            Assert.Equal(5, paidBy.Count);
+            Assert.Equal("user-e", paidBy["PAID-MARKED"]);
+            Assert.Equal("user-a", paidBy["PAID-OLD-IMAGE"]);
+            Assert.Null(paidBy["UNPAID-STALE"]);
+            Assert.Equal("user-b", paidBy["ORPHAN-PAID"]);
+            Assert.Null(paidBy["ORPHAN-UNPAID"]);
+
+            var members = await db.TenantMembers.AsNoTracking().OrderBy(m => m.UserId).ToListAsync();
+            Assert.Equal(["user-a", "user-b", "user-e"], members.Select(m => m.UserId));
+            Assert.Equal([TenantRole.Owner, TenantRole.Owner, TenantRole.Employee], members.Select(m => m.Role));
+            Assert.Equal(orphan, members[1].TenantId);
+
+            afterFirst = await StateHashAsync(db);
+            await db.GetService<IMigrator>().MigrateAsync(membershipMigration);
+            await db.Database.MigrateAsync();
+        }
+
+        await using (var db = NewContext())
+        {
+            Assert.Equal(before, await db.Database.SqlQueryRaw<string>(RowHash).SingleAsync());
+            Assert.Equal(afterFirst, await StateHashAsync(db));
+        }
+    }
+
+    private static Task<string> StateHashAsync(ApplicationDbContext db) => db.Database.SqlQueryRaw<string>("""
+        SELECT md5(
+            (SELECT string_agg("TenantId"::text || "UserId" || "Role", '|' ORDER BY "TenantId", "UserId") FROM "TenantMembers") ||
+            (SELECT string_agg("Id"::text || coalesce("PaidByUserId", '-'), '|' ORDER BY "Id") FROM "InvoiceHeaders")) AS "Value"
+        """).SingleAsync();
 }

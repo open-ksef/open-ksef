@@ -56,6 +56,7 @@ public sealed class PushRetryTests : IAsyncLifetime
             UpdatedAt = now,
             KSeFCredentials = [new KSeFCredential { Id = Guid.NewGuid(), TenantId = _tenantId, EncryptedToken = "encrypted", CreatedAt = now, UpdatedAt = now }]
         });
+        db.TenantMembers.Add(new TenantMember { TenantId = _tenantId, UserId = UserId, Role = TenantRole.Owner, CreatedAt = now });
         db.SyncStates.Add(new SyncState { Id = Guid.NewGuid(), TenantId = _tenantId, LastSyncedAt = now.AddHours(-4), LastSuccessfulSync = now.AddHours(-4) });
         db.DeviceTokens.Add(new DeviceToken { Id = Guid.NewGuid(), UserId = UserId, Token = "fcm-token-1", Platform = Platform.Android, CreatedAt = now, UpdatedAt = now });
         await db.SaveChangesAsync();
@@ -159,7 +160,7 @@ public sealed class PushRetryTests : IAsyncLifetime
 
         _received = [Bought("OLD-1"), Bought("OLD-2")];
         await using (var db = NewContext())
-            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId, UserId, forceFullResync: true)).Outcome);
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId, forceFullResync: true)).Outcome);
 
         await WorkerCycleAsync();
 
