@@ -13,6 +13,7 @@ import { ApiError } from '@/api/errors'
 import type { InvoiceResponse, PagedResult, TransferDetailsResponse } from '@/api/types'
 import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
+import { generateInvoice } from '@/vendor/ksef-pdf-generator/ksef-fe-invoice-converter.js'
 import { InvoiceDetailsPage } from './InvoiceDetails'
 
 vi.mock('@/api/endpoints/tenants', () => ({
@@ -25,6 +26,8 @@ vi.mock('@/api/endpoints/invoices', () => ({
   getTransferDetails: vi.fn(),
   setInvoicePaid: vi.fn(),
 }))
+
+vi.mock('@/vendor/ksef-pdf-generator/ksef-fe-invoice-converter.js', () => ({ generateInvoice: vi.fn() }))
 
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 
@@ -266,6 +269,67 @@ describe('InvoiceDetailsPage', () => {
       await click(testId('download-xml-btn'))
 
       expect(toast.error).toHaveBeenCalledWith('Nie udało się pobrać pliku XML faktury.')
+    })
+
+    const qr = 'https://qr-test.ksef.mf.gov.pl/invoice/1111111111/03-11-2026/abc'
+
+    it('hides the PDF button without a verification URL', async () => {
+      mockOne(invoiceOf({ hasXml: true, verificationUrl: null }))
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+      expect(testId('download-xml-btn')).toBeTruthy()
+      expect(testId('download-pdf-btn')).toBeNull()
+    })
+
+    it('hides the PDF button without stored XML', async () => {
+      mockOne(invoiceOf({ hasXml: false, verificationUrl: qr }))
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+      expect(testId('invoice-details-card')).toBeTruthy()
+      expect(testId('download-pdf-btn')).toBeNull()
+    })
+
+    it('renders the stored XML to PDF with KOD I', async () => {
+      mockOne(invoiceOf({ hasXml: true, verificationUrl: qr }))
+      vi.mocked(getInvoiceXml).mockResolvedValue({ blob: new Blob(['<Faktura/>']), fileName: 'x.xml' })
+      vi.mocked(generateInvoice).mockResolvedValue(new Blob(['%PDF']))
+      Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() })
+      let saved: string | undefined
+      const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        saved = this.download
+      })
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      await click(testId('download-pdf-btn'))
+
+      expect(getInvoiceXml).toHaveBeenCalledWith('tenant-1', 'inv-1')
+      const [file, data, output] = vi.mocked(generateInvoice).mock.calls[0]
+      expect(await (file as File).text()).toBe('<Faktura/>')
+      expect(data).toEqual({ nrKSeF: 'KSEF-001', qrCode: qr })
+      expect(output).toBe('blob')
+      expect(saved).toBe('KSEF-001.pdf')
+      expect(toast.error).not.toHaveBeenCalled()
+      anchorClick.mockRestore()
+    })
+
+    it('reports an unsupported invoice format', async () => {
+      mockOne(invoiceOf({ hasXml: true, verificationUrl: qr }))
+      vi.mocked(getInvoiceXml).mockResolvedValue({ blob: new Blob(['<Faktura/>']), fileName: 'x.xml' })
+      vi.mocked(generateInvoice).mockRejectedValue(new Error('Unknown XML Version: FA (9)'))
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      await click(testId('download-pdf-btn'))
+
+      expect(toast.error).toHaveBeenCalledWith('Format faktury nieobsługiwany przez generator PDF MF. Pobierz XML.')
+    })
+
+    it('reports a generic render failure', async () => {
+      mockOne(invoiceOf({ hasXml: true, verificationUrl: qr }))
+      vi.mocked(getInvoiceXml).mockResolvedValue({ blob: new Blob(['<Faktura/>']), fileName: 'x.xml' })
+      vi.mocked(generateInvoice).mockRejectedValue(new Error('boom'))
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      await click(testId('download-pdf-btn'))
+
+      expect(toast.error).toHaveBeenCalledWith('Nie udało się wygenerować PDF.')
     })
   })
 

@@ -15,7 +15,7 @@ import { PaidStatus } from '@/components/PaidStatus'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
 import { accountDigits, formatDate, formatDecimal, formatMoney, formatNrb, formatWarsawDate } from '@/invoicing/format'
-import { downloadFile } from '@/invoicing/status'
+import { downloadFile, renderInvoicePdf } from '@/invoicing/status'
 import { vatRateLabel } from '@/invoicing/totals'
 
 const PAID_MUTATION_KEY = ['invoice-paid']
@@ -269,6 +269,21 @@ export function InvoiceDetailsPage(): ReactElement {
     },
   })
 
+  const pdfMutation = useMutation({
+    mutationFn: async ({ tenantId, invoice: target, qrCode }: { tenantId: string; invoice: InvoiceResponse; qrCode: string }) => {
+      const { blob } = await getInvoiceXml(tenantId, target.id)
+      const pdf = await renderInvoicePdf(await blob.text(), target.ksefInvoiceNumber, qrCode)
+      downloadFile(pdf, `${target.ksefInvoiceNumber}.pdf`, 'application/pdf')
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error && error.message.startsWith('Unknown XML Version')
+          ? 'Format faktury nieobsługiwany przez generator PDF MF. Pobierz XML.'
+          : 'Nie udało się wygenerować PDF.',
+      )
+    },
+  })
+
   const savingIds = useMutationState({
     filters: { mutationKey: PAID_MUTATION_KEY, status: 'pending' },
     select: (running) => (running.state.variables as { invoiceId: string }).invoiceId,
@@ -469,6 +484,19 @@ export function InvoiceDetailsPage(): ReactElement {
                 </dl>
                 {invoice.hasXml ? (
                   <div className="pay-actions">
+                    {invoice.verificationUrl ? (
+                      <Button
+                        variant="outline"
+                        data-testid="download-pdf-btn"
+                        disabled={pdfMutation.isPending}
+                        onClick={() =>
+                          pdfMutation.mutate({ tenantId: effectiveTenantId, invoice, qrCode: invoice.verificationUrl! })
+                        }
+                      >
+                        <Icon name="file-down" />
+                        {pdfMutation.isPending ? 'Generowanie...' : 'Pobierz PDF'}
+                      </Button>
+                    ) : null}
                     <Button
                       variant="outline"
                       data-testid="download-xml-btn"
