@@ -464,6 +464,48 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Backfill_RowsAreNotReportedAsQueued_OnManualSyncOr429()
+    {
+        await InsertAsync("OLD-A", daysAgo: 1);
+        await InsertAsync("OLD-B", daysAgo: 2);
+        await InsertAsync("UNDATED-RECENT", daysAgo: 20);
+        await MigrateAsync();
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '30 days', "Settlement" = 1 WHERE "KSeFInvoiceNumber" LIKE 'OLD-%' """);
+        _xml = _ => throw RateLimited(60);
+
+        var stopped = await ManualSyncAsync();
+
+        Assert.Equal(1, stopped.QueuedDownloads);
+        Assert.Equal(0, stopped.ErroredDownloads);
+
+        _blocks.Block(Nip, TimeSpan.Zero);
+        _xml = _ => Xml("2026-11-20");
+        var manual = await ManualSyncAsync();
+
+        Assert.Equal(0, manual.QueuedDownloads);
+        Assert.Equal(["UNDATED-RECENT", "UNDATED-RECENT", "OLD-A", "OLD-B"], _downloads);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.Gone)]
+    public async Task Backfill_RowGoneFromKSeF_CountsTowardTheCap_AndStopsAfterFiveTries(HttpStatusCode status)
+    {
+        await InsertAsync("OLD-GONE", daysAgo: 1);
+        await MigrateAsync();
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '30 days', "Settlement" = 1""");
+        _xml = _ => throw new KsefApiException("gone", status);
+
+        for (var i = 0; i < InvoiceService.MaxFailedXmlReads + 1; i++)
+            await WorkerCycleAsync();
+
+        Assert.Equal(InvoiceService.MaxFailedXmlReads, _downloads.Count);
+        Assert.Equal((short)InvoiceService.MaxFailedXmlReads, (await RowAsync("OLD-GONE")).XmlFailedReads);
+    }
+
+    [Fact]
     public async Task NotReadRow_ParseOrDownloadFails_StaysNotRead_NeverNone()
     {
         await InsertAsync("PARSE-FAILS", account: Account, dueDate: new DateOnly(2026, 11, 1));

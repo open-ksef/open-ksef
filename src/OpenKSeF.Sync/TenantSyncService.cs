@@ -422,9 +422,9 @@ public sealed class TenantSyncService : ITenantSyncService
                     || (h.Direction == InvoiceDirection.Received && h.Settlement == null && (!h.IsPaid || fullResync)),
             })
             .Where(x => x.NeedsDetails || x.Row.Xml == null);
-        var waitingCount = await waiting.CountAsync(cancellationToken);
-        if (waitingCount == 0)
+        if (!await waiting.AnyAsync(cancellationToken))
             return (0, 0);
+        var waitingCount = await waiting.CountAsync(x => x.NeedsDetails, cancellationToken);
 
         var queue = await waiting
             .OrderBy(x => !x.NeedsDetails ? 5
@@ -437,7 +437,7 @@ public sealed class TenantSyncService : ITenantSyncService
             .ThenBy(x => x.Row.XmlAttemptedAt)
             .ThenByDescending(x => x.Row.IssueDate)
             .ThenBy(x => x.Row.Id)
-            .Select(x => new { x.Row.Id, x.Row.TenantId, x.Row.KSeFInvoiceNumber })
+            .Select(x => new { x.Row.Id, x.Row.TenantId, x.Row.KSeFInvoiceNumber, x.NeedsDetails })
             .Take(budget)
             .ToListAsync(cancellationToken);
 
@@ -449,6 +449,7 @@ public sealed class TenantSyncService : ITenantSyncService
 
         var completed = 0;
         var errored = 0;
+        var backfilled = 0;
         var attempted = 0;
         var failuresInARow = 0;
         foreach (var row in queue)
@@ -467,12 +468,16 @@ public sealed class TenantSyncService : ITenantSyncService
                 if (details.Lines is null)
                 {
                     await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, xmlReceived: true, xml, cancellationToken);
-                    errored++;
+                    if (row.NeedsDetails)
+                        errored++;
                     continue;
                 }
 
                 await _invoiceService.ApplyInvoiceXmlAsync(row.Id, details, xml, cancellationToken);
-                completed++;
+                if (row.NeedsDetails)
+                    completed++;
+                else
+                    backfilled++;
             }
             catch (KsefApiException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
@@ -485,16 +490,18 @@ public sealed class TenantSyncService : ITenantSyncService
             {
                 _logger.LogWarning(ex, "Failed to store invoice XML details: {KSeFNumber}", row.KSeFInvoiceNumber);
                 _db.ChangeTracker.Clear();
-                await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, xml is not null, xml, cancellationToken);
-                errored++;
+                var gone = ex is KsefApiException { StatusCode: HttpStatusCode.NotFound or HttpStatusCode.Gone };
+                await _invoiceService.RecordFailedInvoiceXmlAsync(row.Id, xml is not null || gone, xml, cancellationToken);
+                if (row.NeedsDetails)
+                    errored++;
                 if (++failuresInARow >= MaxConsecutiveDownloadFailures)
                     break;
             }
         }
 
         _db.ChangeTracker.Clear();
-        _logger.LogInformation("Invoice XML queue for NIP {Nip}: {Completed} of {Queued} done", nip, completed, queue.Count);
-        return (waitingCount - completed - errored, errored);
+        _logger.LogInformation("Invoice XML queue for NIP {Nip}: {Completed} of {Queued} done, {Backfilled} original XML backfilled", nip, completed + backfilled, queue.Count, backfilled);
+        return (Math.Max(0, waitingCount - completed - errored), errored);
     }
 
     private async Task<KSeFSession?> CurrentSessionAsync(

@@ -40,7 +40,7 @@ New code must respect this layering. Never add a reference from Domain to any up
 
 The `OpenKSeF.Sync` project uses the [CIRFMF KSeF.Client](https://github.com/CIRFMF/ksef-client-csharp) NuGet package (`KSeF.Client` and `KSeF.Client.Core` `Version="[2.9.0.1]"`, pinned exactly, restored only from the CIRFMF feed via `packageSourceMapping` in `src/nuget.config`) as the primary interface to the KSeF API. Upgrade them only in their own PR, and run the opt-in KSeF TEST send on that branch and put the result in the PR: `KSEF_TEST_SEND=1 dotnet test src/OpenKSeF.Domain.Tests --filter Category=KSeFTest`. Before writing custom code for KSeF communication or data extraction, always check what the library already provides:
 
-- `IKSeFClient.GetInvoiceAsync(ksefNumber, accessToken)` — downloads full invoice XML as `string`
+- `IKSeFClient.GetInvoiceAsync(ksefNumber, accessToken)` — downloads full invoice XML as `string`; it drops a BOM, so `KSeFGateway.DownloadInvoiceAsync` calls `GET /v2/invoices/ksef/{n}` itself to keep the original bytes
 - `IKSeFClient.QueryInvoiceMetadataAsync()` — returns `InvoiceSummary` (amounts, dates, NIP, invoice number) but no invoice body details like bank accounts
 - `IAuthCoordinator` / `ICryptographyService` — handles session auth and encryption
 - Our `KSeFGateway` wraps these calls behind `IKSeFGateway` for testability
