@@ -296,5 +296,33 @@ public class InvoiceListFiltersApiTests : IDisposable
         Assert.False(paid.IsOverdue);
     }
 
+    [Fact]
+    public async Task SetPaid_StoresWhoMarkedIt_AndClearsItWhenUnpaid()
+    {
+        var tenantId = await CreateTenantAsync();
+        var invoice = Due(tenantId, "PAID-BY", null);
+        await SeedAsync(invoice);
+        var route = $"/api/tenants/{tenantId}/invoices/{invoice.Id}/paid";
+
+        (await _client.PatchAsJsonAsync(route, new { isPaid = true })).EnsureSuccessStatusCode();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var row = await db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == invoice.Id);
+            Assert.True(row.IsPaid);
+            Assert.NotNull(row.PaidAt);
+            Assert.Equal(await db.Tenants.Where(t => t.Id == tenantId).Select(t => t.UserId).SingleAsync(), row.PaidByUserId);
+        }
+
+        (await _client.PatchAsJsonAsync(route, new { isPaid = false })).EnsureSuccessStatusCode();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var row = await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == invoice.Id);
+            Assert.False(row.IsPaid);
+            Assert.Null(row.PaidAt);
+            Assert.Null(row.PaidByUserId);
+        }
+    }
+
     private sealed record TenantIdDto(Guid Id);
 }

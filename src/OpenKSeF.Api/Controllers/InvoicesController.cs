@@ -213,6 +213,7 @@ public class InvoicesController : ControllerBase
 
         invoice.IsPaid = request.IsPaid;
         invoice.PaidAt = request.IsPaid ? DateTime.UtcNow : null;
+        invoice.PaidByUserId = request.IsPaid ? _currentUser.UserId : null;
         invoice.LastUpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
