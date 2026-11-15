@@ -46,7 +46,10 @@ public class TenantsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Get(Guid tenantId)
     {
-        var tenant = await _db.Tenants.AsNoTracking().FirstAsync(t => t.Id == tenantId);
+        var tenant = await _db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == tenantId);
+        if (tenant is null)
+            return NotFound();
+
         return Ok(TenantResponse.From(tenant, TenantAccessAttribute.Member(HttpContext).Role));
     }
 
@@ -95,7 +98,9 @@ public class TenantsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Update(Guid tenantId, [FromBody] UpdateTenantRequest request)
     {
-        var tenant = await _db.Tenants.FirstAsync(t => t.Id == tenantId);
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId);
+        if (tenant is null)
+            return NotFound();
 
         tenant.DisplayName = request.DisplayName;
         if (request.NotificationEmailSet)

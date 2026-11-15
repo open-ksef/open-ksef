@@ -166,6 +166,16 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         });
     }
 
+    [Theory]
+    [InlineData("PUT", "api/tenants/{0}")]
+    [InlineData("POST", "api/tenants/{0}/credentials")]
+    public async Task NonMember_InvalidBody_GetsNotFoundBeforeValidation(string method, string template)
+    {
+        var request = new HttpRequestMessage(new HttpMethod(method), "/" + string.Format(template, _seed.TenantA)) { Content = JsonContent.Create(new { }) };
+
+        Assert.True(IsActionNotFound(await _other.SendAsync(request)));
+    }
+
     [Fact]
     public async Task ForeignResourceIdUnderOwnTenant_Returns404()
     {
