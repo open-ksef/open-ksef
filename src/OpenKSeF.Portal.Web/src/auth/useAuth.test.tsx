@@ -31,7 +31,7 @@ describe('useAuth', () => {
     }).toThrow('useAuth must be used within AuthProvider')
   })
 
-  it('returns auth context when used inside AuthProvider', async () => {
+  it('reports unauthenticated inside AuthProvider without a stored user', async () => {
     const { useAuth } = await import('./useAuth')
 
     const setIsAuthenticated = vi.fn<(value: boolean) => void>()
@@ -52,6 +52,6 @@ describe('useAuth', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
 
-    expect(typeof setIsAuthenticated.mock.calls.at(-1)?.[0]).toBe('boolean')
+    expect(setIsAuthenticated.mock.calls.at(-1)?.[0]).toBe(false)
   })
 })

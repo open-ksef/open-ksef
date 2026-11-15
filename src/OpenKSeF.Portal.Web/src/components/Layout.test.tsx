@@ -26,7 +26,6 @@ vi.mock('@/auth/useAuth', () => ({
     sessionEnded: false,
     startAction: vi.fn(),
     logout: vi.fn(),
-    getAccessToken: vi.fn(),
   }),
 }))
 

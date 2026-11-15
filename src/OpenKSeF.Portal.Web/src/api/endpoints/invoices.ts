@@ -16,12 +16,6 @@ export function listInvoices(tenantId: string, params?: ListInvoicesParams): Pro
   })
 }
 
-export function getInvoice(tenantId: string, invoiceId: string): Promise<InvoiceResponse> {
-  return apiClient.get<InvoiceResponse>(
-    `/tenants/${encodeURIComponent(tenantId)}/invoices/${encodeURIComponent(invoiceId)}`,
-  )
-}
-
 export function getInvoiceByKSeFNumber(tenantId: string, ksefNumber: string): Promise<InvoiceResponse> {
   return apiClient.get<InvoiceResponse>(
     `/tenants/${encodeURIComponent(tenantId)}/invoices/by-number/${encodeURIComponent(ksefNumber)}`,

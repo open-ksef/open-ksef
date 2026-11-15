@@ -1,8 +1,0 @@
-export * as tenants from './tenants'
-export * as invoices from './invoices'
-export * as credentials from './credentials'
-export * as devices from './devices'
-export * as dashboard from './dashboard'
-export * as issuedInvoices from './issuedInvoices'
-export * as sellerProfile from './sellerProfile'
-export * as nipLookup from './nipLookup'

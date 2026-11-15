@@ -111,8 +111,6 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
     await manager.signoutRedirect()
   }, [manager])
 
-  const getAccessToken = useCallback(async () => user?.access_token ?? null, [user])
-
   const handleOidcCallback = useCallback(async () => {
     const actionStatus = new URLSearchParams(globalThis.location?.search).get('kc_action_status')
     const callbackUser = await manager.signinRedirectCallback()
@@ -131,10 +129,9 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
       login,
       startAction,
       logout,
-      getAccessToken,
       handleOidcCallback,
     }),
-    [getAccessToken, handleOidcCallback, isLoading, login, logout, sessionEnded, startAction, user],
+    [handleOidcCallback, isLoading, login, logout, sessionEnded, startAction, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

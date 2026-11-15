@@ -5,10 +5,6 @@ export function listTenants(): Promise<TenantResponse[]> {
   return apiClient.get<TenantResponse[]>('/tenants')
 }
 
-export function getTenant(id: string): Promise<TenantResponse> {
-  return apiClient.get<TenantResponse>(`/tenants/${encodeURIComponent(id)}`)
-}
-
 export function createTenant(request: CreateTenantRequest): Promise<TenantResponse> {
   return apiClient.post<TenantResponse>('/tenants', request)
 }
