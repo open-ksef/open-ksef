@@ -251,6 +251,33 @@ public class SystemSetupIntegrationTests : IDisposable
         Assert.Empty(await db.SystemConfigs.ToListAsync());
     }
 
+    [Theory]
+    [InlineData("Firma Testowa", " ", "Podaj e-mail albo adres administratora danych.")]
+    [InlineData(null, "rodo@example.com", "Podaj nazwę administratora danych.")]
+    public async Task Apply_OnlyOneDataControllerField_Is400_NothingStored(string? name, string? contact, string expected)
+    {
+        await ClearSystemConfigAsync();
+        var authResp = await _client.PostAsJsonAsync("/api/system/setup/authenticate", new SetupAuthenticateRequest("admin", "admin"));
+        authResp.EnsureSuccessStatusCode();
+        var auth = await authResp.Content.ReadFromJsonAsync<SetupAuthenticateResponse>();
+
+        var response = await ApplyAsync(auth!.SetupToken, new SetupApplyRequest
+        {
+            ExternalBaseUrl = "http://localhost:8080",
+            KSeFBaseUrl = "test",
+            AdminEmail = "controller-half@open-ksef.pl",
+            AdminPassword = "Test1234!",
+            DataControllerName = name,
+            DataControllerContact = contact,
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(expected, (await response.Content.ReadFromJsonAsync<SetupApplyResponse>())!.Error);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Empty(await db.SystemConfigs.ToListAsync());
+    }
+
     [Fact]
     public async Task Authenticate_NoEncryptionKey_Is400WithCode()
     {

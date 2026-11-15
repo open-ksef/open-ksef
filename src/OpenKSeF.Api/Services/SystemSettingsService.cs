@@ -119,6 +119,8 @@ public sealed class SystemSettingsService : ISystemSettingsService
     public async Task<SettingsUpdateResponse> UpdateSettingsAsync(
         SettingsUpdateRequest request, string kcAdminToken, CancellationToken ct = default)
     {
+        if ((request.DataControllerName is null) != (request.DataControllerContact is null))
+            return new SettingsUpdateResponse(false, request.DataControllerName is null ? "Podaj nazwę administratora danych." : "Podaj e-mail albo adres administratora danych.");
         if (SystemSetupService.DataControllerError(request.DataControllerName, request.DataControllerContact, blankAllowed: false) is { } dataControllerError)
             return new SettingsUpdateResponse(false, dataControllerError);
 

@@ -169,6 +169,8 @@ public sealed class SystemSetupService : ISystemSetupService
             if (!string.IsNullOrWhiteSpace(request.FirstTenantNip) && !NipValidator.HasValidChecksum(request.FirstTenantNip))
                 return new SetupApplyResponse(false, "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.");
 
+            if (string.IsNullOrWhiteSpace(request.DataControllerName) != string.IsNullOrWhiteSpace(request.DataControllerContact))
+                return new SetupApplyResponse(false, string.IsNullOrWhiteSpace(request.DataControllerName) ? "Podaj nazwę administratora danych." : "Podaj e-mail albo adres administratora danych.");
             if (DataControllerError(request.DataControllerName, request.DataControllerContact, blankAllowed: true) is { } dataControllerError)
                 return new SetupApplyResponse(false, dataControllerError);
 

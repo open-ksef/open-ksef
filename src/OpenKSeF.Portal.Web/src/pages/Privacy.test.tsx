@@ -42,6 +42,14 @@ describe('PrivacyPage', () => {
     expect(container.querySelector('h1')?.textContent).toBe('Prywatność')
   })
 
+  it('adds no second dot after a name ending in a dot', async () => {
+    vi.mocked(getSetupStatus).mockResolvedValue({ isInitialized: true, dataControllerName: 'Firma Testowa Sp. z o.o.', dataControllerContact: null })
+    const section = await render()
+
+    expect(section.textContent).toContain('jest Firma Testowa Sp. z o.o.W sprawach')
+    expect(section.textContent).not.toContain('o.o..')
+  })
+
   it('shows a postal contact as plain text', async () => {
     vi.mocked(getSetupStatus).mockResolvedValue({ isInitialized: true, dataControllerName: 'Firma Testowa', dataControllerContact: 'ul. Przykładowa 1, 00-001 Warszawa' })
     const section = await render()

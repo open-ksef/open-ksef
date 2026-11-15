@@ -20,7 +20,7 @@ export function PrivacyPage(): ReactElement {
           ) : name ? (
             <>
               <p>
-                Administratorem danych osobowych w tej instancji OpenKSeF jest <strong>{name}</strong>.
+                Administratorem danych osobowych w tej instancji OpenKSeF jest <strong>{name}</strong>{name.endsWith('.') ? '' : '.'}
                 {contact && (
                   <>
                     <br />
