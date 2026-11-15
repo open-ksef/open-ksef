@@ -90,6 +90,12 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         await db.Database.MigrateAsync();
     }
 
+    private async Task SeedStoredXmlAsync()
+    {
+        await using var db = NewContext();
+        await db.Database.ExecuteSqlRawAsync("""INSERT INTO "InvoiceXmls" ("InvoiceHeaderId", "Content", "Sha256", "StoredAt") SELECT "Id", 'seed'::bytea, 'seed', now() FROM "InvoiceHeaders" """);
+    }
+
     private async Task<IReadOnlyList<TenantSyncResult>> WorkerCycleAsync(TimeSpan? spacing = null, int budget = 60)
     {
         await using var db = NewContext();
@@ -234,6 +240,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         await InsertAsync("DATED-WITH-LINES-NO-ACCOUNT", daysAgo: 1, dueDate: new DateOnly(2026, 12, 1));
         await InsertAsync("UNDATED-ALREADY-READ", daysAgo: 2);
         await MigrateAsync();
+        await SeedStoredXmlAsync();
         await using (var db = NewContext())
             await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '30 days' WHERE "KSeFInvoiceNumber" = 'UNDATED-ALREADY-READ'""");
         _received = _ => Page([Bought("NEW-RECEIVED")]);
@@ -357,6 +364,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         await InsertAsync("READ-BEFORE", account: "DE12000000000000000001", dueDate: new DateOnly(2026, 11, 1));
         await InsertAsync("PAID-READ-BEFORE", isPaid: true, account: Account, dueDate: new DateOnly(2026, 10, 15));
         await MigrateAsync();
+        await SeedStoredXmlAsync();
         await using (var db = NewContext())
             await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '30 days' """);
         var before = await RowAsync("READ-BEFORE");
@@ -394,6 +402,65 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         await using (var db = NewContext())
             Assert.Equal(2, await db.InvoiceLines.CountAsync());
         await _notifications.DidNotReceive().NotifyNewInvoiceAsync(Arg.Any<NewInvoiceDetectedEvent>());
+    }
+
+    [Fact]
+    public async Task Backfill_RowWithoutStoredXml_QueuedAfterAllOtherWork_StoresExactBytes_KeepsPaidLinesAndRowCount()
+    {
+        await InsertAsync("OLD-PAID-READ", daysAgo: 2, isPaid: true, dueDate: new DateOnly(2026, 10, 15), account: Account);
+        await InsertAsync("OLD-ISSUED-WITH-LINES", daysAgo: 1, direction: InvoiceDirection.Issued);
+        await InsertAsync("UNDATED-RECENT", daysAgo: 20);
+        await MigrateAsync();
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '30 days' WHERE "KSeFInvoiceNumber" LIKE 'OLD-%' """);
+        var paidBefore = await RowAsync("OLD-PAID-READ");
+        _received = _ => Page([Bought("NEW-RECEIVED")]);
+        _xml = number => [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes($"{Encoding.UTF8.GetString(Xml("2026-11-20"))}<!-- {number} ąę -->")];
+
+        await WorkerCycleAsync();
+
+        Assert.Equal(["NEW-RECEIVED", "UNDATED-RECENT", "OLD-ISSUED-WITH-LINES", "OLD-PAID-READ"], _downloads);
+        await using (var db = NewContext())
+        {
+            var stored = await db.InvoiceXmls.AsNoTracking().Include(x => x.InvoiceHeader).ToListAsync();
+            Assert.Equal(4, stored.Count);
+            Assert.All(stored, x =>
+            {
+                Assert.Equal(_xml(x.InvoiceHeader.KSeFInvoiceNumber), x.Content);
+                Assert.Equal(Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(x.Content)), x.Sha256);
+            });
+            Assert.Equal(4, await db.InvoiceHeaders.CountAsync());
+            Assert.Equal(4, await db.InvoiceLines.CountAsync());
+        }
+
+        var paid = await RowAsync("OLD-PAID-READ");
+        Assert.True(paid.IsPaid);
+        Assert.Equal(paidBefore.PaidAt, paid.PaidAt);
+        Assert.Equal(paidBefore.Lines.Single().Id, paid.Lines.Single().Id);
+
+        _downloads.Clear();
+        await WorkerCycleAsync();
+        Assert.Empty(_downloads);
+    }
+
+    [Fact]
+    public async Task Backfill_DoesNotTakeBudgetFromNewWork_AndSkipsCappedRowsInside7Days()
+    {
+        await InsertAsync("OLD-A", daysAgo: 1);
+        await InsertAsync("OLD-CAPPED", daysAgo: 1);
+        await InsertAsync("UNDATED-RECENT", daysAgo: 20);
+        await MigrateAsync();
+        await using (var db = NewContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '30 days', "Settlement" = 1 WHERE "KSeFInvoiceNumber" LIKE 'OLD-%' """);
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFailedReads" = 5, "XmlAttemptedAt" = now() WHERE "KSeFInvoiceNumber" = 'OLD-CAPPED' """);
+        }
+
+        await WorkerCycleAsync(budget: 1);
+        Assert.Equal(["UNDATED-RECENT"], _downloads);
+
+        await WorkerCycleAsync();
+        Assert.Equal(["UNDATED-RECENT", "OLD-A"], _downloads);
     }
 
     [Fact]

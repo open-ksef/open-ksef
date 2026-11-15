@@ -16,6 +16,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<KSeFCredential> KSeFCredentials => Set<KSeFCredential>();
     public DbSet<InvoiceHeader> InvoiceHeaders => Set<InvoiceHeader>();
     public DbSet<InvoiceLine> InvoiceLines => Set<InvoiceLine>();
+    public DbSet<InvoiceXml> InvoiceXmls => Set<InvoiceXml>();
     public DbSet<SyncState> SyncStates => Set<SyncState>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
     public DbSet<SystemConfig> SystemConfigs => Set<SystemConfig>();
@@ -106,6 +107,16 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(l => l.InvoiceHeader)
                 .WithMany(i => i.Lines)
                 .HasForeignKey(l => l.InvoiceHeaderId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InvoiceXml>(entity =>
+        {
+            entity.HasKey(x => x.InvoiceHeaderId);
+            entity.Property(x => x.Sha256).IsRequired().HasMaxLength(44);
+            entity.HasOne(x => x.InvoiceHeader)
+                .WithOne(i => i.Xml)
+                .HasForeignKey<InvoiceXml>(x => x.InvoiceHeaderId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

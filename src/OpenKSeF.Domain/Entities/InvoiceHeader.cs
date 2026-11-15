@@ -47,6 +47,7 @@ public class InvoiceHeader
 
     public Tenant Tenant { get; set; } = null!;
     public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();
+    public InvoiceXml? Xml { get; set; }
 
     public static bool IsOverdue(bool isPaid, DateOnly? dueDate, DateTimeOffset utcNow) =>
         !isPaid && dueDate < IssuedInvoice.PolandDate(utcNow);

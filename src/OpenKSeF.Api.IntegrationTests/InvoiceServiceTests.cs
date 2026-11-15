@@ -397,6 +397,45 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
         Assert.Contains("KSEF-1", warning.GetArguments()[2]!.ToString());
     }
 
+    [Fact]
+    public async Task ApplyInvoiceXmlAsync_StoresExactBytesAndSha_ReapplyReplacesThem_KeepsPaidAndLines()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var ids = await sut.UpsertInvoicesAsync(_tenantId, [CreateInvoice()]);
+        byte[] first = [0xEF, 0xBB, 0xBF, .. "<Faktura>ąę</Faktura>"u8];
+        await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails(null, [Line()], null), first);
+        var paidAt = new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
+        await _db.InvoiceHeaders.Where(i => i.Id == ids[0]).ExecuteUpdateAsync(s => s.SetProperty(i => i.IsPaid, true).SetProperty(i => i.PaidAt, paidAt));
+
+        var stored = await _db.InvoiceXmls.AsNoTracking().SingleAsync();
+        Assert.Equal(first, stored.Content);
+        Assert.Equal(Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(first)), stored.Sha256);
+
+        var second = "<Faktura>2</Faktura>"u8.ToArray();
+        await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails(null, [Line(), Line()], null), second);
+
+        Assert.Equal(second, (await _db.InvoiceXmls.AsNoTracking().SingleAsync()).Content);
+        var row = await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == ids[0]);
+        Assert.True(row.IsPaid);
+        Assert.Equal(paidAt, row.PaidAt);
+        Assert.Equal(1, await _db.InvoiceLines.CountAsync(l => l.InvoiceHeaderId == ids[0]));
+    }
+
+    [Fact]
+    public async Task RecordFailedInvoiceXmlAsync_StoresReceivedBytes_AndCountsTheFailedRead()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var ids = await sut.UpsertInvoicesAsync(_tenantId, [CreateInvoice()]);
+        var xml = "<Faktura>nieczytelna</Faktura>"u8.ToArray();
+
+        await sut.RecordFailedInvoiceXmlAsync(ids[0], xmlReceived: true, xml);
+
+        Assert.Equal(xml, (await _db.InvoiceXmls.AsNoTracking().SingleAsync(x => x.InvoiceHeaderId == ids[0])).Content);
+        var row = await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == ids[0]);
+        Assert.Equal((short)1, row.XmlFailedReads);
+        Assert.Null(row.XmlFetchedAt);
+    }
+
     private static InvoiceLineDto Line() => new(1, "Towar", "szt", 1m, 100m, 123m, 100m, 123m, 23m, "23");
 
     [Theory]

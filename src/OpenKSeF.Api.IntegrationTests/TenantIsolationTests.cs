@@ -36,6 +36,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         ["GET api/tenants/{tenantId}/invoices/{id}"] = null,
         ["GET api/tenants/{tenantId}/invoices/by-number/{ksefInvoiceNumber}"] = null,
         ["GET api/tenants/{tenantId}/invoices/{id}/transfer"] = null,
+        ["GET api/tenants/{tenantId}/invoices/{id}/xml"] = null,
         ["PATCH api/tenants/{tenantId}/invoices/{id}/paid"] = new { isPaid = true },
         ["GET api/invoices"] = null,
         ["GET api/invoices/by-number/{ksefInvoiceNumber}"] = null,
@@ -101,6 +102,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         {
             var ownerId = (await db.Tenants.SingleAsync(t => t.Id == tenantA)).UserId;
             db.InvoiceHeaders.Add(invoice);
+            db.InvoiceXmls.Add(new InvoiceXml { InvoiceHeaderId = invoice.Id, Content = "<Faktura/>"u8.ToArray(), Sha256 = "isolation", StoredAt = now });
             db.DeviceTokens.Add(new DeviceToken
             {
                 Id = device, UserId = ownerId, Token = $"isolation-{device:N}", Platform = Platform.Android,
