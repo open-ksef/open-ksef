@@ -1,58 +1,44 @@
-#Requires -Version 7.0
+# Works with PowerShell 5.1+
 <#
 .SYNOPSIS
-    Runs the Portal E2E tests against the running dev environment.
+    Runs the Portal E2E (src/OpenKSeF.Portal.Web/e2e/portal.e2e.mjs) against the running dev environment.
 .DESCRIPTION
-    Sets required environment variables (PORTAL_BASE_URL, Keycloak creds)
-    and executes dotnet test on the Portal.E2E project.
-    Requires the dev environment to be running (scripts/dev-env-up.ps1).
+    Hosted login, 2FA, register, logout, session expiry and axe (serious+) per page.
+    Requires the dev environment (scripts/dev-env-up.ps1) and npm ci in the portal.
+    E2E_TEST_USER from .env.test is the data user: enrolled in 2FA during the run and restored to password-only after.
 #>
 [CmdletBinding()]
 param(
     [string]$BaseUrl = 'http://localhost:8080',
-    [string]$Browser = 'chromium',
-    [switch]$Headed
+    [string]$KeycloakUrl = 'http://localhost:8082/auth',
+    [ValidateSet('chrome', 'msedge')]
+    [string]$Browser = 'chrome',
+    [string]$ShotDir
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
-# Load test credentials from .env.test
-$envTestFile = Join-Path $root '.env.test'
 $testEnv = @{}
-Get-Content $envTestFile | ForEach-Object {
+Get-Content (Join-Path $root '.env.test') | ForEach-Object {
     if ($_ -match '^\s*([^#][^=]+?)\s*=\s*(.+?)\s*$') {
         $testEnv[$Matches[1]] = $Matches[2]
     }
 }
 
-$env:PORTAL_BASE_URL = $BaseUrl
-$env:PLAYWRIGHT_BROWSER = $Browser
-$env:PLAYWRIGHT_HEADLESS = if ($Headed) { 'false' } else { 'true' }
-$env:KEYCLOAK_USERNAME = $testEnv['E2E_TEST_USER']
-$env:KEYCLOAK_PASSWORD = $testEnv['E2E_TEST_PASSWORD']
-$env:E2E_TEST_KSEF_CERT_PASSWORD = $testEnv['E2E_TEST_KSEF_CERT_PASSWORD']
+$env:BASE_URL = $BaseUrl
+$env:KC_URL = $KeycloakUrl
+$env:KC_ADMIN_USER = if ($testEnv['KEYCLOAK_ADMIN']) { $testEnv['KEYCLOAK_ADMIN'] } else { 'admin' }
+$env:KC_ADMIN_PASSWORD = if ($testEnv['KEYCLOAK_ADMIN_PASSWORD']) { $testEnv['KEYCLOAK_ADMIN_PASSWORD'] } else { 'admin' }
+$env:DATA_USER = $testEnv['E2E_TEST_USER']
+$env:DATA_PASSWORD = $testEnv['E2E_TEST_PASSWORD']
+$env:BROWSER_CHANNEL = $Browser
+if ($ShotDir) { $env:SHOT_DIR = $ShotDir }
 
-$pgUser = $testEnv['POSTGRES_USER']
-$pgPass = $testEnv['POSTGRES_PASSWORD']
-if ($pgUser -and $pgPass) {
-    $env:TEST_DATABASE_CONNECTION_STRING = "Host=localhost;Port=5432;Database=openksef;Username=$pgUser;Password=$pgPass"
+Push-Location (Join-Path $root 'src/OpenKSeF.Portal.Web')
+try {
+    node e2e/portal.e2e.mjs
+} finally {
+    Pop-Location
 }
-
-$project = Join-Path $root 'src/OpenKSeF.Portal.E2E/OpenKSeF.Portal.E2E.csproj'
-
-Write-Host "[e2e] Running Portal E2E tests" -ForegroundColor Cyan
-Write-Host "      Base URL : $BaseUrl"
-Write-Host "      Browser  : $Browser"
-Write-Host "      Headless : $(-not $Headed)"
-Write-Host ""
-
-dotnet test $project --nologo --verbosity normal
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "`n[e2e] All Portal E2E tests passed." -ForegroundColor Green
-} else {
-    Write-Host "`n[e2e] Some Portal E2E tests failed (exit code $LASTEXITCODE)." -ForegroundColor Red
-}
-
 exit $LASTEXITCODE

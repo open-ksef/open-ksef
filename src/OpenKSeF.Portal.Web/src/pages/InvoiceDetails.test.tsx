@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import axe from 'axe-core'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import toast from 'react-hot-toast'
@@ -188,6 +189,13 @@ describe('InvoiceDetailsPage', () => {
     expect(plain('invoice-detail-amount')).toBe('199,50 PLN')
     expect(testId('invoice-detail-title')?.textContent).toBe('FV/2026/001')
     expect(testId('invoice-details-back-link')?.textContent).toBe('Otrzymane')
+  })
+
+  it('has no serious axe violations', async () => {
+    mockOne()
+    await render('/invoices/KSEF-001?tenantId=tenant-1')
+    const result = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } })
+    expect(result.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([])
   })
 
   it('reads a dash without a due date', async () => {
