@@ -12,6 +12,8 @@ const mockManager = {
   signinRedirectCallback: vi.fn<() => Promise<User>>(),
   signinSilent: vi.fn<() => Promise<User | null>>(),
   removeUser: vi.fn<() => Promise<void>>(),
+  startSilentRenew: vi.fn(),
+  stopSilentRenew: vi.fn(),
   events: {
     addUserLoaded: vi.fn(),
     removeUserLoaded: vi.fn(),
@@ -158,13 +160,10 @@ describe('AuthProvider', () => {
   const loadedHandler = () => mockManager.events.addUserLoaded.mock.calls.at(-1)![0] as (user: User) => void
   const unloadedHandler = () => mockManager.events.addUserUnloaded.mock.calls.at(-1)![0] as () => void
 
-  it('leaves renewal to the library and builds one manager under StrictMode', async () => {
-    const { UserManager } = await import('oidc-client-ts')
-    vi.mocked(UserManager).mockClear()
-
+  it('leaves renewal to the library with one active silent renew under StrictMode', async () => {
     await mountWith(userOf('a'), true)
 
-    expect(UserManager).toHaveBeenCalledTimes(1)
+    expect(mockManager.startSilentRenew.mock.calls.length - mockManager.stopSilentRenew.mock.calls.length).toBe(1)
     expect(mockManager.events.addAccessTokenExpiring).not.toHaveBeenCalled()
     expect(mockManager.events.addAccessTokenExpired).not.toHaveBeenCalled()
     expect(mockManager.signinSilent).not.toHaveBeenCalled()
