@@ -20,9 +20,7 @@ const PASSWORD = `E2e-${randomBytes(8).toString('hex')}!`
 const SERIOUS = new Set(['serious', 'critical'])
 
 // Known serious+ violations, rule id -> backlog task. A new one fails the run.
-const KNOWN = {
-  'label-content-name-mismatch': 'CompanyCard summary aria-label does not contain its visible text (WCAG 2.5.3)',
-}
+const KNOWN = {}
 
 const results = []
 const violations = []

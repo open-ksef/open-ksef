@@ -58,9 +58,14 @@ describe('accessibility checks', () => {
     const results = await axe.run(container, {
       rules: {
         'color-contrast': { enabled: false },
+        'label-content-name-mismatch': { enabled: true },
       },
     })
 
     expect(results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([])
+    expect(results.incomplete.map((v) => v.id)).not.toContain('label-content-name-mismatch')
+    const card = container.querySelector('[data-testid="company-card"]')
+    expect(card?.hasAttribute('aria-label')).toBe(false)
+    expect(card?.textContent).toMatch(/^Firma\s*Firma TestowaNIP 1111111111Zmień firmę$/)
   })
 })
