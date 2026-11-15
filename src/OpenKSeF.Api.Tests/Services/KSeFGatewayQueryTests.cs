@@ -119,6 +119,19 @@ public class KSeFGatewayQueryTests
     }
 
     [Fact]
+    public async Task IssueDate_KeepsCalendarDate_WhenOffsetIsNotUtc()
+    {
+        var summary = Summary(BuyerIdentifierType.Nip, "5261040828");
+        summary.IssueDate = new DateTimeOffset(2026, 11, 3, 0, 0, 0, TimeSpan.FromHours(1));
+
+        var result = await Gateway(Response(summary)).QueryInvoicesAsync(Session, Criteria(InvoiceDirection.Received));
+
+        var issueDate = result.Invoices.Single().IssueDate;
+        Assert.Equal(new DateTime(2026, 11, 3), issueDate);
+        Assert.Equal(DateTimeKind.Utc, issueDate.Kind);
+    }
+
+    [Fact]
     public async Task Continuation_IsHwm_WhenNotTruncated()
     {
         var hwm = new DateTimeOffset(To.AddMinutes(-2));

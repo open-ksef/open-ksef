@@ -1,3 +1,4 @@
+using KSeF.Client.Core.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -19,17 +20,20 @@ public class InvoicesController : ControllerBase
     private readonly ICurrentUserService _currentUser;
     private readonly ITransferDetailsService _transferDetails;
     private readonly IQrCodeService _qrCode;
+    private readonly IVerificationLinkService _verificationLinks;
 
     public InvoicesController(
         ApplicationDbContext db,
         ICurrentUserService currentUser,
         ITransferDetailsService transferDetails,
-        IQrCodeService qrCode)
+        IQrCodeService qrCode,
+        IVerificationLinkService verificationLinks)
     {
         _db = db;
         _currentUser = currentUser;
         _transferDetails = transferDetails;
         _qrCode = qrCode;
+        _verificationLinks = verificationLinks;
     }
 
     [HttpGet]
@@ -113,7 +117,7 @@ public class InvoicesController : ControllerBase
             .Where(i => i.Id == id && i.TenantId == tenantId)
             .FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.AnyAsync(x => x.InvoiceHeaderId == invoice.Id)));
+        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.Where(x => x.InvoiceHeaderId == invoice.Id).Select(x => x.Sha256).FirstOrDefaultAsync(), _verificationLinks));
     }
 
     [HttpGet("{id:guid}/xml")]
@@ -147,7 +151,7 @@ public class InvoicesController : ControllerBase
             .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber && i.TenantId == tenantId)
             .FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.AnyAsync(x => x.InvoiceHeaderId == invoice.Id)));
+        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.Where(x => x.InvoiceHeaderId == invoice.Id).Select(x => x.Sha256).FirstOrDefaultAsync(), _verificationLinks));
     }
 
     [HttpGet("{id:guid}/transfer")]
@@ -215,6 +219,6 @@ public class InvoicesController : ControllerBase
 
         await _db.Entry(invoice).Collection(i => i.Lines).LoadAsync();
 
-        return Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.AnyAsync(x => x.InvoiceHeaderId == invoice.Id)));
+        return Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.Where(x => x.InvoiceHeaderId == invoice.Id).Select(x => x.Sha256).FirstOrDefaultAsync(), _verificationLinks));
     }
 }

@@ -44,7 +44,7 @@ public class InvoiceXmlApiTests(TestcontainersFixture fixture) : IAsyncLifetime
             KSeFReferenceNumber = number,
             VendorName = "Dostawca Testowy",
             VendorNip = "1111111111",
-            IssueDate = DateTime.UtcNow,
+            IssueDate = new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc),
             FirstSeenAt = DateTime.UtcNow,
             LastUpdatedAt = DateTime.UtcNow,
         };
@@ -75,6 +75,27 @@ public class InvoiceXmlApiTests(TestcontainersFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SingleInvoice_WithStoredXml_HasKodIVerificationUrl()
+    {
+        byte[] xml = [.. "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Faktura>KOD I</Faktura>"u8];
+        var number = $"1111111111-20261103-{Guid.NewGuid():N}"[..40];
+        var id = await SeedAsync(number, xml);
+        var hash = Convert.ToBase64String(SHA256.HashData(xml)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var expected = $"https://qr-test.ksef.mf.gov.pl/invoice/1111111111/03-11-2026/{hash}";
+
+        var details = await _client.GetFromJsonAsync<InvoiceResponse>($"/api/tenants/{_tenantId}/invoices/{id}");
+        var byNumber = await _client.GetFromJsonAsync<InvoiceResponse>($"/api/tenants/{_tenantId}/invoices/by-number/{number}");
+        var summaryByNumber = await _client.GetFromJsonAsync<InvoiceResponse>($"/api/invoices/by-number/{number}");
+        var list = await _client.GetFromJsonAsync<PagedResult<InvoiceResponse>>($"/api/tenants/{_tenantId}/invoices");
+
+        Assert.Equal(expected, details!.VerificationUrl);
+        Assert.DoesNotContain(details.VerificationUrl!.Split('/')[^1], c => c is '+' or '/' or '=');
+        Assert.Equal(expected, byNumber!.VerificationUrl);
+        Assert.Equal(expected, summaryByNumber!.VerificationUrl);
+        Assert.Null(list!.Items.Single(i => i.Id == id).VerificationUrl);
+    }
+
+    [Fact]
     public async Task GetXml_NoStoredXml_Returns404_AndHasXmlIsFalse()
     {
         var id = await SeedAsync($"NO-XML-{Guid.NewGuid():N}", null);
@@ -82,7 +103,9 @@ public class InvoiceXmlApiTests(TestcontainersFixture fixture) : IAsyncLifetime
         var response = await _client.GetAsync($"/api/tenants/{_tenantId}/invoices/{id}/xml");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.False((await _client.GetFromJsonAsync<InvoiceResponse>($"/api/tenants/{_tenantId}/invoices/{id}"))!.HasXml);
+        var details = await _client.GetFromJsonAsync<InvoiceResponse>($"/api/tenants/{_tenantId}/invoices/{id}");
+        Assert.False(details!.HasXml);
+        Assert.Null(details.VerificationUrl);
     }
 
     private sealed record IdDto(Guid Id);

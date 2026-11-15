@@ -303,6 +303,10 @@
           "vendorNip": {
             "nullable": true,
             "type": "string"
+          },
+          "verificationUrl": {
+            "nullable": true,
+            "type": "string"
           }
         },
         "type": "object"
