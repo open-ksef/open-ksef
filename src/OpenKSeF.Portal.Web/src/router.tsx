@@ -70,6 +70,7 @@ export const appRoutes: RouteObject[] = [
       },
       { path: '/callback', element: <Callback /> },
       { path: '/login', element: <LoginPage /> },
+      { path: '/privacy', lazy: () => loadRoute(() => import('@/pages/Privacy')).then((m) => ({ Component: m.PrivacyPage })) },
       { path: '/admin-setup', lazy: () => loadRoute(() => import('@/pages/AdminSetup')).then((m) => ({ Component: m.AdminSetupPage })) },
       { path: '*', element: <NotFoundPage /> },
     ],
