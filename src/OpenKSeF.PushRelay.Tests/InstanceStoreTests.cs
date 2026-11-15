@@ -29,7 +29,7 @@ public sealed class InstanceStoreTests : IDisposable
     [Fact]
     public async Task ReadsDuringConcurrentRegistrations_NeverThrow()
     {
-        var (instanceId, apiKey) = await _store.RegisterAsync("https://instance.invalid");
+        var (instanceId, apiKey) = (await _store.RegisterAsync("https://instance.invalid"))!.Value;
 
         var writes = Enumerable.Range(0, 200).Select(i => Task.Run(() => _store.RegisterAsync("https://instance.invalid", i % 2 == 0 ? null : Guid.NewGuid().ToString("N"))));
         var reads = Enumerable.Range(0, 2000).Select(i => Task.Run(async () =>
@@ -42,6 +42,6 @@ public sealed class InstanceStoreTests : IDisposable
 
         await Task.WhenAll(writes.Cast<Task>().Concat(reads));
 
-        Assert.Equal(201, (await _store.ListAsync()).Count);
+        Assert.Equal(101, (await _store.ListAsync()).Count);
     }
 }

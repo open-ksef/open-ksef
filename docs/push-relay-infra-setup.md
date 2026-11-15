@@ -105,7 +105,19 @@ curl http://localhost:8084/health
 
 ### Client IP behind the proxy
 
-The relay reads the client IP from `CF-Connecting-IP`, only when the TCP peer is in `ForwardedHeaders__KnownNetworks` (comma-separated CIDRs; default: loopback and private ranges). Set it to the reverse proxy network (NPM's Docker network). The proxy must accept only [Cloudflare IPs](https://www.cloudflare.com/ips/) or overwrite `CF-Connecting-IP`; otherwise a direct hit on the origin can spoof the header and pick its own rate-limit bucket.
+The relay reads the client IP from `CF-Connecting-IP`, only when the TCP peer is in `ForwardedHeaders__KnownNetworks` (comma-separated CIDRs; default: loopback and private ranges). A direct hit on the origin from a trusted peer can spoof the header and pick its own rate-limit bucket, so:
+
+1. Set `PUSH_RELAY_KNOWN_NETWORKS` in `.env` to the subnet of NPM's Docker network only, nothing else:
+   ```bash
+   docker network inspect <npm-network> -f '{{(index .IPAM.Config 0).Subnet}}'
+   # e.g. PUSH_RELAY_KNOWN_NETWORKS=172.20.0.0/16
+   ```
+2. Do not expose `PUSH_RELAY_HOST_PORT` publicly: Docker-published ports bypass `ufw`. Bind it to `127.0.0.1` or drop the `ports:` mapping when NPM reaches the relay over the Docker network.
+3. In NPM, on the `push.open-ksef.pl` proxy host (Advanced), allow only [Cloudflare IPs](https://www.cloudflare.com/ips/) (`allow <range>;` per range, then `deny all;`).
+4. Verify from a host outside Cloudflare; expect `403`:
+   ```bash
+   curl -sk -o /dev/null -w '%{http_code}\n' --resolve push.open-ksef.pl:443:<origin-ip> -H 'CF-Connecting-IP: 198.51.100.1' https://push.open-ksef.pl/health
+   ```
 
 ### Bot Protection
 

@@ -56,15 +56,27 @@ public sealed class RegisterTests : IDisposable
     }
 
     [Fact]
-    public async Task ReRegister_WithProofFromDisabledInstance_StillIssuesANewInstance()
+    public async Task ReRegister_WithProofFromDisabledInstance_IsConflict()
     {
         var old = await Register();
         await Register(Proof(old.InstanceId, old.ApiKey));
+        var instances = (await Store.ListAsync()).Count;
 
-        var recovered = await Register(Proof(old.InstanceId, old.ApiKey));
+        var response = await Send(Proof(old.InstanceId, old.ApiKey));
 
-        Assert.True((await Store.GetAsync(recovered.InstanceId))!.Enabled);
-        Assert.False((await Store.GetAsync(old.InstanceId))!.Enabled);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(instances, (await Store.ListAsync()).Count);
+    }
+
+    [Fact]
+    public async Task ConcurrentReRegisters_OfOneInstance_OneWinsOtherConflicts()
+    {
+        var old = await Register();
+
+        var responses = await Task.WhenAll(Send(Proof(old.InstanceId, old.ApiKey)), Send(Proof(old.InstanceId, old.ApiKey)));
+
+        Assert.Equal([HttpStatusCode.OK, HttpStatusCode.Conflict], responses.Select(r => r.StatusCode).Order());
+        Assert.Single(await Store.ListAsync(), i => i.Enabled);
     }
 
     [Fact]
@@ -163,13 +175,17 @@ public sealed class RegisterTests : IDisposable
         };
     }
 
-    private async Task<(string InstanceId, string ApiKey)> Register(Dictionary<string, string>? headers = null)
+    private async Task<HttpResponseMessage> Send(Dictionary<string, string>? headers = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/register") { Content = new StringContent(Body, Encoding.UTF8, "application/json") };
         foreach (var (name, value) in headers ?? [])
             request.Headers.Add(name, value);
+        return await _client.SendAsync(request);
+    }
 
-        var response = await _client.SendAsync(request);
+    private async Task<(string InstanceId, string ApiKey)> Register(Dictionary<string, string>? headers = null)
+    {
+        var response = await Send(headers);
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         return (json.GetProperty("instanceId").GetString()!, json.GetProperty("apiKey").GetString()!);
