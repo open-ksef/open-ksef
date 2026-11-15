@@ -1,3 +1,4 @@
+using KSeF.Client.Core.Interfaces.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -72,7 +73,7 @@ public class InvoicesControllerTests : IAsyncLifetime
     }
 
     private InvoicesController CreateController() =>
-        new(_db, _currentUser, _transferDetails, _qrCode);
+        new(_db, _currentUser, _transferDetails, _qrCode, Substitute.For<IVerificationLinkService>());
 
     private InvoiceHeader MakeInvoice(string ksefNumber, DateTime issueDate, string? vendor = null) =>
         new()
@@ -286,7 +287,7 @@ public class InvoicesControllerTests : IAsyncLifetime
         _db.InvoiceHeaders.Add(invoice);
         await _db.SaveChangesAsync();
 
-        var controller = new InvoicesController(_db, _currentUser, _transferDetails, new QrCodeService());
+        var controller = new InvoicesController(_db, _currentUser, _transferDetails, new QrCodeService(), Substitute.For<IVerificationLinkService>());
         var result = await controller.GetTransferDetails(_tenantId, invoice.Id) as OkObjectResult;
 
         var response = Assert.IsType<TransferDetailsResponse>(result!.Value);

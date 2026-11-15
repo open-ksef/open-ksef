@@ -137,7 +137,7 @@ public sealed class KSeFGateway : IKSeFGateway
             AmountVat: inv.VatAmount,
             AmountGross: inv.GrossAmount,
             Currency: inv.Currency ?? "PLN",
-            IssueDate: inv.IssueDate.UtcDateTime,
+            IssueDate: DateTime.SpecifyKind(inv.IssueDate.Date, DateTimeKind.Utc),
             AcquisitionDate: inv.AcquisitionDate.UtcDateTime,
             InvoiceType: inv.InvoiceType.ToString(),
             BuyerIdType: buyerId?.Type.ToString(),

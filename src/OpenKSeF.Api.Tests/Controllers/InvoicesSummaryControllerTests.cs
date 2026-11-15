@@ -1,3 +1,4 @@
+using KSeF.Client.Core.Interfaces.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
@@ -62,7 +63,7 @@ public class InvoicesSummaryControllerTests : IDisposable
     }
 
     private InvoicesSummaryController CreateController() =>
-        new(_db, _currentUser);
+        new(_db, _currentUser, Substitute.For<IVerificationLinkService>());
 
     private static InvoiceHeader MakeInvoice(Guid tenantId, string number, DateTime issueDate) =>
         new()

@@ -1,3 +1,4 @@
+using KSeF.Client.Core.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,11 +18,13 @@ public class InvoicesSummaryController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly IVerificationLinkService _verificationLinks;
 
-    public InvoicesSummaryController(ApplicationDbContext db, ICurrentUserService currentUser)
+    public InvoicesSummaryController(ApplicationDbContext db, ICurrentUserService currentUser, IVerificationLinkService verificationLinks)
     {
         _db = db;
         _currentUser = currentUser;
+        _verificationLinks = verificationLinks;
     }
 
     [HttpGet]
@@ -104,7 +107,7 @@ public class InvoicesSummaryController : ControllerBase
 
         var invoice = await headerQuery.FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.AnyAsync(x => x.InvoiceHeaderId == invoice.Id)));
+        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.Where(x => x.InvoiceHeaderId == invoice.Id).Select(x => x.Sha256).FirstOrDefaultAsync(), _verificationLinks));
     }
 
     private IQueryable<Guid> UserTenantIds() =>

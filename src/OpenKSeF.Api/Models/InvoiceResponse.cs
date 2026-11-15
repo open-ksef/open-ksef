@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Text.Json.Serialization;
+using KSeF.Client.Core.Interfaces.Services;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
 
@@ -30,7 +31,8 @@ public record InvoiceResponse(
     string? Direction = null,
     string? BuyerIdType = null,
     string? BuyerForeignId = null,
-    bool HasXml = false)
+    bool HasXml = false,
+    string? VerificationUrl = null)
 {
     public static readonly Expression<Func<InvoiceHeader, InvoiceResponse>> Projection = i => new InvoiceResponse(
         i.Id,
@@ -61,9 +63,12 @@ public record InvoiceResponse(
 
     private static readonly Func<InvoiceHeader, InvoiceResponse> CompiledProjection = Projection.Compile();
 
-    public static InvoiceResponse FromEntity(InvoiceHeader i, bool hasXml) => CompiledProjection(i) with
+    public static InvoiceResponse FromEntity(InvoiceHeader i, string? xmlSha256, IVerificationLinkService verificationLinks) => CompiledProjection(i) with
     {
-        HasXml = hasXml,
+        HasXml = xmlSha256 is not null,
+        VerificationUrl = xmlSha256 is null || i.VendorNip.Length == 0
+            ? null
+            : verificationLinks.BuildInvoiceVerificationUrl(i.VendorNip, i.IssueDate, xmlSha256),
         Lines = i.Lines
             .OrderBy(l => l.LineNumber)
             .Select(l => new InvoiceLineResponse(

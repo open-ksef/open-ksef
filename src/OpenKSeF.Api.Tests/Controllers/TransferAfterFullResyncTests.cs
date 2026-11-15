@@ -1,4 +1,5 @@
 using System.Text;
+using KSeF.Client.Core.Interfaces.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -119,7 +120,7 @@ public class TransferAfterFullResyncTests : IDisposable
     {
         var currentUser = Substitute.For<ICurrentUserService>();
         currentUser.UserId.Returns(UserId);
-        var controller = new InvoicesController(_db, currentUser, new TransferDetailsService(), new QrCodeService());
+        var controller = new InvoicesController(_db, currentUser, new TransferDetailsService(), new QrCodeService(), Substitute.For<IVerificationLinkService>());
         var result = await controller.GetTransferDetails(_tenantId, id) as OkObjectResult;
         return Assert.IsType<TransferDetailsResponse>(result!.Value);
     }
