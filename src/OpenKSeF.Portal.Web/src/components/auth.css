@@ -316,5 +316,5 @@
   .auth-print { position: absolute; top: 0; left: 0; }
 }
 
-.admin-reset { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
-.admin-reset .ui-form-group { flex: 1 1 240px; max-width: 454px; }
+.ui-card form.admin-reset { flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.ui-card form.admin-reset > .ui-form-group { width: auto; flex: 1 1 240px; max-width: 454px; }

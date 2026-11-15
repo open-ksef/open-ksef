@@ -99,5 +99,18 @@ describe('LoginPage', () => {
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('Nie udało się otworzyć strony logowania')
     expect(container.querySelector<HTMLButtonElement>('[data-testid="login-submit"]')!.disabled).toBe(false)
+    expect(container.querySelector('a')).toBeNull()
+  })
+
+  it('shows no registration link while loading; Keycloak decides on its own page', async () => {
+    auth.sessionEnded = false
+    auth.isLoading = true
+    try {
+      await render()
+      expect(container.querySelector('a')).toBeNull()
+      expect(container.textContent).not.toMatch(/rejestr|załóż konto/i)
+    } finally {
+      auth.isLoading = false
+    }
   })
 })
