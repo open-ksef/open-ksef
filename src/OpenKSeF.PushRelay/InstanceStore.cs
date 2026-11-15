@@ -64,7 +64,7 @@ public sealed class InstanceStore
         cmd.ExecuteNonQuery();
     }
 
-    /// <summary>Inserts a new instance; <paramref name="replacesInstanceId"/>, when given, is disabled in the same transaction and must only come from a caller that proved it holds that instance's key.</summary>
+    /// <summary>Inserts a new instance; <paramref name="replacesInstanceId"/>, when given and still enabled, is disabled in the same transaction. Only pass it from a caller that proved it holds that instance's key.</summary>
     public async Task<(string InstanceId, string ApiKey)> RegisterAsync(string instanceUrl, string? replacesInstanceId = null)
     {
         var instanceId = Guid.NewGuid().ToString("N");
@@ -74,6 +74,16 @@ public sealed class InstanceStore
         await using (var db = Open())
         {
             await using var tx = (SqliteTransaction)await db.BeginTransactionAsync();
+
+            if (replacesInstanceId is not null)
+            {
+                await using var disable = db.CreateCommand();
+                disable.Transaction = tx;
+                disable.CommandText = "UPDATE instances SET enabled = 0 WHERE instance_id = $id AND enabled = 1";
+                disable.Parameters.AddWithValue("$id", replacesInstanceId);
+                if (await disable.ExecuteNonQueryAsync() == 0)
+                    _logger.LogWarning("Re-registration proof for already disabled instance {OldInstanceId}; registered without replacing", replacesInstanceId);
+            }
 
             await using (var insert = db.CreateCommand())
             {
@@ -87,15 +97,6 @@ public sealed class InstanceStore
                 insert.Parameters.AddWithValue("$url", (object?)instanceUrl ?? DBNull.Value);
                 insert.Parameters.AddWithValue("$now", now);
                 await insert.ExecuteNonQueryAsync();
-            }
-
-            if (replacesInstanceId is not null)
-            {
-                await using var disable = db.CreateCommand();
-                disable.Transaction = tx;
-                disable.CommandText = "UPDATE instances SET enabled = 0 WHERE instance_id = $id";
-                disable.Parameters.AddWithValue("$id", replacesInstanceId);
-                await disable.ExecuteNonQueryAsync();
             }
 
             await tx.CommitAsync();

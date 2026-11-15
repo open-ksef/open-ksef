@@ -235,6 +235,7 @@ export function SettingsAdminPage(): ReactElement {
   const [externalUrl, setExternalUrl] = useState('')
   const [ksefEnv, setKsefEnv] = useState('test')
   const [registrationAllowed, setRegistrationAllowed] = useState(true)
+  const [saveWarning, setSaveWarning] = useState<string | null>(null)
   const [verifyEmail, setVerifyEmail] = useState(false)
   const [loginWithEmail, setLoginWithEmail] = useState(true)
   const [resetPassword, setResetPassword] = useState(true)
@@ -368,6 +369,7 @@ export function SettingsAdminPage(): ReactElement {
     // The button is disabled while saving, so it has lost focus before the dialog opens.
     saveButton.current = document.activeElement as HTMLElement | null
     setError(null)
+    setSaveWarning(null)
     setSaving(true)
     try {
       const request = buildUpdateRequest()
@@ -382,7 +384,8 @@ export function SettingsAdminPage(): ReactElement {
         return
       }
 
-      toast.success('Ustawienia zapisane pomyślnie!')
+      setSaveWarning(result.warning ?? null)
+      if (!result.warning) toast.success('Ustawienia zapisane pomyślnie!')
 
       const refreshed = await getSettings(kcUsername, kcPassword)
       populateFromResponse(refreshed)
@@ -399,6 +402,7 @@ export function SettingsAdminPage(): ReactElement {
 
     setSaving(true)
     setError(null)
+    setSaveWarning(null)
     try {
       const request = { ...pendingRequest, confirmCredentialWipe: true }
       const result = await updateSettings(request)
@@ -406,7 +410,8 @@ export function SettingsAdminPage(): ReactElement {
         setError(result.error ?? 'Zapisywanie nie powiodło się')
         return
       }
-      toast.success('Ustawienia zapisane. Poświadczenia KSeF zostały usunięte.')
+      setSaveWarning(result.warning ?? null)
+      if (!result.warning) toast.success('Ustawienia zapisane. Poświadczenia KSeF zostały usunięte.')
 
       const refreshed = await getSettings(kcUsername, kcPassword)
       populateFromResponse(refreshed)
@@ -476,6 +481,7 @@ export function SettingsAdminPage(): ReactElement {
       </SettingsHeader>
 
       {error && <div className="ui-form-error settings-error" role="alert">{error}</div>}
+      {saveWarning && <div className="auth-notice auth-notice--warning settings-error" role="status" data-testid="settings-save-warning">{saveWarning}</div>}
 
       <div className="company-grid">
         <TwoFactorReset />

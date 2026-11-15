@@ -121,4 +121,4 @@ public record SettingsUpdateRequest
     public bool ConfirmCredentialWipe { get; init; }
 }
 
-public record SettingsUpdateResponse(bool Success, string? Error, bool RequiresConfirmation = false);
+public record SettingsUpdateResponse(bool Success, string? Error, bool RequiresConfirmation = false, string? Warning = null);

@@ -133,6 +133,7 @@ export interface SettingsUpdateResponse {
   success: boolean
   error?: string
   requiresConfirmation?: boolean
+  warning?: string
 }
 
 export function getSettings(

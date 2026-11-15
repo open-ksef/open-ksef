@@ -427,6 +427,23 @@ public class KeycloakRealmPayloadTests
     }
 
     [Theory]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, false)]
+    [InlineData(null, false, false)]
+    public async Task UpdateSettings_WarnsOnlyWhenRequestedRegistrationFailsTheProbe(bool? requested, bool canRegister, bool expectWarning)
+    {
+        var systemConfig = Substitute.For<ISystemConfigService>();
+        systemConfig.GetValue(SystemConfigKeys.ApiClientSecret).Returns("api-secret");
+        _userService.CanRegisterAsync("api-secret").Returns(canRegister);
+
+        var result = await CreateSettingsService(systemConfig).UpdateSettingsAsync(new SettingsUpdateRequest { RegistrationAllowed = requested }, "token");
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal(expectWarning ? SystemSettingsService.RegistrationProbeFailedWarning : null, result.Warning);
+    }
+
+    [Theory]
     [InlineData("https://relay.invalid/", true)]
     [InlineData("https://other-relay.invalid", false)]
     public async Task UpdateSettings_ReRegisterRelay_SignsWithTheOldKeyOnlyForTheSameRelay(string requestedRelay, bool expectProof)

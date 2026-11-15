@@ -4,6 +4,7 @@ import axe from 'axe-core'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { findTwoFactorUser, getSettings, resetTwoFactor, updateSettings } from '@/api/endpoints/system'
@@ -196,6 +197,20 @@ describe('Ustawienia', () => {
       expect(lastRequest().confirmCredentialWipe).toBe(true)
     })
 
+    it('shows only the warning, no success toast, when the confirmed wipe save returns one', async () => {
+      vi.mocked(updateSettings)
+        .mockResolvedValueOnce({ success: false, error: 'x', requiresConfirmation: true })
+        .mockResolvedValueOnce({ success: true, warning: 'ostrzeżenie' })
+      await save()
+
+      const confirm = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Usuń poświadczenia i zmień')!
+      await act(async () => confirm.click())
+      await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
+
+      expect(by('settings-save-warning')?.textContent).toBe('ostrzeżenie')
+      expect(vi.mocked(toast.success)).not.toHaveBeenCalled()
+    })
+
     it('Esc in the wipe dialog returns focus to the save button', async () => {
       vi.mocked(updateSettings).mockResolvedValueOnce({ success: false, error: 'x', requiresConfirmation: true })
       by('settings-save')?.focus()
@@ -206,6 +221,22 @@ describe('Ustawienia', () => {
 
       expect(document.body.textContent).not.toContain('Usuń poświadczenia i zmień')
       expect(document.activeElement).toBe(by('settings-save'))
+    })
+
+    it('shows the API warning after a save and clears it on the next clean save', async () => {
+      const warning = 'Zapisano, ale rejestracja pozostaje wyłączona: konto serwisowe API nie ma ról manage-users i view-realm albo Keycloak nie odpowiedział. Nadaj role i zapisz ponownie.'
+      vi.mocked(updateSettings).mockResolvedValueOnce({ success: true, warning })
+      await save()
+
+      const notice = by('settings-save-warning')
+      expect(notice?.textContent).toBe(warning)
+      expect(notice?.getAttribute('role')).toBe('status')
+      expect(notice?.className).toContain('auth-notice--warning')
+      expect(vi.mocked(toast.success)).not.toHaveBeenCalled()
+
+      await save()
+      expect(by('settings-save-warning')).toBeNull()
+      expect(vi.mocked(toast.success)).toHaveBeenCalledTimes(1)
     })
 
     it('shows an error with the old confirm wording as an error, no dialog', async () => {
