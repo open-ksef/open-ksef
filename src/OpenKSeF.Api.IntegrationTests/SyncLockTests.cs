@@ -38,6 +38,7 @@ public sealed class SyncLockTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
+        _notifications.NotifyNewInvoiceAsync(Arg.Any<NewInvoiceDetectedEvent>(), Arg.Any<bool>()).Returns(true);
         _gateway.QueryInvoicesAsync(Arg.Any<KSeFSession>(), Arg.Any<KSeFQueryCriteria>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {

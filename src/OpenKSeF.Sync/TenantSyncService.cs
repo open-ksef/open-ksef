@@ -81,6 +81,7 @@ public sealed class TenantSyncService : ITenantSyncService
 
             try
             {
+                await RetryPendingPushAsync(tenant.Id, cancellationToken);
                 results.Add(await SyncMetadataAsync(tenant, fullResyncWindowStart: null, sessions, cancellationToken));
             }
             finally
@@ -272,7 +273,7 @@ public sealed class TenantSyncService : ITenantSyncService
                             break;
 
                         newReceivedIds.AddRange(await _invoiceService.UpsertInvoicesAsync(
-                            tenant.Id, result.Invoices.Select(i => ToDto(i, InvoiceDirection.Received)).ToList()));
+                            tenant.Id, result.Invoices.Select(i => ToDto(i, InvoiceDirection.Received)).ToList(), notify));
 
                         if (result.IsTruncated || result.Invoices.Count < _syncOptions.BatchSize)
                             break;
@@ -374,6 +375,19 @@ public sealed class TenantSyncService : ITenantSyncService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Notifications for stored pages failed after a sync error, tenant {TenantId}", tenantId);
+        }
+    }
+
+    // Before this cycle's sync, so a row whose push fails now is retried next cycle, not twice in one.
+    private async Task RetryPendingPushAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _invoiceService.NotifyPendingAsync(tenantId, cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Push retry failed for tenant {TenantId}", tenantId);
         }
     }
 

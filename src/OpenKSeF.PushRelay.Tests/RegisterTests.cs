@@ -3,7 +3,10 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.PushRelay;
 
@@ -115,6 +118,49 @@ public sealed class RegisterTests : IDisposable
         var response = await _client.PostAsync("/api/register", new StringContent(Body, Encoding.UTF8, "application/json"));
 
         Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Register_LimitFollowsCfConnectingIp_FromKnownProxyOnly()
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
+            .UseSetting("Relay:DataDir", Path.Combine(_dataDir, "cf"))
+            .ConfigureTestServices(s => s.AddSingleton<IStartupFilter, PeerFromTestHeader>()));
+        using var client = factory.CreateClient();
+
+        async Task<HttpStatusCode> RegisterVia(string peer, string clientIp)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/register") { Content = new StringContent(Body, Encoding.UTF8, "application/json") };
+            request.Headers.Add(PeerFromTestHeader.Header, peer);
+            request.Headers.Add("CF-Connecting-IP", clientIp);
+            return (await client.SendAsync(request)).StatusCode;
+        }
+
+        foreach (var clientIp in new[] { "198.51.100.1", "198.51.100.2" })
+        {
+            for (var i = 0; i < 5; i++)
+                Assert.Equal(HttpStatusCode.OK, await RegisterVia("10.0.0.5", clientIp));
+        }
+        Assert.Equal(HttpStatusCode.TooManyRequests, await RegisterVia("10.0.0.5", "198.51.100.1"));
+
+        for (var i = 0; i < 5; i++)
+            Assert.Equal(HttpStatusCode.OK, await RegisterVia("203.0.113.9", $"198.51.100.{100 + i}"));
+        Assert.Equal(HttpStatusCode.TooManyRequests, await RegisterVia("203.0.113.9", "198.51.100.200"));
+    }
+
+    private sealed class PeerFromTestHeader : IStartupFilter
+    {
+        public const string Header = "X-Test-Peer";
+
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use((context, nextMiddleware) =>
+            {
+                context.Connection.RemoteIpAddress = IPAddress.Parse(context.Request.Headers[Header].ToString());
+                return nextMiddleware(context);
+            });
+            next(app);
+        };
     }
 
     private async Task<(string InstanceId, string ApiKey)> Register(Dictionary<string, string>? headers = null)

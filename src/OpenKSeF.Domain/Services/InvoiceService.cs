@@ -15,6 +15,7 @@ public class InvoiceService : IInvoiceService
     public const int MaxFailedXmlReads = 5;
     public static readonly TimeSpan CappedXmlRetryAfter = TimeSpan.FromDays(7);
     public const int NotificationCap = 10;
+    public static readonly TimeSpan PushRetryWindow = TimeSpan.FromHours(24);
 
     private readonly ApplicationDbContext _db;
     private readonly INotificationService _notificationService;
@@ -33,7 +34,7 @@ public class InvoiceService : IInvoiceService
         _logger = logger;
     }
 
-    public async Task<List<Guid>> UpsertInvoicesAsync(Guid tenantId, IEnumerable<InvoiceDto> invoices)
+    public async Task<List<Guid>> UpsertInvoicesAsync(Guid tenantId, IEnumerable<InvoiceDto> invoices, bool notify = false)
     {
         var newInvoiceIds = new List<Guid>();
         var now = DateTime.UtcNow;
@@ -69,7 +70,8 @@ public class InvoiceService : IInvoiceService
                     AcquisitionDate = invoice.AcquisitionDate,
                     InvoiceType = invoice.InvoiceType,
                     FirstSeenAt = now,
-                    LastUpdatedAt = now
+                    LastUpdatedAt = now,
+                    NotifiedAt = notify ? null : now
                 };
 
                 _db.InvoiceHeaders.Add(newInvoice);
@@ -124,7 +126,7 @@ public class InvoiceService : IInvoiceService
         return newInvoiceIds;
     }
 
-    public async Task NotifyNewInvoicesAsync(Guid tenantId, IReadOnlyCollection<Guid> invoiceIds, CancellationToken cancellationToken = default)
+    public async Task NotifyNewInvoicesAsync(Guid tenantId, IReadOnlyCollection<Guid> invoiceIds, CancellationToken cancellationToken = default, bool email = true)
     {
         if (invoiceIds.Count == 0)
             return;
@@ -146,7 +148,8 @@ public class InvoiceService : IInvoiceService
             sent++;
             try
             {
-                await _notificationService.NotifyNewInvoiceAsync(evt);
+                if (await _notificationService.NotifyNewInvoiceAsync(evt, email))
+                    await StampNotifiedAsync([evt.InvoiceId]);
             }
             catch (Exception ex)
             {
@@ -161,19 +164,50 @@ public class InvoiceService : IInvoiceService
             return;
         }
 
-        var rest = invoiceIds.Count - notified.Count;
-        if (rest <= 0)
+        var rest = invoiceIds.Except(notified.Select(e => e.InvoiceId)).ToList();
+        if (rest.Count == 0)
             return;
 
         try
         {
-            await _notificationService.NotifyNewInvoicesSummaryAsync(tenantId, rest);
+            if (await _notificationService.NotifyNewInvoicesSummaryAsync(tenantId, rest.Count, email))
+                await StampNotifiedAsync(rest);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "Failed to send summary notification for {Count} invoices, tenant {TenantId}", rest, tenantId);
+                "Failed to send summary notification for {Count} invoices, tenant {TenantId}", rest.Count, tenantId);
         }
+    }
+
+    public async Task NotifyPendingAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var since = now - PushRetryWindow;
+        var expired = await _db.InvoiceHeaders
+            .Where(i => i.TenantId == tenantId && i.NotifiedAt == null && i.FirstSeenAt < since)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.NotifiedAt, now), cancellationToken);
+        if (expired > 0)
+            _logger.LogWarning("Push retry window passed for {Count} invoices, tenant {TenantId}; not pushed", expired, tenantId);
+
+        var pending = await _db.InvoiceHeaders
+            .Where(i => i.TenantId == tenantId && i.Direction == InvoiceDirection.Received && i.NotifiedAt == null && i.FirstSeenAt >= since)
+            .Select(i => i.Id)
+            .ToListAsync(cancellationToken);
+        if (pending.Count == 0)
+            return;
+
+        _logger.LogInformation("Retrying push for {Count} invoices, tenant {TenantId}", pending.Count, tenantId);
+        await NotifyNewInvoicesAsync(tenantId, pending, cancellationToken, email: false);
+    }
+
+    // Bypasses the change tracker and sets only NotifiedAt: a stamp never flushes other pending edits or touches paid flags.
+    private Task StampNotifiedAsync(IReadOnlyCollection<Guid> ids)
+    {
+        var now = DateTime.UtcNow;
+        return _db.InvoiceHeaders
+            .Where(i => ids.Contains(i.Id) && i.NotifiedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.NotifiedAt, now));
     }
 
     public async Task ApplyInvoiceXmlAsync(Guid invoiceId, InvoiceXmlDetails details, CancellationToken cancellationToken = default)

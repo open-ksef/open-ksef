@@ -19,11 +19,10 @@ public sealed class InstanceRecord
 /// Keys are stored as raw values since the relay needs them to verify HMAC signatures.
 /// The relay server itself is a trusted environment behind Cloudflare.
 /// </summary>
-public sealed class InstanceStore : IDisposable
+public sealed class InstanceStore
 {
-    private readonly SqliteConnection _db;
+    private readonly string _connectionString;
     private readonly ILogger<InstanceStore> _logger;
-    private readonly SemaphoreSlim _lock = new(1, 1);
 
     public InstanceStore(IConfiguration config, ILogger<InstanceStore> logger)
     {
@@ -35,15 +34,23 @@ public sealed class InstanceStore : IDisposable
         Directory.CreateDirectory(dataDir);
         var dbPath = Path.Combine(dataDir, "instances.db");
 
-        _db = new SqliteConnection($"Data Source={dbPath}");
-        _db.Open();
+        _connectionString = new SqliteConnectionStringBuilder { DataSource = dbPath, DefaultTimeout = 30 }.ToString();
         EnsureSchema();
+    }
+
+    private SqliteConnection Open()
+    {
+        var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        return connection;
     }
 
     private void EnsureSchema()
     {
-        using var cmd = _db.CreateCommand();
+        using var db = Open();
+        using var cmd = db.CreateCommand();
         cmd.CommandText = """
+            PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS instances (
                 instance_id TEXT PRIMARY KEY,
                 api_key TEXT NOT NULL,
@@ -64,12 +71,11 @@ public sealed class InstanceStore : IDisposable
         var apiKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         var now = DateTimeOffset.UtcNow.ToString("o");
 
-        await _lock.WaitAsync();
-        try
+        await using (var db = Open())
         {
-            await using var tx = (SqliteTransaction)await _db.BeginTransactionAsync();
+            await using var tx = (SqliteTransaction)await db.BeginTransactionAsync();
 
-            await using (var insert = _db.CreateCommand())
+            await using (var insert = db.CreateCommand())
             {
                 insert.Transaction = tx;
                 insert.CommandText = """
@@ -85,7 +91,7 @@ public sealed class InstanceStore : IDisposable
 
             if (replacesInstanceId is not null)
             {
-                await using var disable = _db.CreateCommand();
+                await using var disable = db.CreateCommand();
                 disable.Transaction = tx;
                 disable.CommandText = "UPDATE instances SET enabled = 0 WHERE instance_id = $id";
                 disable.Parameters.AddWithValue("$id", replacesInstanceId);
@@ -93,10 +99,6 @@ public sealed class InstanceStore : IDisposable
             }
 
             await tx.CommitAsync();
-        }
-        finally
-        {
-            _lock.Release();
         }
 
         if (replacesInstanceId is null)
@@ -108,20 +110,8 @@ public sealed class InstanceStore : IDisposable
 
     public async Task<InstanceRecord?> GetAsync(string instanceId)
     {
-        await _lock.WaitAsync();
-        try
-        {
-            return await ReadOneAsync(instanceId);
-        }
-        finally
-        {
-            _lock.Release();
-        }
-    }
-
-    private async Task<InstanceRecord?> ReadOneAsync(string instanceId)
-    {
-        await using var cmd = _db.CreateCommand();
+        await using var db = Open();
+        await using var cmd = db.CreateCommand();
         cmd.CommandText = "SELECT instance_id, api_key, instance_url, registered_at, last_seen_at, enabled FROM instances WHERE instance_id = $id";
         cmd.Parameters.AddWithValue("$id", instanceId);
 
@@ -142,35 +132,23 @@ public sealed class InstanceStore : IDisposable
 
     public async Task UpdateLastSeenAsync(string instanceId)
     {
-        await _lock.WaitAsync();
-        try
-        {
-            await using var cmd = _db.CreateCommand();
-            cmd.CommandText = "UPDATE instances SET last_seen_at = $now WHERE instance_id = $id";
-            cmd.Parameters.AddWithValue("$id", instanceId);
-            cmd.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("o"));
-            await cmd.ExecuteNonQueryAsync();
-        }
-        finally
-        {
-            _lock.Release();
-        }
+        await using var db = Open();
+        await using var cmd = db.CreateCommand();
+        cmd.CommandText = "UPDATE instances SET last_seen_at = $now WHERE instance_id = $id";
+        cmd.Parameters.AddWithValue("$id", instanceId);
+        cmd.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("o"));
+        await cmd.ExecuteNonQueryAsync();
     }
 
     public async Task SetEnabledAsync(string instanceId, bool enabled)
     {
-        await _lock.WaitAsync();
-        try
+        await using (var db = Open())
+        await using (var cmd = db.CreateCommand())
         {
-            await using var cmd = _db.CreateCommand();
             cmd.CommandText = "UPDATE instances SET enabled = $enabled WHERE instance_id = $id";
             cmd.Parameters.AddWithValue("$id", instanceId);
             cmd.Parameters.AddWithValue("$enabled", enabled ? 1 : 0);
             await cmd.ExecuteNonQueryAsync();
-        }
-        finally
-        {
-            _lock.Release();
         }
 
         _logger.LogInformation("Instance {InstanceId} enabled={Enabled}", instanceId, enabled);
@@ -178,22 +156,10 @@ public sealed class InstanceStore : IDisposable
 
     public async Task<List<InstanceRecord>> ListAsync()
     {
-        await _lock.WaitAsync();
-        try
-        {
-            return await ReadAllAsync();
-        }
-        finally
-        {
-            _lock.Release();
-        }
-    }
-
-    private async Task<List<InstanceRecord>> ReadAllAsync()
-    {
         var results = new List<InstanceRecord>();
 
-        await using var cmd = _db.CreateCommand();
+        await using var db = Open();
+        await using var cmd = db.CreateCommand();
         cmd.CommandText = "SELECT instance_id, api_key, instance_url, registered_at, last_seen_at, enabled FROM instances ORDER BY registered_at DESC";
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -211,11 +177,5 @@ public sealed class InstanceStore : IDisposable
         }
 
         return results;
-    }
-
-    public void Dispose()
-    {
-        _lock.Dispose();
-        _db.Dispose();
     }
 }

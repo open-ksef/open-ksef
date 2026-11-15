@@ -63,7 +63,31 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
 
         Assert.Single(newIds);
         Assert.Equal(0, _notifications.Count);
-        Assert.Equal("KSEF-1", (await _db.InvoiceHeaders.SingleAsync()).KSeFReferenceNumber);
+        var row = await _db.InvoiceHeaders.SingleAsync();
+        Assert.Equal("KSEF-1", row.KSeFReferenceNumber);
+        Assert.Equal(row.FirstSeenAt, row.NotifiedAt);
+    }
+
+    [Fact]
+    public async Task NotifyNewInvoicesAsync_SyncCancelled_LeavesUnsentRowsOwed_RetrySendsOnlyThem_WithoutEmail()
+    {
+        var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
+        var ids = await sut.UpsertInvoicesAsync(_tenantId, Enumerable.Range(0, 3).Select(i => CreateInvoice() with { Number = $"KSEF-{i}" }).ToList(), notify: true);
+        using var cts = new CancellationTokenSource();
+        _notifications.AfterNotify = () => cts.Cancel();
+
+        await sut.NotifyNewInvoicesAsync(_tenantId, ids, cts.Token);
+
+        var first = Assert.Single(_notifications.InvoiceIds);
+        var owed = await _db.InvoiceHeaders.Where(i => i.NotifiedAt == null).Select(i => i.Id).ToListAsync();
+        Assert.Equal(ids.Where(id => id != first).Order(), owed.Order());
+
+        _notifications.AfterNotify = null;
+        await sut.NotifyPendingAsync(_tenantId);
+
+        Assert.Equal(ids.Order(), _notifications.InvoiceIds.Order());
+        Assert.Equal([true, false, false], _notifications.EmailFlags);
+        Assert.Equal(0, await _db.InvoiceHeaders.CountAsync(i => i.NotifiedAt == null));
     }
 
     [Theory]
@@ -427,19 +451,22 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
 
         public int Count => InvoiceIds.Count;
 
+        public List<bool> EmailFlags { get; } = [];
+
         public Action? AfterNotify { get; set; }
 
-        public Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt)
+        public Task<bool> NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt, bool email = true)
         {
             InvoiceIds.Add(evt.InvoiceId);
+            EmailFlags.Add(email);
             AfterNotify?.Invoke();
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
 
-        public Task NotifyNewInvoicesSummaryAsync(Guid tenantId, int count)
+        public Task<bool> NotifyNewInvoicesSummaryAsync(Guid tenantId, int count, bool email = true)
         {
             Summaries.Add((tenantId, count));
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
 
         public Task NotifyIssuedInvoiceStuckAsync(Guid tenantId, Guid issuedInvoiceId, string? number) => Task.CompletedTask;
@@ -453,13 +480,13 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
     {
         public int Attempts { get; private set; }
 
-        public Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt)
+        public Task<bool> NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt, bool email = true)
         {
             Attempts++;
             throw new InvalidOperationException("push down");
         }
 
-        public Task NotifyNewInvoicesSummaryAsync(Guid tenantId, int count)
+        public Task<bool> NotifyNewInvoicesSummaryAsync(Guid tenantId, int count, bool email = true)
         {
             Attempts++;
             throw new InvalidOperationException("push down");

@@ -26,6 +26,8 @@ public class InvoiceHeader
     public string? InvoiceType { get; set; }
     public DateTime FirstSeenAt { get; set; }
     public DateTime LastUpdatedAt { get; set; }
+    /// <summary>Null while a new-invoice push is still owed; stamped on insert when nothing is owed.</summary>
+    public DateTime? NotifiedAt { get; set; }
     public string? VendorBankAccount { get; set; }
     public DateOnly? DueDate { get; set; }
     public bool IsPaid { get; set; }

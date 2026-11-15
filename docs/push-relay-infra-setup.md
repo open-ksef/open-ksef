@@ -18,7 +18,9 @@ The relay uses three defense layers:
 
 1. **Cloudflare (Layer 1):** TLS termination, rate limiting per IP, bot protection. Stops the vast majority of abuse before it reaches the relay.
 2. **Instance Registration (Layer 2):** Each self-hosted OpenKSeF instance registers with the relay during the admin setup wizard and receives a unique 256-bit HMAC key. No shared secrets in source code.
-3. **Request Validation (Layer 3):** Every push request requires a valid HMAC signature, a fresh timestamp (5-minute window), and an enabled instance ID. In-code rate limiting per instance catches abuse that slips past Cloudflare.
+3. **Request Validation (Layer 3):** Every push request requires a valid HMAC signature, a fresh timestamp (5-minute window), and an enabled instance ID. The HMAC is checked before the body is parsed. In-code limits: 60 pushes/min per verified instance (a spoofed `X-Relay-Instance` with a bad signature uses no quota), 600 requests/min and 5 registrations/h per client IP, 64 KB request body.
+
+Registration stays open by design: [ADR-005](adr/adr-005-push-relay-registration.md).
 
 ```
 ┌─────────────────────┐     ┌────────────────┐     ┌────────────────────┐
@@ -100,6 +102,10 @@ curl http://localhost:8084/health
 2. Create rules:
    - **Push endpoint:** URI Path equals `/api/push`, Rate: 100 requests per 1 minute per IP, Action: Block
    - **Registration:** URI Path equals `/api/register`, Rate: 10 requests per 1 hour per IP, Action: Block
+
+### Client IP behind the proxy
+
+The relay reads the client IP from `CF-Connecting-IP`, only when the TCP peer is in `ForwardedHeaders__KnownNetworks` (comma-separated CIDRs; default: loopback and private ranges). Set it to the reverse proxy network (NPM's Docker network). The proxy must accept only [Cloudflare IPs](https://www.cloudflare.com/ips/) or overwrite `CF-Connecting-IP`; otherwise a direct hit on the origin can spoof the header and pick its own rate-limit bucket.
 
 ### Bot Protection
 

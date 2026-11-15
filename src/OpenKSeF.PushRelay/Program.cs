@@ -6,6 +6,7 @@ using System.Threading.RateLimiting;
 using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
 using Google.Apis.Auth.OAuth2;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using OpenKSeF.PushRelay;
@@ -15,22 +16,20 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<InstanceStore>();
 builder.Services.AddSingleton<ApnsClient>();
 builder.Services.AddSingleton<FcmSender>();
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 64 * 1024);
+
+builder.Services.AddSingleton(PartitionedRateLimiter.Create<string, string>(verifiedInstance =>
+    RateLimitPartition.GetSlidingWindowLimiter(verifiedInstance, _ => new SlidingWindowRateLimiterOptions
+    {
+        PermitLimit = 60,
+        Window = TimeSpan.FromMinutes(1),
+        SegmentsPerWindow = 4,
+        QueueLimit = 0,
+    })));
 
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = 429;
-
-    options.AddPolicy("push", context =>
-    {
-        var instanceId = context.Request.Headers["X-Relay-Instance"].FirstOrDefault() ?? "unknown";
-        return RateLimitPartition.GetSlidingWindowLimiter(instanceId, _ => new SlidingWindowRateLimiterOptions
-        {
-            PermitLimit = 60,
-            Window = TimeSpan.FromMinutes(1),
-            SegmentsPerWindow = 4,
-            QueueLimit = 0,
-        });
-    });
 
     options.AddPolicy("register", context =>
     {
@@ -56,8 +55,8 @@ builder.Services.AddRateLimiter(options =>
         });
     });
 
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(_ =>
-        RateLimitPartition.GetSlidingWindowLimiter("global", _ => new SlidingWindowRateLimiterOptions
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetSlidingWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new SlidingWindowRateLimiterOptions
         {
             PermitLimit = 600,
             Window = TimeSpan.FromMinutes(1),
@@ -81,6 +80,20 @@ var app = builder.Build();
 
 // Force InstanceStore initialization (creates DB file + schema)
 _ = app.Services.GetRequiredService<InstanceStore>();
+
+var forwardedHeaders = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor,
+    ForwardedForHeaderName = "CF-Connecting-IP",
+    ForwardLimit = 1,
+};
+forwardedHeaders.KnownIPNetworks.Clear();
+forwardedHeaders.KnownProxies.Clear();
+var trustedNetworks = app.Configuration["ForwardedHeaders:KnownNetworks"];
+foreach (var network in (string.IsNullOrWhiteSpace(trustedNetworks) ? "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16" : trustedNetworks)
+    .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+    forwardedHeaders.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
+app.UseForwardedHeaders(forwardedHeaders);
 
 app.Use(async (context, next) =>
 {
@@ -118,6 +131,7 @@ app.MapPost("/api/push", async (
     InstanceStore store,
     FcmSender fcm,
     ApnsClient apnsClient,
+    PartitionedRateLimiter<string> instanceLimiter,
     ILoggerFactory loggerFactory) =>
 {
     var logger = loggerFactory.CreateLogger("PushRelay");
@@ -125,13 +139,8 @@ app.MapPost("/api/push", async (
     var timestamp = context.Request.Headers["X-Relay-Timestamp"].FirstOrDefault() ?? "";
     var signature = context.Request.Headers["X-Relay-Signature"].FirstOrDefault() ?? "";
 
-    // Read raw body first (before any deserialization) for HMAC verification
     context.Request.Body.Position = 0;
     var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
-
-    var request = JsonSerializer.Deserialize<PushRequest>(body);
-    if (request == null)
-        return Results.BadRequest(new { error = "Invalid request body" });
 
     // Timestamp freshness check (5 minute window)
     if (!long.TryParse(timestamp, out var ts))
@@ -147,8 +156,8 @@ app.MapPost("/api/push", async (
         return Results.Json(new { error = "Request expired" }, statusCode: 401);
     }
 
-    // Look up the instance
     string apiKey;
+    string verifiedInstance;
     if (!string.IsNullOrEmpty(instanceId))
     {
         var instance = await store.GetAsync(instanceId);
@@ -172,7 +181,8 @@ app.MapPost("/api/push", async (
             return Results.Json(new { error = "Invalid signature" }, statusCode: 401);
         }
 
-        _ = store.UpdateLastSeenAsync(instanceId);
+        await store.UpdateLastSeenAsync(instanceId);
+        verifiedInstance = instanceId;
     }
     else
     {
@@ -191,7 +201,26 @@ app.MapPost("/api/push", async (
             logger.LogWarning("Invalid relay signature from {RemoteIp} (legacy mode)", context.Connection.RemoteIpAddress);
             return Results.Json(new { error = "Invalid signature" }, statusCode: 401);
         }
+
+        verifiedInstance = "legacy";
     }
+
+    using var lease = instanceLimiter.AttemptAcquire(verifiedInstance);
+    if (!lease.IsAcquired)
+        return Results.Json(new { error = "Too many requests" }, statusCode: 429);
+
+    PushRequest? request;
+    try
+    {
+        request = JsonSerializer.Deserialize<PushRequest>(body);
+    }
+    catch (JsonException)
+    {
+        request = null;
+    }
+
+    if (request == null)
+        return Results.BadRequest(new { error = "Invalid request body" });
 
     if (string.IsNullOrEmpty(request.PushToken))
         return Results.BadRequest(new { error = "pushToken is required" });
@@ -275,7 +304,7 @@ app.MapPost("/api/push", async (
 
     logger.LogWarning("Push not delivered for token {Token}", shortToken);
     return Results.Json(new { success = false, error = "All providers failed" }, statusCode: 502);
-}).RequireRateLimiting("push");
+});
 
 // --- Admin endpoints (protected by Relay:AdminKey) ---
 var adminGroup = app.MapGroup("/api/admin").RequireRateLimiting("admin");

@@ -46,7 +46,7 @@ public class NotificationService : INotificationService
             throw new InvalidOperationException($"pl-PL formatting unavailable (ICU missing or invariant globalization): N2 of 1234.5 gave '{formatted}'.");
     }
 
-    public async Task NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt)
+    public async Task<bool> NotifyNewInvoiceAsync(NewInvoiceDetectedEvent evt, bool email = true)
     {
         var notification = new PushNotification
         {
@@ -59,7 +59,9 @@ public class NotificationService : INotificationService
             }
         };
 
-        await PushToOwnerDevicesAsync(evt.TenantId, evt.InvoiceId, notification);
+        var settled = await PushToOwnerDevicesAsync(evt.TenantId, evt.InvoiceId, notification);
+        if (!email)
+            return settled;
 
         var notificationEmail = await _db.Tenants
             .Where(t => t.Id == evt.TenantId)
@@ -67,9 +69,10 @@ public class NotificationService : INotificationService
             .FirstOrDefaultAsync();
 
         await SendEmailAsync(evt.TenantId, evt.InvoiceId, notificationEmail, to => _emailService.SendNewInvoiceEmailAsync(to, evt));
+        return settled;
     }
 
-    public async Task NotifyNewInvoicesSummaryAsync(Guid tenantId, int count)
+    public async Task<bool> NotifyNewInvoicesSummaryAsync(Guid tenantId, int count, bool email = true)
     {
         var tenant = await _db.Tenants
             .Where(t => t.Id == tenantId)
@@ -89,8 +92,10 @@ public class NotificationService : INotificationService
             }
         };
 
-        await PushToOwnerDevicesAsync(tenantId, null, notification);
-        await SendEmailAsync(tenantId, null, tenant.NotificationEmail, to => _emailService.SendNewInvoicesSummaryEmailAsync(to, tenantId, company, count));
+        var settled = await PushToOwnerDevicesAsync(tenantId, null, notification);
+        if (email)
+            await SendEmailAsync(tenantId, null, tenant.NotificationEmail, to => _emailService.SendNewInvoicesSummaryEmailAsync(to, tenantId, company, count));
+        return settled;
     }
 
     private async Task SendEmailAsync(Guid tenantId, Guid? invoiceId, string? notificationEmail, Func<string, Task> send)
@@ -137,7 +142,7 @@ public class NotificationService : INotificationService
         await PushToOwnerDevicesAsync(tenantId, issuedInvoiceId, notification);
     }
 
-    private async Task PushToOwnerDevicesAsync(Guid tenantId, Guid? invoiceId, PushNotification notification)
+    private async Task<bool> PushToOwnerDevicesAsync(Guid tenantId, Guid? invoiceId, PushNotification notification)
     {
         // TenantId == null means "all companies"; a set TenantId is an explicit per-company subscription.
         var deviceTokens = await _db.DeviceTokens
@@ -149,7 +154,7 @@ public class NotificationService : INotificationService
         if (deviceTokens.Count == 0)
         {
             _logger.LogDebug("No device tokens for tenant {TenantId}", tenantId);
-            return;
+            return true;
         }
 
         if (_userPushProvider is not null)
@@ -169,6 +174,7 @@ public class NotificationService : INotificationService
         }
 
         var tokensToRemove = new List<Entities.DeviceToken>();
+        var settled = true;
 
         foreach (var device in deviceTokens)
         {
@@ -183,6 +189,7 @@ public class NotificationService : INotificationService
             }
             else if (result == PushResult.Failed)
             {
+                settled = false;
                 _logger.LogWarning(
                     "Push not delivered to device {DeviceId} for invoice {InvoiceId}; token kept",
                     device.Id, invoiceId);
@@ -195,6 +202,8 @@ public class NotificationService : INotificationService
             await _db.SaveChangesAsync();
             _logger.LogInformation("Removed {Count} invalid device tokens", tokensToRemove.Count);
         }
+
+        return settled;
     }
 
     public async Task SendConfirmationAsync(string deviceToken, Platform platform)
