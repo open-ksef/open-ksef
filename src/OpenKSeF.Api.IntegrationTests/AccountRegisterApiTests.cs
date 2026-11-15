@@ -184,6 +184,41 @@ public class AccountRegisterApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SettingsSave_RolesPresentRealmRegistrationOff_FlagFalseWithoutWarning()
+    {
+        await _fixture.UpdateRealmAsync(new { registrationAllowed = false });
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var result = await scope.ServiceProvider.GetRequiredService<ISystemSettingsService>().UpdateSettingsAsync(
+                new SettingsUpdateRequest { KcAdminUsername = "admin", KcAdminPassword = "admin" },
+                await _fixture.GetAdminTokenAsync());
+            Assert.True(result.Success, result.Error);
+            Assert.Null(result.Warning);
+        }
+
+        Assert.Superset(TestcontainersFixture.RegistrationRoles.ToHashSet(), (await _fixture.GetServiceAccountRoleNamesAsync()).ToHashSet());
+        Assert.False(await SetupStatusRegistrationAllowedAsync());
+    }
+
+    [Fact]
+    public async Task SettingsSave_RegistrationRequestedWithoutRoles_WarnsAndFlagFalse()
+    {
+        await _fixture.RemoveServiceAccountRolesAsync(TestcontainersFixture.RegistrationRoles);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var result = await scope.ServiceProvider.GetRequiredService<ISystemSettingsService>().UpdateSettingsAsync(
+                new SettingsUpdateRequest { KcAdminUsername = "admin", KcAdminPassword = "admin", RegistrationAllowed = true },
+                await _fixture.GetAdminTokenAsync());
+            Assert.True(result.Success, result.Error);
+            Assert.Equal(SystemSettingsService.RegistrationProbeFailedWarning, result.Warning);
+        }
+
+        Assert.False(await SetupStatusRegistrationAllowedAsync());
+    }
+
+    [Fact]
     public async Task Register_NoStoredFlag_Returns403AndSetupStatusFalse()
     {
         await SetStoredConfigAsync(SystemConfigKeys.RegistrationAllowed, null);

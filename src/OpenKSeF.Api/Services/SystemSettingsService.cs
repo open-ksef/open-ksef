@@ -21,6 +21,9 @@ public interface ISystemSettingsService
 
 public sealed class SystemSettingsService : ISystemSettingsService
 {
+    public const string RegistrationProbeFailedWarning =
+        "Zapisano, ale rejestracja pozostaje wyłączona: konto serwisowe API nie ma ról manage-users i view-realm albo Keycloak nie odpowiedział. Nadaj role i zapisz ponownie.";
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ISystemConfigService _systemConfig;
@@ -175,6 +178,9 @@ public sealed class SystemSettingsService : ISystemSettingsService
             var registrationAllowed = await _keycloakUserService.CanRegisterAsync(_systemConfig.GetValue(SystemConfigKeys.ApiClientSecret)) ? "true" : "false";
             if (_systemConfig.GetValue(SystemConfigKeys.RegistrationAllowed) != registrationAllowed)
                 configValues[SystemConfigKeys.RegistrationAllowed] = registrationAllowed;
+            var warning = request.RegistrationAllowed == true && registrationAllowed == "false"
+                ? RegistrationProbeFailedWarning
+                : null;
 
             if (request.GoogleClientId != null)
                 configValues[SystemConfigKeys.GoogleClientId] = request.GoogleClientId;
@@ -244,7 +250,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
             }
 
             _logger.LogInformation("Settings updated successfully");
-            return new SettingsUpdateResponse(true, null);
+            return new SettingsUpdateResponse(true, null, Warning: warning);
         }
         catch (Exception ex)
         {
