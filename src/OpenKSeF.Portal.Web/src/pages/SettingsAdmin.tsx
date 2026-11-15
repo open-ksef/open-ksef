@@ -411,7 +411,7 @@ export function SettingsAdminPage(): ReactElement {
         return
       }
       setSaveWarning(result.warning ?? null)
-      toast.success('Ustawienia zapisane. Poświadczenia KSeF zostały usunięte.')
+      if (!result.warning) toast.success('Ustawienia zapisane. Poświadczenia KSeF zostały usunięte.')
 
       const refreshed = await getSettings(kcUsername, kcPassword)
       populateFromResponse(refreshed)

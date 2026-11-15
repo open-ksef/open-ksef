@@ -118,8 +118,7 @@ app.MapPost("/api/register", async (
         return Results.BadRequest(new { error = "instanceUrl is required" });
 
     var replacesInstanceId = await ProvenInstanceIdAsync(context, store, logger);
-    if (await store.RegisterAsync(req.InstanceUrl, replacesInstanceId) is not var (instanceId, apiKey))
-        return Results.Conflict(new { error = "instance already replaced or disabled" });
+    var (instanceId, apiKey) = await store.RegisterAsync(req.InstanceUrl, replacesInstanceId);
     logger.LogInformation("New instance registered: {InstanceId} from {Url}", instanceId, req.InstanceUrl);
 
     return Results.Ok(new { instanceId, apiKey });

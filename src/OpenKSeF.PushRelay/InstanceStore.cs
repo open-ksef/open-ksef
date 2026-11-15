@@ -64,8 +64,8 @@ public sealed class InstanceStore
         cmd.ExecuteNonQuery();
     }
 
-    /// <summary>Inserts a new instance; <paramref name="replacesInstanceId"/>, when given, must be enabled and is disabled in the same transaction, else nothing is written and null is returned. Only pass it from a caller that proved it holds that instance's key.</summary>
-    public async Task<(string InstanceId, string ApiKey)?> RegisterAsync(string instanceUrl, string? replacesInstanceId = null)
+    /// <summary>Inserts a new instance; <paramref name="replacesInstanceId"/>, when given and still enabled, is disabled in the same transaction. Only pass it from a caller that proved it holds that instance's key.</summary>
+    public async Task<(string InstanceId, string ApiKey)> RegisterAsync(string instanceUrl, string? replacesInstanceId = null)
     {
         var instanceId = Guid.NewGuid().ToString("N");
         var apiKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
@@ -82,11 +82,7 @@ public sealed class InstanceStore
                 disable.CommandText = "UPDATE instances SET enabled = 0 WHERE instance_id = $id AND enabled = 1";
                 disable.Parameters.AddWithValue("$id", replacesInstanceId);
                 if (await disable.ExecuteNonQueryAsync() == 0)
-                {
-                    await tx.RollbackAsync();
-                    _logger.LogWarning("Re-registration rejected: instance {OldInstanceId} is already disabled", replacesInstanceId);
-                    return null;
-                }
+                    _logger.LogWarning("Re-registration proof for already disabled instance {OldInstanceId}; registered without replacing", replacesInstanceId);
             }
 
             await using (var insert = db.CreateCommand())

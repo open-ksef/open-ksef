@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -8,6 +9,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using OpenKSeF.PushRelay;
 
 namespace OpenKSeF.PushRelay.Tests;
@@ -19,10 +21,13 @@ public sealed class RegisterTests : IDisposable
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "relay-tests-" + Guid.NewGuid().ToString("N"));
     private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _client;
+    private readonly WarningLog _logs = new();
 
     public RegisterTests()
     {
-        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseSetting("Relay:DataDir", _dataDir));
+        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
+            .UseSetting("Relay:DataDir", _dataDir)
+            .ConfigureLogging(l => l.AddProvider(_logs)));
         _client = _factory.CreateClient();
     }
 
@@ -56,27 +61,29 @@ public sealed class RegisterTests : IDisposable
     }
 
     [Fact]
-    public async Task ReRegister_WithProofFromDisabledInstance_IsConflict()
+    public async Task ReRegister_WithProofFromDisabledInstance_StillIssuesANewInstance()
     {
         var old = await Register();
         await Register(Proof(old.InstanceId, old.ApiKey));
-        var instances = (await Store.ListAsync()).Count;
 
-        var response = await Send(Proof(old.InstanceId, old.ApiKey));
+        var recovered = await Register(Proof(old.InstanceId, old.ApiKey));
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal(instances, (await Store.ListAsync()).Count);
+        Assert.True((await Store.GetAsync(recovered.InstanceId))!.Enabled);
+        Assert.False((await Store.GetAsync(old.InstanceId))!.Enabled);
+        Assert.Single(_logs.Warnings, w => w.Contains(old.InstanceId));
     }
 
     [Fact]
-    public async Task ConcurrentReRegisters_OfOneInstance_OneWinsOtherConflicts()
+    public async Task ConcurrentReRegisters_OfOneInstance_BothSucceedAndDisableOnce()
     {
         var old = await Register();
 
         var responses = await Task.WhenAll(Send(Proof(old.InstanceId, old.ApiKey)), Send(Proof(old.InstanceId, old.ApiKey)));
 
-        Assert.Equal([HttpStatusCode.OK, HttpStatusCode.Conflict], responses.Select(r => r.StatusCode).Order());
-        Assert.Single(await Store.ListAsync(), i => i.Enabled);
+        Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
+        Assert.False((await Store.GetAsync(old.InstanceId))!.Enabled);
+        Assert.Equal(2, (await Store.ListAsync()).Count(i => i.Enabled));
+        Assert.Single(_logs.Warnings, w => w.Contains(old.InstanceId));
     }
 
     [Fact]
@@ -158,6 +165,27 @@ public sealed class RegisterTests : IDisposable
         for (var i = 0; i < 5; i++)
             Assert.Equal(HttpStatusCode.OK, await RegisterVia("203.0.113.9", $"198.51.100.{100 + i}"));
         Assert.Equal(HttpStatusCode.TooManyRequests, await RegisterVia("203.0.113.9", "198.51.100.200"));
+    }
+
+    private sealed class WarningLog : ILoggerProvider, ILogger
+    {
+        public ConcurrentQueue<string> Warnings { get; } = new();
+
+        public ILogger CreateLogger(string categoryName) => this;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => logLevel == LogLevel.Warning;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning)
+                Warnings.Enqueue(formatter(state, exception));
+        }
+
+        public void Dispose()
+        {
+        }
     }
 
     private sealed class PeerFromTestHeader : IStartupFilter

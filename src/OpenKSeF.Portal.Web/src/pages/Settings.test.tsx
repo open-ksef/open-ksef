@@ -197,6 +197,20 @@ describe('Ustawienia', () => {
       expect(lastRequest().confirmCredentialWipe).toBe(true)
     })
 
+    it('shows only the warning, no success toast, when the confirmed wipe save returns one', async () => {
+      vi.mocked(updateSettings)
+        .mockResolvedValueOnce({ success: false, error: 'x', requiresConfirmation: true })
+        .mockResolvedValueOnce({ success: true, warning: 'ostrzeżenie' })
+      await save()
+
+      const confirm = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Usuń poświadczenia i zmień')!
+      await act(async () => confirm.click())
+      await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
+
+      expect(by('settings-save-warning')?.textContent).toBe('ostrzeżenie')
+      expect(vi.mocked(toast.success)).not.toHaveBeenCalled()
+    })
+
     it('Esc in the wipe dialog returns focus to the save button', async () => {
       vi.mocked(updateSettings).mockResolvedValueOnce({ success: false, error: 'x', requiresConfirmation: true })
       by('settings-save')?.focus()
