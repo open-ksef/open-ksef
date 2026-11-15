@@ -60,7 +60,6 @@ export function CompanyCard(): ReactElement {
       <summary
         className="company-card"
         data-testid="company-card"
-        aria-label={`Firma: ${companyName(company)}, NIP ${company.nip}. Zmień firmę`}
         onClick={(event) => {
           event.preventDefault()
           setOpen(!open)
@@ -74,6 +73,7 @@ export function CompanyCard(): ReactElement {
           {companyName(company)}
         </b>
         <span className="company-nip">NIP {company.nip}</span>
+        <span className="visually-hidden">Zmień firmę</span>
       </summary>
       <div className="company-menu">
         <label htmlFor="company-search" className="visually-hidden">
