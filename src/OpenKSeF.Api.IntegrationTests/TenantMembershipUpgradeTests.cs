@@ -21,12 +21,15 @@ public sealed class TenantMembershipUpgradeTests : IAsyncLifetime
     private ApplicationDbContext NewContext() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(_postgres.GetConnectionString()).Options);
 
+    private const string RowHash = """SELECT md5(string_agg((to_jsonb(t) - 'PaidByUserId')::text, '|' ORDER BY t."Id")) AS "Value" FROM "InvoiceHeaders" t""";
+
     [Fact]
     public async Task Migration_AddsOneOwnerPerTenant_PaidByCreatorOnPaidRows_KeepsPaidFlagsAndDevices()
     {
         var created = new DateTime(2026, 11, 1, 9, 0, 0, DateTimeKind.Utc);
         var tenants = new[] { (Id: Guid.NewGuid(), User: "user-a", Nip: "1111111111"), (Id: Guid.NewGuid(), User: "user-a", Nip: "2222222222"), (Id: Guid.NewGuid(), User: "user-b", Nip: "1111111111") };
         var paidAt = new Dictionary<string, DateTime?>();
+        string before;
 
         await using (var db = NewContext())
         {
@@ -57,11 +60,13 @@ public sealed class TenantMembershipUpgradeTests : IAsyncLifetime
                     VALUES ({Guid.NewGuid()}, {user}, {token}, 0, {tenantId}, {created}, {created})
                     """);
 
+            before = await db.Database.SqlQueryRaw<string>(RowHash).SingleAsync();
             await db.Database.MigrateAsync();
         }
 
         await using (var db = NewContext())
         {
+            Assert.Equal(before, await db.Database.SqlQueryRaw<string>(RowHash).SingleAsync());
             var members = await db.TenantMembers.AsNoTracking().ToListAsync();
             Assert.Equal(tenants.Length, members.Count);
             foreach (var t in tenants)
