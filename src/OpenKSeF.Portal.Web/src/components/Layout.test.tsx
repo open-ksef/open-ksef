@@ -6,15 +6,18 @@ import { MemoryRouter, Route, Routes, type InitialEntry } from 'react-router-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getInvoiceByKSeFNumber, getTransferDetails } from '@/api/endpoints/invoices'
+import { getSetupStatus } from '@/api/endpoints/system'
 import { listTenants } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
 import type { InvoiceResponse } from '@/api/types'
+import { useAuth } from '@/auth/useAuth'
 import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
 import { InvoiceDetailsPage } from '@/pages/InvoiceDetails'
 import { Layout } from './Layout'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
+vi.mock('@/api/endpoints/system', () => ({ getSetupStatus: vi.fn() }))
 vi.mock('@/api/endpoints/invoices', () => ({ getInvoiceByKSeFNumber: vi.fn(), getTransferDetails: vi.fn(), setInvoicePaid: vi.fn() }))
 
 vi.mock('@/auth/useAuth', () => ({
@@ -68,6 +71,7 @@ describe('Layout', () => {
     vi.mocked(getInvoiceByKSeFNumber).mockReset()
     vi.mocked(getInvoiceByKSeFNumber).mockRejectedValue(new ApiError('Not found', 404))
     vi.mocked(getTransferDetails).mockReturnValue(new Promise(() => {}))
+    vi.mocked(getSetupStatus).mockResolvedValue({ isInitialized: true, dataControllerName: 'Firma Testowa', dataControllerContact: 'rodo@example.com' })
   })
 
   afterEach(() => {
@@ -131,6 +135,45 @@ describe('Layout', () => {
     await render(path)
 
     expect(currentItems()).toEqual([item])
+  })
+
+  describe('data controller banner', () => {
+    const tokenWith = (roles: string[]) => `h.${btoa(JSON.stringify({ realm_access: { roles } })).replace(/=+$/, '')}.s`
+    const asUser = (accessToken: string) =>
+      vi.mocked(useAuth).mockReturnValue({ ...vi.mocked(useAuth)(), user: { profile: { name: 'Portal User' }, access_token: accessToken } } as unknown as ReturnType<typeof useAuth>)
+    const banner = () => container.querySelector('[data-testid="data-controller-banner"]')
+
+    afterEach(() => asUser(''))
+
+    it('shows the banner to an admin when the controller is missing', async () => {
+      vi.mocked(getSetupStatus).mockResolvedValue({ isInitialized: true, dataControllerName: null, dataControllerContact: null })
+      asUser(tokenWith(['openksef-admin']))
+      await render('/')
+      await settled('Uzupełnij w ustawieniach')
+
+      expect(banner()?.querySelector('a')?.getAttribute('href')).toBe('/settings/admin')
+    })
+
+    it('hides the banner from a user without the admin role', async () => {
+      vi.mocked(getSetupStatus).mockResolvedValue({ isInitialized: true, dataControllerName: null, dataControllerContact: null })
+      asUser(tokenWith(['user']))
+      await render('/')
+
+      expect(banner()).toBeNull()
+    })
+
+    it('hides the banner from an admin when the controller is set', async () => {
+      asUser(tokenWith(['openksef-admin']))
+      await render('/')
+
+      expect(banner()).toBeNull()
+    })
+
+    it('links the privacy page in the footer', async () => {
+      await render('/')
+
+      expect(container.querySelector('footer a')?.getAttribute('href')).toBe('/privacy')
+    })
   })
 
   describe('invoice details', () => {

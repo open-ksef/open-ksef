@@ -32,6 +32,8 @@ public sealed class SystemSetupService : ISystemSetupService
     public const string KeycloakRejectedMessage = "Keycloak odrzucił konfigurację. Szczegóły są w logu API.";
     public const string KeycloakUnreachableMessage = "Nie można połączyć się z Keycloak. Sprawdź, czy działa, i spróbuj ponownie.";
     public const string KeycloakInvalidCredentialsMessage = "Nieprawidłowy login lub hasło administratora Keycloak.";
+    public const int DataControllerNameMaxLength = 200;
+    public const int DataControllerContactMaxLength = 300;
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
@@ -131,6 +133,29 @@ public sealed class SystemSetupService : ISystemSetupService
         }
     }
 
+    public static string? DataControllerError(string? name, string? contact, bool blankAllowed) =>
+        FieldError(name, DataControllerNameMaxLength, "Podaj nazwę administratora danych.",
+            "Nazwa administratora danych może mieć najwyżej 200 znaków.", blankAllowed)
+        ?? FieldError(contact, DataControllerContactMaxLength, "Podaj e-mail albo adres administratora danych.",
+            "Kontakt do administratora danych może mieć najwyżej 300 znaków.", blankAllowed);
+
+    private static string? FieldError(string? value, int maxLength, string blank, string tooLong, bool blankAllowed) =>
+        value?.Trim() switch
+        {
+            null => null,
+            "" => blankAllowed ? null : blank,
+            var trimmed when trimmed.Length > maxLength => tooLong,
+            _ => null,
+        };
+
+    public static void AddDataController(Dictionary<string, string> configValues, string? name, string? contact)
+    {
+        if (!string.IsNullOrWhiteSpace(name))
+            configValues[SystemConfigKeys.DataControllerName] = name.Trim();
+        if (!string.IsNullOrWhiteSpace(contact))
+            configValues[SystemConfigKeys.DataControllerContact] = contact.Trim();
+    }
+
     public async Task<SetupApplyResponse> ApplySetupAsync(
         SetupApplyRequest request, string adminToken, string kcAdminUsername, CancellationToken ct = default)
     {
@@ -143,6 +168,11 @@ public sealed class SystemSetupService : ISystemSetupService
 
             if (!string.IsNullOrWhiteSpace(request.FirstTenantNip) && !NipValidator.HasValidChecksum(request.FirstTenantNip))
                 return new SetupApplyResponse(false, "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.");
+
+            if (string.IsNullOrWhiteSpace(request.DataControllerName) != string.IsNullOrWhiteSpace(request.DataControllerContact))
+                return new SetupApplyResponse(false, string.IsNullOrWhiteSpace(request.DataControllerName) ? "Podaj nazwę administratora danych." : "Podaj e-mail albo adres administratora danych.");
+            if (DataControllerError(request.DataControllerName, request.DataControllerContact, blankAllowed: true) is { } dataControllerError)
+                return new SetupApplyResponse(false, dataControllerError);
 
             var client = _httpClientFactory.CreateClient("keycloak");
             var kcBase = KeycloakInternalBaseUrl;
@@ -225,6 +255,7 @@ public sealed class SystemSetupService : ISystemSetupService
                 configValues[SystemConfigKeys.GoogleClientId] = request.GoogleClientId;
             if (!string.IsNullOrEmpty(request.GoogleClientSecret))
                 configValues[SystemConfigKeys.GoogleClientSecret] = request.GoogleClientSecret;
+            AddDataController(configValues, request.DataControllerName, request.DataControllerContact);
 
             await _systemConfig.SetValuesAsync(configValues, ct);
             await _systemConfig.RefreshCacheAsync(ct);

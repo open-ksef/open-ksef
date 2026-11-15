@@ -37,6 +37,11 @@ describe('AdminSetupPage', () => {
 
   const click = (id: string) => act(async () => byTestId(id)!.click())
 
+  const fillController = () => {
+    type('setup-controller-name', 'Firma Testowa Sp. z o.o.')
+    type('setup-controller-contact', 'rodo@example.com')
+  }
+
   async function reachSummary(): Promise<void> {
     type('setup-kc-pass', 'kc-password')
     await click('setup-next')
@@ -44,6 +49,7 @@ describe('AdminSetupPage', () => {
     type('setup-admin-email', 'jan@firma.pl')
     type('setup-admin-pass', 'Haslo1234')
     type('setup-tenant-nip', '5260250274')
+    fillController()
     await click('setup-next')
     await click('setup-next')
     await click('setup-next')
@@ -108,6 +114,45 @@ describe('AdminSetupPage', () => {
     expect(byTestId('setup-tenant-nip')).not.toBeNull()
   })
 
+  it.each([
+    ['', 'rodo@example.com', 'Podaj nazwę administratora danych.'],
+    ['x'.repeat(201), 'rodo@example.com', 'Nazwa administratora danych może mieć najwyżej 200 znaków.'],
+    ['Firma Testowa', '   ', 'Podaj e-mail albo adres administratora danych.'],
+    ['Firma Testowa', 'x'.repeat(301), 'Kontakt do administratora danych może mieć najwyżej 300 znaków.'],
+  ])('step 2 blocks Dalej on a bad data controller (%#)', async (name, contact, message) => {
+    type('setup-kc-pass', 'kc-password')
+    await click('setup-next')
+    await waitFor(() => Boolean(byTestId('setup-admin-email')))
+    type('setup-admin-email', 'jan@firma.pl')
+    type('setup-admin-pass', 'Haslo1234')
+    type('setup-tenant-nip', '5260250274')
+    type('setup-controller-name', name)
+    type('setup-controller-contact', contact)
+    await click('setup-next')
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(message)
+    expect(byTestId('setup-controller-name')).not.toBeNull()
+  })
+
+  it('sends the trimmed data controller and shows it in the summary', async () => {
+    vi.mocked(applySetup).mockResolvedValue({ success: true })
+    type('setup-kc-pass', 'kc-password')
+    await click('setup-next')
+    await waitFor(() => Boolean(byTestId('setup-admin-email')))
+    type('setup-admin-email', 'jan@firma.pl')
+    type('setup-admin-pass', 'Haslo1234')
+    type('setup-tenant-nip', '5260250274')
+    type('setup-controller-name', '  Firma Testowa  ')
+    type('setup-controller-contact', ' rodo@example.com ')
+    for (let i = 0; i < 4; i++) await click('setup-next')
+    await waitFor(() => Boolean(byTestId('setup-apply')))
+
+    expect(container.textContent).toContain('Administrator danychFirma Testowa')
+    await click('setup-apply')
+    await waitFor(() => vi.mocked(applySetup).mock.calls.length > 0)
+    expect(vi.mocked(applySetup).mock.calls[0][1]).toMatchObject({ dataControllerName: 'Firma Testowa', dataControllerContact: 'rodo@example.com' })
+  })
+
   it('step 4 has no secret field, only the note', async () => {
     type('setup-kc-pass', 'kc-password')
     await click('setup-next')
@@ -115,6 +160,7 @@ describe('AdminSetupPage', () => {
     type('setup-admin-email', 'jan@firma.pl')
     type('setup-admin-pass', 'Haslo1234')
     type('setup-tenant-nip', '5260250274')
+    fillController()
     await click('setup-next')
     await click('setup-next')
 
@@ -131,6 +177,7 @@ describe('AdminSetupPage', () => {
     type('setup-admin-email', 'jan@firma.pl')
     type('setup-admin-pass', 'Haslo1234')
     type('setup-tenant-nip', '5260250274')
+    fillController()
     await click('setup-next')
 
     const check = (label: string) =>

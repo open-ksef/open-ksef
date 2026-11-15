@@ -7,6 +7,8 @@ export const DEFAULT_RELAY_URL = 'https://push.open-ksef.pl'
 export interface SetupStatusResponse {
   isInitialized: boolean
   registrationAllowed?: boolean
+  dataControllerName?: string | null
+  dataControllerContact?: string | null
 }
 
 export interface SetupAuthenticateRequest {
@@ -41,6 +43,8 @@ export interface SetupApplyRequest {
   adminLastName?: string
   firstTenantNip?: string
   firstTenantDisplayName?: string
+  dataControllerName?: string
+  dataControllerContact?: string
   registrationAllowed: boolean
   verifyEmail: boolean
   loginWithEmailAllowed: boolean
@@ -104,6 +108,8 @@ export interface SettingsResponse {
   pushRelayLastFailureStatus?: number | null
   pushRelayLastFailureAt?: string | null
   firebaseConfigured: boolean
+  dataControllerName?: string | null
+  dataControllerContact?: string | null
 }
 
 export interface SettingsUpdateRequest {
@@ -125,6 +131,8 @@ export interface SettingsUpdateRequest {
   reRegisterRelay?: boolean
   firebaseCredentialsJson?: string
   confirmCredentialWipe?: boolean
+  dataControllerName?: string
+  dataControllerContact?: string
 }
 
 export interface SettingsUpdateResponse {

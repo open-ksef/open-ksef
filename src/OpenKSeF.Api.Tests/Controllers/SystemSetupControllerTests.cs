@@ -78,6 +78,36 @@ public class SystemSetupControllerTests
     }
 
     [Fact]
+    public void GetSetupStatus_ReturnsTheStoredDataController()
+    {
+        _systemConfig.GetValue(SystemConfigKeys.DataControllerName).Returns("Firma Testowa");
+        _systemConfig.GetValue(SystemConfigKeys.DataControllerContact).Returns("rodo@example.com");
+        var controller = CreateController();
+
+        var result = controller.GetSetupStatus() as OkObjectResult;
+
+        var response = Assert.IsType<SetupStatusResponse>(result!.Value);
+        Assert.Equal("Firma Testowa", response.DataControllerName);
+        Assert.Equal("rodo@example.com", response.DataControllerContact);
+    }
+
+    [Theory]
+    [InlineData(null, null, true, null)]
+    [InlineData(null, null, false, null)]
+    [InlineData("  ", "", true, null)]
+    [InlineData("  ", "rodo@example.com", false, "Podaj nazwę administratora danych.")]
+    [InlineData("Firma", " ", false, "Podaj e-mail albo adres administratora danych.")]
+    [InlineData(201, null, true, "Nazwa administratora danych może mieć najwyżej 200 znaków.")]
+    [InlineData(null, 301, false, "Kontakt do administratora danych może mieć najwyżej 300 znaków.")]
+    [InlineData(200, 300, false, null)]
+    public void DataControllerError_ChecksBlankAndLengthAfterTrim(object? name, object? contact, bool blankAllowed, string? expected)
+    {
+        static string? Value(object? v) => v is int length ? $" {new string('a', length)} " : (string?)v;
+
+        Assert.Equal(expected, SystemSetupService.DataControllerError(Value(name), Value(contact), blankAllowed));
+    }
+
+    [Fact]
     public async Task Authenticate_AlreadyInitialized_Returns403()
     {
         _systemConfig.IsInitialized.Returns(true);

@@ -2,7 +2,11 @@ using System.ComponentModel.DataAnnotations;
 
 namespace OpenKSeF.Api.Models;
 
-public record SetupStatusResponse(bool IsInitialized, bool RegistrationAllowed = true);
+public record SetupStatusResponse(
+    bool IsInitialized,
+    bool RegistrationAllowed = true,
+    string? DataControllerName = null,
+    string? DataControllerContact = null);
 
 public record SetupAuthenticateRequest(
     [Required] string Username,
@@ -22,6 +26,9 @@ public record SetupApplyRequest
     // First tenant/company
     public string? FirstTenantNip { get; init; }
     public string? FirstTenantDisplayName { get; init; }
+
+    public string? DataControllerName { get; init; }
+    public string? DataControllerContact { get; init; }
 
     // Auth & Email (Keycloak realm config)
     public bool RegistrationAllowed { get; init; } = true;
@@ -96,6 +103,9 @@ public record SettingsResponse
     public int? PushRelayLastFailureStatus { get; init; }
     public DateTimeOffset? PushRelayLastFailureAt { get; init; }
     public bool FirebaseConfigured { get; init; }
+
+    public string? DataControllerName { get; init; }
+    public string? DataControllerContact { get; init; }
 }
 
 public record SettingsUpdateRequest
@@ -119,6 +129,8 @@ public record SettingsUpdateRequest
     public bool ReRegisterRelay { get; init; }
     public string? FirebaseCredentialsJson { get; init; }
     public bool ConfirmCredentialWipe { get; init; }
+    public string? DataControllerName { get; init; }
+    public string? DataControllerContact { get; init; }
 }
 
 public record SettingsUpdateResponse(bool Success, string? Error, bool RequiresConfirmation = false, string? Warning = null);

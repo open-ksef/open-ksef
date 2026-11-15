@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Link, Navigate, useLocation } from 'react-router-dom'
 
 import { useAuth } from '@/auth/useAuth'
 import { BrandMark } from '@/components/BrandMark'
@@ -61,6 +61,9 @@ export function LoginPage(): ReactElement {
             {isLoading || isRedirecting ? 'Przekierowanie…' : 'Zaloguj się'}
           </button>
         </div>
+        <p className="auth-card__footer">
+          <Link to="/privacy" className="auth-card__link">Prywatność</Link>
+        </p>
       </div>
     </main>
   )

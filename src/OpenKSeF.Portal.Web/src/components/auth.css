@@ -318,3 +318,13 @@
 
 .ui-card form.admin-reset { flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
 .ui-card form.admin-reset > .ui-form-group { width: auto; flex: 1 1 240px; max-width: 454px; }
+
+.app-banner { margin-bottom: 16px; }
+.app-footer { padding: 12px 24px; font-size: 13px; }
+.app-footer a { color: var(--ui-muted); }
+.privacy-page { max-width: 760px; gap: 16px; line-height: 1.55; }
+.privacy-page h2 { margin: 8px 0; font-size: 18px; }
+.privacy-page p, .privacy-page ul { margin: 0 0 8px; }
+.privacy-page ul { list-style: disc; padding-left: 20px; }
+.privacy-page .onboarding-title { text-align: left; }
+.privacy-page a { color: var(--ui-primary); }

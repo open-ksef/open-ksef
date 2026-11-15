@@ -13,6 +13,8 @@ import {
 import { readErrorCode } from '@/api/errors'
 import { Button } from '@/components/Button'
 import { nipError } from '@/invoicing/nip'
+import { DataControllerFields } from '@/privacy/DataControllerFields'
+import { dataControllerError } from '@/privacy/dataController'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
 
@@ -84,6 +86,8 @@ export function AdminSetupPage(): ReactElement {
   const [userLastName, setUserLastName] = useState('')
   const [firstTenantNip, setFirstTenantNip] = useState('')
   const [firstTenantDisplayName, setFirstTenantDisplayName] = useState('')
+  const [dataControllerName, setDataControllerName] = useState('')
+  const [dataControllerContact, setDataControllerContact] = useState('')
 
   const [registrationAllowed, setRegistrationAllowed] = useState(true)
   const [verifyEmail, setVerifyEmail] = useState(false)
@@ -153,6 +157,8 @@ export function AdminSetupPage(): ReactElement {
     if (!userPassword || userPassword.length < 8) { setError('Hasło musi mieć co najmniej 8 znaków'); return }
     const invalidNip = nipError(firstTenantNip)
     if (invalidNip) { setError(invalidNip); return }
+    const invalidController = dataControllerError(dataControllerName, dataControllerContact)
+    if (invalidController) { setError(invalidController); return }
     setStep(3)
   }
 
@@ -202,6 +208,8 @@ export function AdminSetupPage(): ReactElement {
       adminLastName: userLastName || undefined,
       firstTenantNip: firstTenantNip || undefined,
       firstTenantDisplayName: firstTenantDisplayName || undefined,
+      dataControllerName: dataControllerName.trim(),
+      dataControllerContact: dataControllerContact.trim(),
       registrationAllowed,
       verifyEmail: smtpEnabled ? verifyEmail : false,
       loginWithEmailAllowed: loginWithEmail,
@@ -224,7 +232,12 @@ export function AdminSetupPage(): ReactElement {
         return
       }
       setSetupDone(true)
-      queryClient.setQueryData(['setup-status'], { isInitialized: true })
+      queryClient.setQueryData(['setup-status'], {
+        isInitialized: true,
+        registrationAllowed,
+        dataControllerName: request.dataControllerName,
+        dataControllerContact: request.dataControllerContact,
+      })
       toast.success('System skonfigurowany pomyślnie!')
     } catch (err) {
       failApply(err instanceof Error ? err.message : 'Konfiguracja nie powiodła się', await readErrorCode(err))
@@ -353,6 +366,21 @@ export function AdminSetupPage(): ReactElement {
                 <input id="setup-tenant-name" data-testid="setup-tenant-name" type="text" placeholder="Moja Firma Sp. z o.o."
                   value={firstTenantDisplayName} onInput={e => setFirstTenantDisplayName((e.target as HTMLInputElement).value)} />
               </div>
+
+              <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--ui-border)' }} />
+
+              <h3 style={{ margin: '0 0 8px' }}>Administrator danych</h3>
+              <p className="ui-form-hint" style={{ margin: '0 0 8px' }}>
+                Ta instancja OpenKSeF należy do Ciebie, więc to Ty jesteś administratorem danych osobowych, które w niej przetwarzasz (RODO, art. 13 ust. 1 lit. a). Podaj nazwę i kontakt, które zobaczą użytkownicy na stronie <strong>Prywatność</strong>.
+              </p>
+              <DataControllerFields
+                idPrefix="setup"
+                name={dataControllerName}
+                contact={dataControllerContact}
+                onNameChange={setDataControllerName}
+                onContactChange={setDataControllerContact}
+                contactHint="Adres e-mail albo adres do korespondencji. Możesz zmienić te dane później w ustawieniach systemu."
+              />
               {error && <div className="ui-form-error" role="alert">⚠ {error}</div>}
             </div>
             <div className="onboarding-actions">
@@ -612,6 +640,8 @@ export function AdminSetupPage(): ReactElement {
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Środowisko KSeF</td><td style={{ padding: '4px 8px' }}>{ksefEnv === 'production' ? 'Produkcja' : 'Test'}</td></tr>
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Użytkownik</td><td style={{ padding: '4px 8px' }}>{userEmail}</td></tr>
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Firma (NIP)</td><td style={{ padding: '4px 8px' }}>{firstTenantNip}{firstTenantDisplayName ? ` — ${firstTenantDisplayName}` : ''}</td></tr>
+                  <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Administrator danych</td><td style={{ padding: '4px 8px' }}>{dataControllerName.trim()}</td></tr>
+                  <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Kontakt</td><td style={{ padding: '4px 8px' }}>{dataControllerContact.trim()}</td></tr>
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Rejestracja</td><td style={{ padding: '4px 8px' }}>{registrationAllowed ? 'Tak' : 'Nie'}</td></tr>
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>SMTP</td><td style={{ padding: '4px 8px' }}>{smtpEnabled ? smtpHost : 'Pominięto'}</td></tr>
                   <tr><td style={{ padding: '4px 8px', fontWeight: 600 }}>Google OAuth</td><td style={{ padding: '4px 8px' }}>{googleClientId ? 'Skonfigurowano' : 'Pominięto'}</td></tr>

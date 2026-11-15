@@ -6,6 +6,8 @@ import type { InvoiceResponse } from '@/api/types'
 import { useAuth } from '@/auth/useAuth'
 import { CompanyCard } from '@/company/CompanyCard'
 import { useCompany } from '@/company/useCompany'
+import { useSetupStatus } from '@/hooks/useSetupStatus'
+import { hasAdminRole } from '@/privacy/dataController'
 import { BrandMark } from './BrandMark'
 import { Icon, type IconName } from './Icon'
 
@@ -30,6 +32,8 @@ export function Layout(): ReactElement {
 
   const displayName = user?.profile?.name ?? user?.profile?.email ?? 'Użytkownik'
   const onSettings = isUnder(pathname, '/settings')
+  const setup = useSetupStatus().data
+  const controllerMissing = setup?.isInitialized && !(setup.dataControllerName && setup.dataControllerContact) && hasAdminRole(user?.access_token)
 
   return (
     <div className="app-shell">
@@ -83,8 +87,19 @@ export function Layout(): ReactElement {
 
       <div className="app-content">
         <main className="app-main">
+          {controllerMissing && (
+            <div className="auth-notice auth-notice--warning app-banner" role="status" data-testid="data-controller-banner">
+              <span>
+                Podaj nazwę i kontakt administratora danych tej instancji. Bez nich strona Prywatność nie wskazuje, kto odpowiada za dane.{' '}
+                <Link to="/settings/admin">Uzupełnij w ustawieniach</Link>
+              </span>
+            </div>
+          )}
           <Outlet />
         </main>
+        <footer className="app-footer">
+          <Link to="/privacy">Prywatność</Link>
+        </footer>
       </div>
     </div>
   )

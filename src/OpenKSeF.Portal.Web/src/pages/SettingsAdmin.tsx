@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
 
@@ -14,6 +14,7 @@ import {
   type TwoFactorUserResponse,
   updateSettings,
   type SettingsResponse,
+  type SetupStatusResponse,
   type SettingsUpdateRequest,
   type SmtpConfig,
 } from '@/api/endpoints/system'
@@ -24,6 +25,8 @@ import { Icon } from '@/components/Icon'
 import { SettingsHeader } from '@/components/SettingsHeader'
 import { polishPlural } from '@/invoicing/format'
 import { notifyMutationError, notifyMutationSuccess } from '@/notifications'
+import { DataControllerFields } from '@/privacy/DataControllerFields'
+import { dataControllerError } from '@/privacy/dataController'
 
 function ManualDeviceRegistration(): ReactElement {
   const [token, setToken] = useState('')
@@ -223,6 +226,7 @@ function TwoFactorReset(): ReactElement {
 }
 
 export function SettingsAdminPage(): ReactElement {
+  const queryClient = useQueryClient()
   const [kcUsername, setKcUsername] = useState('')
   const [kcPassword, setKcPassword] = useState('')
   const [authenticated, setAuthenticated] = useState(false)
@@ -260,6 +264,8 @@ export function SettingsAdminPage(): ReactElement {
   const [pushRelayInstanceId, setPushRelayInstanceId] = useState('')
   const [reRegisterRelay, setReRegisterRelay] = useState(false)
   const [firebaseJson, setFirebaseJson] = useState('')
+  const [dataControllerName, setDataControllerName] = useState('')
+  const [dataControllerContact, setDataControllerContact] = useState('')
 
   const storedKsefEnv = settings?.kSeFEnvironment
   const unknownKsefEnv = storedKsefEnv && !['test', 'demo', 'production'].includes(storedKsefEnv) ? storedKsefEnv : undefined
@@ -277,6 +283,13 @@ export function SettingsAdminPage(): ReactElement {
     setLoginWithEmail(resp.loginWithEmailAllowed)
     setResetPassword(resp.resetPasswordAllowed)
     setPasswordPolicy(resp.passwordPolicy ?? 'length(8)')
+    setDataControllerName(resp.dataControllerName ?? '')
+    setDataControllerContact(resp.dataControllerContact ?? '')
+    queryClient.setQueryData<SetupStatusResponse>(['setup-status'], (old) => old && {
+      ...old,
+      dataControllerName: resp.dataControllerName ?? null,
+      dataControllerContact: resp.dataControllerContact ?? null,
+    })
 
     if (resp.smtp) {
       setSmtpEnabled(true)
@@ -362,6 +375,8 @@ export function SettingsAdminPage(): ReactElement {
       reRegisterRelay: pushMode === 'relay' && reRegisterRelay,
       firebaseCredentialsJson: pushMode === 'firebase' ? (firebaseJson || undefined) : '',
       confirmCredentialWipe: confirmWipe,
+      dataControllerName: dataControllerName.trim() || undefined,
+      dataControllerContact: dataControllerContact.trim() || undefined,
     }
   }
 
@@ -370,6 +385,9 @@ export function SettingsAdminPage(): ReactElement {
     saveButton.current = document.activeElement as HTMLElement | null
     setError(null)
     setSaveWarning(null)
+    const controllerTouched = dataControllerName.trim() || dataControllerContact.trim() || settings?.dataControllerName || settings?.dataControllerContact
+    const invalidController = controllerTouched ? dataControllerError(dataControllerName, dataControllerContact) : null
+    if (invalidController) { setError(invalidController); return }
     setSaving(true)
     try {
       const request = buildUpdateRequest()
@@ -519,6 +537,22 @@ export function SettingsAdminPage(): ReactElement {
                 </span>
               )}
             </div>
+          </div>
+        </section>
+
+        <section className="ui-card" aria-labelledby="settings-controller-title">
+          <h2 id="settings-controller-title">Administrator danych</h2>
+          <p className="ui-form-hint">
+            Nazwa i kontakt administratora danych tej instancji. Są widoczne publicznie na stronie <strong>Prywatność</strong>, także bez logowania. Zmień je, gdy zmieni się właściciel instancji albo adres kontaktowy.
+          </p>
+          <div className="onboarding-form">
+            <DataControllerFields
+              idPrefix="settings"
+              name={dataControllerName}
+              contact={dataControllerContact}
+              onNameChange={setDataControllerName}
+              onContactChange={setDataControllerContact}
+            />
           </div>
         </section>
 

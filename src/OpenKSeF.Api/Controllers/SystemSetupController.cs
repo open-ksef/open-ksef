@@ -42,7 +42,9 @@ public class SystemSetupController : ControllerBase
     {
         return Ok(new SetupStatusResponse(
             _systemConfig.IsInitialized,
-            string.Equals(_systemConfig.GetValue(SystemConfigKeys.RegistrationAllowed), "true", StringComparison.OrdinalIgnoreCase)));
+            string.Equals(_systemConfig.GetValue(SystemConfigKeys.RegistrationAllowed), "true", StringComparison.OrdinalIgnoreCase),
+            _systemConfig.GetValue(SystemConfigKeys.DataControllerName),
+            _systemConfig.GetValue(SystemConfigKeys.DataControllerContact)));
     }
 
     [HttpPost("setup/authenticate")]

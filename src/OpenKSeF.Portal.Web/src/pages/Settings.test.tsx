@@ -160,6 +160,24 @@ describe('Ustawienia', () => {
       expect(lastRequest().pushRelayApiKey).toBeUndefined()
     })
 
+    it('saves without a data controller and sends it trimmed once typed', async () => {
+      await save()
+      expect(lastRequest().dataControllerName).toBeUndefined()
+
+      await fill('settings-controller-name', ' Firma Testowa ')
+      await fill('settings-controller-contact', ' rodo@example.com ')
+      await save()
+      expect(lastRequest()).toMatchObject({ dataControllerName: 'Firma Testowa', dataControllerContact: 'rodo@example.com' })
+    })
+
+    it('blocks the save when only one data controller field is filled', async () => {
+      await fill('settings-controller-name', 'Firma Testowa')
+      await save()
+
+      expect(updateSettings).not.toHaveBeenCalled()
+      expect(container.querySelector('[role="alert"]')?.textContent).toBe('Podaj e-mail albo adres administratora danych.')
+    })
+
     it('shows the last relay failure only when the API reports one', async () => {
       expect(by('settings-relay-failure')).toBeNull()
 
@@ -321,12 +339,13 @@ describe('Ustawienia', () => {
     expect([...container.querySelectorAll('h2')].map((heading) => heading.textContent)).toEqual([
       'Weryfikacja dwuetapowa użytkownika',
       'Podstawowe',
+      'Administrator danych',
       'Autoryzacja',
       'SMTP',
       'Integracje',
       'Ręczna rejestracja urządzenia',
     ])
-    for (const id of ['settings-url', 'settings-ksef-env', 'settings-pass-policy', 'settings-smtp-host', 'settings-smtp-from', 'settings-google-id', 'settings-google-secret', 'settings-relay-url', 'settings-relay-key', 'device-form-token', 'device-form-submit', 'settings-save', 'settings-save-bottom']) {
+    for (const id of ['settings-url', 'settings-ksef-env', 'settings-controller-name', 'settings-controller-contact', 'settings-pass-policy', 'settings-smtp-host', 'settings-smtp-from', 'settings-google-id', 'settings-google-secret', 'settings-relay-url', 'settings-relay-key', 'device-form-token', 'device-form-submit', 'settings-save', 'settings-save-bottom']) {
       expect(by(id), id).not.toBeNull()
     }
     expect([...(by('settings-ksef-env') as HTMLSelectElement).options].map((option) => option.textContent)).toEqual(['Test', 'Demo', 'Produkcja'])
