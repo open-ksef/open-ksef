@@ -168,7 +168,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
 
         await using (var db = NewContext())
         {
-            var result = await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            var result = await SyncService(db).SyncTenantAsync(_tenantId);
             Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
             Assert.Equal((3, 1), (result.IssuedFetchedInvoices, result.IssuedNewInvoices));
             Assert.Equal((3, 1), (result.FetchedInvoices, result.NewInvoices));
@@ -207,7 +207,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         };
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         Assert.Equal(LastSync.AddHours(-1), receivedFrom.Single()!.Value, TimeSpan.FromSeconds(1));
         await _notifications.Received(1).NotifyNewInvoiceAsync(Arg.Is<NewInvoiceDetectedEvent>(e => e.TenantId == _tenantId));
@@ -222,7 +222,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
 
         await using (var db = NewContext())
         {
-            var result = await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            var result = await SyncService(db).SyncTenantAsync(_tenantId);
             Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
             Assert.Equal(1, result.NewInvoices);
         }
@@ -305,7 +305,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         };
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         await using (var db = NewContext())
         {
@@ -316,7 +316,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
 
         var firstRunQueries = _issuedQueries.Count;
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         Assert.Equal(savedEnd!.Value, _issuedQueries[firstRunQueries].DateFrom!.Value, TimeSpan.FromMilliseconds(1));
     }
@@ -328,7 +328,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         _issued = c => Page([], c.DateFrom);
 
         await using (var db = NewContext())
-            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId, UserId)).Outcome);
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId)).Outcome);
 
         Assert.Single(_issuedQueries);
         await using (var db = NewContext())
@@ -342,7 +342,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         _issued = _ => Page([]);
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         Assert.Single(_issuedQueries);
         Assert.NotEmpty(Logged(LogLevel.Warning, "did not advance"));
@@ -361,7 +361,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         _issued = _ => Page([], truncated: true);
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         Assert.Single(_issuedQueries);
         await using (var db = NewContext())
@@ -379,7 +379,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         _issued = c => Page([], DateTime.UtcNow);
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         Assert.InRange(_issuedQueries.Count, 4, 5);
         foreach (var (previous, next) in _issuedQueries.Zip(_issuedQueries.Skip(1)))
@@ -403,7 +403,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         };
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         Assert.Equal(lastRowAt, _issuedQueries[1].DateFrom);
         Assert.Equal(0, _issuedQueries[1].PageOffset);
@@ -446,7 +446,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         };
 
         await using (var db = NewContext())
-            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId, UserId)).Outcome);
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId)).Outcome);
 
         await using (var db = NewContext())
         {
@@ -459,7 +459,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         {
             var before = _issuedQueries.Count;
             await using var db = NewContext();
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
             Assert.InRange(_issuedQueries.Count - before, 1, 10);
         }
 
@@ -489,7 +489,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         };
 
         await using (var db = NewContext())
-            Assert.Equal(TenantSyncOutcome.StoreFailed, (await SyncService(db).SyncTenantAsync(_tenantId, UserId)).Outcome);
+            Assert.Equal(TenantSyncOutcome.StoreFailed, (await SyncService(db).SyncTenantAsync(_tenantId)).Outcome);
 
         Assert.Equal(2, _issuedQueries.Count);
         await using (var db = NewContext())
@@ -512,7 +512,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         for (var run = 1; run <= 2; run++)
         {
             await using var db = NewContext();
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
             Assert.Equal(run, Logged(LogLevel.Warning, "stalled").Count);
         }
 
@@ -532,19 +532,19 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         _issued = _ => throw new KsefApiException("rate limited", HttpStatusCode.TooManyRequests);
 
         await using (var db = NewContext())
-            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId, UserId)).Outcome);
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId)).Outcome);
         await using (var db = NewContext())
             Assert.True((await db.SyncStates.SingleAsync()).IssuedFetchIncomplete());
 
         _issued = c => Page([], c.DateTo);
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
         await using (var db = NewContext())
             Assert.False((await db.SyncStates.SingleAsync()).IssuedFetchIncomplete());
 
         var queries = _issuedQueries.Count;
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
         Assert.Equal(queries, _issuedQueries.Count);
         await using (var db = NewContext())
             Assert.False((await db.SyncStates.SingleAsync()).IssuedFetchIncomplete());
@@ -557,7 +557,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         }
         _issued = _ => throw new KsefApiException("rate limited", HttpStatusCode.TooManyRequests);
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
         await using (var db = NewContext())
             Assert.True((await db.SyncStates.SingleAsync()).IssuedFetchIncomplete());
     }
@@ -571,7 +571,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         _issued = KsefPages(Enumerable.Range(0, 150).Select(n => (at, $"KSEF-{n:D3}")).ToList());
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         await using (var db = NewContext())
             Assert.Equal(150, await db.InvoiceHeaders.CountAsync(i => i.Direction == InvoiceDirection.Issued));
@@ -584,13 +584,13 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         await SetContinuationAsync(DateTime.UtcNow.AddMinutes(-14));
 
         await using (var db = NewContext())
-            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId, UserId)).Outcome);
+            Assert.Equal(TenantSyncOutcome.Success, (await SyncService(db).SyncTenantAsync(_tenantId)).Outcome);
         Assert.Empty(_issuedQueries);
         Assert.Single(Logged(LogLevel.Information, "skipped"));
 
         await SetContinuationAsync(DateTime.UtcNow.AddMinutes(-16));
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
         Assert.Single(_issuedQueries);
         Assert.Single(Logged(LogLevel.Information, "skipped"));
     }
@@ -603,7 +603,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         _issued = c => Page([Sale("KSEF-SELF", buyerNip: TenantNip), Sale("KSEF-ONLY-SALE-SELF", buyerNip: TenantNip)], c.DateTo);
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         await using (var db = NewContext())
         {
@@ -626,7 +626,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
             ], c.DateTo);
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         await using (var db = NewContext())
         {
@@ -654,11 +654,11 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         };
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
         from.Clear();
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId, forceFullResync: true);
+            await SyncService(db).SyncTenantAsync(_tenantId, forceFullResync: true);
 
         Assert.Equal(Issued.AddHours(-1), from[0]!.Value, TimeSpan.FromSeconds(1));
     }
@@ -670,7 +670,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         _issued = c => Page(c.DateFrom < DateTime.UtcNow.AddMonths(-11) ? [Sale("KSEF-SALE-1")] : [], c.DateTo);
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         List<RowSnapshot> before;
         await using (var db = NewContext())
@@ -698,7 +698,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
 
         _issuedQueries.Clear();
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         await using (var db = NewContext())
             Assert.True(await db.InvoiceHeaders.AnyAsync(i => i.KSeFInvoiceNumber == "KSEF-SALE-1" && i.Direction == InvoiceDirection.Issued));

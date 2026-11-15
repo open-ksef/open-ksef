@@ -12,6 +12,8 @@ using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
 
+using OpenKSeF.Api.Tests.TestSupport;
+
 namespace OpenKSeF.Api.Tests.Controllers;
 
 public class CredentialsControllerListTests : IDisposable
@@ -44,6 +46,7 @@ public class CredentialsControllerListTests : IDisposable
         _db.Tenants.AddRange(t1, t2, otherTenant);
 
         _db.KSeFCredentials.Add(new KSeFCredential { Id = Guid.NewGuid(), TenantId = t1.Id, Type = CredentialType.Token, EncryptedToken = "enc", CreatedAt = now, UpdatedAt = now });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -86,6 +89,7 @@ public class CredentialsControllerListTests : IDisposable
             CreatedAt = now,
             UpdatedAt = now
         });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -101,7 +105,6 @@ public class CredentialsControllerListTests : IDisposable
 public class CredentialsControllerCrudTests : IDisposable
 {
     private readonly ApplicationDbContext _db;
-    private readonly ICurrentUserService _currentUser;
     private readonly IEncryptionService _encryption;
     private readonly ILogger<CredentialsController> _logger = Substitute.For<ILogger<CredentialsController>>();
     private readonly string _userId = "user-1";
@@ -114,9 +117,6 @@ public class CredentialsControllerCrudTests : IDisposable
             .Options;
         _db = new ApplicationDbContext(options);
 
-        _currentUser = Substitute.For<ICurrentUserService>();
-        _currentUser.UserId.Returns(_userId);
-
         _encryption = Substitute.For<IEncryptionService>();
         _encryption.Encrypt(Arg.Any<string>()).Returns(x => $"encrypted:{x.Arg<string>()}");
         _encryption.Decrypt(Arg.Any<string>()).Returns(x => x.Arg<string>()["encrypted:".Length..]);
@@ -124,11 +124,12 @@ public class CredentialsControllerCrudTests : IDisposable
         _tenantId = Guid.NewGuid();
         var now = DateTime.UtcNow;
         _db.Tenants.Add(new Tenant { Id = _tenantId, UserId = _userId, Nip = "5555555555", DisplayName = "Test", CreatedAt = now, UpdatedAt = now });
+        _db.AddOwnerMembers();
         _db.SaveChanges();
     }
 
     private CredentialsController CreateController() =>
-        new(_db, _currentUser, _encryption, CredentialsControllerSyncTests.Jobs(Substitute.For<ITenantSyncService>()), _logger);
+        new(_db, _encryption, CredentialsControllerSyncTests.Jobs(Substitute.For<ITenantSyncService>()), _logger);
 
     [Fact]
     public async Task AddOrUpdate_Token_CreatesCredential()
@@ -240,6 +241,7 @@ public class CredentialsControllerCrudTests : IDisposable
             CreatedAt = now,
             UpdatedAt = now
         });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var pfxBase64 = GenerateTestPfxBase64("Test1234!");
@@ -273,6 +275,7 @@ public class CredentialsControllerCrudTests : IDisposable
             CreatedAt = now,
             UpdatedAt = now
         });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = CreateController();
@@ -340,18 +343,6 @@ public class CredentialsControllerCrudTests : IDisposable
     {
         var value = Assert.IsType<BadRequestObjectResult>(result).Value!;
         return (string?)value.GetType().GetProperty("error")!.GetValue(value);
-    }
-
-    [Fact]
-    public async Task AddOrUpdate_WrongTenant_ReturnsForbid()
-    {
-        var otherTenantId = Guid.NewGuid();
-        var controller = CreateController();
-        var request = new AddCredentialRequest(Type: CredentialType.Token, Token: "test");
-
-        var result = await controller.AddOrUpdate(otherTenantId, request);
-
-        Assert.IsType<ForbidResult>(result);
     }
 
     [Fact]
@@ -455,6 +446,7 @@ public class CredentialsControllerCrudTests : IDisposable
             Id = Guid.NewGuid(), TenantId = _tenantId, Type = CredentialType.Certificate,
             EncryptedCertificateData = "encrypted:stale", CertificateFingerprint = "fp", CreatedAt = now, UpdatedAt = now
         });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
         _encryption.Decrypt("encrypted:stale").Returns(_ => throw new AuthenticationTagMismatchException());
 

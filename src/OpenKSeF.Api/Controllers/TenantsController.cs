@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using OpenKSeF.Api.Authorization;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
@@ -30,26 +31,23 @@ public class TenantsController : ControllerBase
     [ProducesResponseType(typeof(List<TenantResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List()
     {
-        var tenants = await _db.Tenants
-            .Where(t => t.UserId == _currentUser.UserId)
-            .OrderBy(t => t.CreatedAt)
-            .Select(t => new TenantResponse(t.Id, t.Nip, t.DisplayName, t.NotificationEmail, t.CreatedAt))
+        var memberships = await _db.TenantMembers
+            .Where(m => m.UserId == _currentUser.UserId)
+            .Join(_db.Tenants, m => m.TenantId, t => t.Id, (m, t) => new { Tenant = t, m.Role })
+            .OrderBy(x => x.Tenant.CreatedAt)
             .ToListAsync();
 
-        return Ok(tenants);
+        return Ok(memberships.Select(x => TenantResponse.From(x.Tenant, x.Role)).ToList());
     }
 
-    [HttpGet("{id:guid}")]
+    [HttpGet("{tenantId:guid}")]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(typeof(TenantResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Get(Guid id)
+    public async Task<IActionResult> Get(Guid tenantId)
     {
-        var tenant = await _db.Tenants
-            .Where(t => t.Id == id && t.UserId == _currentUser.UserId)
-            .Select(t => new TenantResponse(t.Id, t.Nip, t.DisplayName, t.NotificationEmail, t.CreatedAt))
-            .FirstOrDefaultAsync();
-
-        return tenant is null ? NotFound() : Ok(tenant);
+        var tenant = await _db.Tenants.AsNoTracking().FirstAsync(t => t.Id == tenantId);
+        return Ok(TenantResponse.From(tenant, TenantAccessAttribute.Member(HttpContext).Role));
     }
 
     [HttpPost]
@@ -87,20 +85,17 @@ public class TenantsController : ControllerBase
             return Conflict(new { error = "Ta firma (NIP) jest już dodana do Twojego konta." });
         }
 
-        var response = new TenantResponse(tenant.Id, tenant.Nip, tenant.DisplayName, tenant.NotificationEmail, tenant.CreatedAt);
-        return CreatedAtAction(nameof(Get), new { id = tenant.Id }, response);
+        return CreatedAtAction(nameof(Get), new { tenantId = tenant.Id }, TenantResponse.From(tenant, TenantRole.Owner));
     }
 
-    [HttpPut("{id:guid}")]
+    [HttpPut("{tenantId:guid}")]
+    [TenantAccess(TenantPermissions.TenantEdit)]
     [ProducesResponseType(typeof(TenantResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateTenantRequest request)
+    public async Task<IActionResult> Update(Guid tenantId, [FromBody] UpdateTenantRequest request)
     {
-        var tenant = await _db.Tenants
-            .FirstOrDefaultAsync(t => t.Id == id && t.UserId == _currentUser.UserId);
-
-        if (tenant is null)
-            return NotFound();
+        var tenant = await _db.Tenants.FirstAsync(t => t.Id == tenantId);
 
         tenant.DisplayName = request.DisplayName;
         if (request.NotificationEmailSet)
@@ -109,22 +104,20 @@ public class TenantsController : ControllerBase
 
         await _db.SaveChangesAsync();
 
-        var response = new TenantResponse(tenant.Id, tenant.Nip, tenant.DisplayName, tenant.NotificationEmail, tenant.CreatedAt);
-        return Ok(response);
+        return Ok(TenantResponse.From(tenant, TenantAccessAttribute.Member(HttpContext).Role));
     }
 
-    [HttpDelete("{id:guid}")]
+    [HttpDelete("{tenantId:guid}")]
+    [TenantAccess(TenantPermissions.TenantDelete)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> Delete(Guid id)
+    public async Task<IActionResult> Delete(Guid tenantId)
     {
-        if (!await _db.OwnsTenantAsync(id, _currentUser.UserId))
-            return NotFound();
-
         try
         {
-            return await _issuedInvoices.DeleteTenantAsync(id) ? NoContent() : NotFound();
+            return await _issuedInvoices.DeleteTenantAsync(tenantId) ? NoContent() : NotFound();
         }
         catch (InvoiceStateException e)
         {

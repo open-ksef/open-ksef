@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 
 namespace OpenKSeF.Api.Models;
 
@@ -41,4 +43,11 @@ public record TenantResponse(
     string Nip,
     string? DisplayName,
     string? NotificationEmail,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    string Role = nameof(TenantRole.Owner),
+    IReadOnlyList<string>? Permissions = null)
+{
+    public static TenantResponse From(Tenant tenant, TenantRole role) => new(
+        tenant.Id, tenant.Nip, tenant.DisplayName, tenant.NotificationEmail, tenant.CreatedAt,
+        role.ToString(), TenantPermissions.For(role).Order(StringComparer.Ordinal).ToList());
+}

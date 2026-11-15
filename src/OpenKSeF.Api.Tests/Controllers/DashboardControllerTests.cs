@@ -12,6 +12,8 @@ using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Services;
 using System.Data.Common;
 
+using OpenKSeF.Api.Tests.TestSupport;
+
 namespace OpenKSeF.Api.Tests.Controllers;
 
 public class DashboardControllerTests : IDisposable
@@ -106,6 +108,8 @@ public class DashboardControllerTests : IDisposable
             MakeInvoice(tenantWarning.Id, now.AddDays(-10)),
             MakeInvoice(tenantForeign.Id, now.AddDays(-1)));
 
+        _db.AddOwnerMembers();
+
         await _db.SaveChangesAsync();
 
         var controller = new DashboardController(_db, _currentUser);
@@ -153,6 +157,7 @@ public class DashboardControllerTests : IDisposable
         AddTenant("6666666666", "Tenant A", _userId);
         AddTenant("7777777777", "Tenant B", _userId);
         AddTenant("8888888888", "Tenant Foreign", "other-user");
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = new DashboardController(_db, _currentUser);
@@ -176,6 +181,7 @@ public class DashboardControllerTests : IDisposable
             LastSyncedAt = now.AddDays(-8),
             LastSuccessfulSync = now.AddDays(-8)
         });
+        _db.AddOwnerMembers();
         await _db.SaveChangesAsync();
 
         var controller = new DashboardController(_db, _currentUser);
@@ -222,6 +228,7 @@ public class DashboardControllerTests : IDisposable
             LastSuccessfulSync = DateTime.UtcNow.AddHours(-1)
         });
         db.InvoiceHeaders.Add(MakeInvoice(tenant.Id, DateTime.UtcNow.AddDays(-1)));
+        db.AddOwnerMembers();
         await db.SaveChangesAsync();
 
         counter.Reset();

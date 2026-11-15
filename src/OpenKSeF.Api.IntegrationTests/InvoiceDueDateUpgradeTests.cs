@@ -108,7 +108,7 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
 
         await using (var db = NewContext())
         {
-            var result = await SyncService(db).SyncTenantAsync(_tenantId, UserId, forceFullResync: true);
+            var result = await SyncService(db).SyncTenantAsync(_tenantId, forceFullResync: true);
             Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
             Assert.Equal(1, result.FailedDownloads);
         }
@@ -141,11 +141,11 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
         _gateway.DownloadInvoiceAsync(Arg.Any<KSeFSession>(), UnpaidNumber, Arg.Any<CancellationToken>()).Returns(XmlWithDueDate("2026-11-20"));
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId, forceFullResync: true);
+            await SyncService(db).SyncTenantAsync(_tenantId, forceFullResync: true);
         _gateway.ClearReceivedCalls();
 
         await using (var db = NewContext())
-            await SyncService(db).SyncTenantAsync(_tenantId, UserId);
+            await SyncService(db).SyncTenantAsync(_tenantId);
 
         await _gateway.DidNotReceive().DownloadInvoiceAsync(Arg.Any<KSeFSession>(), UnpaidNumber, Arg.Any<CancellationToken>());
         await using (var db = NewContext())

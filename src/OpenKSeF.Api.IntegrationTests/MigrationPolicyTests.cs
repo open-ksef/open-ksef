@@ -18,6 +18,7 @@ public class MigrationPolicyTests
         ["20261113094140_UniqueCredentialPerTenant"] = "T-090: raw Sql deletes duplicate KSeFCredentials rows of the same tenant (keeps newest UpdatedAt, tie-break Id), then the TenantId index is recreated unique. Prod had 0 duplicates on 2026-11-13. Down only drops uniqueness; deleted duplicates are not restorable.",
         ["20261114210330_InvoiceNotifiedAt"] = "T-088: raw Sql backfills only the new nullable NotifiedAt from FirstSeenAt, so rows stored before the upgrade owe no push. No other column is written, no row removed.",
         ["20261115144909_AddTenantMembership"] = "T-161: raw Sql inserts one Owner row per tenant from Tenants.UserId and backfills only the new nullable PaidByUserId on paid rows. IsPaid/PaidAt not written, no row removed.",
+        ["20261115200000_RebackfillTenantMembership"] = "T-162 (ADR-006 decision 5): idempotent re-run of the T-161 backfill for rows written by a rolled-back image. Clears PaidByUserId on unpaid rows, inserts a missing creator Owner row, fills PaidByUserId on paid rows. IsPaid/PaidAt not written, no row removed.",
     };
 
     [Fact]

@@ -96,7 +96,7 @@ public sealed class SyncLockTests : IAsyncLifetime
     private async Task<TenantSyncResult> ManualSyncAsync(TimeSpan? manualLockWait = null, CancellationToken cancellationToken = default)
     {
         await using var db = NewContext();
-        return await SyncService(db, manualLockWait).SyncTenantAsync(_tenantA, "user-1", cancellationToken: cancellationToken);
+        return await SyncService(db, manualLockWait).SyncTenantAsync(_tenantA, cancellationToken: cancellationToken);
     }
 
     // A pooled connection keeps its session, and so its advisory lock, until reused.

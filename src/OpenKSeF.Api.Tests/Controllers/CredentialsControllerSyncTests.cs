@@ -21,7 +21,6 @@ namespace OpenKSeF.Api.Tests.Controllers;
 public class CredentialsControllerSyncTests : IDisposable
 {
     private readonly ApplicationDbContext _db;
-    private readonly ICurrentUserService _currentUser;
     private readonly ITenantSyncService _sync = Substitute.For<ITenantSyncService>();
     private readonly string _userId = "user-1";
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -33,8 +32,6 @@ public class CredentialsControllerSyncTests : IDisposable
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         _db = new ApplicationDbContext(options);
-        _currentUser = Substitute.For<ICurrentUserService>();
-        _currentUser.UserId.Returns(_userId);
         _jobs = Jobs(_sync, Timeout.InfiniteTimeSpan);
 
         var now = DateTime.UtcNow;
@@ -58,14 +55,14 @@ public class CredentialsControllerSyncTests : IDisposable
         var context = new DefaultHttpContext();
         if (preferAsync)
             context.Request.Headers["Prefer"] = "respond-async";
-        return new CredentialsController(_db, _currentUser, Substitute.For<IEncryptionService>(), _jobs, Substitute.For<ILogger<CredentialsController>>())
+        return new CredentialsController(_db, Substitute.For<IEncryptionService>(), _jobs, Substitute.For<ILogger<CredentialsController>>())
         {
             ControllerContext = new ControllerContext { HttpContext = context }
         };
     }
 
     private void SyncReturns(TenantSyncResult result, bool fullResync = false) =>
-        _sync.SyncTenantAsync(_tenantId, _userId, fullResync, Arg.Any<CancellationToken>(), Arg.Any<Action?>())
+        _sync.SyncTenantAsync(_tenantId, fullResync, Arg.Any<CancellationToken>(), Arg.Any<Action?>())
             .Returns(call =>
             {
                 call.Arg<Action?>()?.Invoke();
@@ -75,7 +72,7 @@ public class CredentialsControllerSyncTests : IDisposable
     private TaskCompletionSource<TenantSyncResult> SyncWaits(bool invokeLockAcquired = true)
     {
         var gate = new TaskCompletionSource<TenantSyncResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _sync.SyncTenantAsync(_tenantId, _userId, false, Arg.Any<CancellationToken>(), Arg.Any<Action?>())
+        _sync.SyncTenantAsync(_tenantId, false, Arg.Any<CancellationToken>(), Arg.Any<Action?>())
             .Returns(call =>
             {
                 if (invokeLockAcquired)
@@ -108,16 +105,6 @@ public class CredentialsControllerSyncTests : IDisposable
 
         Assert.Equal($$"""{"error":"{{TenantSyncService.MissingCredentialMessage}}"}""", JsonSerializer.Serialize(conflict.Value));
         Assert.Empty(_sync.ReceivedCalls());
-    }
-
-    [Fact]
-    public async Task SyncNow_ReturnsForbidden_WithoutStartingAJob_ForNonOwner()
-    {
-        _currentUser.UserId.Returns("someone-else");
-
-        Assert.IsType<ForbidResult>(await CreateController().SyncNow(_tenantId, CancellationToken.None));
-        Assert.Empty(_sync.ReceivedCalls());
-        Assert.Null(_jobs.Find(_tenantId));
     }
 
     [Theory]
@@ -208,7 +195,7 @@ public class CredentialsControllerSyncTests : IDisposable
         Assert.Equal("succeeded", status.State);
         Assert.Equal(3, status.Result!.FetchedInvoices);
         Assert.NotNull(status.FinishedAtUtc);
-        await _sync.Received(1).SyncTenantAsync(_tenantId, _userId, false, CancellationToken.None, Arg.Any<Action?>());
+        await _sync.Received(1).SyncTenantAsync(_tenantId, false, CancellationToken.None, Arg.Any<Action?>());
     }
 
     [Fact]
@@ -224,7 +211,7 @@ public class CredentialsControllerSyncTests : IDisposable
         Assert.False((await StatusAsync()).FullResync);
         gate.SetResult(Outcome(TenantSyncOutcome.Success));
         await first!.Completion;
-        await _sync.Received(1).SyncTenantAsync(Arg.Any<Guid>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Action?>());
+        await _sync.Received(1).SyncTenantAsync(Arg.Any<Guid>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Action?>());
     }
 
     [Fact]
@@ -264,17 +251,9 @@ public class CredentialsControllerSyncTests : IDisposable
     }
 
     [Fact]
-    public async Task Status_ReturnsForbidden_ForNonOwner()
-    {
-        _currentUser.UserId.Returns("someone-else");
-
-        Assert.IsType<ForbidResult>(await CreateController().SyncStatus(_tenantId));
-    }
-
-    [Fact]
     public async Task JobThatThrows_EndsFailed_Not_Faulted()
     {
-        _sync.SyncTenantAsync(_tenantId, _userId, false, Arg.Any<CancellationToken>(), Arg.Any<Action?>())
+        _sync.SyncTenantAsync(_tenantId, false, Arg.Any<CancellationToken>(), Arg.Any<Action?>())
             .Returns<Task<TenantSyncResult>>(_ => throw new InvalidOperationException("boom"));
 
         var result = Assert.IsType<ObjectResult>(await CreateController().SyncNow(_tenantId, CancellationToken.None));
@@ -287,7 +266,7 @@ public class CredentialsControllerSyncTests : IDisposable
     public async Task StopAsync_WaitsForARunningJob()
     {
         var gate = SyncWaits();
-        _jobs.Start(_tenantId, _userId, fullResync: false);
+        _jobs.Start(_tenantId, fullResync: false);
 
         var stop = _jobs.StopAsync(CancellationToken.None);
         await Task.Delay(200);
@@ -314,10 +293,10 @@ public class CredentialsControllerSyncTests : IDisposable
             logger);
         if (stopping)
             stop.Cancel();
-        _sync.SyncTenantAsync(_tenantId, _userId, false, Arg.Any<CancellationToken>(), Arg.Any<Action?>())
+        _sync.SyncTenantAsync(_tenantId, false, Arg.Any<CancellationToken>(), Arg.Any<Action?>())
             .Returns<Task<TenantSyncResult>>(_ => throw new OperationCanceledException());
 
-        var result = await jobs.Start(_tenantId, _userId, fullResync: false).Completion;
+        var result = await jobs.Start(_tenantId, fullResync: false).Completion;
 
         Assert.Equal(TenantSyncOutcome.Failed, result.Outcome);
         var entry = Assert.Single(logger.Entries);

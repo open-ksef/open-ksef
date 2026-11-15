@@ -59,7 +59,7 @@ public class NotificationService : INotificationService
             }
         };
 
-        var settled = await PushToOwnerDevicesAsync(evt.TenantId, evt.InvoiceId, notification);
+        var settled = await PushToMemberDevicesAsync(evt.TenantId, evt.InvoiceId, notification);
         if (!email)
             return settled;
 
@@ -92,7 +92,7 @@ public class NotificationService : INotificationService
             }
         };
 
-        var settled = await PushToOwnerDevicesAsync(tenantId, null, notification);
+        var settled = await PushToMemberDevicesAsync(tenantId, null, notification);
         if (email)
             await SendEmailAsync(tenantId, null, tenant.NotificationEmail, to => _emailService.SendNewInvoicesSummaryEmailAsync(to, tenantId, company, count));
         return settled;
@@ -139,16 +139,15 @@ public class NotificationService : INotificationService
             }
         };
 
-        await PushToOwnerDevicesAsync(tenantId, issuedInvoiceId, notification);
+        await PushToMemberDevicesAsync(tenantId, issuedInvoiceId, notification);
     }
 
-    private async Task<bool> PushToOwnerDevicesAsync(Guid tenantId, Guid? invoiceId, PushNotification notification)
+    private async Task<bool> PushToMemberDevicesAsync(Guid tenantId, Guid? invoiceId, PushNotification notification)
     {
         // TenantId == null means "all companies"; a set TenantId is an explicit per-company subscription.
         var deviceTokens = await _db.DeviceTokens
             .Where(d => d.TenantId == tenantId || d.TenantId == null)
-            .Where(d => _db.Tenants.Any(t =>
-                t.Id == tenantId && t.UserId == d.UserId))
+            .Where(d => _db.TenantMembers.Any(m => m.TenantId == tenantId && m.UserId == d.UserId))
             .ToListAsync();
 
         if (deviceTokens.Count == 0)

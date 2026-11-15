@@ -186,16 +186,6 @@ public class InvoicesControllerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetByKSeFNumber_WrongTenant_ReturnsForbid()
-    {
-        var otherTenantId = Guid.NewGuid();
-        var controller = CreateController();
-        // Other tenant doesn't belong to this user
-        var result = await controller.GetByKSeFNumber(otherTenantId, "KSEF-12345");
-        Assert.IsType<ForbidResult>(result);
-    }
-
-    [Fact]
     public async Task GetTransferDetails_ExistingInvoice_ReturnsTransferData()
     {
         var invoice = MakeInvoice("KSEF-TR-001", DateTime.UtcNow.Date);
@@ -346,17 +336,6 @@ public class InvoicesControllerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetTransferDetails_OtherUsersTenant_ReturnsForbid()
-    {
-        var invoice = await SeedOtherUsersInvoice();
-
-        var result = await CreateController().GetTransferDetails(invoice.TenantId, invoice.Id);
-
-        Assert.IsType<ForbidResult>(result);
-        _qrCode.DidNotReceive().GenerateTransferQr(Arg.Any<TransferData>());
-    }
-
-    [Fact]
     public async Task GetTransferDetails_OtherTenantsInvoiceIdUnderOwnTenant_Returns404()
     {
         var invoice = await SeedOtherUsersInvoice();
@@ -411,13 +390,5 @@ public class InvoicesControllerTests : IAsyncLifetime
         var controller = CreateController();
         var result = await controller.SetPaid(_tenantId, Guid.NewGuid(), new SetInvoicePaidRequest(true));
         Assert.IsType<NotFoundResult>(result);
-    }
-
-    [Fact]
-    public async Task SetPaid_WrongTenant_ReturnsForbid()
-    {
-        var controller = CreateController();
-        var result = await controller.SetPaid(Guid.NewGuid(), Guid.NewGuid(), new SetInvoicePaidRequest(true));
-        Assert.IsType<ForbidResult>(result);
     }
 }

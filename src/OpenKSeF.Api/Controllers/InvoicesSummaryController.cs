@@ -29,7 +29,7 @@ public class InvoicesSummaryController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType(typeof(PagedResult<InvoiceResponse>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> List(
         [FromQuery] Guid? tenantId = null,
         [FromQuery] DateTime? dateFrom = null,
@@ -43,8 +43,8 @@ public class InvoicesSummaryController : ControllerBase
 
         var userTenantIds = UserTenantIds();
 
-        if (tenantId.HasValue && !await _db.OwnsTenantAsync(tenantId.Value, _currentUser.UserId))
-            return Forbid();
+        if (tenantId.HasValue && !await userTenantIds.ContainsAsync(tenantId.Value))
+            return NotFound();
 
         var query = _db.InvoiceHeaders
             .Where(i => userTenantIds.Contains(i.TenantId) && i.Direction == InvoiceDirection.Received);
@@ -85,16 +85,15 @@ public class InvoicesSummaryController : ControllerBase
 
     [HttpGet("by-number/{ksefInvoiceNumber}")]
     [ProducesResponseType(typeof(InvoiceResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetByNumber(
         string ksefInvoiceNumber,
         [FromQuery] Guid? tenantId = null)
     {
-        if (tenantId.HasValue && !await _db.OwnsTenantAsync(tenantId.Value, _currentUser.UserId))
-            return Forbid();
-
         var userTenantIds = UserTenantIds();
+
+        if (tenantId.HasValue && !await userTenantIds.ContainsAsync(tenantId.Value))
+            return NotFound();
 
         var headerQuery = _db.InvoiceHeaders
             .Include(i => i.Lines)
@@ -111,7 +110,7 @@ public class InvoicesSummaryController : ControllerBase
     }
 
     private IQueryable<Guid> UserTenantIds() =>
-        _db.Tenants
-            .Where(t => t.UserId == _currentUser.UserId)
-            .Select(t => t.Id);
+        _db.TenantMembers
+            .Where(m => m.UserId == _currentUser.UserId)
+            .Select(m => m.TenantId);
 }

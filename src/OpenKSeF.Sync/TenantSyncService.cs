@@ -121,7 +121,6 @@ public sealed class TenantSyncService : ITenantSyncService
 
     public async Task<TenantSyncResult> SyncTenantAsync(
         Guid tenantId,
-        string? userId = null,
         bool forceFullResync = false,
         CancellationToken cancellationToken = default,
         Action? onLockAcquired = null)
@@ -138,7 +137,7 @@ public sealed class TenantSyncService : ITenantSyncService
         }
 
         onLockAcquired?.Invoke();
-        return await SyncLockedTenantAsync(tenantId, userId, forceFullResync, cancellationToken);
+        return await SyncLockedTenantAsync(tenantId, forceFullResync, cancellationToken);
     }
 
     // Unpooled, so closing ends the session: a lock can never outlive the run on a pooled connector.
@@ -174,11 +173,11 @@ public sealed class TenantSyncService : ITenantSyncService
     private static int TenantLockKey(Guid tenantId) => BinaryPrimitives.ReadInt32LittleEndian(tenantId.ToByteArray());
 
     private async Task<TenantSyncResult> SyncLockedTenantAsync(
-        Guid tenantId, string? userId, bool forceFullResync, CancellationToken cancellationToken)
+        Guid tenantId, bool forceFullResync, CancellationToken cancellationToken)
     {
         var tenant = await _db.Tenants.AsNoTracking()
             .Include(t => t.KSeFCredentials)
-            .FirstOrDefaultAsync(t => t.Id == tenantId && (userId == null || t.UserId == userId), cancellationToken);
+            .FirstOrDefaultAsync(t => t.Id == tenantId, cancellationToken);
 
         if (tenant is null)
         {

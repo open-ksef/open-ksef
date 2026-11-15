@@ -105,7 +105,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     private async Task<TenantSyncResult> ManualSyncAsync(bool fullResync = false)
     {
         await using var db = NewContext();
-        return await SyncService(db).SyncTenantAsync(_tenantId, UserId, fullResync);
+        return await SyncService(db).SyncTenantAsync(_tenantId, fullResync);
     }
 
     private static async Task AddTenantAsync(ApplicationDbContext db, Guid id, string userId, string nip)
