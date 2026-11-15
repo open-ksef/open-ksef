@@ -18,17 +18,15 @@ describe('tenants endpoints', () => {
     vi.clearAllMocks()
   })
 
-  it('calls list/get/create/update/delete tenant endpoints', async () => {
-    const { listTenants, getTenant, createTenant, updateTenant, deleteTenant } = await import('./tenants')
+  it('calls list/create/update/delete tenant endpoints', async () => {
+    const { listTenants, createTenant, updateTenant, deleteTenant } = await import('./tenants')
 
     await listTenants()
-    await getTenant('tenant-1')
     await createTenant({ nip: '1234567890', displayName: 'Main' })
     await updateTenant('tenant-1', { displayName: 'Updated' })
     await deleteTenant('tenant-1')
 
-    expect(apiClientMock.get).toHaveBeenNthCalledWith(1, '/tenants')
-    expect(apiClientMock.get).toHaveBeenNthCalledWith(2, '/tenants/tenant-1')
+    expect(apiClientMock.get).toHaveBeenCalledWith('/tenants')
     expect(apiClientMock.post).toHaveBeenCalledWith('/tenants', { nip: '1234567890', displayName: 'Main' })
     expect(apiClientMock.put).toHaveBeenCalledWith('/tenants/tenant-1', { displayName: 'Updated' })
     expect(apiClientMock.delete).toHaveBeenCalledWith('/tenants/tenant-1')
@@ -40,8 +38,8 @@ describe('invoices endpoints', () => {
     vi.clearAllMocks()
   })
 
-  it('calls invoices list/get/by-number endpoints with query support', async () => {
-    const { listInvoices, getInvoice, getInvoiceByKSeFNumber } = await import('./invoices')
+  it('calls invoices list/by-number endpoints with query support', async () => {
+    const { listInvoices, getInvoiceByKSeFNumber } = await import('./invoices')
 
     await listInvoices('tenant-1', {
       page: 2,
@@ -51,7 +49,6 @@ describe('invoices endpoints', () => {
       dateTo: '2026-01-31',
     })
 
-    await getInvoice('tenant-1', 'invoice-1')
     await getInvoiceByKSeFNumber('tenant-1', 'KSEF-123')
 
     expect(apiClientMock.get).toHaveBeenNthCalledWith(1, '/tenants/tenant-1/invoices', {
@@ -64,8 +61,7 @@ describe('invoices endpoints', () => {
       },
     })
 
-    expect(apiClientMock.get).toHaveBeenNthCalledWith(2, '/tenants/tenant-1/invoices/invoice-1')
-    expect(apiClientMock.get).toHaveBeenNthCalledWith(3, '/tenants/tenant-1/invoices/by-number/KSEF-123')
+    expect(apiClientMock.get).toHaveBeenNthCalledWith(2, '/tenants/tenant-1/invoices/by-number/KSEF-123')
   })
 })
 

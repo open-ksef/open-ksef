@@ -92,7 +92,7 @@ describe('AuthProvider', () => {
     return setContextValue
   }
 
-  it('exposes login/logout and access token from current user', async () => {
+  it('exposes login/logout for the current user', async () => {
     mockManager.getUser.mockResolvedValue({ access_token: 'access-token', expired: false } as User)
 
     const { AuthProvider } = await import('./AuthProvider')
@@ -119,7 +119,6 @@ describe('AuthProvider', () => {
     const lastContextValue = setContextValue.mock.calls.at(-1)?.[0]
     expect(lastContextValue).toBeDefined()
     expect(lastContextValue?.isAuthenticated).toBe(true)
-    expect(await lastContextValue?.getAccessToken()).toBe('access-token')
 
     await lastContextValue?.login()
     await lastContextValue?.logout()

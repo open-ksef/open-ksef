@@ -20,7 +20,6 @@ vi.mock('@/auth/useAuth', () => ({
     isAuthenticated: true,
     login: vi.fn(),
     logout: vi.fn(),
-    getAccessToken: vi.fn(),
   }),
 }))
 

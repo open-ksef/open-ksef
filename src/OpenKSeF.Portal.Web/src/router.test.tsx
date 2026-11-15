@@ -45,7 +45,6 @@ describe('router', () => {
       sessionEnded: true,
       startAction: vi.fn(),
       logout: vi.fn(),
-      getAccessToken: vi.fn(),
       handleOidcCallback: vi.fn(),
     })
 
@@ -73,7 +72,6 @@ describe('router', () => {
       sessionEnded: false,
       startAction: vi.fn(),
       logout: vi.fn(),
-      getAccessToken: vi.fn(),
       handleOidcCallback: vi.fn(),
     })
 

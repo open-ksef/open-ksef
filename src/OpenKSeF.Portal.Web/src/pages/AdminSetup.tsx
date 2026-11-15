@@ -70,14 +70,12 @@ export function AdminSetupPage(): ReactElement {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  // Step 1
   const [kcUsername, setKcUsername] = useState('admin')
   const [kcPassword, setKcPassword] = useState('')
   const [setupToken, setSetupToken] = useState<string | null>(null)
   const [newKcPassword, setNewKcPassword] = useState('')
   const [newKcPasswordConfirm, setNewKcPasswordConfirm] = useState('')
 
-  // Step 2
   const [externalUrl, setExternalUrl] = useState(globalThis.location?.origin ?? 'http://localhost:8080')
   const [ksefEnv, setKsefEnv] = useState('test')
   const [userEmail, setUserEmail] = useState('')
@@ -87,7 +85,6 @@ export function AdminSetupPage(): ReactElement {
   const [firstTenantNip, setFirstTenantNip] = useState('')
   const [firstTenantDisplayName, setFirstTenantDisplayName] = useState('')
 
-  // Step 3
   const [registrationAllowed, setRegistrationAllowed] = useState(true)
   const [verifyEmail, setVerifyEmail] = useState(false)
   const [loginWithEmail, setLoginWithEmail] = useState(true)
@@ -104,7 +101,6 @@ export function AdminSetupPage(): ReactElement {
   const [smtpUser, setSmtpUser] = useState('')
   const [smtpPassword, setSmtpPassword] = useState('')
 
-  // Step 5
   const [googleClientId, setGoogleClientId] = useState('')
   const [googleClientSecret, setGoogleClientSecret] = useState('')
   const [pushMode, setPushMode] = useState<'relay' | 'firebase' | 'local'>('relay')
@@ -164,9 +160,6 @@ export function AdminSetupPage(): ReactElement {
     setError(null)
     if (smtpEnabled && !smtpHost) { setError('Host SMTP jest wymagany'); return }
     if (smtpEnabled && !smtpFrom) { setError('Adres nadawcy (From) jest wymagany'); return }
-    if (!smtpEnabled && (verifyEmail || resetPassword)) {
-      // auto-disable email-dependent features
-    }
     setStep(4)
   }
 
@@ -247,7 +240,6 @@ export function AdminSetupPage(): ReactElement {
       <div className="onboarding-card" style={{ maxWidth: '640px' }}>
         <StepIndicator current={step} />
 
-        {/* Step 1: Admin Authentication */}
         {step === 1 && (
           <>
             <h1 className="onboarding-title">Konfiguracja systemu</h1>
@@ -303,7 +295,6 @@ export function AdminSetupPage(): ReactElement {
           </>
         )}
 
-        {/* Step 2: First Account & Company */}
         {step === 2 && (
           <>
             <h1 className="onboarding-title">Pierwsze konto i firma</h1>
@@ -371,7 +362,6 @@ export function AdminSetupPage(): ReactElement {
           </>
         )}
 
-        {/* Step 3: Auth & Email */}
         {step === 3 && (
           <>
             <h1 className="onboarding-title">Autoryzacja i e-mail</h1>
@@ -473,7 +463,6 @@ export function AdminSetupPage(): ReactElement {
           </>
         )}
 
-        {/* Step 4: Security */}
         {step === 4 && (
           <>
             <h1 className="onboarding-title">Bezpieczeństwo</h1>
@@ -495,7 +484,6 @@ export function AdminSetupPage(): ReactElement {
           </>
         )}
 
-        {/* Step 5: Optional Integrations */}
         {step === 5 && (
           <>
             <h1 className="onboarding-title">Integracje</h1>
@@ -613,7 +601,6 @@ export function AdminSetupPage(): ReactElement {
           </>
         )}
 
-        {/* Step 6: Summary + Apply */}
         {step === 6 && !setupDone && (
           <>
             <h1 className="onboarding-title">Podsumowanie</h1>
@@ -647,7 +634,6 @@ export function AdminSetupPage(): ReactElement {
           </>
         )}
 
-        {/* Step 6: Success */}
         {step === 6 && setupDone && (
           <div className="onboarding-success" data-testid="setup-success">
             <div className="onboarding-success__icon">✓</div>

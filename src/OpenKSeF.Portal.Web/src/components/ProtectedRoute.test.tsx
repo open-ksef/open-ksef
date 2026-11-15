@@ -56,7 +56,6 @@ describe('ProtectedRoute', () => {
       sessionEnded: false,
       startAction: vi.fn(),
       logout: vi.fn(),
-      getAccessToken: vi.fn(),
       handleOidcCallback: vi.fn(),
     })
 

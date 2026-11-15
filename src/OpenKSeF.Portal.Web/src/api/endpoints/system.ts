@@ -80,8 +80,6 @@ export function applySetup(
   })
 }
 
-// --- Settings API (post-setup, requires KC admin creds) ---
-
 export interface SettingsAuthRequest {
   kcAdminUsername: string
   kcAdminPassword: string

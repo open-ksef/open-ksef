@@ -11,7 +11,6 @@ export interface AuthContextValue {
   login: (returnTo?: string) => Promise<void>
   startAction: (action: AccountAction) => Promise<void>
   logout: () => Promise<void>
-  getAccessToken: () => Promise<string | null>
   handleOidcCallback: () => Promise<string>
 }
 
