@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import axe from 'axe-core'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import toast from 'react-hot-toast'
@@ -168,6 +169,12 @@ describe('InvoiceListPage', () => {
     expect(byTestId('invoice-refresh-button')).toBeNull()
     expect(container.textContent).toContain('1–1 z 1 faktury, od najnowszej')
     expect(lastListCall()).toEqual(['tenant-1', expect.objectContaining({ page: 1, pageSize: 25 })])
+  })
+
+  it('has no serious axe violations', async () => {
+    await render('/invoices?tenantId=tenant-1')
+    const result = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } })
+    expect(result.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([])
   })
 
   describe('due date and Nieopłacone', () => {

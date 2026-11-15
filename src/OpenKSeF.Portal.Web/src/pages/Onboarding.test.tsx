@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import axe from 'axe-core'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
@@ -77,6 +78,14 @@ describe('Onboarding', () => {
     await next()
     expect(container.querySelector('[role="alert"]')?.textContent).toBe('NIP musi zawierać dokładnie 10 cyfr')
     expect(createTenant).not.toHaveBeenCalled()
+  })
+
+  it('has no serious axe violations on both steps', async () => {
+    const serious = async () =>
+      (await axe.run(container, { rules: { 'color-contrast': { enabled: false } } })).violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)
+    expect(await serious()).toEqual([])
+    await toStep2()
+    expect(await serious()).toEqual([])
   })
 
   it('blocks a NIP with a wrong checksum', async () => {

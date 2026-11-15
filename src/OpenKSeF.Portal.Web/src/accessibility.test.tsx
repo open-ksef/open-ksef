@@ -38,7 +38,7 @@ describe('accessibility checks', () => {
     root = createRoot(container)
   })
 
-  it('has no critical axe violations for layout shell', async () => {
+  it('has no serious axe violations for layout shell', async () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={new QueryClient()}>
@@ -61,7 +61,6 @@ describe('accessibility checks', () => {
       },
     })
 
-    const critical = results.violations.filter((violation) => violation.impact === 'critical')
-    expect(critical).toHaveLength(0)
+    expect(results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([])
   })
 })
