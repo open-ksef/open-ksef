@@ -25,6 +25,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<SellerProfile> SellerProfiles => Set<SellerProfile>();
     public DbSet<InvoiceNumberCounter> InvoiceNumberCounters => Set<InvoiceNumberCounter>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+    public DbSet<TenantMember> TenantMembers => Set<TenantMember>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -84,6 +85,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(i => i.FactorBankAccount).HasMaxLength(34);
             entity.Property(i => i.FactorNip).HasMaxLength(10);
             entity.Property(i => i.FactorName).HasMaxLength(512);
+            entity.Property(i => i.PaidByUserId).HasMaxLength(256);
             entity.HasOne(i => i.Tenant)
                 .WithMany(t => t.Invoices)
                 .HasForeignKey(i => i.TenantId)
@@ -261,6 +263,18 @@ public class ApplicationDbContext : DbContext
             entity.Property(a => a.Action).HasMaxLength(64);
             entity.Property(a => a.TargetUserId).HasMaxLength(256);
             entity.Property(a => a.TargetEmail).HasMaxLength(320);
+        });
+
+        modelBuilder.Entity<TenantMember>(entity =>
+        {
+            entity.HasKey(m => new { m.TenantId, m.UserId });
+            entity.HasIndex(m => m.UserId);
+            entity.Property(m => m.UserId).HasMaxLength(256);
+            entity.Property(m => m.Role).HasConversion<string>().HasMaxLength(32);
+            entity.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(m => m.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

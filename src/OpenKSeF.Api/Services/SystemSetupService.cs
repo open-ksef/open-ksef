@@ -11,6 +11,7 @@ using OpenKSeF.Api.Controllers;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
 
@@ -604,15 +605,17 @@ public sealed class SystemSetupService : ISystemSetupService
             if (!tenantExists)
             {
                 var now = DateTime.UtcNow;
+                var tenantId = Guid.NewGuid();
                 db.Tenants.Add(new Tenant
                 {
-                    Id = Guid.NewGuid(),
+                    Id = tenantId,
                     UserId = userId,
                     Nip = nip,
                     DisplayName = request.FirstTenantDisplayName,
                     CreatedAt = now,
                     UpdatedAt = now,
                 });
+                db.TenantMembers.Add(new TenantMember { TenantId = tenantId, UserId = userId, Role = TenantRole.Owner, CreatedAt = now });
                 await db.SaveChangesAsync(ct);
                 _logger.LogInformation("Created first tenant with NIP {Nip} for user {UserId}", nip, userId);
             }

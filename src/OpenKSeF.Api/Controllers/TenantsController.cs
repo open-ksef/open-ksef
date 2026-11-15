@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Services;
 
@@ -75,6 +76,7 @@ public class TenantsController : ControllerBase
         };
 
         _db.Tenants.Add(tenant);
+        _db.TenantMembers.Add(new TenantMember { TenantId = tenant.Id, UserId = tenant.UserId, Role = TenantRole.Owner, CreatedAt = now });
 
         try
         {

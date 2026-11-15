@@ -10,6 +10,7 @@ namespace OpenKSeF.Api.IntegrationTests;
 public sealed class InvoiceXmlsUpgradeTests : IAsyncLifetime
 {
     private const string PreviousMigration = "20261114210330_InvoiceNotifiedAt";
+    private const string Migration = "20261115115136_AddInvoiceXmls";
 
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
 
@@ -49,12 +50,13 @@ public sealed class InvoiceXmlsUpgradeTests : IAsyncLifetime
             }
 
             before = await db.Database.SqlQueryRaw<string>(RowHash).SingleAsync();
-            await db.Database.MigrateAsync();
+            await db.GetService<IMigrator>().MigrateAsync(Migration);
         }
 
         await using (var db = NewContext())
         {
             Assert.Equal(before, await db.Database.SqlQueryRaw<string>(RowHash).SingleAsync());
+            await db.Database.MigrateAsync();
             var rows = (await db.InvoiceHeaders.AsNoTracking().ToListAsync()).ToDictionary(r => r.KSeFInvoiceNumber);
             Assert.Equal(2, rows.Count);
             Assert.True(rows["KSEF-PAID"].IsPaid);

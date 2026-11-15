@@ -1,7 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
+using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Enums;
 
 namespace OpenKSeF.Api.IntegrationTests;
 
@@ -97,6 +101,14 @@ public class TenantsApiTests : IDisposable
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
         Assert.Equal("""{"error":"Ta firma (NIP) jest już dodana do Twojego konta."}""", await second.Content.ReadAsStringAsync());
+
+        var tenantId = (await first.Content.ReadFromJsonAsync<TenantDto>())!.Id;
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var creator = await db.Tenants.Where(t => t.Id == tenantId).Select(t => t.UserId).SingleAsync();
+        var owner = Assert.Single(await db.TenantMembers.Where(m => m.TenantId == tenantId).ToListAsync());
+        Assert.Equal(creator, owner.UserId);
+        Assert.Equal(TenantRole.Owner, owner.Role);
     }
 
     [Fact]

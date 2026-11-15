@@ -9,6 +9,7 @@ using OpenKSeF.Api.Models;
 using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.IntegrationTests;
@@ -92,6 +93,7 @@ public class SystemSetupIntegrationTests : IDisposable
             ResetPasswordAllowed = false,
             DataControllerName = "  Firma Testowa Sp. z o.o. ",
             DataControllerContact = "rodo@example.com",
+            FirstTenantNip = TestNip.New(),
         };
 
         using var applyMsg = new HttpRequestMessage(HttpMethod.Post, "/api/system/setup/apply");
@@ -119,6 +121,10 @@ public class SystemSetupIntegrationTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Null(await db.SystemConfigs.FindAsync("encryption_key"));
         Assert.NotNull(await db.SystemConfigs.FindAsync("api_client_secret"));
+        var firstTenant = await db.Tenants.SingleAsync(t => t.Nip == applyRequest.FirstTenantNip);
+        var owner = Assert.Single(await db.TenantMembers.Where(m => m.TenantId == firstTenant.Id).ToListAsync());
+        Assert.Equal(firstTenant.UserId, owner.UserId);
+        Assert.Equal(TenantRole.Owner, owner.Role);
 
         Assert.Empty((await _fixture.GetServiceAccountRoleNamesAsync()).Intersect(TestcontainersFixture.RegistrationRoles));
 
