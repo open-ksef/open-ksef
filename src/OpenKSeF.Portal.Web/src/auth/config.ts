@@ -18,7 +18,8 @@ export function getOidcConfig(
     post_logout_redirect_uri: `${origin}/login`,
     response_type: 'code',
     scope: DEFAULT_SCOPE,
-    automaticSilentRenew: true,
+    // AuthProvider starts renewal in an effect, so a UserManager discarded by StrictMode never runs timers.
+    automaticSilentRenew: false,
     accessTokenExpiringNotificationTimeInSeconds: 60,
   }
 }

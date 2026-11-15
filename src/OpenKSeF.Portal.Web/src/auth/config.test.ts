@@ -13,7 +13,7 @@ describe('getOidcConfig', () => {
     expect(config.post_logout_redirect_uri).toBe('http://localhost:5173/login')
     expect(config.response_type).toBe('code')
     expect(config.scope).toBe('openid profile email')
-    expect(config.automaticSilentRenew).toBe(true)
+    expect(config.automaticSilentRenew).toBe(false)
     expect(config.accessTokenExpiringNotificationTimeInSeconds).toBe(60)
   })
 

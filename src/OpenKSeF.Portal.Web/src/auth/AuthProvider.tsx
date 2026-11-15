@@ -7,14 +7,7 @@ import { clearAccessTokenProvider, clearSessionHandlers, setAccessTokenProvider,
 import { oidcConfig } from './config'
 
 export function AuthProvider({ children }: PropsWithChildren): ReactElement {
-  const managerRef = useRef<UserManager | null>(null)
-  if (managerRef.current === null) {
-    managerRef.current = new UserManager(oidcConfig)
-  }
-
-  // Ref, not useState initializer: StrictMode would build a second UserManager with its own silent-renew timer.
-  // eslint-disable-next-line react-hooks/refs
-  const manager = managerRef.current
+  const [manager] = useState(() => new UserManager(oidcConfig))
   const userRef = useRef<User | null>(null)
   const renewInFlight = useRef<Promise<string | null> | null>(null)
   const [user, setUserState] = useState<User | null>(null)
@@ -43,6 +36,11 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
   }, [manager])
 
   useEffect(() => {
+    manager.startSilentRenew()
+    return () => manager.stopSilentRenew()
+  }, [manager])
+
+  useEffect(() => {
     setAccessTokenProvider(() => userRef.current?.access_token ?? null)
     setSessionHandlers({
       renew,
@@ -55,7 +53,6 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
       clearAccessTokenProvider()
       clearSessionHandlers()
     }
-    // eslint-disable-next-line react-hooks/refs
   }, [manager, renew])
 
   useEffect(() => {
@@ -95,7 +92,6 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
       manager.events.removeUserLoaded(onUserLoaded)
       manager.events.removeUserUnloaded(onUserUnloaded)
     }
-    // eslint-disable-next-line react-hooks/refs
   }, [manager, setUser])
 
   const login = useCallback(async (returnTo?: string) => {
