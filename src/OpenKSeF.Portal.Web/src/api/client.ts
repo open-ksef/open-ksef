@@ -12,7 +12,16 @@ export interface RequestOptions {
 
 interface ClientRequestInit extends RequestOptions {
   method?: string
+  file?: boolean
 }
+
+export interface FileResponse {
+  blob: Blob
+  fileName: string | null
+}
+
+const fileNameOf = (response: Response): string | null =>
+  /filename="?([^";]+)"?/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? null
 
 export interface ApiClientOptions {
   getToken?: () => string | null | undefined
@@ -73,6 +82,10 @@ export class ApiClient {
         return undefined as TResponse
       }
 
+      if (init?.file) {
+        return { blob: await response.blob(), fileName: fileNameOf(response) } as TResponse
+      }
+
       const contentType = response.headers.get('Content-Type') ?? ''
       if (contentType.includes('application/json')) {
         return (await response.json()) as TResponse
@@ -86,6 +99,10 @@ export class ApiClient {
 
   get<TResponse>(path: string, options?: Omit<RequestOptions, 'body'>): Promise<TResponse> {
     return this.request<TResponse>(path, { ...options, method: 'GET' })
+  }
+
+  getFile(path: string): Promise<FileResponse> {
+    return this.request<FileResponse>(path, { method: 'GET', file: true })
   }
 
   post<TResponse>(path: string, body?: unknown, options?: Omit<RequestOptions, 'body'>): Promise<TResponse> {

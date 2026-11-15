@@ -84,4 +84,22 @@ describe('ApiClient', () => {
 
     expect(headers.get('Authorization')).toBe('Bearer explicit-token')
   })
+
+  it('returns a file blob with the Content-Disposition file name', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('<Faktura/>', {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/xml',
+          'Content-Disposition': "attachment; filename=KSEF-1.xml; filename*=UTF-8''KSEF-1.xml",
+        },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const file = await new ApiClient('https://example.test').getFile('/x')
+
+    expect(file.fileName).toBe('KSEF-1.xml')
+    expect(await file.blob.text()).toBe('<Faktura/>')
+  })
 })
