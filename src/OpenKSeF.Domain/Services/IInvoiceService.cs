@@ -13,8 +13,8 @@ public interface IInvoiceService
     /// <summary>Push-only retry of received rows still owing a push, first seen within <see cref="InvoiceService.PushRetryWindow"/>; older owed rows are stamped and never pushed.</summary>
     Task NotifyPendingAsync(Guid tenantId, CancellationToken cancellationToken = default);
 
-    /// <remarks>Never writes <c>IsPaid</c>/<c>PaidAt</c>; adds lines only when the invoice has none.</remarks>
-    Task ApplyInvoiceXmlAsync(Guid invoiceId, InvoiceXmlDetails details, CancellationToken cancellationToken = default);
+    /// <remarks>Never writes <c>IsPaid</c>/<c>PaidAt</c>; adds lines only when the invoice has none. Stores <paramref name="xml"/> as the downloadable original.</remarks>
+    Task ApplyInvoiceXmlAsync(Guid invoiceId, InvoiceXmlDetails details, byte[]? xml = null, CancellationToken cancellationToken = default);
 
-    Task RecordFailedInvoiceXmlAsync(Guid invoiceId, bool xmlReceived, CancellationToken cancellationToken = default);
+    Task RecordFailedInvoiceXmlAsync(Guid invoiceId, bool xmlReceived, byte[]? xml = null, CancellationToken cancellationToken = default);
 }

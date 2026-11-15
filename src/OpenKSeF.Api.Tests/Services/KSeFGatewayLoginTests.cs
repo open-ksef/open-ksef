@@ -3,6 +3,7 @@ using System.Security.Cryptography.X509Certificates;
 using KSeF.Client.Core.Interfaces;
 using KSeF.Client.Core.Interfaces.Services;
 using KSeF.Client.Core.Models.Authorization;
+using KSeF.Client.DI;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using OpenKSeF.Domain.Abstractions;
@@ -85,7 +86,7 @@ public class KSeFGatewayLoginTests
     }
 
     private KSeFGateway Gateway() =>
-        new(Substitute.For<CirfmfKSeFClient>(), _auth, _cryptography, _encryption, NullLogger<KSeFGateway>.Instance);
+        new(Substitute.For<CirfmfKSeFClient>(), _auth, _cryptography, _encryption, Substitute.For<IHttpClientFactory>(), new KSeFClientOptions(), NullLogger<KSeFGateway>.Instance);
 
     private static AuthenticationOperationStatusResponse Login() => new()
     {

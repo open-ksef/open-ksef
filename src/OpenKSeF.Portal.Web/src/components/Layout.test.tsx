@@ -48,6 +48,7 @@ const row = (direction: InvoiceResponse['direction']): InvoiceResponse => ({
   firstSeenAt: '2026-02-01T12:00:00Z',
   isPaid: false,
   paidAt: null,
+  hasXml: false,
   direction,
 })
 

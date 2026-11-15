@@ -7,6 +7,7 @@ using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Events;
 using System.Linq;
+using System.Security.Cryptography;
 
 namespace OpenKSeF.Domain.Services;
 
@@ -210,7 +211,7 @@ public class InvoiceService : IInvoiceService
             .ExecuteUpdateAsync(s => s.SetProperty(i => i.NotifiedAt, now));
     }
 
-    public async Task ApplyInvoiceXmlAsync(Guid invoiceId, InvoiceXmlDetails details, CancellationToken cancellationToken = default)
+    public async Task ApplyInvoiceXmlAsync(Guid invoiceId, InvoiceXmlDetails details, byte[]? xml = null, CancellationToken cancellationToken = default)
     {
         var invoice = await _db.InvoiceHeaders.FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
         if (invoice is null)
@@ -239,10 +240,12 @@ public class InvoiceService : IInvoiceService
         invoice.XmlFetchedAt = DateTime.UtcNow;
         invoice.XmlFailedReads = null;
         invoice.LastUpdatedAt = invoice.XmlFetchedAt.Value;
+        if (xml is not null)
+            await StageXmlAsync(invoiceId, xml, invoice.XmlFetchedAt.Value, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task RecordFailedInvoiceXmlAsync(Guid invoiceId, bool xmlReceived, CancellationToken cancellationToken = default)
+    public async Task RecordFailedInvoiceXmlAsync(Guid invoiceId, bool xmlReceived, byte[]? xml = null, CancellationToken cancellationToken = default)
     {
         var invoice = await _db.InvoiceHeaders.FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
         if (invoice is null)
@@ -251,12 +254,28 @@ public class InvoiceService : IInvoiceService
         invoice.XmlAttemptedAt = DateTime.UtcNow;
         if (xmlReceived)
             invoice.XmlFailedReads = (short)((invoice.XmlFailedReads ?? 0) + 1);
+        if (xml is not null)
+            await StageXmlAsync(invoiceId, xml, invoice.XmlAttemptedAt.Value, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
 
         if (xmlReceived && invoice.XmlFailedReads == MaxFailedXmlReads)
             _logger.LogWarning(
                 "Invoice XML {KSeFNumber} failed to read {Count} times; incremental sync retries it after {RetryAfter}",
                 invoice.KSeFInvoiceNumber, MaxFailedXmlReads, CappedXmlRetryAfter);
+    }
+
+    private async Task StageXmlAsync(Guid invoiceId, byte[] xml, DateTime now, CancellationToken cancellationToken)
+    {
+        var sha256 = Convert.ToBase64String(SHA256.HashData(xml));
+        var stored = await _db.InvoiceXmls.FirstOrDefaultAsync(x => x.InvoiceHeaderId == invoiceId, cancellationToken);
+        if (stored is null)
+            _db.InvoiceXmls.Add(new InvoiceXml { InvoiceHeaderId = invoiceId, Content = xml, Sha256 = sha256, StoredAt = now });
+        else if (stored.Sha256 != sha256)
+        {
+            stored.Content = xml;
+            stored.Sha256 = sha256;
+            stored.StoredAt = now;
+        }
     }
 
     private static InvoiceLine MapLine(InvoiceLineDto dto, Guid invoiceHeaderId) => new()

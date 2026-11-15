@@ -1,4 +1,4 @@
-import { apiClient } from '../client'
+import { apiClient, type FileResponse } from '../client'
 import type { InvoiceResponse, PagedResult, TransferDetailsResponse } from '../types'
 
 export interface ListInvoicesParams extends Record<string, string | number | boolean | null | undefined> {
@@ -33,4 +33,8 @@ export function setInvoicePaid(tenantId: string, invoiceId: string, isPaid: bool
     `/tenants/${encodeURIComponent(tenantId)}/invoices/${encodeURIComponent(invoiceId)}/paid`,
     { isPaid },
   )
+}
+
+export function getInvoiceXml(tenantId: string, invoiceId: string): Promise<FileResponse> {
+  return apiClient.getFile(`/tenants/${encodeURIComponent(tenantId)}/invoices/${encodeURIComponent(invoiceId)}/xml`)
 }

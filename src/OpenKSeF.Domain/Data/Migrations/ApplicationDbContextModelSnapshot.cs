@@ -308,6 +308,28 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.ToTable("InvoiceLines");
                 });
 
+            modelBuilder.Entity("OpenKSeF.Domain.Entities.InvoiceXml", b =>
+                {
+                    b.Property<Guid>("InvoiceHeaderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(44)
+                        .HasColumnType("character varying(44)");
+
+                    b.Property<DateTime>("StoredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("InvoiceHeaderId");
+
+                    b.ToTable("InvoiceXmls");
+                });
+
             modelBuilder.Entity("OpenKSeF.Domain.Entities.KSeFCredential", b =>
                 {
                     b.Property<Guid>("Id")
@@ -821,6 +843,17 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Navigation("InvoiceHeader");
                 });
 
+            modelBuilder.Entity("OpenKSeF.Domain.Entities.InvoiceXml", b =>
+                {
+                    b.HasOne("OpenKSeF.Domain.Entities.InvoiceHeader", "InvoiceHeader")
+                        .WithOne("Xml")
+                        .HasForeignKey("OpenKSeF.Domain.Entities.InvoiceXml", "InvoiceHeaderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("InvoiceHeader");
+                });
+
             modelBuilder.Entity("OpenKSeF.Domain.Entities.KSeFCredential", b =>
                 {
                     b.HasOne("OpenKSeF.Domain.Entities.Tenant", "Tenant")
@@ -882,6 +915,8 @@ namespace OpenKSeF.Domain.Data.Migrations
             modelBuilder.Entity("OpenKSeF.Domain.Entities.InvoiceHeader", b =>
                 {
                     b.Navigation("Lines");
+
+                    b.Navigation("Xml");
                 });
 
             modelBuilder.Entity("OpenKSeF.Domain.Entities.Tenant", b =>

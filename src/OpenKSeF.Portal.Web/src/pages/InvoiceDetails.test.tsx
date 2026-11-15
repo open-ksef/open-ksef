@@ -7,7 +7,7 @@ import toast from 'react-hot-toast'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getInvoiceByKSeFNumber, getTransferDetails, setInvoicePaid } from '@/api/endpoints/invoices'
+import { getInvoiceByKSeFNumber, getInvoiceXml, getTransferDetails, setInvoicePaid } from '@/api/endpoints/invoices'
 import { listTenants } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
 import type { InvoiceResponse, PagedResult, TransferDetailsResponse } from '@/api/types'
@@ -21,6 +21,7 @@ vi.mock('@/api/endpoints/tenants', () => ({
 
 vi.mock('@/api/endpoints/invoices', () => ({
   getInvoiceByKSeFNumber: vi.fn(),
+  getInvoiceXml: vi.fn(),
   getTransferDetails: vi.fn(),
   setInvoicePaid: vi.fn(),
 }))
@@ -55,6 +56,7 @@ function invoiceOf(overrides: Partial<InvoiceResponse> = {}): InvoiceResponse {
     firstSeenAt: '2026-02-01T12:00:00Z',
     isPaid: false,
     paidAt: null,
+    hasXml: false,
     ...overrides,
   }
 }
@@ -226,6 +228,45 @@ describe('InvoiceDetailsPage', () => {
 
     expect(container.textContent).toContain('Nie znaleziono żądanej faktury.')
     expect(testId('invoice-details-back-link')).toBeTruthy()
+  })
+
+  describe('original XML', () => {
+    it('hides the download without stored XML', async () => {
+      mockOne()
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+      expect(testId('invoice-details-card')).toBeTruthy()
+      expect(testId('download-xml-btn')).toBeNull()
+    })
+
+    it('downloads the XML with the server file name', async () => {
+      mockOne(invoiceOf({ hasXml: true }))
+      vi.mocked(getInvoiceXml).mockResolvedValue({ blob: new Blob(['<Faktura/>']), fileName: 'KSEF-001-server.xml' })
+      const createObjectURL = vi.fn(() => 'blob:x')
+      Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() })
+      let saved: string | undefined
+      const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        saved = this.download
+      })
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      await click(testId('download-xml-btn'))
+
+      expect(getInvoiceXml).toHaveBeenCalledWith('tenant-1', 'inv-1')
+      expect(createObjectURL).toHaveBeenCalledTimes(1)
+      expect(saved).toBe('KSEF-001-server.xml')
+      expect(toast.error).not.toHaveBeenCalled()
+      anchorClick.mockRestore()
+    })
+
+    it('shows an error toast when the download fails', async () => {
+      mockOne(invoiceOf({ hasXml: true }))
+      vi.mocked(getInvoiceXml).mockRejectedValue(new ApiError('Not found', 404))
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      await click(testId('download-xml-btn'))
+
+      expect(toast.error).toHaveBeenCalledWith('Nie udało się pobrać pliku XML faktury.')
+    })
   })
 
   describe('opened from the issued list', () => {

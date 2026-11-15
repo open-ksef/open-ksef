@@ -29,7 +29,8 @@ public record InvoiceResponse(
     DateOnly? DueDate = null,
     string? Direction = null,
     string? BuyerIdType = null,
-    string? BuyerForeignId = null)
+    string? BuyerForeignId = null,
+    bool HasXml = false)
 {
     public static readonly Expression<Func<InvoiceHeader, InvoiceResponse>> Projection = i => new InvoiceResponse(
         i.Id,
@@ -55,12 +56,14 @@ public record InvoiceResponse(
         i.DueDate,
         i.Direction.ToString(),
         i.BuyerIdType,
-        i.BuyerForeignId);
+        i.BuyerForeignId,
+        i.Xml != null);
 
     private static readonly Func<InvoiceHeader, InvoiceResponse> CompiledProjection = Projection.Compile();
 
-    public static InvoiceResponse FromEntity(InvoiceHeader i) => CompiledProjection(i) with
+    public static InvoiceResponse FromEntity(InvoiceHeader i, bool hasXml) => CompiledProjection(i) with
     {
+        HasXml = hasXml,
         Lines = i.Lines
             .OrderBy(l => l.LineNumber)
             .Select(l => new InvoiceLineResponse(

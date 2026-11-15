@@ -104,7 +104,7 @@ public class InvoicesSummaryController : ControllerBase
 
         var invoice = await headerQuery.FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice));
+        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.AnyAsync(x => x.InvoiceHeaderId == invoice.Id)));
     }
 
     private IQueryable<Guid> UserTenantIds() =>

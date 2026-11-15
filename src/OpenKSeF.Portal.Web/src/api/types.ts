@@ -49,6 +49,7 @@ export interface InvoiceResponse {
   firstSeenAt: string
   isPaid: boolean
   paidAt: string | null
+  hasXml: boolean
   vendorBankAccount?: string | null
   lines?: InvoiceLineResponse[] | null
   dueDate?: string | null

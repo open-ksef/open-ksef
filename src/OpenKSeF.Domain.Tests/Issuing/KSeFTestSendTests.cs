@@ -161,7 +161,7 @@ public class KSeFTestSendTests(ITestOutputHelper output)
         }
 
         public KSeFGateway Gateway() =>
-            new(Client, provider.GetRequiredService<IAuthCoordinator>(), Cryptography, _encryption, NullLogger<KSeFGateway>.Instance);
+            new(Client, provider.GetRequiredService<IAuthCoordinator>(), Cryptography, _encryption, provider.GetRequiredService<IHttpClientFactory>(), provider.GetRequiredService<KSeFClientOptions>(), NullLogger<KSeFGateway>.Instance);
 
         public KSeFCredential TokenCredential(string token) =>
             new() { Id = Guid.NewGuid(), Type = CredentialType.Token, EncryptedToken = _encryption.Encrypt(token) };

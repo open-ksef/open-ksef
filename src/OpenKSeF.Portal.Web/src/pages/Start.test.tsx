@@ -79,6 +79,7 @@ const received = (overrides: Partial<InvoiceResponse> = {}): InvoiceResponse => 
   firstSeenAt: '2026-11-01T12:00:00Z',
   isPaid: false,
   paidAt: null,
+  hasXml: false,
   ...overrides,
 })
 

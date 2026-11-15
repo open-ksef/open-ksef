@@ -113,7 +113,24 @@ public class InvoicesController : ControllerBase
             .Where(i => i.Id == id && i.TenantId == tenantId)
             .FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice));
+        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.AnyAsync(x => x.InvoiceHeaderId == invoice.Id)));
+    }
+
+    [HttpGet("{id:guid}/xml")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetXml(Guid tenantId, Guid id)
+    {
+        if (!await _db.OwnsTenantAsync(tenantId, _currentUser.UserId))
+            return Forbid();
+
+        var xml = await _db.InvoiceXmls
+            .Where(x => x.InvoiceHeaderId == id && x.InvoiceHeader.TenantId == tenantId)
+            .Select(x => new { x.Content, x.InvoiceHeader.KSeFInvoiceNumber })
+            .FirstOrDefaultAsync();
+
+        return xml is null ? NotFound() : File(xml.Content, "application/xml", $"{xml.KSeFInvoiceNumber}.xml");
     }
 
     [HttpGet("by-number/{ksefInvoiceNumber}")]
@@ -130,7 +147,7 @@ public class InvoicesController : ControllerBase
             .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber && i.TenantId == tenantId)
             .FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice));
+        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.AnyAsync(x => x.InvoiceHeaderId == invoice.Id)));
     }
 
     [HttpGet("{id:guid}/transfer")]
@@ -198,6 +215,6 @@ public class InvoicesController : ControllerBase
 
         await _db.Entry(invoice).Collection(i => i.Lines).LoadAsync();
 
-        return Ok(InvoiceResponse.FromEntity(invoice));
+        return Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.AnyAsync(x => x.InvoiceHeaderId == invoice.Id)));
     }
 }

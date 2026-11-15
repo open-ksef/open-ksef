@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 
-import { getInvoiceByKSeFNumber, getTransferDetails, setInvoicePaid } from '@/api/endpoints/invoices'
+import { getInvoiceByKSeFNumber, getInvoiceXml, getTransferDetails, setInvoicePaid } from '@/api/endpoints/invoices'
 import { ApiError } from '@/api/errors'
 import type { InvoiceResponse, PagedResult, TransferDetailsResponse } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
@@ -15,6 +15,7 @@ import { PaidStatus } from '@/components/PaidStatus'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
 import { accountDigits, formatDate, formatDecimal, formatMoney, formatNrb, formatWarsawDate } from '@/invoicing/format'
+import { downloadFile } from '@/invoicing/status'
 import { vatRateLabel } from '@/invoicing/totals'
 
 const PAID_MUTATION_KEY = ['invoice-paid']
@@ -258,6 +259,16 @@ export function InvoiceDetailsPage(): ReactElement {
     },
   })
 
+  const xmlMutation = useMutation({
+    mutationFn: ({ tenantId, invoice: target }: { tenantId: string; invoice: InvoiceResponse }) =>
+      getInvoiceXml(tenantId, target.id).then(({ blob, fileName }) =>
+        downloadFile(blob, fileName ?? `${target.ksefInvoiceNumber}.xml`, 'application/xml'),
+      ),
+    onError: () => {
+      toast.error('Nie udało się pobrać pliku XML faktury.')
+    },
+  })
+
   const savingIds = useMutationState({
     filters: { mutationKey: PAID_MUTATION_KEY, status: 'pending' },
     select: (running) => (running.state.variables as { invoiceId: string }).invoiceId,
@@ -456,6 +467,19 @@ export function InvoiceDetailsPage(): ReactElement {
                     {invoice.ksefInvoiceNumber}
                   </dd>
                 </dl>
+                {invoice.hasXml ? (
+                  <div className="pay-actions">
+                    <Button
+                      variant="outline"
+                      data-testid="download-xml-btn"
+                      disabled={xmlMutation.isPending}
+                      onClick={() => xmlMutation.mutate({ tenantId: effectiveTenantId, invoice })}
+                    >
+                      <Icon name="download" />
+                      {xmlMutation.isPending ? 'Pobieranie...' : 'Pobierz XML'}
+                    </Button>
+                  </div>
+                ) : null}
               </section>
             </div>
           </div>
