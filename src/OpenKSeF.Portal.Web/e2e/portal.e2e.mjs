@@ -2,7 +2,8 @@
 // usage (in src/OpenKSeF.Portal.Web): node e2e/portal.e2e.mjs
 // env: BASE_URL (http://localhost:8080), KC_URL (http://localhost:8082/auth), KC_ADMIN_USER / KC_ADMIN_PASSWORD (admin / admin),
 //      DATA_USER / DATA_PASSWORD (password-only user with invoices: enrolled in 2FA by the run, restored to password-only after),
-//      BROWSER_CHANNEL (chrome | msedge, default chrome), SHOT_DIR (screenshots, off by default: dev data may be real)
+//      BROWSER_CHANNEL (chrome | msedge, default chrome), SHOT_DIR (screenshots, off by default: dev data may be real),
+//      LOGOUT_WATCH_MS (quiet window after a data-page logout, default 120000: no token requests allowed)
 import { createHmac, randomBytes } from 'node:crypto'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
@@ -169,6 +170,26 @@ async function otpLogin(page, secret) {
   await Promise.all([page.waitForNavigation(), page.click('#kc-otp-login-form button[type=submit]')])
 }
 
+async function logoutWatched(page, from) {
+  const tokens = []
+  const portalPaths = []
+  const onRequest = (r) => { if (r.method() === 'POST' && r.url().includes('/protocol/openid-connect/token')) tokens.push(r.url()) }
+  const onNav = (f) => { if (f === page.mainFrame() && new URL(f.url()).origin === new URL(BASE).origin) portalPaths.push(new URL(f.url()).pathname) }
+  page.context().on('request', onRequest)
+  page.on('framenavigated', onNav)
+  try {
+    await page.click('[data-testid="nav-logout"]')
+    await atKeycloakLogin(page)
+    await sleep(Number(process.env.LOGOUT_WATCH_MS ?? 120000))
+    expect(portalPaths.includes('/login'), `${from}: no /login, saw ${portalPaths.join(' ')}`)
+    expect(!tokens.length, `${from}: ${tokens.length} token requests after logout`)
+    await atKeycloakLogin(page)
+  } finally {
+    page.context().off('request', onRequest)
+    page.off('framenavigated', onNav)
+  }
+}
+
 async function main() {
   const email = `e2e-${RUN}@openksef.invalid`
   const userId = await createUser(email)
@@ -320,12 +341,13 @@ async function main() {
   expect(data, 'DATA_USER not found')
   expect((await admin('GET', `/users/${data.id}/credentials`)).every((c) => c.type === 'password'), 'DATA_USER must be password-only')
   ;({ ctx, page } = await fresh())
+  let dataSecret
   try {
     await check('data user logs in (2FA setup)', async () => {
       await page.goto(`${BASE}/`)
       await atKeycloakLogin(page)
       await signIn(page, dataUser, process.env.DATA_PASSWORD)
-      await enrol(page)
+      dataSecret = await enrol(page)
       await inPortal(page, '/')
     }, page)
     await check('a11y dashboard with invoices', () => axe(page, 'dashboard--data'), page)
@@ -340,6 +362,24 @@ async function main() {
       await page.waitForURL(/\/invoices\/.+/)
       await page.waitForSelector('[data-testid="invoice-detail-ksef-number"]')
       await axe(page, 'invoice-details')
+    }, page)
+    await check('logout from /invoices lands on /login, no re-login', async () => {
+      await page.goto(`${BASE}/invoices`)
+      await inPortal(page, '/invoices')
+      await logoutWatched(page, '/invoices')
+    }, page)
+    await check('logout from /issued/:id lands on /login, no re-login', async () => {
+      await page.goto(`${BASE}/issued`)
+      await atKeycloakLogin(page)
+      await signIn(page, dataUser, process.env.DATA_PASSWORD)
+      await otpLogin(page, dataSecret)
+      await inPortal(page, '/issued')
+      const hrefs = await page.$$eval('a[href^="/issued/"]', (as) => as.map((a) => a.getAttribute('href')))
+      const href = hrefs.find((h) => /^\/issued\/[0-9a-f-]{36}(\?|$)/.test(h))
+      expect(href, 'no issued invoice for DATA_USER')
+      await page.click(`a[href="${href}"]`)
+      await inPortal(page, new URL(href, BASE).pathname)
+      await logoutWatched(page, '/issued/:id')
     }, page)
   } finally {
     await ctx.close()

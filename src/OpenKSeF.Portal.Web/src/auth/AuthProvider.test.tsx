@@ -68,8 +68,8 @@ describe('AuthProvider', () => {
     return spy.mock.calls.at(-1)![0]!
   }
 
-  async function renderSpy() {
-    mockManager.getUser.mockResolvedValue(null)
+  async function renderSpy(initialUser: User | null = null) {
+    mockManager.getUser.mockResolvedValue(initialUser)
     const { AuthProvider } = await import('./AuthProvider')
     const { AuthContext } = await import('./AuthContext')
 
@@ -215,6 +215,22 @@ describe('AuthProvider', () => {
     await act(async () => context().login('/telefon'))
     expect(context().sessionEnded).toBe(false)
     expect(mockManager.signinRedirect).toHaveBeenCalledWith({ state: { returnTo: '/telefon' } })
+  })
+
+  it('marks the session ended before signoutRedirect unloads the user', async () => {
+    const setContextValue = await renderSpy(userOf('a'))
+    const context = () => setContextValue.mock.calls.at(-1)![0]!
+    mockManager.signoutRedirect.mockImplementation(async () => unloadedHandler()())
+    const before = setContextValue.mock.calls.length
+    expect(context().isAuthenticated).toBe(true)
+
+    await act(async () => context().logout())
+
+    const after = setContextValue.mock.calls.slice(before).map(([value]) => value!)
+    expect(after.length).toBeGreaterThan(0)
+    expect(after.every((value) => value.sessionEnded)).toBe(true)
+    expect(context().isAuthenticated).toBe(false)
+    expect(mockManager.signinRedirect).not.toHaveBeenCalled()
   })
 
   it('clears the query cache on sign-out and user switch, not on renew or sign-in', async () => {

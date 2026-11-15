@@ -123,6 +123,17 @@ describe('ProtectedRoute', () => {
     expect(container.textContent).toBe('login from=/firmy/1/faktury?strona=2')
   })
 
+  it('does not redirect to Keycloak when logout unloads the user from a protected page', async () => {
+    const login = vi.fn().mockResolvedValue(undefined)
+    await renderAt('/firmy/1/faktury', { login, isAuthenticated: true })
+    expect(container.textContent).toBe('Protected content')
+
+    await renderAt('/firmy/1/faktury', { login, sessionEnded: true })
+
+    expect(login).not.toHaveBeenCalled()
+    expect(container.textContent).toBe('login from=/firmy/1/faktury')
+  })
+
   it('shows the login page when the redirect to Keycloak fails', async () => {
     const login = vi.fn().mockRejectedValue(new Error('discovery failed'))
 

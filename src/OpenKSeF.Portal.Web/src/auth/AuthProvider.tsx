@@ -104,6 +104,7 @@ export function AuthProvider({ children }: PropsWithChildren): ReactElement {
   }, [manager])
 
   const logout = useCallback(async () => {
+    setSessionEnded(true)
     await manager.signoutRedirect()
   }, [manager])
 
