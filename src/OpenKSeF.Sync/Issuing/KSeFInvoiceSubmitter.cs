@@ -17,10 +17,10 @@ namespace OpenKSeF.Sync.Issuing;
 /// <summary>Online-session send of FA(3) invoices through CIRFMF KSeF.Client.</summary>
 public sealed class KSeFInvoiceSubmitter(IKSeFClient client, ICryptographyService cryptography, IEncryptionService encryption) : IKSeFInvoiceSubmitter
 {
-    public async Task<string> LoginAsync(string nip, KSeFCredential credential, CancellationToken ct = default)
+    public async Task<KSeFSession> LoginAsync(string nip, KSeFCredential credential, CancellationToken ct = default)
     {
         var login = await new AuthCoordinator(new RejectionAwareAuthClient(client)).LoginAsync(nip, credential, encryption, cryptography, ct);
-        return login.AccessToken.Token;
+        return new KSeFSession(login.AccessToken.Token, login.AccessToken.ValidUntil.UtcDateTime);
     }
 
     /// <summary>Auth status 4xx is final; KSeF reports 5xx as "try again".</summary>

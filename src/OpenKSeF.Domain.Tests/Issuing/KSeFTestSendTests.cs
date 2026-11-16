@@ -42,7 +42,7 @@ public class KSeFTestSendTests(ITestOutputHelper output)
         var current = await ksef.ProcessUntilDoneAsync(ksef.NewInvoice(number, "Usługa testowa T-199"), ksef.TokenCredential(ksef.Token), output);
 
         AssertAcceptedWithUpo(current);
-        var login = await ksef.Submitter.LoginAsync(ksef.SellerNip, ksef.TokenCredential(ksef.Token));
+        var login = (await ksef.Submitter.LoginAsync(ksef.SellerNip, ksef.TokenCredential(ksef.Token))).Token;
         var listed = await ksef.Submitter.ListInvoicesAsync(login, current.KsefSessionRef!);
         var hash = Convert.ToBase64String(SHA256.HashData(current.SentXml!));
         Assert.Contains(listed, s => s.ElementRef == current.KsefElementRef && s.InvoiceHash == hash);
@@ -70,7 +70,7 @@ public class KSeFTestSendTests(ITestOutputHelper output)
         Assert.Equal(IssuedInvoiceSendProcessor.NumberTakenMessage, other.KsefStatusDescription);
         Assert.Contains(original.KsefNumber!, other.KsefStatusDetails);
 
-        var login = await ksef.Submitter.LoginAsync(ksef.SellerNip, ksef.TokenCredential(ksef.Token));
+        var login = (await ksef.Submitter.LoginAsync(ksef.SellerNip, ksef.TokenCredential(ksef.Token))).Token;
         var raw = await ksef.Submitter.GetInvoiceAsync(login, other.KsefSessionRef!, other.KsefElementRef!);
         output.WriteLine($"440 extensions: originalKsefNumber={raw!.OriginalKsefNumber} originalSessionRef={raw.OriginalSessionRef}");
         Assert.Equal(original.KsefNumber, raw.OriginalKsefNumber);
@@ -298,7 +298,7 @@ public class KSeFTestSendTests(ITestOutputHelper output)
         private async Task CycleAsync(DbContextOptions<ApplicationDbContext> options)
         {
             await using var db = new ApplicationDbContext(options);
-            await new IssuedInvoiceSendProcessor(db, Submitter, TimeProvider.System,
+            await new IssuedInvoiceSendProcessor(db, Submitter, new KSeFAccessTokenCache(), TimeProvider.System,
                 NullLogger<IssuedInvoiceSendProcessor>.Instance).ProcessAsync("test", CancellationToken.None);
         }
     }
