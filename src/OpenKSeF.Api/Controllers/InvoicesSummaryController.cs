@@ -71,7 +71,7 @@ public class InvoicesSummaryController : ControllerBase
             .ThenBy(i => i.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(InvoiceResponse.Projection)
+            .Select(InvoiceResponse.Projection(_db.UserProfiles))
             .ToListAsync();
 
         return Ok(new PagedResult<InvoiceResponse>
@@ -106,7 +106,7 @@ public class InvoicesSummaryController : ControllerBase
 
         var invoice = await headerQuery.FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.Where(x => x.InvoiceHeaderId == invoice.Id).Select(x => x.Sha256).FirstOrDefaultAsync(), _verificationLinks));
+        return invoice is null ? NotFound() : Ok(await InvoiceResponse.FromEntityAsync(_db, invoice, _verificationLinks));
     }
 
     private IQueryable<Guid> UserTenantIds() =>

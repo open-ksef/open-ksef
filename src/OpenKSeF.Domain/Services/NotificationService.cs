@@ -59,7 +59,7 @@ public class NotificationService : INotificationService
             }
         };
 
-        var settled = await PushToMemberDevicesAsync(evt.TenantId, evt.InvoiceId, notification);
+        var settled = await PushToMemberDevicesAsync(evt.TenantId, evt.InvoiceId, notification, newInvoices: true);
         if (!email)
             return settled;
 
@@ -92,7 +92,7 @@ public class NotificationService : INotificationService
             }
         };
 
-        var settled = await PushToMemberDevicesAsync(tenantId, null, notification);
+        var settled = await PushToMemberDevicesAsync(tenantId, null, notification, newInvoices: true);
         if (email)
             await SendEmailAsync(tenantId, null, tenant.NotificationEmail, to => _emailService.SendNewInvoicesSummaryEmailAsync(to, tenantId, company, count));
         return settled;
@@ -139,20 +139,45 @@ public class NotificationService : INotificationService
             }
         };
 
-        await PushToMemberDevicesAsync(tenantId, issuedInvoiceId, notification);
+        await PushToMemberDevicesAsync(tenantId, issuedInvoiceId, notification, newInvoices: false);
     }
 
-    private async Task<bool> PushToMemberDevicesAsync(Guid tenantId, Guid? invoiceId, PushNotification notification)
+    public async Task NotifyAccessGrantedAsync(string userId, Guid tenantId, string tenantName)
+    {
+        var notification = new PushNotification
+        {
+            Title = "Masz dostęp do firmy",
+            Body = tenantName,
+            Data = new Dictionary<string, string>
+            {
+                ["type"] = "access_granted",
+                ["tenantId"] = tenantId.ToString()
+            }
+        };
+
+        var deviceTokens = await _db.DeviceTokens
+            .Where(d => d.UserId == userId && (d.TenantId == tenantId || d.TenantId == null))
+            .ToListAsync();
+
+        await PushToDevicesAsync(deviceTokens, null, notification);
+    }
+
+    private async Task<bool> PushToMemberDevicesAsync(Guid tenantId, Guid? invoiceId, PushNotification notification, bool newInvoices)
     {
         // TenantId == null means "all companies"; a set TenantId is an explicit per-company subscription.
         var deviceTokens = await _db.DeviceTokens
             .Where(d => d.TenantId == tenantId || d.TenantId == null)
-            .Where(d => _db.TenantMembers.Any(m => m.TenantId == tenantId && m.UserId == d.UserId))
+            .Where(d => _db.TenantMembers.Any(m => m.TenantId == tenantId && m.UserId == d.UserId && (!newInvoices || m.NotifyNewInvoices)))
             .ToListAsync();
 
+        return await PushToDevicesAsync(deviceTokens, invoiceId, notification);
+    }
+
+    private async Task<bool> PushToDevicesAsync(List<Entities.DeviceToken> deviceTokens, Guid? invoiceId, PushNotification notification)
+    {
         if (deviceTokens.Count == 0)
         {
-            _logger.LogDebug("No device tokens for tenant {TenantId}", tenantId);
+            _logger.LogDebug("No device tokens for notification {InvoiceId}", invoiceId);
             return true;
         }
 
@@ -173,12 +198,14 @@ public class NotificationService : INotificationService
         }
 
         var tokensToRemove = new List<Entities.DeviceToken>();
-        var settled = true;
+        var sent = false;
+        var failed = false;
 
         foreach (var device in deviceTokens)
         {
             var result = await SendToSingleDeviceAsync(device.Token, device.Platform, notification);
 
+            sent |= result == PushResult.Sent;
             if (result == PushResult.InvalidToken)
             {
                 _logger.LogWarning(
@@ -188,7 +215,7 @@ public class NotificationService : INotificationService
             }
             else if (result == PushResult.Failed)
             {
-                settled = false;
+                failed = true;
                 _logger.LogWarning(
                     "Push not delivered to device {DeviceId} for invoice {InvoiceId}; token kept",
                     device.Id, invoiceId);
@@ -202,7 +229,8 @@ public class NotificationService : INotificationService
             _logger.LogInformation("Removed {Count} invalid device tokens", tokensToRemove.Count);
         }
 
-        return settled;
+        // A retry re-sends to every device, so once one device has it, a retry would only duplicate.
+        return sent || !failed;
     }
 
     public async Task SendConfirmationAsync(string deviceToken, Platform platform)

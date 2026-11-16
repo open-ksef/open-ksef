@@ -112,10 +112,12 @@ public sealed class TenantMembershipUpgradeTests : IAsyncLifetime
         {
             await db.GetService<IMigrator>().MigrateAsync(membershipMigration);
             db.Tenants.Add(new Tenant { Id = kept, UserId = "user-a", Nip = "1111111111", CreatedAt = created, UpdatedAt = created });
-            db.TenantMembers.Add(new TenantMember { TenantId = kept, UserId = "user-a", Role = TenantRole.Owner, CreatedAt = created });
-            db.TenantMembers.Add(new TenantMember { TenantId = kept, UserId = "user-e", Role = TenantRole.Employee, CreatedAt = created });
             db.Tenants.Add(new Tenant { Id = orphan, UserId = "user-b", Nip = "1111111111", CreatedAt = created, UpdatedAt = created });
             await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO "TenantMembers" ("TenantId", "UserId", "Role", "CreatedAt")
+                VALUES ({kept}, 'user-a', 'Owner', {created}), ({kept}, 'user-e', 'Employee', {created})
+                """);
 
             foreach (var (tenant, number, isPaid, paidBy) in new[]
             {
@@ -153,6 +155,7 @@ public sealed class TenantMembershipUpgradeTests : IAsyncLifetime
             Assert.Equal(["user-a", "user-b", "user-e"], members.Select(m => m.UserId));
             Assert.Equal([TenantRole.Owner, TenantRole.Owner, TenantRole.Employee], members.Select(m => m.Role));
             Assert.Equal(orphan, members[1].TenantId);
+            Assert.All(members, m => Assert.True(m.NotifyNewInvoices));
 
             afterFirst = await StateHashAsync(db);
             await db.GetService<IMigrator>().MigrateAsync(membershipMigration);

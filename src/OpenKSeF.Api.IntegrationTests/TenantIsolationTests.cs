@@ -32,6 +32,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         ["GET api/tenants/{tenantId}"] = new(null, Read),
         ["PUT api/tenants/{tenantId}"] = new(new { displayName = "Hijacked" }, TenantPermissions.TenantEdit),
         ["DELETE api/tenants/{tenantId}"] = new(null, TenantPermissions.TenantDelete, HttpStatusCode.NoContent),
+        ["PUT api/tenants/{tenantId}/members/me/notifications"] = new(new { enabled = true }, TenantPermissions.NotificationsSelf, HttpStatusCode.NoContent),
         ["POST api/tenants/{tenantId}/credentials"] = new(new { type = 0 }, TenantPermissions.CredentialManage, HttpStatusCode.BadRequest),
         ["DELETE api/tenants/{tenantId}/credentials"] = new(null, TenantPermissions.CredentialManage, HttpStatusCode.NoContent),
         ["GET api/tenants/{tenantId}/credentials/status"] = new(null, Read),

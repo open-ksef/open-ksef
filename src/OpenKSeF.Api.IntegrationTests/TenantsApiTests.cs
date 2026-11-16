@@ -252,6 +252,54 @@ public class TenantsApiTests : IDisposable
         Assert.Equal("keep@example.com", fetched.NotificationEmail);
     }
 
+    [Fact]
+    public async Task MyNotifications_Toggle_ReflectedInTenantResponse()
+    {
+        await AuthenticateAsync();
+        var created = await (await _client.PostAsJsonAsync("/api/tenants", new { nip = TestNip.New(), displayName = "Notify Co" }))
+            .Content.ReadFromJsonAsync<TenantDto>();
+        Assert.True(created!.NotificationsEnabled);
+
+        var off = await _client.PutAsJsonAsync($"/api/tenants/{created.Id}/members/me/notifications", new { enabled = false });
+
+        Assert.Equal(HttpStatusCode.NoContent, off.StatusCode);
+        Assert.False((await _client.GetFromJsonAsync<TenantDto>($"/api/tenants/{created.Id}"))!.NotificationsEnabled);
+        Assert.False((await _client.GetFromJsonAsync<List<TenantDto>>("/api/tenants"))!.Single(t => t.Id == created.Id).NotificationsEnabled);
+
+        await _client.PutAsJsonAsync($"/api/tenants/{created.Id}/members/me/notifications", new { enabled = true });
+        Assert.True((await _client.GetFromJsonAsync<TenantDto>($"/api/tenants/{created.Id}"))!.NotificationsEnabled);
+    }
+
+    [Fact]
+    public async Task MyNotifications_NonMember_Returns404()
+    {
+        await AuthenticateAsync();
+        var created = await (await _client.PostAsJsonAsync("/api/tenants", new { nip = TestNip.New() })).Content.ReadFromJsonAsync<TenantDto>();
+        _client.SetBearerToken(await _fixture.GetAccessTokenAsync("otheruser"));
+
+        var response = await _client.PutAsJsonAsync($"/api/tenants/{created!.Id}/members/me/notifications", new { enabled = false });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AuthenticatedCall_CreatesProfileOnce_WithNormalizedEmail()
+    {
+        var token = await _fixture.GetAccessTokenAsync();
+        var userId = TestcontainersFixture.AccessTokenClaims(token).GetProperty("sub").GetString();
+        _client.SetBearerToken(token);
+        Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync("/api/tenants")).StatusCode);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var profile = await db.UserProfiles.AsNoTracking().SingleAsync(p => p.UserId == userId);
+
+        Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync("/api/tenants")).StatusCode);
+
+        Assert.Equal(("testuser@openksef.test", "Test User"), (profile.Email, profile.DisplayName));
+        Assert.Equal(TestcontainersFixture.AccessTokenClaims(token).GetProperty("email_verified").GetBoolean(), profile.EmailVerified);
+        Assert.Equal(profile.UpdatedAt, (await db.UserProfiles.AsNoTracking().SingleAsync(p => p.UserId == profile.UserId)).UpdatedAt);
+    }
+
     public void Dispose()
     {
         _client.Dispose();
@@ -263,5 +311,6 @@ public class TenantsApiTests : IDisposable
         string Nip,
         string? DisplayName,
         string? NotificationEmail,
-        DateTime CreatedAt);
+        DateTime CreatedAt,
+        bool NotificationsEnabled = false);
 }

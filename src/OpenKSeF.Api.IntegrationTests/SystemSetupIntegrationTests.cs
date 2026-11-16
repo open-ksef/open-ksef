@@ -371,7 +371,7 @@ public class SystemSetupIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task Apply_NewRealm_PortalAndMobileAccessTokensCarryApiAudience()
+    public async Task Apply_NewRealm_PortalAndMobileAccessTokensCarryApiAudienceAndEmailVerified()
     {
         await ClearSystemConfigAsync();
         await _fixture.DeleteRealmAsync();
@@ -395,6 +395,7 @@ public class SystemSetupIntegrationTests : IDisposable
             {
                 var token = await _fixture.GetAccessTokenAsync(request.AdminEmail, request.AdminPassword, clientId);
                 Assert.Contains("openksef-api", TestcontainersFixture.AccessTokenAudiences(token));
+                Assert.True(TestcontainersFixture.AccessTokenClaims(token).TryGetProperty("email_verified", out _), $"{clientId} access token has no email_verified");
                 Assert.Single(await _fixture.GetApiAudienceMappersAsync(clientId));
             }
         }

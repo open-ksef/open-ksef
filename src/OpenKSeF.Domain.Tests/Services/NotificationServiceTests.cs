@@ -318,6 +318,83 @@ public class NotificationServiceTests : IDisposable
         Assert.Equal(1, _email.Attempts);
     }
 
+    [Fact]
+    public async Task NotifyNewInvoiceAsync_TwoMembersOneOptedOut_OnePush_SignalRToSameUser()
+    {
+        var tenantId = await SeedDeviceAsync("fcm-token-a");
+        await AddMemberAsync(tenantId, "user-2", "fcm-token-b", notify: false);
+        var provider = new TokenPushProvider(_ => PushResult.Sent);
+        var signalR = new StubUserPushProvider();
+
+        await new NotificationService(_db, [provider], _email, _logger, signalR).NotifyNewInvoiceAsync(CreateEvent(tenantId));
+        await new NotificationService(_db, [provider], _email, _logger, signalR).NotifyNewInvoicesSummaryAsync(tenantId, 3);
+
+        Assert.Equal(["fcm-token-a", "fcm-token-a"], provider.Tokens);
+        Assert.Equal(["user-1", "user-1"], signalR.Users);
+    }
+
+    [Fact]
+    public async Task NotifyNewInvoiceAsync_RemovedMember_NoPush_DeviceKept()
+    {
+        var tenantId = await SeedDeviceAsync("fcm-token-a");
+        await AddMemberAsync(tenantId, "user-2", "fcm-token-b");
+        _db.TenantMembers.Remove(await _db.TenantMembers.SingleAsync(m => m.UserId == "user-2"));
+        await _db.SaveChangesAsync();
+        var provider = new TokenPushProvider(_ => PushResult.Sent);
+
+        await CreateService(provider).NotifyNewInvoiceAsync(CreateEvent(tenantId));
+
+        Assert.Equal(["fcm-token-a"], provider.Tokens);
+        Assert.True(await _db.DeviceTokens.AnyAsync(d => d.Token == "fcm-token-b"));
+    }
+
+    [Theory]
+    [InlineData(PushResult.Sent, true)]
+    [InlineData(PushResult.Failed, false)]
+    public async Task NotifyNewInvoiceAsync_OneDeviceFails_SettledWhenAnotherGotIt(PushResult other, bool settled)
+    {
+        var tenantId = await SeedDeviceAsync("fcm-token-a");
+        await AddMemberAsync(tenantId, "user-2", "fcm-token-b");
+        var provider = new TokenPushProvider(token => token == "fcm-token-b" ? other : PushResult.Failed);
+
+        Assert.Equal(settled, await CreateService(provider).NotifyNewInvoiceAsync(CreateEvent(tenantId)));
+        Assert.Equal(2, await _db.DeviceTokens.CountAsync());
+    }
+
+    [Fact]
+    public async Task NotifyAccessGrantedAsync_PushesUsersNullAndSameTenantDevicesOnly()
+    {
+        var tenantId = await SeedTenantAsync("owner");
+        var otherTenantId = await SeedTenantAsync("user-2");
+        await AddDeviceAsync("user-2", "fcm-all", null);
+        await AddDeviceAsync("user-2", "fcm-same", tenantId);
+        await AddDeviceAsync("user-2", "fcm-other", otherTenantId);
+        await AddDeviceAsync("owner", "fcm-owner", tenantId);
+        var provider = new TokenPushProvider(_ => PushResult.Sent);
+        var signalR = new StubUserPushProvider();
+
+        await new NotificationService(_db, [provider], _email, _logger, signalR).NotifyAccessGrantedAsync("user-2", tenantId, "Biuro Testowe");
+
+        Assert.Equal(["fcm-all", "fcm-same"], provider.Tokens.Order());
+        Assert.Equal(["user-2"], signalR.Users);
+        Assert.Equal("Masz dostęp do firmy", provider.Last!.Title);
+        Assert.Equal("Biuro Testowe", provider.Last.Body);
+        Assert.Equal(new Dictionary<string, string> { ["type"] = "access_granted", ["tenantId"] = tenantId.ToString() }, provider.Last.Data);
+    }
+
+    private async Task AddMemberAsync(Guid tenantId, string userId, string token, bool notify = true)
+    {
+        _db.TenantMembers.Add(new TenantMember { TenantId = tenantId, UserId = userId, Role = TenantRole.Employee, NotifyNewInvoices = notify, CreatedAt = DateTime.UtcNow });
+        await AddDeviceAsync(userId, token, tenantId);
+    }
+
+    private async Task AddDeviceAsync(string userId, string token, Guid? tenantId)
+    {
+        var now = DateTime.UtcNow;
+        _db.DeviceTokens.Add(new DeviceToken { Id = Guid.NewGuid(), UserId = userId, Token = token, Platform = Platform.Android, TenantId = tenantId, CreatedAt = now, UpdatedAt = now });
+        await _db.SaveChangesAsync();
+    }
+
     private NotificationService CreateService(params IPushProvider[] providers) =>
         new(
             _db,
@@ -400,10 +477,27 @@ public class NotificationServiceTests : IDisposable
     {
         public PushNotification? Last { get; private set; }
 
+        public List<string> Users { get; } = [];
+
         public Task<bool> SendToUserAsync(string userId, PushNotification notification)
         {
+            Users.Add(userId);
             Last = notification;
             return Task.FromResult(true);
+        }
+    }
+
+    private sealed class TokenPushProvider(Func<string, PushResult> result) : IPushProvider
+    {
+        public List<string> Tokens { get; } = [];
+
+        public PushNotification? Last { get; private set; }
+
+        public Task<PushResult> SendAsync(string deviceToken, Platform platform, PushNotification notification)
+        {
+            Tokens.Add(deviceToken);
+            Last = notification;
+            return Task.FromResult(result(deviceToken));
         }
     }
 

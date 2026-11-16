@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Authorization;
 using OpenKSeF.Api.Models;
+using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
@@ -91,7 +92,7 @@ public class InvoicesController : ControllerBase
         var items = await ordered
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(InvoiceResponse.Projection)
+            .Select(InvoiceResponse.Projection(_db.UserProfiles))
             .ToListAsync();
 
         return Ok(new PagedResult<InvoiceResponse>
@@ -115,7 +116,7 @@ public class InvoicesController : ControllerBase
             .Where(i => i.Id == id && i.TenantId == tenantId)
             .FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.Where(x => x.InvoiceHeaderId == invoice.Id).Select(x => x.Sha256).FirstOrDefaultAsync(), _verificationLinks));
+        return invoice is null ? NotFound() : Ok(await InvoiceResponse.FromEntityAsync(_db, invoice, _verificationLinks));
     }
 
     [HttpGet("{id:guid}/xml")]
@@ -145,7 +146,7 @@ public class InvoicesController : ControllerBase
             .Where(i => i.KSeFInvoiceNumber == ksefInvoiceNumber && i.TenantId == tenantId)
             .FirstOrDefaultAsync();
 
-        return invoice is null ? NotFound() : Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.Where(x => x.InvoiceHeaderId == invoice.Id).Select(x => x.Sha256).FirstOrDefaultAsync(), _verificationLinks));
+        return invoice is null ? NotFound() : Ok(await InvoiceResponse.FromEntityAsync(_db, invoice, _verificationLinks));
     }
 
     [HttpGet("{id:guid}/transfer")]
@@ -201,15 +202,22 @@ public class InvoicesController : ControllerBase
         if (invoice.Direction == InvoiceDirection.Issued)
             return Conflict(new { message = "Status zapłaty dotyczy tylko faktur otrzymanych" });
 
+        if (invoice.IsPaid == request.IsPaid)
+        {
+            await _db.Entry(invoice).Collection(i => i.Lines).LoadAsync();
+            return Ok(await InvoiceResponse.FromEntityAsync(_db, invoice, _verificationLinks));
+        }
+
         invoice.IsPaid = request.IsPaid;
         invoice.PaidAt = request.IsPaid ? DateTime.UtcNow : null;
         invoice.PaidByUserId = request.IsPaid ? _currentUser.UserId : null;
         invoice.LastUpdatedAt = DateTime.UtcNow;
+        await TenantAudit.AddAsync(_db, tenantId, _currentUser.UserId, request.IsPaid ? AuditEvent.InvoicePaid : AuditEvent.InvoiceUnpaid, invoice.Id.ToString());
 
         await _db.SaveChangesAsync();
 
         await _db.Entry(invoice).Collection(i => i.Lines).LoadAsync();
 
-        return Ok(InvoiceResponse.FromEntity(invoice, await _db.InvoiceXmls.Where(x => x.InvoiceHeaderId == invoice.Id).Select(x => x.Sha256).FirstOrDefaultAsync(), _verificationLinks));
+        return Ok(await InvoiceResponse.FromEntityAsync(_db, invoice, _verificationLinks));
     }
 }

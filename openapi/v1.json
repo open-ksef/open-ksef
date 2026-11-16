@@ -292,6 +292,10 @@
             "nullable": true,
             "type": "string"
           },
+          "paidByName": {
+            "nullable": true,
+            "type": "string"
+          },
           "vendorBankAccount": {
             "nullable": true,
             "type": "string"
@@ -1182,6 +1186,16 @@
         },
         "type": "object"
       },
+      "SetMemberNotificationsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "SettingsAuthRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1725,6 +1739,9 @@
           "notificationEmail": {
             "nullable": true,
             "type": "string"
+          },
+          "notificationsEnabled": {
+            "type": "boolean"
           },
           "permissions": {
             "items": {
@@ -2751,6 +2768,68 @@
               }
             },
             "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Tenants"
+        ]
+      }
+    },
+    "/api/Tenants/{tenantId}/members/me/notifications": {
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMemberNotificationsRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMemberNotificationsRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMemberNotificationsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
           },
           "404": {
             "content": {

@@ -244,10 +244,15 @@ public sealed class TestcontainersFixture : IAsyncLifetime
         (await http.PostAsync($"{Keycloak.GetBaseAddress().ToString().TrimEnd('/')}/admin/realms", content)).EnsureSuccessStatusCode();
     }
 
-    public static string[] AccessTokenAudiences(string accessToken)
+    public static JsonElement AccessTokenClaims(string accessToken)
     {
         var payload = accessToken.Split('.')[1].Replace('-', '+').Replace('_', '/');
-        var json = JsonDocument.Parse(Convert.FromBase64String(payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '='))).RootElement;
+        return JsonDocument.Parse(Convert.FromBase64String(payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '='))).RootElement;
+    }
+
+    public static string[] AccessTokenAudiences(string accessToken)
+    {
+        var json = AccessTokenClaims(accessToken);
         if (!json.TryGetProperty("aud", out var aud))
             return [];
         return aud.ValueKind == JsonValueKind.Array ? aud.EnumerateArray().Select(a => a.GetString()!).ToArray() : [aud.GetString()!];

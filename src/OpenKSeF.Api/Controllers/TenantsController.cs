@@ -33,11 +33,11 @@ public class TenantsController : ControllerBase
     {
         var memberships = await _db.TenantMembers
             .Where(m => m.UserId == _currentUser.UserId)
-            .Join(_db.Tenants, m => m.TenantId, t => t.Id, (m, t) => new { Tenant = t, m.Role })
+            .Join(_db.Tenants, m => m.TenantId, t => t.Id, (m, t) => new { Tenant = t, Member = m })
             .OrderBy(x => x.Tenant.CreatedAt)
             .ToListAsync();
 
-        return Ok(memberships.Select(x => TenantResponse.From(x.Tenant, x.Role)).ToList());
+        return Ok(memberships.Select(x => TenantResponse.From(x.Tenant, x.Member)).ToList());
     }
 
     [HttpGet("{tenantId:guid}")]
@@ -50,7 +50,7 @@ public class TenantsController : ControllerBase
         if (tenant is null)
             return NotFound();
 
-        return Ok(TenantResponse.From(tenant, TenantAccessAttribute.Member(HttpContext).Role));
+        return Ok(TenantResponse.From(tenant, TenantAccessAttribute.Member(HttpContext)));
     }
 
     [HttpPost]
@@ -76,8 +76,9 @@ public class TenantsController : ControllerBase
             UpdatedAt = now
         };
 
+        var owner = new TenantMember { TenantId = tenant.Id, UserId = tenant.UserId, Role = TenantRole.Owner, CreatedAt = now };
         _db.Tenants.Add(tenant);
-        _db.TenantMembers.Add(new TenantMember { TenantId = tenant.Id, UserId = tenant.UserId, Role = TenantRole.Owner, CreatedAt = now });
+        _db.TenantMembers.Add(owner);
 
         try
         {
@@ -88,7 +89,7 @@ public class TenantsController : ControllerBase
             return Conflict(new { error = "Ta firma (NIP) jest już dodana do Twojego konta." });
         }
 
-        return CreatedAtAction(nameof(Get), new { tenantId = tenant.Id }, TenantResponse.From(tenant, TenantRole.Owner));
+        return CreatedAtAction(nameof(Get), new { tenantId = tenant.Id }, TenantResponse.From(tenant, owner));
     }
 
     [HttpPut("{tenantId:guid}")]
@@ -109,7 +110,20 @@ public class TenantsController : ControllerBase
 
         await _db.SaveChangesAsync();
 
-        return Ok(TenantResponse.From(tenant, TenantAccessAttribute.Member(HttpContext).Role));
+        return Ok(TenantResponse.From(tenant, TenantAccessAttribute.Member(HttpContext)));
+    }
+
+    [HttpPut("{tenantId:guid}/members/me/notifications")]
+    [TenantAccess(TenantPermissions.NotificationsSelf)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SetMyNotifications(Guid tenantId, [FromBody] SetMemberNotificationsRequest request)
+    {
+        await _db.TenantMembers
+            .Where(m => m.TenantId == tenantId && m.UserId == _currentUser.UserId)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.NotifyNewInvoices, request.Enabled!.Value));
+
+        return NoContent();
     }
 
     [HttpDelete("{tenantId:guid}")]
