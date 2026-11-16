@@ -92,6 +92,18 @@ public class EmailServiceTests
     }
 
     [Fact]
+    public void BuildIssuedInvoiceStuckMessage_UsesPushTexts_NumberEncoded()
+    {
+        var message = CreateService(new EmailOptions()).BuildIssuedInvoiceStuckMessage("owner@example.invalid", "FV/<1>/2026");
+
+        Assert.Equal("Faktura czeka na wyjaśnienie w KSeF", message.Subject);
+        Assert.Equal(
+            "<p>Faktura FV/&lt;1&gt;/2026 wymaga sprawdzenia, szczegóły w portalu. Nie wystawiaj jej ponownie bez sprawdzenia.</p>\n" +
+            "<p><small>Wysłane przez OpenKSeF</small></p>",
+            message.HtmlBody!.ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
     public async Task SendNewInvoiceEmailAsync_DoesNotConnect_WhenDisabled()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);

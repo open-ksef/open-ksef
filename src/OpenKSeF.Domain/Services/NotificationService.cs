@@ -140,6 +140,12 @@ public class NotificationService : INotificationService
         };
 
         await PushToMemberDevicesAsync(tenantId, issuedInvoiceId, notification, newInvoices: false);
+
+        var notificationEmail = await _db.Tenants
+            .Where(t => t.Id == tenantId)
+            .Select(t => t.NotificationEmail)
+            .FirstOrDefaultAsync();
+        await SendEmailAsync(tenantId, issuedInvoiceId, notificationEmail, to => _emailService.SendIssuedInvoiceStuckEmailAsync(to, tenantId, issuedInvoiceId, number));
     }
 
     public async Task NotifyAccessGrantedAsync(string userId, Guid tenantId, string tenantName)

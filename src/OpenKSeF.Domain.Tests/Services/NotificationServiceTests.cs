@@ -135,6 +135,20 @@ public class NotificationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task NotifyIssuedInvoiceStuckAsync_EmailsNotificationAddress_WhenOwnerHasNoDevice()
+    {
+        var tenantId = await SeedTenantAsync("user-1", NotificationEmail);
+        var silent = await SeedTenantAsync("user-2");
+        var invoiceId = Guid.NewGuid();
+
+        await CreateService(new StubPushProvider(PushResult.Sent)).NotifyIssuedInvoiceStuckAsync(tenantId, invoiceId, "FV/1/11/2026");
+        await CreateService(new StubPushProvider(PushResult.Sent)).NotifyIssuedInvoiceStuckAsync(silent, invoiceId, "FV/2/11/2026");
+
+        Assert.Equal([(NotificationEmail, invoiceId, (string?)"FV/1/11/2026")], _email.Stuck);
+        Assert.DoesNotContain(_logger.Entries, e => e.Message.Contains(NotificationEmail, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task NotifyNewInvoiceAsync_SendsEmail_WhenOwnerHasNoDevice()
     {
         var tenantId = await SeedTenantAsync("user-1", NotificationEmail);
@@ -537,6 +551,17 @@ public class NotificationServiceTests : IDisposable
             if (Failure is not null)
                 return Task.FromException(Failure);
             Summaries.Add((toEmail, tenantId, company, count));
+            return Task.CompletedTask;
+        }
+
+        public List<(string To, Guid InvoiceId, string? Number)> Stuck { get; } = [];
+
+        public Task SendIssuedInvoiceStuckEmailAsync(string toEmail, Guid tenantId, Guid issuedInvoiceId, string? number)
+        {
+            Attempts++;
+            if (Failure is not null)
+                return Task.FromException(Failure);
+            Stuck.Add((toEmail, issuedInvoiceId, number));
             return Task.CompletedTask;
         }
 

@@ -44,6 +44,9 @@ public class EmailService : IEmailService
     public Task SendNewInvoicesSummaryEmailAsync(string toEmail, Guid tenantId, string company, int count) =>
         SendAsync(() => BuildNewInvoicesSummaryMessage(toEmail, company, count), tenantId, null);
 
+    public Task SendIssuedInvoiceStuckEmailAsync(string toEmail, Guid tenantId, Guid issuedInvoiceId, string? number) =>
+        SendAsync(() => BuildIssuedInvoiceStuckMessage(toEmail, number), tenantId, issuedInvoiceId);
+
     public Task<bool> SendInviteEmailAsync(string toEmail, Guid tenantId, string company, string nip, TenantRole role, string inviterName, string link, DateTime expiresAtUtc) =>
         SendAsync(() => BuildInviteMessage(toEmail, company, nip, role, inviterName, link, expiresAtUtc), tenantId, null);
 
@@ -116,6 +119,22 @@ public class EmailService : IEmailService
         {
             Text = $"""
                 <p>Pobraliśmy z KSeF więcej nowych faktur zakupowych niż wysyłamy osobnych powiadomień. Pozostałe nowe faktury: {count}. Zobacz je w aplikacji lub w portalu OpenKSeF.</p>
+                <p><small>Wysłane przez OpenKSeF</small></p>
+                """
+        };
+        return message;
+    }
+
+    internal MimeMessage BuildIssuedInvoiceStuckMessage(string toEmail, string? number)
+    {
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
+        message.To.Add(MailboxAddress.Parse(toEmail));
+        message.Subject = "Faktura czeka na wyjaśnienie w KSeF";
+        message.Body = new TextPart("html")
+        {
+            Text = $"""
+                <p>Faktura {WebUtility.HtmlEncode(number)} wymaga sprawdzenia, szczegóły w portalu. Nie wystawiaj jej ponownie bez sprawdzenia.</p>
                 <p><small>Wysłane przez OpenKSeF</small></p>
                 """
         };
