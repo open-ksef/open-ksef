@@ -131,7 +131,7 @@ public class TransferAfterFullResyncTests : IDisposable
         new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions()),
-        new XmlDownloadBlocks(),
+        new KSeFRequestLimits(),
         TimeProvider.System,
         NullLogger<TenantSyncService>.Instance);
 

@@ -470,7 +470,7 @@ public sealed class EmailNotificationTests : IAsyncLifetime
             new InvoiceService(db, notifications, Logger<InvoiceService>(log)),
             new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
             Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero, BatchSize = batchSize, NotificationGrace = notificationGrace ?? TimeSpan.FromSeconds(5) }),
-            new XmlDownloadBlocks(),
+            new KSeFRequestLimits(),
             _time,
             Logger<TenantSyncService>(log));
     }
