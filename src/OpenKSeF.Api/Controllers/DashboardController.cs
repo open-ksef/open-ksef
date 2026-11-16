@@ -55,8 +55,8 @@ public class DashboardController : ControllerBase
                                 ? "Warning"
                                 : "Error"),
                 HasCredential = t.KSeFCredentials.Any(),
-                ErrorCategory = t.SyncState != null ? t.SyncState.LastErrorCategory : null,
-                ErrorAt = t.SyncState != null ? t.SyncState.LastErrorAt : null,
+                ErrorCategory = t.SyncState != null && t.KSeFCredentials.Any(c => c.UpdatedAt <= t.SyncState.LastErrorAt) ? t.SyncState.LastErrorCategory : null,
+                ErrorAt = t.SyncState != null && t.KSeFCredentials.Any(c => c.UpdatedAt <= t.SyncState.LastErrorAt) ? t.SyncState.LastErrorAt : null,
             })
             .ToListAsync();
 

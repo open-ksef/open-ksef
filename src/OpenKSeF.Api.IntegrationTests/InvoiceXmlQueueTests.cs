@@ -910,6 +910,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     [InlineData("503", "KsefUnavailable")]
     [InlineData("429", "RateLimited")]
     [InlineData("internal", "Other")]
+    [InlineData("http-timeout", "KsefUnavailable")]
     public async Task FailedSync_KeepsCategoryWithoutKsefText_NextSuccessClearsIt(string failure, string category)
     {
         await MigrateAsync();
@@ -919,6 +920,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
             "other-login" => new TimeoutException("Uwierzytelnianie nie zakończyło się kodem 200 w ciągu 60s. Ostatni status: 415, Opis: Brak uprawnień, Szczegóły: -"),
             "503" => new KsefApiException("KSeF HTTP 503 secret-body", HttpStatusCode.ServiceUnavailable),
             "429" => new KsefApiException("rate limited", HttpStatusCode.TooManyRequests),
+            "http-timeout" => new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing."),
             _ => new InvalidOperationException("Host=db;Password=internal"),
         };
         _gateway.InitSessionAsync(Arg.Any<string>(), Arg.Any<KSeFCredential>(), Arg.Any<CancellationToken>()).Returns<KSeFSession>(_ => throw error);
@@ -941,6 +943,22 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
             var state = await db.SyncStates.SingleAsync();
             Assert.Equal((null, null), (state.LastErrorCategory, state.LastErrorAt));
         }
+    }
+
+    [Fact]
+    public async Task DatabaseDownWhileRecordingTheFailure_StillReturnsTheFailedResult()
+    {
+        await MigrateAsync();
+        _gateway.InitSessionAsync(Arg.Any<string>(), Arg.Any<KSeFCredential>(), Arg.Any<CancellationToken>()).Returns<KSeFSession>(_ =>
+        {
+            using (var db = NewContext())
+                db.Database.ExecuteSqlRaw("""ALTER TABLE "SyncStates" RENAME TO "SyncStatesGone" """);
+            throw new KsefApiException("KSeF HTTP 503", HttpStatusCode.ServiceUnavailable);
+        });
+
+        var result = await ManualSyncAsync();
+
+        Assert.Equal(TenantSyncOutcome.Failed, result.Outcome);
     }
 
     [Fact]

@@ -38,6 +38,8 @@ public sealed class DashboardApiTests : IDisposable
         var failed = await CreateTenantAsync(withCredential: true, state: new SyncState { LastSuccessfulSync = DateTime.UtcNow.AddDays(-3), LastErrorCategory = SyncFailure.InvalidToken, LastErrorAt = DateTime.UtcNow.AddHours(-1) });
         var unavailable = await CreateTenantAsync(withCredential: true, state: new SyncState { LastErrorCategory = SyncFailure.KsefUnavailable, LastErrorAt = DateTime.UtcNow });
         var healthy = await CreateTenantAsync(withCredential: true, state: new SyncState { LastSyncedAt = DateTime.UtcNow, LastSuccessfulSync = DateTime.UtcNow });
+        var replaced = await CreateTenantAsync(withCredential: true, credentialUpdatedAt: DateTime.UtcNow, state: new SyncState { LastSuccessfulSync = DateTime.UtcNow.AddDays(-3), LastErrorCategory = SyncFailure.InvalidToken, LastErrorAt = DateTime.UtcNow.AddHours(-1) });
+        var deleted = await CreateTenantAsync(state: new SyncState { LastErrorCategory = SyncFailure.InvalidToken, LastErrorAt = DateTime.UtcNow.AddHours(-1) });
 
         var cards = (await _client.GetFromJsonAsync<List<CardDto>>("/api/dashboard"))!.ToDictionary(c => c.TenantId);
 
@@ -50,6 +52,8 @@ public sealed class DashboardApiTests : IDisposable
         Assert.False(cards[unavailable].LastSyncErrorCredentialCause);
         Assert.False(cards[noCredential].LastSyncErrorCredentialCause);
         Assert.Equal((null, "Success"), (cards[healthy].SyncProblem, cards[healthy].SyncStatus));
+        Assert.Equal((null, null, null, false), (cards[replaced].SyncProblem, cards[replaced].LastSyncErrorCategory, cards[replaced].LastSyncErrorMessage, cards[replaced].LastSyncErrorCredentialCause));
+        Assert.Equal(("NoCredential", null, false), (cards[deleted].SyncProblem, cards[deleted].LastSyncErrorCategory, cards[deleted].LastSyncErrorCredentialCause));
     }
 
     [Fact]
@@ -64,7 +68,7 @@ public sealed class DashboardApiTests : IDisposable
         Assert.Equal("Error", old.Single(c => c.TenantId == tenantId).SyncStatus);
     }
 
-    private async Task<Guid> CreateTenantAsync(bool withCredential = false, SyncState? state = null)
+    private async Task<Guid> CreateTenantAsync(bool withCredential = false, SyncState? state = null, DateTime? credentialUpdatedAt = null)
     {
         var response = await _client.PostAsJsonAsync("/api/tenants", new { nip = TestNip.New(), displayName = "Dashboard test" });
         response.EnsureSuccessStatusCode();
@@ -73,7 +77,7 @@ public sealed class DashboardApiTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var now = DateTime.UtcNow;
         if (withCredential)
-            db.KSeFCredentials.Add(new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, EncryptedToken = "encrypted", CreatedAt = now, UpdatedAt = now });
+            db.KSeFCredentials.Add(new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, EncryptedToken = "encrypted", CreatedAt = now.AddDays(-30), UpdatedAt = credentialUpdatedAt ?? now.AddDays(-30) });
         if (state is not null)
         {
             state.Id = Guid.NewGuid();

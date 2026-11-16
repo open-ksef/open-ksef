@@ -26,7 +26,7 @@ public static partial class SyncFailure
         DbUpdateException => StoreFailed,
         KsefApiException { StatusCode: HttpStatusCode.TooManyRequests } => RateLimited,
         KsefApiException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden } => LoginRefused,
-        KsefApiException { StatusCode: >= HttpStatusCode.InternalServerError } or HttpRequestException or SocketException => KsefUnavailable,
+        KsefApiException { StatusCode: >= HttpStatusCode.InternalServerError } or HttpRequestException or SocketException or TaskCanceledException => KsefUnavailable,
         TimeoutException timeout => AuthStatus(timeout.Message) switch
         {
             450 when credentialType == CredentialType.Token && IssuedInvoiceSendProcessor.TokenFaults.Any(timeout.Message.Contains) => InvalidToken,

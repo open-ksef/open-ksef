@@ -384,7 +384,7 @@ public sealed class TenantSyncService : ITenantSyncService
             state.LastErrorAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
         }
-        catch (DbUpdateException ex)
+        catch (Exception ex)
         {
             _logger.LogWarning(ex, "Could not store the sync failure of tenant {TenantId}", tenantId);
         }
