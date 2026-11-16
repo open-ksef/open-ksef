@@ -11,6 +11,7 @@ namespace OpenKSeF.Api.Services;
 public class UserProfileService(ApplicationDbContext db, IMemoryCache cache)
 {
     private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(15);
+    private const int MaxDisplayName = 200;
 
     public async Task EnsureAsync(ClaimsPrincipal user)
     {
@@ -20,7 +21,7 @@ public class UserProfileService(ApplicationDbContext db, IMemoryCache cache)
 
         var email = Claim(user, ClaimTypes.Email, "email")?.Trim().ToLowerInvariant();
         var emailVerified = string.Equals(Claim(user, "email_verified"), "true", StringComparison.OrdinalIgnoreCase);
-        var displayName = Claim(user, "name", ClaimTypes.Name)?.Trim();
+        var displayName = Claim(user, "name", ClaimTypes.Name)?.Trim() is { } name ? name[..Math.Min(name.Length, MaxDisplayName)] : null;
         var key = (nameof(UserProfileService), userId, email, emailVerified, displayName);
         if (cache.TryGetValue(key, out _))
             return;

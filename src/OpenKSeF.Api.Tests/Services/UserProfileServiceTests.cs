@@ -21,6 +21,14 @@ public class UserProfileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureAsync_NameLongerThanColumn_IsTruncatedTo200()
+    {
+        await Service().EnsureAsync(User("b@example.invalid", "true", new string('a', 300)));
+
+        Assert.Equal(new string('a', 200), (await _db.UserProfiles.SingleAsync()).DisplayName);
+    }
+
+    [Fact]
     public async Task EnsureAsync_SameClaims_DoesNotRewrite_EvenWithColdCache()
     {
         await Service().EnsureAsync(User("b@example.invalid", "false", "Bogna Test"));

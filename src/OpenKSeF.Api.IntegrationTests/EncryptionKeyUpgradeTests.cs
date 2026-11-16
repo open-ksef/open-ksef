@@ -676,12 +676,13 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         await SeedAsync(_oldKey, withRow: false);
         var tenantId = await AddTenantWithoutCredentialAsync();
         await using var host = await StartHostAsync(OldKey);
-        var keyRowReads = 0;
-        await using var db = NewContext(new OnCommand(sql => keyRowReads += sql.Contains("\"SystemConfigs\"", StringComparison.Ordinal) ? 1 : 0));
+        var commands = new List<string>();
+        await using var db = NewContext(new OnCommand(commands.Add));
 
         Assert.IsType<OkObjectResult>(await PostTokenAsync(host, tenantId, "user-new-token", db));
 
-        Assert.Equal(0, keyRowReads);
+        Assert.NotEmpty(commands);
+        Assert.DoesNotContain(commands, sql => sql.Contains("\"SystemConfigs\"", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1103,6 +1104,18 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     private sealed class OnCommand(Action<string> onCommand) : DbCommandInterceptor
     {
         public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            onCommand(command.CommandText);
+            return ValueTask.FromResult(result);
+        }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            onCommand(command.CommandText);
+            return ValueTask.FromResult(result);
+        }
+
+        public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<object> result, CancellationToken cancellationToken = default)
         {
             onCommand(command.CommandText);
             return ValueTask.FromResult(result);

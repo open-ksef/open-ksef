@@ -414,6 +414,24 @@ public class InvoicesControllerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SetPaid_SameValueTwice_KeepsFirstMarkAndWritesOneAudit()
+    {
+        var invoice = MakeInvoice("KSEF-PAY-005", DateTime.UtcNow.Date);
+        _db.InvoiceHeaders.Add(invoice);
+        await _db.SaveChangesAsync();
+        await CreateController().SetPaid(_tenantId, invoice.Id, new SetInvoicePaidRequest(true));
+        var first = await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == invoice.Id);
+        _currentUser.UserId.Returns("user-2");
+
+        var again = Assert.IsType<InvoiceResponse>(((OkObjectResult)await CreateController().SetPaid(_tenantId, invoice.Id, new SetInvoicePaidRequest(true))).Value);
+
+        var stored = await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == invoice.Id);
+        Assert.True(again.IsPaid);
+        Assert.Equal((first.PaidAt, _userId), (stored.PaidAt, stored.PaidByUserId));
+        Assert.Single(await _db.AuditEvents.AsNoTracking().Where(a => a.TenantId == _tenantId).ToListAsync());
+    }
+
+    [Fact]
     public async Task List_PaidByWithoutProfile_ReturnsNullName()
     {
         var invoice = MakeInvoice("KSEF-PAY-004", DateTime.UtcNow.Date);

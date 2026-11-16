@@ -296,6 +296,7 @@ public class TenantsApiTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync("/api/tenants")).StatusCode);
 
         Assert.Equal(("testuser@openksef.test", "Test User"), (profile.Email, profile.DisplayName));
+        Assert.Equal(TestcontainersFixture.AccessTokenClaims(token).GetProperty("email_verified").GetBoolean(), profile.EmailVerified);
         Assert.Equal(profile.UpdatedAt, (await db.UserProfiles.AsNoTracking().SingleAsync(p => p.UserId == profile.UserId)).UpdatedAt);
     }
 

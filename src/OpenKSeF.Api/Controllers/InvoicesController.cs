@@ -202,6 +202,12 @@ public class InvoicesController : ControllerBase
         if (invoice.Direction == InvoiceDirection.Issued)
             return Conflict(new { message = "Status zapłaty dotyczy tylko faktur otrzymanych" });
 
+        if (invoice.IsPaid == request.IsPaid)
+        {
+            await _db.Entry(invoice).Collection(i => i.Lines).LoadAsync();
+            return Ok(await InvoiceResponse.FromEntityAsync(_db, invoice, _verificationLinks));
+        }
+
         invoice.IsPaid = request.IsPaid;
         invoice.PaidAt = request.IsPaid ? DateTime.UtcNow : null;
         invoice.PaidByUserId = request.IsPaid ? _currentUser.UserId : null;
