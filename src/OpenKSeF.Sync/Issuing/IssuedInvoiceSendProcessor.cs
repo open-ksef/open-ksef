@@ -21,6 +21,7 @@ namespace OpenKSeF.Sync.Issuing;
 public sealed class IssuedInvoiceSendProcessor(
     ApplicationDbContext db,
     IKSeFInvoiceSubmitter submitter,
+    KSeFAccessTokenCache tokens,
     TimeProvider time,
     ILogger<IssuedInvoiceSendProcessor> logger)
 {
@@ -39,6 +40,7 @@ public sealed class IssuedInvoiceSendProcessor(
     public const string MissingTokenMessage = "Wysyłka faktur wymaga tokenu lub certyfikatu KSeF w ustawieniach firmy";
     public const string MissingXmlMessage = "Brak zapisanego XML faktury";
     public const string UpoPendingMessage = "UPO jeszcze niedostępne, ponowimy pobranie";
+    public const string UnexpectedErrorMessage = "Wewnętrzny błąd OpenKSeF, ponowimy próbę automatycznie";
 
     private static readonly TimeSpan MinBackoff = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(15);
@@ -47,16 +49,17 @@ public sealed class IssuedInvoiceSendProcessor(
     private static readonly TimeSpan MaxPoll = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan LoginCap = TimeSpan.FromSeconds(70);
 
+    private DateTime cycleStart;
+    private Dictionary<Guid, (string? LastError, TimeSpan? Delay)> schedule = [];
+
     public async Task ProcessAsync(string currentEnvironment, CancellationToken ct)
     {
-        var now = Now();
-        var due = await db.IssuedInvoices
-            .Where(i => (i.Status == IssuedInvoiceStatus.Queued || i.Status == IssuedInvoiceStatus.Sending
-                         || (i.Status == IssuedInvoiceStatus.Accepted && i.UpoXml == null))
-                        && i.NextAttemptAt != null && i.NextAttemptAt <= now)
+        var now = cycleStart = Now();
+        var due = await Due(db.IssuedInvoices, now)
             .OrderBy(i => i.NextAttemptAt)
             .Take(BatchSize)
             .ToListAsync(ct);
+        schedule = due.ToDictionary(i => i.Id, i => (i.LastError, i.NextAttemptAt - i.UpdatedAt));
 
         foreach (var batch in due.GroupBy(i => i.TenantId))
         {
@@ -69,9 +72,41 @@ public sealed class IssuedInvoiceSendProcessor(
             catch (Exception e) when (!ct.IsCancellationRequested)
             {
                 logger.LogError(e, "Issued invoice send for tenant {TenantId} failed", batch.Key);
-                foreach (var invoice in batch)
-                    db.Entry(invoice).State = EntityState.Detached;
+                try
+                {
+                    await RetryUnexpectedAsync(batch, ct);
+                }
+                catch (Exception retry) when (!ct.IsCancellationRequested)
+                {
+                    logger.LogError(retry, "Issued invoice retry for tenant {TenantId} could not be saved", batch.Key);
+                    foreach (var entry in db.ChangeTracker.Entries<IssuedInvoice>().Where(e => e.Entity.TenantId == batch.Key).ToList())
+                        entry.State = EntityState.Detached;
+                }
             }
+        }
+    }
+
+    private static IQueryable<IssuedInvoice> Due(IQueryable<IssuedInvoice> invoices, DateTime now) =>
+        invoices.Where(i => (i.Status == IssuedInvoiceStatus.Queued || i.Status == IssuedInvoiceStatus.Sending
+                             || (i.Status == IssuedInvoiceStatus.Accepted && i.UpoXml == null))
+                            && i.NextAttemptAt != null && i.NextAttemptAt <= now);
+
+    /// <summary>
+    /// Unsaved changes are dropped and each invoice is read again, so only NextAttemptAt and LastError change.
+    /// Invoices already rescheduled in this cycle are no longer due at cycleStart and stay as they are.
+    /// Backoff comes from the cycle-start snapshot, because a saved MarkSendStarted moves UpdatedAt past the old NextAttemptAt.
+    /// </summary>
+    private async Task RetryUnexpectedAsync(IEnumerable<IssuedInvoice> invoices, CancellationToken ct)
+    {
+        var ids = invoices.Select(i => i.Id).ToList();
+        foreach (var entry in db.ChangeTracker.Entries<IssuedInvoice>().Where(e => ids.Contains(e.Entity.Id)).ToList())
+            entry.State = EntityState.Detached;
+        foreach (var invoice in await Due(db.IssuedInvoices.Where(i => ids.Contains(i.Id)), cycleStart).ToListAsync(ct))
+        {
+            var (lastError, delay) = schedule.GetValueOrDefault(invoice.Id, (invoice.LastError, invoice.NextAttemptAt - invoice.UpdatedAt));
+            var now = Now();
+            invoice.ScheduleRetry(UnexpectedErrorMessage, now.Add(Backoff(lastError, delay, UnexpectedErrorMessage)), now);
+            await db.SaveChangesAsync(ct);
         }
     }
 
@@ -101,9 +136,8 @@ public sealed class IssuedInvoiceSendProcessor(
         string accessToken;
         try
         {
-            using var loginTimeout = new CancellationTokenSource(LoginCap, time);
-            using var loginCap = CancellationTokenSource.CreateLinkedTokenSource(ksef, loginTimeout.Token);
-            accessToken = await submitter.LoginAsync(tenant.Nip, credential, loginCap.Token);
+            accessToken = tokens.Find(tenantId, environment, credential, Now().Add(TenantBudget + CloseCap))
+                          ?? await LoginAsync(tenant, environment, credential, ksef);
         }
         catch (KSeFAuthRejectedException e)
         {
@@ -142,11 +176,13 @@ public sealed class IssuedInvoiceSendProcessor(
                 }
                 catch (Exception e) when (IsTransient(e, ct))
                 {
+                    ForgetTokenOnAuthError(tenantId, e);
                     await RetryAllAsync(ksef.IsCancellationRequested ? [invoice] : invoices.Skip(index), e, ct);
                     return;
                 }
                 catch (KsefApiException e)
                 {
+                    ForgetTokenOnAuthError(tenantId, e);
                     logger.LogWarning("KSeF status check for issued invoice {InvoiceId} failed: {Error}", invoice.Id, e.Message);
                     invoice.ScheduleRetry(Describe(e).Description, Now().Add(MaxBackoff), Now());
                     await db.SaveChangesAsync(ct);
@@ -156,6 +192,11 @@ public sealed class IssuedInvoiceSendProcessor(
                     logger.LogWarning("Issued invoice {InvoiceId} changed concurrently, skipped this cycle", invoice.Id);
                     db.Entry(invoice).State = EntityState.Detached;
                 }
+                catch (Exception e) when (!ct.IsCancellationRequested)
+                {
+                    logger.LogError(e, "Issued invoice {InvoiceId} failed unexpectedly", invoice.Id);
+                    await RetryUnexpectedAsync([invoice], ct);
+                }
             }
         }
         finally
@@ -163,6 +204,21 @@ public sealed class IssuedInvoiceSendProcessor(
             if (session is not null)
                 await CloseQuietlyAsync(session);
         }
+    }
+
+    private async Task<string> LoginAsync(Tenant tenant, string environment, KSeFCredential credential, CancellationToken ksef)
+    {
+        using var loginTimeout = new CancellationTokenSource(LoginCap, time);
+        using var loginCap = CancellationTokenSource.CreateLinkedTokenSource(ksef, loginTimeout.Token);
+        var login = await submitter.LoginAsync(tenant.Nip, credential, loginCap.Token);
+        tokens.Store(tenant.Id, environment, credential, login);
+        return login.Token;
+    }
+
+    private void ForgetTokenOnAuthError(Guid tenantId, Exception e)
+    {
+        if (e is KsefApiException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden })
+            tokens.Forget(tenantId);
     }
 
     private async Task ProcessInvoiceAsync(IssuedInvoice invoice, string accessToken, Func<Task<KSeFOnlineSession>> openSession, CancellationToken ksef, CancellationToken ct)
@@ -212,6 +268,7 @@ public sealed class IssuedInvoiceSendProcessor(
         }
         catch (KsefApiException e) when (!IsTransient(e, ct))
         {
+            ForgetTokenOnAuthError(invoice.TenantId, e);
             var (code, description, details) = Describe(e);
             if (alreadyStarted)
                 invoice.ScheduleRetry(description, Now().Add(MaxBackoff), Now());
@@ -380,7 +437,10 @@ public sealed class IssuedInvoiceSendProcessor(
             if (error is KsefRateLimitException limit)
                 invoice.ScheduleRetry(RateLimitedMessage, Now().Add(limit.RecommendedDelay), Now());
             else
-                invoice.ScheduleRetry(UnavailableMessage, Now().Add(Backoff(invoice)), Now());
+            {
+                var now = Now();
+                invoice.ScheduleRetry(UnavailableMessage, now.Add(Backoff(invoice.LastError, invoice.NextAttemptAt - invoice.UpdatedAt, UnavailableMessage)), now);
+            }
             await db.SaveChangesAsync(ct);
         }
     }
@@ -388,11 +448,10 @@ public sealed class IssuedInvoiceSendProcessor(
     private static TimeSpan ResendDelay(IssuedInvoice invoice) =>
         MaxBackoff * Math.Pow(2, Math.Clamp(invoice.AttemptCount - 2, 0, 4));
 
-    internal static TimeSpan Backoff(IssuedInvoice invoice)
+    private static TimeSpan Backoff(string? lastError, TimeSpan? previousDelay, string error)
     {
-        if (invoice.LastError != UnavailableMessage || invoice.NextAttemptAt is null)
+        if (lastError != error || previousDelay is not { } previous)
             return MinBackoff;
-        var previous = invoice.NextAttemptAt.Value - invoice.UpdatedAt;
         var next = previous < MinBackoff ? MinBackoff : previous * 2;
         return next > MaxBackoff ? MaxBackoff : next;
     }

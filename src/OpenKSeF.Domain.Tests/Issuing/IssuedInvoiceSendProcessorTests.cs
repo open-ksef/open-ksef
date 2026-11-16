@@ -5,6 +5,7 @@ using System.Text;
 using KSeF.Client.Core.Exceptions;
 using KSeF.Client.Core.Interfaces.Clients;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -29,6 +30,7 @@ public class IssuedInvoiceSendProcessorTests
     private readonly string _dbName = Guid.NewGuid().ToString();
     private readonly FixedTime _time = new(new DateTimeOffset(2026, 11, 3, 10, 0, 0, TimeSpan.Zero));
     private readonly FakeSubmitter _submitter = new();
+    private readonly KSeFAccessTokenCache _tokens = new();
     private readonly ListLogger _logs = new();
     private readonly AesGcmEncryptionService _encryption = new(RandomNumberGenerator.GetBytes(32));
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -64,7 +66,7 @@ public class IssuedInvoiceSendProcessorTests
     private async Task RunAsync(string environment = "test")
     {
         await using var db = NewDb();
-        var processor = new IssuedInvoiceSendProcessor(db, _submitter, _time,
+        var processor = new IssuedInvoiceSendProcessor(db, _submitter, _tokens, _time,
             new LoggerAdapter<IssuedInvoiceSendProcessor>(_logs));
         await processor.ProcessAsync(environment, CancellationToken.None);
     }
@@ -765,6 +767,37 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Fact]
+    public async Task UnexpectedErrorOnLogin_ClockAdvancesDuringCycle_BackoffDoubles()
+    {
+        var id = await SeedAsync();
+        _submitter.OnLogin = () => throw new CryptographicException("tag mismatch");
+        Assert.Equal([10, 20, 40, 80], await DelaysOnTickingClockAsync(id));
+    }
+
+    [Fact]
+    public async Task TransientErrorOnLogin_ClockAdvancesDuringCycle_BackoffDoubles()
+    {
+        var id = await SeedAsync();
+        _submitter.OnLogin = () => throw new HttpRequestException("down");
+        Assert.Equal([10, 20, 40, 80], await DelaysOnTickingClockAsync(id));
+    }
+
+    private async Task<List<double>> DelaysOnTickingClockAsync(Guid id)
+    {
+        var clock = new TickingTime(_time.GetUtcNow());
+        var delays = new List<double>();
+        for (var i = 0; i < 4; i++)
+        {
+            await using (var db = NewDb())
+                await new IssuedInvoiceSendProcessor(db, _submitter, _tokens, clock, new LoggerAdapter<IssuedInvoiceSendProcessor>(_logs)).ProcessAsync("test", CancellationToken.None);
+            var invoice = await LoadAsync(id);
+            delays.Add(Math.Round((invoice.NextAttemptAt!.Value - invoice.UpdatedAt).TotalSeconds));
+            clock.Now = new DateTimeOffset(invoice.NextAttemptAt.Value, TimeSpan.Zero);
+        }
+        return delays;
+    }
+
+    [Fact]
     public async Task Http401OnLogin_RetriedNotRejected()
     {
         var id = await SeedAsync();
@@ -1096,6 +1129,177 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Fact]
+    public async Task StatusPoll_ReusesAccessToken_UntilItNearsExpiry()
+    {
+        await SeedAsync();
+        _submitter.TokenValidUntil = _time.UtcNow.AddMinutes(15);
+        await RunAsync();
+        _submitter.OnGet = _ => Status(KSeFSentInvoice.Processing);
+
+        _time.Advance(TimeSpan.FromMinutes(1));
+        await RunAsync();
+        _time.Advance(TimeSpan.FromMinutes(11));
+        await RunAsync();
+        Assert.Equal((1, 2), (_submitter.Logins, _submitter.Gets));
+
+        _time.Advance(TimeSpan.FromMinutes(3));
+        await RunAsync();
+        Assert.Equal((2, 3), (_submitter.Logins, _submitter.Gets));
+    }
+
+    [Fact]
+    public async Task StatusPoll_Unauthorized_NextCycleLogsInAgain()
+    {
+        await SeedAsync();
+        await RunAsync();
+        _submitter.OnGet = _ => throw new KsefApiException("unauthorized", HttpStatusCode.Unauthorized, null!, null!);
+
+        _time.Advance(TimeSpan.FromMinutes(1));
+        await RunAsync();
+        Assert.Equal(1, _submitter.Logins);
+
+        _submitter.OnGet = _ => Status(KSeFSentInvoice.Processing);
+        _time.Advance(TimeSpan.FromMinutes(1));
+        await RunAsync();
+        Assert.Equal(2, _submitter.Logins);
+    }
+
+    [Fact]
+    public async Task CredentialReplaced_LogsInWithNewCredential()
+    {
+        await SeedAsync();
+        await RunAsync();
+        await using (var db = NewDb())
+        {
+            var credential = await db.KSeFCredentials.SingleAsync(c => c.TenantId == _tenantId);
+            credential.EncryptedToken = _encryption.Encrypt("replaced-token");
+            await db.SaveChangesAsync();
+        }
+        _submitter.OnGet = _ => Status(KSeFSentInvoice.Processing);
+
+        _time.Advance(TimeSpan.FromMinutes(1));
+        await RunAsync();
+
+        Assert.Equal(2, _submitter.Logins);
+    }
+
+    [Fact]
+    public async Task UnexpectedError_SchedulesRetryWithDoublingBackoff_SetsLastError_KeepsStatus()
+    {
+        var id = await SeedAsync();
+        _submitter.OnLogin = () => throw new AuthenticationTagMismatchException();
+
+        await RunAsync();
+        var first = await LoadAsync(id);
+        Assert.Equal((IssuedInvoiceStatus.Queued, 0, IssuedInvoiceSendProcessor.UnexpectedErrorMessage), (first.Status, first.AttemptCount, first.LastError));
+        Assert.Equal(_time.UtcNow.AddSeconds(10), first.NextAttemptAt);
+
+        _time.Advance(TimeSpan.FromSeconds(5));
+        await RunAsync();
+        Assert.Equal(1, _submitter.Logins);
+
+        _time.Advance(TimeSpan.FromSeconds(5));
+        await RunAsync();
+        Assert.Equal(_time.UtcNow.AddSeconds(20), (await LoadAsync(id)).NextAttemptAt);
+        Assert.Equal((2, 0), (_submitter.Logins, _submitter.Sends));
+    }
+
+    [Fact]
+    public async Task UnexpectedError_SentInvoice_KeepsSessionAndElementRef_NoResend()
+    {
+        var id = await SeedAsync(Sent);
+        _submitter.OnGet = _ => throw new InvalidOperationException("poison");
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal((IssuedInvoiceStatus.Sending, "sess-1", "el-1", 1), (invoice.Status, invoice.KsefSessionRef, invoice.KsefElementRef, invoice.AttemptCount));
+        Assert.Equal(IssuedInvoiceSendProcessor.UnexpectedErrorMessage, invoice.LastError);
+        Assert.Equal(_time.UtcNow.AddSeconds(10), invoice.NextAttemptAt);
+        Assert.Equal((0, 0), (_submitter.Opens, _submitter.Sends));
+    }
+
+    [Fact]
+    public async Task UnexpectedErrorOnOneInvoice_NextInvoiceOfSameTenantStillSent()
+    {
+        var poison = await SeedAsync(i =>
+        {
+            Sent(i);
+            i.ScheduleRetry(null, _time.UtcNow.AddMinutes(-1), _time.UtcNow.AddMinutes(-1));
+        });
+        var queued = await SeedAsync(addTenant: false);
+        _submitter.OnGet = _ => throw new InvalidOperationException("poison");
+
+        await RunAsync();
+
+        Assert.Equal(IssuedInvoiceSendProcessor.UnexpectedErrorMessage, (await LoadAsync(poison)).LastError);
+        Assert.NotNull((await LoadAsync(queued)).KsefElementRef);
+        Assert.Equal(1, _submitter.Sends);
+    }
+
+    [Fact]
+    public async Task UnexpectedErrorOnSendAfterWriteAhead_BackoffDoubles()
+    {
+        var id = await SeedAsync();
+        _submitter.OnSend = () => throw new InvalidOperationException("poison");
+        var delays = new List<double>();
+        for (var i = 0; i < 4; i++)
+        {
+            await RunAsync();
+            var invoice = await LoadAsync(id);
+            delays.Add((invoice.NextAttemptAt!.Value - _time.UtcNow).TotalSeconds);
+            _time.Advance(invoice.NextAttemptAt.Value - _time.UtcNow);
+        }
+
+        Assert.Equal([10, 20, 40, 80], delays);
+    }
+
+    [Fact]
+    public async Task RetrySaveFailsForOneTenant_NextTenantWriteAheadStillSaved()
+    {
+        await SeedAsync(i => i.ScheduleRetry(null, _time.UtcNow.AddMinutes(-10), _time.UtcNow.AddMinutes(-10)), tenant: Guid.NewGuid(), addTenant: false);
+        var next = await SeedAsync();
+        _submitter.OnSend = () => Task.FromResult("el-B");
+
+        await using (var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(_dbName).AddInterceptors(new FailUnexpectedRetry()).Options))
+            await new IssuedInvoiceSendProcessor(db, _submitter, _tokens, _time, new LoggerAdapter<IssuedInvoiceSendProcessor>(_logs)).ProcessAsync("test", CancellationToken.None);
+
+        var invoice = await LoadAsync(next);
+        Assert.Equal(1, _submitter.Sends);
+        Assert.Equal(("el-B", 1), (invoice.KsefElementRef, invoice.AttemptCount));
+    }
+
+    private sealed class FailUnexpectedRetry : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<IssuedInvoice>().Any(e => e.State == EntityState.Modified && e.Entity.LastError == IssuedInvoiceSendProcessor.UnexpectedErrorMessage))
+                throw new InvalidOperationException("db down");
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task FullBatchOfFailingTenant_DoesNotStarveOtherTenant()
+    {
+        var stuckTenant = Guid.NewGuid();
+        for (var i = 0; i < IssuedInvoiceSendProcessor.BatchSize; i++)
+            await SeedAsync(inv => inv.ScheduleRetry(null, _time.UtcNow.AddMinutes(-10), _time.UtcNow.AddMinutes(-10)), tenant: stuckTenant, addTenant: i == 0);
+        var other = await SeedAsync();
+        _submitter.OnLogin = () =>
+        {
+            if (_submitter.Credential!.TenantId == stuckTenant)
+                throw new AuthenticationTagMismatchException();
+        };
+
+        await RunAsync();
+        await RunAsync();
+
+        Assert.Equal("el-1", (await LoadAsync(other)).KsefElementRef);
+        Assert.Equal(1, _submitter.Sends);
+    }
+
+    [Fact]
     public void AddSyncServices_ResolvesProcessor()
     {
         var services = new ServiceCollection();
@@ -1405,6 +1609,12 @@ public class IssuedInvoiceSendProcessorTests
             throw new KsefApiException("unauthorized", HttpStatusCode.Unauthorized, null!, null!);
     }
 
+    private sealed class TickingTime(DateTimeOffset start) : TimeProvider
+    {
+        public DateTimeOffset Now = start;
+        public override DateTimeOffset GetUtcNow() => Now = Now.AddTicks(10);
+    }
+
     private sealed class FakeSubmitter : IKSeFInvoiceSubmitter
     {
         public Action OnLogin = () => { };
@@ -1418,13 +1628,14 @@ public class IssuedInvoiceSendProcessorTests
         public List<(string SessionRef, string ElementRef)> UpoRequests = [];
         public List<byte[]> SentBytes = [];
         public KSeFCredential? Credential;
+        public DateTime TokenValidUntil = DateTime.MaxValue;
 
-        public Task<string> LoginAsync(string nip, KSeFCredential credential, CancellationToken ct = default)
+        public Task<KSeFSession> LoginAsync(string nip, KSeFCredential credential, CancellationToken ct = default)
         {
             Logins++;
             Credential = credential;
             OnLogin();
-            return Task.FromResult(AccessToken);
+            return Task.FromResult(new KSeFSession(AccessToken, TokenValidUntil));
         }
 
         public Task<KSeFOnlineSession> OpenSessionAsync(string accessToken, CancellationToken ct = default)

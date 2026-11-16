@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddSingleton<IFa3InvoiceWriter, Fa3InvoiceWriter>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IKSeFInvoiceSubmitter, KSeFInvoiceSubmitter>();
+        services.AddSingleton<KSeFAccessTokenCache>();
         services.AddScoped<IssuedInvoiceSendProcessor>();
 
         services.Configure<TenantSyncOptions>(
