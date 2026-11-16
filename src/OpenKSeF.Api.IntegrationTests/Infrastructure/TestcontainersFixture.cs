@@ -138,7 +138,7 @@ public sealed class TestcontainersFixture : IAsyncLifetime
         return users!.Length > 0 ? users[0] : null;
     }
 
-    public async Task<string> CreateUserAsync(string email, string password = "Test1234!")
+    public async Task<string> CreateUserAsync(string email, string password = "Test1234!", bool emailVerified = true)
     {
         using var http = await CreateAdminClientAsync();
         var response = await http.PostAsJsonAsync($"{AdminRealmUrl}/users", new
@@ -148,7 +148,7 @@ public sealed class TestcontainersFixture : IAsyncLifetime
             firstName = "Test",
             lastName = "User",
             enabled = true,
-            emailVerified = true,
+            emailVerified,
             credentials = new[] { new { type = "password", value = password, temporary = false } },
         });
         response.EnsureSuccessStatusCode();

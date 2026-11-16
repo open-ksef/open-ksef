@@ -27,6 +27,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<TenantMember> TenantMembers => Set<TenantMember>();
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
+    public DbSet<TenantInvite> TenantInvites => Set<TenantInvite>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -267,6 +268,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(a => a.ActorName).HasMaxLength(320);
             entity.Property(a => a.Target).HasMaxLength(320);
             entity.HasIndex(a => new { a.TenantId, a.OccurredAt });
+            entity.HasIndex(a => new { a.ActorUserId, a.OccurredAt });
             entity.HasOne<Tenant>()
                 .WithMany()
                 .HasForeignKey(a => a.TenantId)
@@ -291,6 +293,24 @@ public class ApplicationDbContext : DbContext
             entity.HasOne<Tenant>()
                 .WithMany()
                 .HasForeignKey(m => m.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TenantInvite>(entity =>
+        {
+            entity.HasKey(i => i.Id);
+            entity.Property(i => i.Email).HasMaxLength(320);
+            entity.Property(i => i.Role).HasConversion<string>().HasMaxLength(32);
+            entity.Property(i => i.Status).HasConversion<string>().HasMaxLength(16);
+            entity.Property(i => i.TokenHash).HasMaxLength(64).IsFixedLength();
+            entity.Property(i => i.InvitedByUserId).HasMaxLength(256);
+            entity.Property(i => i.AcceptedByUserId).HasMaxLength(256);
+            entity.HasIndex(i => i.TokenHash).IsUnique();
+            entity.HasIndex(i => new { i.TenantId, i.Email }).IsUnique().HasFilter("\"Status\" = 'Pending'");
+            entity.HasIndex(i => i.Email);
+            entity.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(i => i.TenantId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

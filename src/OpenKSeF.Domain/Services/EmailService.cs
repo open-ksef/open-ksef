@@ -42,12 +42,18 @@ public class EmailService : IEmailService
     public Task SendNewInvoicesSummaryEmailAsync(string toEmail, Guid tenantId, string company, int count) =>
         SendAsync(() => BuildNewInvoicesSummaryMessage(toEmail, company, count), tenantId, null);
 
-    private async Task SendAsync(Func<MimeMessage> build, Guid tenantId, Guid? invoiceId)
+    public Task<bool> SendInviteEmailAsync(string toEmail, Guid tenantId, string company, string inviterName, string link) =>
+        SendAsync(() => BuildInviteMessage(toEmail, company, inviterName, link), tenantId, null);
+
+    public Task<bool> SendAccessGrantedEmailAsync(string toEmail, Guid tenantId, string company, string portalUrl) =>
+        SendAsync(() => BuildAccessGrantedMessage(toEmail, company, portalUrl), tenantId, null);
+
+    private async Task<bool> SendAsync(Func<MimeMessage> build, Guid tenantId, Guid? invoiceId)
     {
         if (!_options.Enabled)
         {
             _logger.LogDebug("Email notifications disabled, skipping");
-            return;
+            return false;
         }
 
         var message = build();
@@ -73,6 +79,8 @@ public class EmailService : IEmailService
             if (client.IsConnected)
                 await client.DisconnectAsync(true, CancellationToken.None);
         }
+
+        return true;
     }
 
     internal MimeMessage BuildNewInvoiceMessage(string toEmail, NewInvoiceDetectedEvent evt)
@@ -106,6 +114,40 @@ public class EmailService : IEmailService
         {
             Text = $"""
                 <p>Pobraliśmy z KSeF więcej nowych faktur zakupowych niż wysyłamy osobnych powiadomień. Pozostałe nowe faktury: {count}. Zobacz je w aplikacji lub w portalu OpenKSeF.</p>
+                <p><small>Wysłane przez OpenKSeF</small></p>
+                """
+        };
+        return message;
+    }
+
+    internal MimeMessage BuildInviteMessage(string toEmail, string company, string inviterName, string link)
+    {
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
+        message.To.Add(MailboxAddress.Parse(toEmail));
+        message.Subject = $"Zaproszenie do firmy {company}";
+        message.Body = new TextPart("html")
+        {
+            Text = $"""
+                <p>{WebUtility.HtmlEncode(inviterName)} zaprasza Cię do firmy {WebUtility.HtmlEncode(company)} w OpenKSeF.</p>
+                <p><a href="{WebUtility.HtmlEncode(link)}">Przyjmij zaproszenie</a> (link jest ważny 14 dni).</p>
+                <p><small>Wysłane przez OpenKSeF</small></p>
+                """
+        };
+        return message;
+    }
+
+    internal MimeMessage BuildAccessGrantedMessage(string toEmail, string company, string portalUrl)
+    {
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
+        message.To.Add(MailboxAddress.Parse(toEmail));
+        message.Subject = $"Masz dostęp do firmy {company}";
+        message.Body = new TextPart("html")
+        {
+            Text = $"""
+                <p>Masz dostęp do firmy {WebUtility.HtmlEncode(company)} w OpenKSeF.</p>
+                <p><a href="{WebUtility.HtmlEncode(portalUrl)}">Otwórz portal</a></p>
                 <p><small>Wysłane przez OpenKSeF</small></p>
                 """
         };

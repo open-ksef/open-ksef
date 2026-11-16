@@ -159,7 +159,7 @@ public class NotificationService : INotificationService
             .Where(d => d.UserId == userId && (d.TenantId == tenantId || d.TenantId == null))
             .ToListAsync();
 
-        await PushToDevicesAsync(deviceTokens, null, notification);
+        await PushToDevicesAsync(deviceTokens, null, notification, [userId]);
     }
 
     private async Task<bool> PushToMemberDevicesAsync(Guid tenantId, Guid? invoiceId, PushNotification notification, bool newInvoices)
@@ -173,17 +173,11 @@ public class NotificationService : INotificationService
         return await PushToDevicesAsync(deviceTokens, invoiceId, notification);
     }
 
-    private async Task<bool> PushToDevicesAsync(List<Entities.DeviceToken> deviceTokens, Guid? invoiceId, PushNotification notification)
+    private async Task<bool> PushToDevicesAsync(List<Entities.DeviceToken> deviceTokens, Guid? invoiceId, PushNotification notification, IEnumerable<string>? signalRUserIds = null)
     {
-        if (deviceTokens.Count == 0)
-        {
-            _logger.LogDebug("No device tokens for notification {InvoiceId}", invoiceId);
-            return true;
-        }
-
         if (_userPushProvider is not null)
         {
-            var userIds = deviceTokens.Select(d => d.UserId).Distinct();
+            var userIds = signalRUserIds ?? deviceTokens.Select(d => d.UserId).Distinct();
             foreach (var userId in userIds)
             {
                 try
@@ -195,6 +189,12 @@ public class NotificationService : INotificationService
                     _logger.LogWarning(ex, "SignalR push failed for user {UserId}", userId);
                 }
             }
+        }
+
+        if (deviceTokens.Count == 0)
+        {
+            _logger.LogDebug("No device tokens for notification {InvoiceId}", invoiceId);
+            return true;
         }
 
         var tokensToRemove = new List<Entities.DeviceToken>();

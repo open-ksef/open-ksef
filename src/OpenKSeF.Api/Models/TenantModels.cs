@@ -62,3 +62,28 @@ public record ChangeMemberRoleRequest(
     [param: Required]
     [param: AllowedValues(nameof(TenantRole.Owner), nameof(TenantRole.Administrator), nameof(TenantRole.Accountant), nameof(TenantRole.Employee), ErrorMessage = "Nieznana rola.")]
     string? Role);
+
+public record CreateInviteRequest(
+    [param: Required]
+    [param: EmailAddress]
+    [param: MaxLength(320)]
+    string? Email,
+    [param: Required]
+    [param: AllowedValues(nameof(TenantRole.Owner), nameof(TenantRole.Administrator), nameof(TenantRole.Accountant), nameof(TenantRole.Employee))]
+    string? Role);
+
+public record CreateInviteResponse(
+    string Status,
+    string? DisplayName = null,
+    Guid? InviteId = null,
+    string? Link = null,
+    DateTime? ExpiresAt = null,
+    bool? EmailSent = null);
+
+public record TenantInviteResponse(Guid Id, string Email, string Role, string? InvitedByName, DateTime CreatedAt, DateTime ExpiresAt, bool IsExpired);
+
+public record InviteLinkResponse(string Link, DateTime ExpiresAt, bool EmailSent);
+
+public record AcceptInviteRequest([param: Required] [param: MaxLength(100)] string? Token);
+
+public record AcceptInviteResponse(Guid TenantId, string DisplayName, string Role);

@@ -35,6 +35,10 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         ["GET api/tenants/{tenantId}/members"] = new(null, TenantPermissions.MembersManage),
         ["PUT api/tenants/{tenantId}/members/{userId}"] = new(new { role = "Employee" }, TenantPermissions.MembersManage, HttpStatusCode.NotFound),
         ["DELETE api/tenants/{tenantId}/members/{userId}"] = new(null, TenantPermissions.MembersManage, HttpStatusCode.NotFound),
+        ["POST api/tenants/{tenantId}/invites"] = new(new { email = "isolation-invitee@example.invalid", role = "Employee" }, TenantPermissions.MembersManage),
+        ["GET api/tenants/{tenantId}/invites"] = new(null, TenantPermissions.MembersManage),
+        ["POST api/tenants/{tenantId}/invites/{id}/resend"] = new(null, TenantPermissions.MembersManage),
+        ["DELETE api/tenants/{tenantId}/invites/{id}"] = new(null, TenantPermissions.MembersManage, HttpStatusCode.NoContent),
         ["PUT api/tenants/{tenantId}/members/me/notifications"] = new(new { enabled = true }, TenantPermissions.NotificationsSelf, HttpStatusCode.NoContent),
         ["POST api/tenants/{tenantId}/credentials"] = new(new { type = 0 }, TenantPermissions.CredentialManage, HttpStatusCode.BadRequest),
         ["DELETE api/tenants/{tenantId}/credentials"] = new(null, TenantPermissions.CredentialManage, HttpStatusCode.NoContent),
@@ -89,6 +93,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         var tenantA = await CreateTenantAsync(_owner);
         var tenantB = await CreateTenantAsync(_other);
         var issuedId = await CreateDraftAsync(tenantA);
+        var inviteId = await SeedInviteAsync(tenantA);
 
         var now = DateTime.UtcNow;
         var invoice = new InvoiceHeader
@@ -118,7 +123,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
             await db.SaveChangesAsync();
         });
 
-        _seed = new Seed(tenantA, tenantB, invoice.Id, invoice.KSeFInvoiceNumber, issuedId, device);
+        _seed = new Seed(tenantA, tenantB, invoice.Id, invoice.KSeFInvoiceNumber, issuedId, device, inviteId);
     }
 
     public Task DisposeAsync()
@@ -221,7 +226,9 @@ public sealed class TenantIsolationTests : IAsyncLifetime
                 var expected = Cases[route.Key];
                 foreach (var (name, role, client) in clients)
                 {
-                    var issuedId = route.Template.Contains("/issued-invoices/{id}") ? await CreateDraftAsync(_seed.TenantA) : _seed.IssuedId;
+                    Guid? issuedId = route.Template.Contains("/issued-invoices/{id}") ? await CreateDraftAsync(_seed.TenantA)
+                        : route.Template.Contains("/invites/{id}") ? await SeedInviteAsync(_seed.TenantA)
+                        : null;
                     if (route.Key == "DELETE api/tenants/{tenantId}/credentials")
                         await WithDbAsync(db => SeedCredentialAsync(db, _seed.TenantA));
 
@@ -302,7 +309,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
             .Replace("{tenantId}", tenantId.ToString())
             .Replace("{ksefInvoiceNumber}", _seed.KsefNumber)
             .Replace("{userId}", "no-such-member")
-            .Replace("{id}", ResourceId(route.Template, issuedId ?? _seed.IssuedId).ToString());
+            .Replace("{id}", ResourceId(route.Template, issuedId).ToString());
         if (path.Contains('{'))
             throw new InvalidOperationException($"Unfilled route parameter in {route.Key}");
         if (route.Parameters.Contains("tenantId") && !route.Template.Contains("{tenantId}"))
@@ -318,11 +325,12 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         response.StatusCode == HttpStatusCode.NotFound
         && response.Content.Headers.ContentType?.MediaType == "application/problem+json";
 
-    private Guid ResourceId(string template, Guid issuedId) => template switch
+    private Guid ResourceId(string template, Guid? resourceId) => template switch
     {
         _ when !template.Contains("{id}") => Guid.Empty,
         _ when template.StartsWith("api/devices/{id}", StringComparison.Ordinal) => _seed.DeviceId,
-        _ when template.Contains("/issued-invoices/{id}", StringComparison.Ordinal) => issuedId,
+        _ when template.Contains("/issued-invoices/{id}", StringComparison.Ordinal) => resourceId ?? _seed.IssuedId,
+        _ when template.Contains("/invites/{id}", StringComparison.Ordinal) => resourceId ?? _seed.InviteId,
         _ when template.Contains("/invoices/{id}", StringComparison.Ordinal) => _seed.InvoiceId,
         _ => throw new InvalidOperationException($"No seeded resource for {template}"),
     };
@@ -332,6 +340,22 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         var response = await _owner.PostAsJsonAsync($"/api/tenants/{tenantId}/issued-invoices", DraftBody);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<IdDto>())!.Id;
+    }
+
+    private async Task<Guid> SeedInviteAsync(Guid tenantId)
+    {
+        var invite = new TenantInvite
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, Email = $"isolation-{Guid.NewGuid():N}@example.invalid", Role = TenantRole.Employee,
+            TokenHash = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32)), CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddDays(14), InvitedByUserId = "isolation",
+        };
+        await WithDbAsync(async db =>
+        {
+            db.TenantInvites.Add(invite);
+            await db.SaveChangesAsync();
+        });
+        return invite.Id;
     }
 
     private static async Task<Guid> CreateTenantAsync(HttpClient client)
@@ -347,7 +371,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         await action(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>());
     }
 
-    private sealed record Seed(Guid TenantA, Guid TenantB, Guid InvoiceId, string KsefNumber, Guid IssuedId, Guid DeviceId);
+    private sealed record Seed(Guid TenantA, Guid TenantB, Guid InvoiceId, string KsefNumber, Guid IssuedId, Guid DeviceId, Guid InviteId);
 
     private sealed record IdDto(Guid Id);
 
