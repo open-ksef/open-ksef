@@ -385,6 +385,51 @@ public class InvoicesControllerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SetPaid_ThenUnpaid_RecordsPaidByAndAudit_ListAndDetailReturnPaidByName()
+    {
+        var invoice = MakeInvoice("KSEF-PAY-003", DateTime.UtcNow.Date);
+        _db.InvoiceHeaders.Add(invoice);
+        _db.UserProfiles.Add(new UserProfile { UserId = _userId, Email = "b@example.invalid", DisplayName = "Bogna Test", UpdatedAt = DateTime.UtcNow });
+        await _db.SaveChangesAsync();
+        var controller = CreateController();
+
+        var paid = Assert.IsType<InvoiceResponse>(((OkObjectResult)await controller.SetPaid(_tenantId, invoice.Id, new SetInvoicePaidRequest(true))).Value);
+        var listed = Assert.IsType<PagedResult<InvoiceResponse>>(((OkObjectResult)await controller.List(_tenantId)).Value).Items.Single();
+        var detail = Assert.IsType<InvoiceResponse>(((OkObjectResult)await controller.Get(_tenantId, invoice.Id)).Value);
+
+        Assert.Equal("Bogna Test", paid.PaidByName);
+        Assert.Equal("Bogna Test", listed.PaidByName);
+        Assert.Equal("Bogna Test", detail.PaidByName);
+        Assert.Equal(_userId, (await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == invoice.Id)).PaidByUserId);
+
+        var unpaid = Assert.IsType<InvoiceResponse>(((OkObjectResult)await controller.SetPaid(_tenantId, invoice.Id, new SetInvoicePaidRequest(false))).Value);
+
+        Assert.Null(unpaid.PaidByName);
+        var stored = await _db.InvoiceHeaders.AsNoTracking().SingleAsync(i => i.Id == invoice.Id);
+        Assert.Null(stored.PaidAt);
+        Assert.Null(stored.PaidByUserId);
+        var audit = await _db.AuditEvents.AsNoTracking().Where(a => a.TenantId == _tenantId).OrderBy(a => a.Action).ToListAsync();
+        Assert.Equal([AuditEvent.InvoicePaid, AuditEvent.InvoiceUnpaid], audit.Select(a => a.Action));
+        Assert.All(audit, a => Assert.Equal((_userId, "Bogna Test", invoice.Id.ToString()), (a.ActorUserId, a.ActorName, a.Target)));
+    }
+
+    [Fact]
+    public async Task List_PaidByWithoutProfile_ReturnsNullName()
+    {
+        var invoice = MakeInvoice("KSEF-PAY-004", DateTime.UtcNow.Date);
+        invoice.IsPaid = true;
+        invoice.PaidAt = DateTime.UtcNow;
+        invoice.PaidByUserId = "user-without-profile";
+        _db.InvoiceHeaders.Add(invoice);
+        await _db.SaveChangesAsync();
+
+        var listed = Assert.IsType<PagedResult<InvoiceResponse>>(((OkObjectResult)await CreateController().List(_tenantId)).Value).Items.Single();
+
+        Assert.True(listed.IsPaid);
+        Assert.Null(listed.PaidByName);
+    }
+
+    [Fact]
     public async Task SetPaid_NotFound_Returns404()
     {
         var controller = CreateController();

@@ -45,9 +45,13 @@ public record TenantResponse(
     string? NotificationEmail,
     DateTime CreatedAt,
     string Role = nameof(TenantRole.Owner),
-    IReadOnlyList<string>? Permissions = null)
+    IReadOnlyList<string>? Permissions = null,
+    bool NotificationsEnabled = true)
 {
-    public static TenantResponse From(Tenant tenant, TenantRole role) => new(
+    public static TenantResponse From(Tenant tenant, TenantMember member) => new(
         tenant.Id, tenant.Nip, tenant.DisplayName, tenant.NotificationEmail, tenant.CreatedAt,
-        role.ToString(), TenantPermissions.For(role).Order(StringComparer.Ordinal).ToList());
+        member.Role.ToString(), TenantPermissions.For(member.Role).Order(StringComparer.Ordinal).ToList(),
+        member.NotifyNewInvoices);
 }
+
+public record SetMemberNotificationsRequest([param: Required] bool? Enabled);

@@ -26,6 +26,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<InvoiceNumberCounter> InvoiceNumberCounters => Set<InvoiceNumberCounter>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<TenantMember> TenantMembers => Set<TenantMember>();
+    public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -263,6 +264,22 @@ public class ApplicationDbContext : DbContext
             entity.Property(a => a.Action).HasMaxLength(64);
             entity.Property(a => a.TargetUserId).HasMaxLength(256);
             entity.Property(a => a.TargetEmail).HasMaxLength(320);
+            entity.Property(a => a.ActorName).HasMaxLength(320);
+            entity.Property(a => a.Target).HasMaxLength(320);
+            entity.HasIndex(a => new { a.TenantId, a.OccurredAt });
+            entity.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(a => a.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserProfile>(entity =>
+        {
+            entity.HasKey(p => p.UserId);
+            entity.Property(p => p.UserId).HasMaxLength(256);
+            entity.Property(p => p.Email).HasMaxLength(320);
+            entity.Property(p => p.DisplayName).HasMaxLength(200);
+            entity.HasIndex(p => p.Email);
         });
 
         modelBuilder.Entity<TenantMember>(entity =>

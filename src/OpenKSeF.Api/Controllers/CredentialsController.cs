@@ -64,6 +64,7 @@ public class CredentialsSummaryController : ControllerBase
 public class CredentialsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
+    private readonly ICurrentUserService _currentUser;
     private readonly IEncryptionService _encryption;
     private readonly ManualSyncJobs _syncJobs;
     private readonly ILogger<CredentialsController> _logger;
@@ -84,11 +85,13 @@ public class CredentialsController : ControllerBase
 
     public CredentialsController(
         ApplicationDbContext db,
+        ICurrentUserService currentUser,
         IEncryptionService encryption,
         ManualSyncJobs syncJobs,
         ILogger<CredentialsController> logger)
     {
         _db = db;
+        _currentUser = currentUser;
         _encryption = encryption;
         _syncJobs = syncJobs;
         _logger = logger;
@@ -162,6 +165,7 @@ public class CredentialsController : ControllerBase
                 CreatedAt = now,
                 UpdatedAt = now
             });
+            await TenantAudit.AddAsync(_db, tenantId, _currentUser.UserId, AuditEvent.CredentialSet, request.Type.ToString());
 
             try
             {
@@ -181,6 +185,7 @@ public class CredentialsController : ControllerBase
         existing.EncryptedCertificateData = encryptedCertData;
         existing.CertificateFingerprint = fingerprint;
         existing.UpdatedAt = now;
+        await TenantAudit.AddAsync(_db, tenantId, _currentUser.UserId, AuditEvent.CredentialSet, request.Type.ToString());
         await _db.SaveChangesAsync();
         _logger.LogInformation("KSeF credential updated for tenant {TenantId} (type: {Type})", tenantId, request.Type);
         return Ok(new { message = "Credential saved." });
@@ -200,6 +205,7 @@ public class CredentialsController : ControllerBase
             return NotFound();
 
         _db.KSeFCredentials.Remove(existing);
+        await TenantAudit.AddAsync(_db, tenantId, _currentUser.UserId, AuditEvent.CredentialDeleted);
         await _db.SaveChangesAsync();
 
         _logger.LogInformation("KSeF credential deleted for tenant {TenantId}", tenantId);

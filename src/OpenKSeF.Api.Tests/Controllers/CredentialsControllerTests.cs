@@ -108,10 +108,12 @@ public class CredentialsControllerCrudTests : IDisposable
     private readonly IEncryptionService _encryption;
     private readonly ILogger<CredentialsController> _logger = Substitute.For<ILogger<CredentialsController>>();
     private readonly string _userId = "user-1";
+    private readonly ICurrentUserService _currentUser = Substitute.For<ICurrentUserService>();
     private readonly Guid _tenantId;
 
     public CredentialsControllerCrudTests()
     {
+        _currentUser.UserId.Returns(_userId);
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
@@ -129,7 +131,7 @@ public class CredentialsControllerCrudTests : IDisposable
     }
 
     private CredentialsController CreateController() =>
-        new(_db, _encryption, CredentialsControllerSyncTests.Jobs(Substitute.For<ITenantSyncService>()), _logger);
+        new(_db, _currentUser, _encryption, CredentialsControllerSyncTests.Jobs(Substitute.For<ITenantSyncService>()), _logger);
 
     [Fact]
     public async Task AddOrUpdate_Token_CreatesCredential()
@@ -259,6 +261,31 @@ public class CredentialsControllerCrudTests : IDisposable
         Assert.Equal(CredentialType.Certificate, creds[0].Type);
         Assert.Null(creds[0].EncryptedToken);
         Assert.NotNull(creds[0].EncryptedCertificateData);
+    }
+
+    [Fact]
+    public async Task AddOrUpdateTwiceThenDelete_AuditsEachWithActorName()
+    {
+        _db.UserProfiles.Add(new UserProfile { UserId = _userId, Email = "a@example.invalid", DisplayName = "Adam Test", UpdatedAt = DateTime.UtcNow });
+        await _db.SaveChangesAsync();
+        var controller = CreateController();
+
+        await controller.AddOrUpdate(_tenantId, new AddCredentialRequest(Type: CredentialType.Token, Token: "first"));
+        await controller.AddOrUpdate(_tenantId, new AddCredentialRequest(Type: CredentialType.Token, Token: "second"));
+        Assert.IsType<NoContentResult>(await controller.Delete(_tenantId));
+
+        var audit = await _db.AuditEvents.Where(a => a.TenantId == _tenantId).ToListAsync();
+        Assert.Equal(2, audit.Count(a => a.Action == AuditEvent.CredentialSet));
+        Assert.Single(audit, a => a.Action == AuditEvent.CredentialDeleted);
+        Assert.All(audit, a => Assert.Equal((_userId, "Adam Test", "a@example.invalid"), (a.ActorUserId, a.ActorName, a.ActorEmail)));
+    }
+
+    [Fact]
+    public async Task AddOrUpdate_BadRequest_WritesNoAudit()
+    {
+        await CreateController().AddOrUpdate(_tenantId, new AddCredentialRequest(Type: CredentialType.Token, Token: null));
+
+        Assert.Empty(_db.AuditEvents);
     }
 
     [Fact]

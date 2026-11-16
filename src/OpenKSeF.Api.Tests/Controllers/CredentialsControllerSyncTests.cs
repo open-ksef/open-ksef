@@ -55,7 +55,7 @@ public class CredentialsControllerSyncTests : IDisposable
         var context = new DefaultHttpContext();
         if (preferAsync)
             context.Request.Headers["Prefer"] = "respond-async";
-        return new CredentialsController(_db, Substitute.For<IEncryptionService>(), _jobs, Substitute.For<ILogger<CredentialsController>>())
+        return new CredentialsController(_db, Substitute.For<ICurrentUserService>(), Substitute.For<IEncryptionService>(), _jobs, Substitute.For<ILogger<CredentialsController>>())
         {
             ControllerContext = new ControllerContext { HttpContext = context }
         };

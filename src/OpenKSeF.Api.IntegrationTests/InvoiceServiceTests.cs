@@ -509,6 +509,7 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
         }
 
         public Task NotifyIssuedInvoiceStuckAsync(Guid tenantId, Guid issuedInvoiceId, string? number) => Task.CompletedTask;
+        public Task NotifyAccessGrantedAsync(string userId, Guid tenantId, string tenantName) => Task.CompletedTask;
 
         public Task SendConfirmationAsync(string deviceToken, Platform platform) => Task.CompletedTask;
 
@@ -532,6 +533,7 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
         }
 
         public Task NotifyIssuedInvoiceStuckAsync(Guid tenantId, Guid issuedInvoiceId, string? number) => Task.CompletedTask;
+        public Task NotifyAccessGrantedAsync(string userId, Guid tenantId, string tenantName) => Task.CompletedTask;
 
         public Task SendConfirmationAsync(string deviceToken, Platform platform) => Task.CompletedTask;
 

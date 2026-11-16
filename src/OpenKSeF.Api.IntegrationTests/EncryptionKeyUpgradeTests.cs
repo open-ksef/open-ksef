@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
+using NSubstitute;
 using OpenKSeF.Api.Controllers;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Data;
@@ -150,6 +151,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         using var scope = host.CreateScope();
         var controller = new CredentialsController(
             db ?? scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
+            Substitute.For<ICurrentUserService>(),
             scope.ServiceProvider.GetRequiredService<IEncryptionService>(),
             null!,
             NullLogger<CredentialsController>.Instance);
@@ -669,17 +671,17 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task WriteAfterAdoption_OpensNoTransaction()
+    public async Task WriteAfterAdoption_DoesNotTouchTheKeyRow()
     {
         await SeedAsync(_oldKey, withRow: false);
         var tenantId = await AddTenantWithoutCredentialAsync();
         await using var host = await StartHostAsync(OldKey);
-        var transactions = 0;
-        await using var db = NewContext(new OnTransactionStart(() => transactions++));
+        var keyRowReads = 0;
+        await using var db = NewContext(new OnCommand(sql => keyRowReads += sql.Contains("\"SystemConfigs\"", StringComparison.Ordinal) ? 1 : 0));
 
         Assert.IsType<OkObjectResult>(await PostTokenAsync(host, tenantId, "user-new-token", db));
 
-        Assert.Equal(0, transactions);
+        Assert.Equal(0, keyRowReads);
     }
 
     [Fact]
@@ -1098,11 +1100,11 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
         }
     }
 
-    private sealed class OnTransactionStart(Action onStart) : DbTransactionInterceptor
+    private sealed class OnCommand(Action<string> onCommand) : DbCommandInterceptor
     {
-        public override ValueTask<InterceptionResult<DbTransaction>> TransactionStartingAsync(DbConnection connection, TransactionStartingEventData eventData, InterceptionResult<DbTransaction> result, CancellationToken cancellationToken = default)
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
         {
-            onStart();
+            onCommand(command.CommandText);
             return ValueTask.FromResult(result);
         }
     }

@@ -37,6 +37,10 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasMaxLength(320)
                         .HasColumnType("character varying(320)");
 
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
                     b.Property<string>("ActorUserId")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -45,16 +49,24 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<DateTime>("OccurredAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Target")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
                     b.Property<string>("TargetEmail")
                         .HasMaxLength(320)
                         .HasColumnType("character varying(320)");
 
                     b.Property<string>("TargetUserId")
-                        .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OccurredAt");
 
                     b.ToTable("AuditEvents");
                 });
@@ -471,6 +483,9 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("NotifyNewInvoices")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -481,6 +496,33 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("TenantMembers");
+                });
+
+            modelBuilder.Entity("OpenKSeF.Domain.Entities.UserProfile", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<bool>("EmailVerified")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("Email");
+
+                    b.ToTable("UserProfiles");
                 });
 
             modelBuilder.Entity("OpenKSeF.Domain.Invoicing.InvoiceNumberCounter", b =>
@@ -837,6 +879,14 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.HasKey("TenantId");
 
                     b.ToTable("SellerProfiles");
+                });
+
+            modelBuilder.Entity("OpenKSeF.Domain.Entities.AuditEvent", b =>
+                {
+                    b.HasOne("OpenKSeF.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("OpenKSeF.Domain.Entities.DeviceToken", b =>

@@ -125,6 +125,7 @@ builder.Services.AddAuthorization(options => options.AddPolicy(SystemSettingsCon
         && roles.EnumerateArray().Any(role => role.GetString() == SystemSettingsController.AdminRole)))));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<UserProfileService>();
 
 builder.Services.AddMemoryCache();
 
@@ -373,6 +374,12 @@ app.Use(async (context, next) =>
     }
 });
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated == true)
+        await context.RequestServices.GetRequiredService<UserProfileService>().EnsureAsync(context.User);
+    await next();
+});
 // After authentication so the manual-sync policy can partition by user; anonymous requests are still limited before the 401.
 app.UseRateLimiter();
 app.UseAuthorization();
