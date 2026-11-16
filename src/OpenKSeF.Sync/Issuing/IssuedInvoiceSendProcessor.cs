@@ -104,7 +104,8 @@ public sealed class IssuedInvoiceSendProcessor(
         foreach (var invoice in await Due(db.IssuedInvoices.Where(i => ids.Contains(i.Id)), cycleStart).ToListAsync(ct))
         {
             var (lastError, delay) = schedule.GetValueOrDefault(invoice.Id, (invoice.LastError, invoice.NextAttemptAt - invoice.UpdatedAt));
-            invoice.ScheduleRetry(UnexpectedErrorMessage, Now().Add(Backoff(lastError, delay, UnexpectedErrorMessage)), Now());
+            var now = Now();
+            invoice.ScheduleRetry(UnexpectedErrorMessage, now.Add(Backoff(lastError, delay, UnexpectedErrorMessage)), now);
             await db.SaveChangesAsync(ct);
         }
     }
@@ -436,7 +437,10 @@ public sealed class IssuedInvoiceSendProcessor(
             if (error is KsefRateLimitException limit)
                 invoice.ScheduleRetry(RateLimitedMessage, Now().Add(limit.RecommendedDelay), Now());
             else
-                invoice.ScheduleRetry(UnavailableMessage, Now().Add(Backoff(invoice.LastError, invoice.NextAttemptAt - invoice.UpdatedAt, UnavailableMessage)), Now());
+            {
+                var now = Now();
+                invoice.ScheduleRetry(UnavailableMessage, now.Add(Backoff(invoice.LastError, invoice.NextAttemptAt - invoice.UpdatedAt, UnavailableMessage)), now);
+            }
             await db.SaveChangesAsync(ct);
         }
     }

@@ -767,6 +767,37 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Fact]
+    public async Task UnexpectedErrorOnLogin_ClockAdvancesDuringCycle_BackoffDoubles()
+    {
+        var id = await SeedAsync();
+        _submitter.OnLogin = () => throw new CryptographicException("tag mismatch");
+        Assert.Equal([10, 20, 40, 80], await DelaysOnTickingClockAsync(id));
+    }
+
+    [Fact]
+    public async Task TransientErrorOnLogin_ClockAdvancesDuringCycle_BackoffDoubles()
+    {
+        var id = await SeedAsync();
+        _submitter.OnLogin = () => throw new HttpRequestException("down");
+        Assert.Equal([10, 20, 40, 80], await DelaysOnTickingClockAsync(id));
+    }
+
+    private async Task<List<double>> DelaysOnTickingClockAsync(Guid id)
+    {
+        var clock = new TickingTime(_time.GetUtcNow());
+        var delays = new List<double>();
+        for (var i = 0; i < 4; i++)
+        {
+            await using (var db = NewDb())
+                await new IssuedInvoiceSendProcessor(db, _submitter, _tokens, clock, new LoggerAdapter<IssuedInvoiceSendProcessor>(_logs)).ProcessAsync("test", CancellationToken.None);
+            var invoice = await LoadAsync(id);
+            delays.Add(Math.Round((invoice.NextAttemptAt!.Value - invoice.UpdatedAt).TotalSeconds));
+            clock.Now = new DateTimeOffset(invoice.NextAttemptAt.Value, TimeSpan.Zero);
+        }
+        return delays;
+    }
+
+    [Fact]
     public async Task Http401OnLogin_RetriedNotRejected()
     {
         var id = await SeedAsync();
@@ -1576,6 +1607,12 @@ public class IssuedInvoiceSendProcessorTests
     {
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
             throw new KsefApiException("unauthorized", HttpStatusCode.Unauthorized, null!, null!);
+    }
+
+    private sealed class TickingTime(DateTimeOffset start) : TimeProvider
+    {
+        public DateTimeOffset Now = start;
+        public override DateTimeOffset GetUtcNow() => Now = Now.AddTicks(10);
     }
 
     private sealed class FakeSubmitter : IKSeFInvoiceSubmitter
