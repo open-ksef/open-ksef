@@ -17,6 +17,7 @@ import type { InvoiceResponse, TenantCredentialStatusResponse, TenantDashboardSu
 import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
 import { InvoiceListPage } from './InvoiceList'
+import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/invoices', () => ({ listInvoices: vi.fn() }))
@@ -132,8 +133,8 @@ describe('InvoiceListPage', () => {
     document.body.appendChild(container)
     root = createRoot(container)
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 'tenant-1', nip: '1234567890', displayName: 'Tenant A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
-      { id: 'tenant-2', nip: '2222222222', displayName: 'Tenant B', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 'tenant-1', nip: '1234567890', displayName: 'Tenant A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 'tenant-2', nip: '2222222222', displayName: 'Tenant B', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     vi.mocked(listInvoices).mockResolvedValue({ items: [invoice()], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 })
     vi.mocked(getDashboardOverview).mockResolvedValue([summary({})])

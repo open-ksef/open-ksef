@@ -27,6 +27,7 @@ import { memoryStorage } from '@/company/memoryStorage'
 import { formatWarsawDate } from '@/invoicing/format'
 import { CompanyLayoutPage } from './CompanyLayout'
 import { CompanyTokenPage } from './CompanyToken'
+import { employeeAccess, ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/credentials', () => ({
   listCredentials: vi.fn(),
@@ -44,7 +45,7 @@ vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn() }))
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
-const company = (id: string, name: string, nip: string) => ({ id, nip, displayName: name, notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' })
+const company = (id: string, name: string, nip: string) => ({ id, nip, displayName: name, notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' })
 const row = (tenantId: string, overrides: Partial<TenantCredentialStatusResponse> = {}): TenantCredentialStatusResponse => ({
   tenantId,
   tenantDisplayName: tenantId,
@@ -395,6 +396,22 @@ describe('Firma, Dostęp do KSeF i pobieranie', () => {
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['transfer-details', 'a'] })
     invalidate.mockRestore()
+  })
+
+  it('a member without credential.manage and sync.fullResync gets no form, no removal, no full resync, but can fetch', async () => {
+    vi.mocked(listTenants).mockResolvedValue([{ ...company('a', 'Firma A', '1111111111'), ...employeeAccess }])
+    vi.mocked(forceCredentialSync).mockResolvedValue({ tenantId: 'a', fetchedInvoices: 0, newInvoices: 0 } as never)
+    await render()
+
+    expect(by('credential-readonly')?.textContent).toBe('Zmienić to może tylko właściciel lub administrator firmy.')
+    expect(by('credential-token-input')).toBeNull()
+    expect(by('credential-submit-button')).toBeNull()
+    expect(by('credential-delete-button')).toBeNull()
+    expect(by('credential-full-resync-button')).toBeNull()
+    expect(container.querySelector('#token-danger-title')).toBeNull()
+    await act(async () => by('invoice-fetch-button')?.click())
+    await settle()
+    expect(forceCredentialSync).toHaveBeenCalledExactlyOnceWith('a')
   })
 
   it('a company without a token has no danger card and no fetch', async () => {

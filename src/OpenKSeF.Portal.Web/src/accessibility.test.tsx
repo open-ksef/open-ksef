@@ -10,6 +10,7 @@ import { listTenants } from '@/api/endpoints/tenants'
 import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
 import { Layout } from '@/components/Layout'
+import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 
@@ -30,7 +31,7 @@ describe('accessibility checks', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', memoryStorage())
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '1111111111', displayName: 'Firma Testowa', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '1111111111', displayName: 'Firma Testowa', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     container = document.createElement('div')

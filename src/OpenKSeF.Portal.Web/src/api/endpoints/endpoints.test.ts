@@ -31,6 +31,30 @@ describe('tenants endpoints', () => {
     expect(apiClientMock.put).toHaveBeenCalledWith('/tenants/tenant-1', { displayName: 'Updated' })
     expect(apiClientMock.delete).toHaveBeenCalledWith('/tenants/tenant-1')
   })
+
+  it('calls member, invite and accept endpoints', async () => {
+    const t = await import('./tenants')
+
+    await t.setMyNotifications('tenant-1', false)
+    await t.listMembers('tenant-1')
+    await t.changeMemberRole('tenant-1', 'user 1', 'Accountant')
+    await t.removeMember('tenant-1', 'user 1')
+    await t.listInvites('tenant-1')
+    await t.createInvite('tenant-1', { email: 'e@x.pl', role: 'Employee' })
+    await t.resendInvite('tenant-1', 'inv-1')
+    await t.revokeInvite('tenant-1', 'inv-1')
+    await t.acceptInvite('tok')
+
+    expect(apiClientMock.put).toHaveBeenCalledWith('/tenants/tenant-1/members/me/notifications', { enabled: false })
+    expect(apiClientMock.get).toHaveBeenCalledWith('/tenants/tenant-1/members')
+    expect(apiClientMock.put).toHaveBeenCalledWith('/tenants/tenant-1/members/user%201', { role: 'Accountant' })
+    expect(apiClientMock.delete).toHaveBeenCalledWith('/tenants/tenant-1/members/user%201')
+    expect(apiClientMock.get).toHaveBeenCalledWith('/tenants/tenant-1/invites')
+    expect(apiClientMock.post).toHaveBeenCalledWith('/tenants/tenant-1/invites', { email: 'e@x.pl', role: 'Employee' })
+    expect(apiClientMock.post).toHaveBeenCalledWith('/tenants/tenant-1/invites/inv-1/resend')
+    expect(apiClientMock.delete).toHaveBeenCalledWith('/tenants/tenant-1/invites/inv-1')
+    expect(apiClientMock.post).toHaveBeenCalledWith('/invites/accept', { token: 'tok' })
+  })
 })
 
 describe('invoices endpoints', () => {

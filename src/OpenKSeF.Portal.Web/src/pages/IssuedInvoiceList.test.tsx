@@ -12,6 +12,7 @@ import { listTenants } from '@/api/endpoints/tenants'
 import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
 import { IssuedInvoiceListPage } from './IssuedInvoiceList'
+import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/credentials', () => ({ listCredentials: vi.fn() }))
@@ -58,7 +59,7 @@ describe('Wystawione faktury, niepełne pobieranie', () => {
     vi.clearAllMocks()
     vi.stubGlobal('localStorage', memoryStorage())
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-    vi.mocked(listTenants).mockResolvedValue([{ id: 'a', nip: '1111111111', displayName: 'Firma A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' }])
+    vi.mocked(listTenants).mockResolvedValue([{ id: 'a', nip: '1111111111', displayName: 'Firma A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' }])
     vi.mocked(listCredentials).mockResolvedValue([{ tenantId: 'a', tenantDisplayName: 'Firma A', hasCredential: true, credentialType: 'Token', lastUpdatedAt: '2026-09-14T10:00:00Z' }])
     vi.mocked(getSellerProfile).mockResolvedValue({ ksefEnvironment: 'test' } as never)
     container = document.createElement('div')

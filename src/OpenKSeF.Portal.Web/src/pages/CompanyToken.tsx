@@ -14,6 +14,7 @@ import {
 import { ApiError } from '@/api/errors'
 import type { TenantResponse } from '@/api/types'
 import { CompanyBox } from '@/company/CompanyBox'
+import { can, MANAGERS_ONLY } from '@/company/CompanyContext'
 import { useCompany } from '@/company/useCompany'
 import { Button } from '@/components/Button'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -63,6 +64,8 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
   const hasCredential = credential?.hasCredential ?? false
   const isCertificate = hasCredential && credential?.credentialType === 'Certificate'
   const method = chosenMethod ?? (isCertificate ? 'Certificate' : 'Token')
+  const canManage = can(company, 'credential.manage')
+  const canResync = can(company, 'sync.fullResync')
   const isCrt = /\.crt$/i.test(certFile?.name ?? '')
   const status = useQuery({
     queryKey: ['credentials', tenantId, 'status'],
@@ -226,93 +229,100 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
               </p>
             )
           ) : null}
-          <form onSubmit={onSubmit} noValidate>
-            <fieldset className="company-method">
-              <legend>Sposób logowania do KSeF</legend>
-              {(['Token', 'Certificate'] as const).map((value) => (
-                <label key={value} className="inv-check">
-                  <input
-                    type="radio"
-                    name="credential-method"
-                    data-testid={`credential-method-${value.toLowerCase()}`}
-                    checked={method === value}
-                    onChange={() => {
-                      setMethod(value)
-                      setFormError(null)
-                    }}
-                  />
-                  <span>{value === 'Token' ? 'Token KSeF' : 'Certyfikat KSeF'}</span>
-                </label>
-              ))}
-            </fieldset>
-            {method === 'Token' ? (
-              <div className="ui-form-group">
-                <label htmlFor="credential-token-input">{hasCredential ? 'Nowy token KSeF' : 'Token KSeF'}</label>
-                <input
-                  id="credential-token-input"
-                  data-testid="credential-token-input"
-                  className="mono"
-                  type="password"
-                  autoComplete="new-password"
-                  placeholder="Wklej token uwierzytelniający KSeF tutaj..."
-                  value={token}
-                  onChange={(event) => setToken(event.target.value)}
-                />
-                <span className="ui-form-hint" data-testid="credential-token-help">
-                  {TOKEN_HELP}
-                </span>
-              </div>
-            ) : (
-              <Fragment key={certFormKey}>
-                <p className="ui-form-hint" data-testid="credential-certificate-help">{CERTIFICATE_HELP}</p>
-                <div className="ui-form-group">
-                  <label htmlFor="credential-certificate-file">Plik certyfikatu (.pfx, .p12 lub .crt)</label>
-                  <input
-                    id="credential-certificate-file"
-                    data-testid="credential-certificate-file"
-                    type="file"
-                    accept=".pfx,.p12,.crt"
-                    onChange={(event) => setCertFile(event.target.files?.[0] ?? null)}
-                  />
-                </div>
-                {isCrt ? (
-                  <div className="ui-form-group">
-                    <label htmlFor="credential-key-file">Klucz prywatny (.key)</label>
+          {canManage ? null : (
+            <p className="company-muted" data-testid="credential-readonly">
+              {MANAGERS_ONLY}
+            </p>
+          )}
+          {canManage ? (
+            <form onSubmit={onSubmit} noValidate>
+              <fieldset className="company-method">
+                <legend>Sposób logowania do KSeF</legend>
+                {(['Token', 'Certificate'] as const).map((value) => (
+                  <label key={value} className="inv-check">
                     <input
-                      id="credential-key-file"
-                      data-testid="credential-key-file"
-                      type="file"
-                      accept=".key"
-                      onChange={(event) => setKeyFile(event.target.files?.[0] ?? null)}
+                      type="radio"
+                      name="credential-method"
+                      data-testid={`credential-method-${value.toLowerCase()}`}
+                      checked={method === value}
+                      onChange={() => {
+                        setMethod(value)
+                        setFormError(null)
+                      }}
                     />
-                  </div>
-                ) : null}
+                    <span>{value === 'Token' ? 'Token KSeF' : 'Certyfikat KSeF'}</span>
+                  </label>
+                ))}
+              </fieldset>
+              {method === 'Token' ? (
                 <div className="ui-form-group">
-                  <label htmlFor="credential-certificate-password">Hasło</label>
+                  <label htmlFor="credential-token-input">{hasCredential ? 'Nowy token KSeF' : 'Token KSeF'}</label>
                   <input
-                    id="credential-certificate-password"
-                    data-testid="credential-certificate-password"
+                    id="credential-token-input"
+                    data-testid="credential-token-input"
+                    className="mono"
                     type="password"
                     autoComplete="new-password"
-                    aria-describedby="credential-certificate-password-hint"
-                    value={certPassword}
-                    onChange={(event) => setCertPassword(event.target.value)}
+                    placeholder="Wklej token uwierzytelniający KSeF tutaj..."
+                    value={token}
+                    onChange={(event) => setToken(event.target.value)}
                   />
-                  <span className="ui-form-hint" id="credential-certificate-password-hint">
-                    Służy tylko do odczytu pliku. Nie zapisujemy go.
+                  <span className="ui-form-hint" data-testid="credential-token-help">
+                    {TOKEN_HELP}
                   </span>
                 </div>
-              </Fragment>
-            )}
-            {formError ? (
-              <div className="ui-form-error" role="alert">
-                {formError}
-              </div>
-            ) : null}
-            <Button type="submit" data-testid="credential-submit-button" disabled={save.isPending}>
-              {save.isPending ? 'Zapisywanie…' : `${hasCredential ? 'Zapisz' : 'Dodaj'} ${method === 'Token' ? 'token' : 'certyfikat'}`}
-            </Button>
-          </form>
+              ) : (
+                <Fragment key={certFormKey}>
+                  <p className="ui-form-hint" data-testid="credential-certificate-help">{CERTIFICATE_HELP}</p>
+                  <div className="ui-form-group">
+                    <label htmlFor="credential-certificate-file">Plik certyfikatu (.pfx, .p12 lub .crt)</label>
+                    <input
+                      id="credential-certificate-file"
+                      data-testid="credential-certificate-file"
+                      type="file"
+                      accept=".pfx,.p12,.crt"
+                      onChange={(event) => setCertFile(event.target.files?.[0] ?? null)}
+                    />
+                  </div>
+                  {isCrt ? (
+                    <div className="ui-form-group">
+                      <label htmlFor="credential-key-file">Klucz prywatny (.key)</label>
+                      <input
+                        id="credential-key-file"
+                        data-testid="credential-key-file"
+                        type="file"
+                        accept=".key"
+                        onChange={(event) => setKeyFile(event.target.files?.[0] ?? null)}
+                      />
+                    </div>
+                  ) : null}
+                  <div className="ui-form-group">
+                    <label htmlFor="credential-certificate-password">Hasło</label>
+                    <input
+                      id="credential-certificate-password"
+                      data-testid="credential-certificate-password"
+                      type="password"
+                      autoComplete="new-password"
+                      aria-describedby="credential-certificate-password-hint"
+                      value={certPassword}
+                      onChange={(event) => setCertPassword(event.target.value)}
+                    />
+                    <span className="ui-form-hint" id="credential-certificate-password-hint">
+                      Służy tylko do odczytu pliku. Nie zapisujemy go.
+                    </span>
+                  </div>
+                </Fragment>
+              )}
+              {formError ? (
+                <div className="ui-form-error" role="alert">
+                  {formError}
+                </div>
+              ) : null}
+              <Button type="submit" data-testid="credential-submit-button" disabled={save.isPending}>
+                {save.isPending ? 'Zapisywanie…' : `${hasCredential ? 'Zapisz' : 'Dodaj'} ${method === 'Token' ? 'token' : 'certyfikat'}`}
+              </Button>
+            </form>
+          ) : null}
         </section>
 
         <section className="ui-card company-fetch" aria-labelledby="fetch-title">
@@ -322,39 +332,43 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
           <p className="ui-form-hint">Pierwsze pobranie obejmuje ostatnie 6 miesięcy.</p>
         </section>
 
-        {hasCredential ? (
+        {hasCredential && (canManage || canResync) ? (
           <section className="ui-card ui-card--danger" aria-labelledby="token-danger-title">
             <h2 id="token-danger-title">Działania ryzykowne</h2>
             <ul className="danger-list">
-              <li>
-                <span>
-                  <b>Pełna resynchronizacja</b>
-                  <span>{FULL_RESYNC_TEXT}</span>
-                </span>
-                <button
-                  type="button"
-                  className="ui-button ui-button--danger-outline ui-button--md"
-                  data-testid="credential-full-resync-button"
-                  disabled={fullResync.isPending || ksef.pending}
-                  onClick={() => setPending('resync')}
-                >
-                  Pełna resynchronizacja
-                </button>
-              </li>
-              <li>
-                <span>
-                  <b>Usuń {removeLabel}</b>
-                  <span>Pobieranie faktur i wysyłanie ich do KSeF przestaną działać do czasu dodania nowego tokenu lub certyfikatu.</span>
-                </span>
-                <button
-                  type="button"
-                  className="ui-button ui-button--danger-outline ui-button--md"
-                  data-testid="credential-delete-button"
-                  onClick={() => setPending('delete')}
-                >
-                  {isCertificate ? 'Usuń certyfikat' : 'Usuń token'}
-                </button>
-              </li>
+              {canResync ? (
+                <li>
+                  <span>
+                    <b>Pełna resynchronizacja</b>
+                    <span>{FULL_RESYNC_TEXT}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="ui-button ui-button--danger-outline ui-button--md"
+                    data-testid="credential-full-resync-button"
+                    disabled={fullResync.isPending || ksef.pending}
+                    onClick={() => setPending('resync')}
+                  >
+                    Pełna resynchronizacja
+                  </button>
+                </li>
+              ) : null}
+              {canManage ? (
+                <li>
+                  <span>
+                    <b>Usuń {removeLabel}</b>
+                    <span>Pobieranie faktur i wysyłanie ich do KSeF przestaną działać do czasu dodania nowego tokenu lub certyfikatu.</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="ui-button ui-button--danger-outline ui-button--md"
+                    data-testid="credential-delete-button"
+                    onClick={() => setPending('delete')}
+                  >
+                    {isCertificate ? 'Usuń certyfikat' : 'Usuń token'}
+                  </button>
+                </li>
+              ) : null}
             </ul>
           </section>
         ) : null}

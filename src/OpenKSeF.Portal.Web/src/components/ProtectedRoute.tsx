@@ -12,6 +12,7 @@ export function ProtectedRoute({ children }: PropsWithChildren): ReactElement {
   const redirecting = useRef(false)
   const [redirectFailed, setRedirectFailed] = useState(false)
   const isOnboardingPath = location.pathname === '/onboarding'
+  const isInvitePath = location.pathname.startsWith('/zaproszenie/')
 
   const setup = useSetupStatus()
   const onboarding = useOnboardingStatus(isAuthenticated && !isLoading)
@@ -48,7 +49,7 @@ export function ProtectedRoute({ children }: PropsWithChildren): ReactElement {
   }
 
   if (onboarding.data) {
-    if (!onboarding.data.isComplete && !isOnboardingPath) {
+    if (!onboarding.data.isComplete && !isOnboardingPath && !isInvitePath) {
       return <Navigate to="/onboarding" replace />
     }
 

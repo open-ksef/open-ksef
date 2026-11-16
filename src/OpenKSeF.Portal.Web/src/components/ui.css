@@ -2008,6 +2008,29 @@ dd {
   font-size: 14px;
 }
 
+.members-head,
+.invite-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.invite-link input {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.danger-list li > .inv-badge {
+  flex: none;
+}
+
+.danger-list .members-role {
+  width: auto;
+  min-width: 160px;
+}
+
 .company-fetch {
   align-items: flex-start;
 }

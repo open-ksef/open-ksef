@@ -18,6 +18,7 @@ import { todayIso } from '@/invoicing/format'
 import { InvoiceDraftPage } from './InvoiceDraft'
 import { listCredentials } from '@/api/endpoints/credentials'
 import { IssuedInvoiceListPage } from './IssuedInvoiceList'
+import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn() }))
@@ -78,7 +79,7 @@ describe('issuing pages', () => {
     root = createRoot(container)
     vi.clearAllMocks()
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     vi.mocked(getSellerProfile).mockResolvedValue(profile)
   })
@@ -477,8 +478,8 @@ describe('issuing pages', () => {
 
     it('a create that lands after the form was replaced under the same key does not put the new form on the created invoice', async () => {
       vi.mocked(listTenants).mockResolvedValue([
-        { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
-        { id: 't-2', nip: '1234563218', displayName: 'B', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+        { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
+        { id: 't-2', nip: '1234563218', displayName: 'B', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
       ])
       let answer: (saved: IssuedInvoiceResponse) => void = () => undefined
       vi.mocked(createIssuedInvoice).mockImplementation(() => new Promise((resolve) => (answer = resolve)))
@@ -629,8 +630,8 @@ describe('issuing pages', () => {
 
     beforeEach(() => {
       vi.mocked(listTenants).mockResolvedValue([
-        { id: 't-1', nip: '5260250274', displayName: 'Firma A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
-        { id: 't-2', nip: '7740001454', displayName: 'Firma B', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+        { id: 't-1', nip: '5260250274', displayName: 'Firma A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
+        { id: 't-2', nip: '7740001454', displayName: 'Firma B', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
       ])
       vi.mocked(getSellerProfile).mockImplementation(async (id) => seller(id === 't-1' ? 'Sprzedawca A' : 'Sprzedawca B'))
     })

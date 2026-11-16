@@ -15,6 +15,7 @@ import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
 import { InvoiceDetailsPage } from '@/pages/InvoiceDetails'
 import { Layout } from './Layout'
+import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/system', () => ({ getSetupStatus: vi.fn() }))
@@ -66,7 +67,7 @@ describe('Layout', () => {
     document.body.appendChild(container)
     root = createRoot(container)
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '1111111111', displayName: 'Firma Testowa', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '1111111111', displayName: 'Firma Testowa', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     vi.mocked(getInvoiceByKSeFNumber).mockReset()
     vi.mocked(getInvoiceByKSeFNumber).mockRejectedValue(new ApiError('Not found', 404))

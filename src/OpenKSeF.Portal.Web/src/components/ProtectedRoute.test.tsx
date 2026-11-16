@@ -81,6 +81,28 @@ describe('ProtectedRoute', () => {
     expect(container.textContent).toContain('Protected content')
   })
 
+  it('keeps a user without a company on the invite page instead of onboarding', async () => {
+    vi.mocked(getOnboardingStatus).mockResolvedValue({ isComplete: false, hasTenant: false, hasCredential: false, firstTenantId: null })
+    vi.mocked(useAuth).mockReturnValue({ isLoading: false, isAuthenticated: true, sessionEnded: false } as ReturnType<typeof useAuth>)
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={['/zaproszenie/tok', '/']} initialIndex={0}>
+            <Routes>
+              <Route path="/zaproszenie/:token" element={<ProtectedRoute><div>Invite page</div></ProtectedRoute>} />
+              <Route path="/" element={<ProtectedRoute><div>Home</div></ProtectedRoute>} />
+              <Route path="/onboarding" element={<div>Onboarding page</div>} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      )
+    })
+    for (let tick = 0; tick < 5; tick++) await act(flushPromises)
+
+    expect(container.textContent).toContain('Invite page')
+  })
+
   async function renderAt(path: string, auth: Partial<ReturnType<typeof useAuth>>) {
     vi.mocked(useAuth).mockReturnValue({ isLoading: false, isAuthenticated: false, sessionEnded: false, ...auth } as ReturnType<typeof useAuth>)
     function LoginProbe() {

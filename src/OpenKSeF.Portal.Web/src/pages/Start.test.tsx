@@ -24,6 +24,7 @@ import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
 import { useCompany } from '@/company/useCompany'
 import { StartPage } from './Start'
+import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/invoices', () => ({ listInvoices: vi.fn() }))
@@ -183,8 +184,8 @@ describe('StartPage', () => {
     document.body.appendChild(container)
     root = createRoot(container)
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 'a', nip: '1111111111', displayName: 'Firma A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
-      { id: 'b', nip: '2222222222', displayName: 'Firma B', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 'a', nip: '1111111111', displayName: 'Firma A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 'b', nip: '2222222222', displayName: 'Firma B', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     useData()
   })

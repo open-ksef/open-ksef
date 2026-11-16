@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTenants } from './useTenants'
 
 vi.mock('@/api/endpoints/tenants', () => ({
-  listTenants: vi.fn().mockResolvedValue([{ id: 'tenant-1', nip: '1234567890', displayName: 'Tenant A', notificationEmail: null, createdAt: new Date().toISOString() }]),
+  listTenants: vi.fn().mockResolvedValue([{ id: 'tenant-1', nip: '1234567890', displayName: 'Tenant A', notificationEmail: null, role: 'Owner', permissions: [], notificationsEnabled: true, createdAt: new Date().toISOString() }]),
 }))
 
 describe('query hooks', () => {

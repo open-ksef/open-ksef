@@ -9,6 +9,7 @@ import { listTenants } from '@/api/endpoints/tenants'
 import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
 import { CompanyDetailsPage } from './CompanyDetails'
+import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({
   listTenants: vi.fn(),
@@ -32,6 +33,7 @@ describe('accessibility keyboard support', () => {
         nip: '1234567890',
         displayName: 'Tenant A',
         notificationEmail: 'a@example.com',
+        ...ownerAccess,
         createdAt: '2026-01-01T00:00:00Z',
       },
     ])

@@ -4,10 +4,11 @@ import toast from 'react-hot-toast'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
-import { createTenant, deleteTenant, updateTenant } from '@/api/endpoints/tenants'
+import { createTenant, deleteTenant, listMembers, updateTenant } from '@/api/endpoints/tenants'
 import { ApiError, readFieldError } from '@/api/errors'
 import type { TenantResponse } from '@/api/types'
 import { CompanyBox } from '@/company/CompanyBox'
+import { can, MANAGERS_ONLY } from '@/company/CompanyContext'
 import { useCompany } from '@/company/useCompany'
 import { Button } from '@/components/Button'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -59,6 +60,8 @@ function DetailsTab({ company }: { company: TenantResponse }): ReactElement {
   const [email, setEmail] = useState(company.notificationEmail ?? '')
   const [formError, setFormError] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const editable = can(company, 'tenant.edit')
+  const deletable = can(company, 'tenant.delete')
 
   const countQuery = useQuery({
     queryKey: ['tenant-delete-count', company.id],
@@ -67,6 +70,14 @@ function DetailsTab({ company }: { company: TenantResponse }): ReactElement {
     retry: false,
     gcTime: 0,
   })
+
+  const membersQuery = useQuery({
+    queryKey: ['tenant-members', company.id],
+    queryFn: () => listMembers(company.id),
+    enabled: deleteOpen,
+    retry: false,
+  })
+  const otherMembers = membersQuery.data ? membersQuery.data.length - 1 : 0
 
   const update = useMutation({
     mutationFn: () => updateTenant(company.id, { displayName: displayName || null, notificationEmail: email || null }),
@@ -126,64 +137,75 @@ function DetailsTab({ company }: { company: TenantResponse }): ReactElement {
       <section className="ui-card" aria-labelledby="company-details-title">
         <h2 id="company-details-title">Dane firmy</h2>
         <form onSubmit={onSubmit} noValidate>
-          <div className="ui-form-group">
-            <label htmlFor="company-nip">NIP</label>
-            <input id="company-nip" className="mono nip-input" type="text" value={company.nip} readOnly />
-          </div>
-          <div className="ui-form-group">
-            <label htmlFor="company-display-name">Nazwa wyświetlana</label>
-            <input
-              id="company-display-name"
-              data-testid="company-display-name"
-              type="text"
-              maxLength={200}
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-            />
-          </div>
-          <div className="ui-form-group">
-            <label htmlFor="company-email">E-mail do powiadomień</label>
-            <input
-              id="company-email"
-              aria-describedby="company-email-hint"
-              data-testid="company-notification-email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-            <span className="ui-form-hint" id="company-email-hint">E-mail wysyłamy tylko wtedy, gdy administrator serwera skonfigurował pocztę.</span>
-          </div>
-          <p className="ui-form-hint">Data dodania: {formatWarsawDate(company.createdAt)}</p>
-          {formError ? (
-            <div className="ui-form-error" role="alert">
-              {formError}
+          {editable ? null : (
+            <p className="company-muted" data-testid="company-readonly">
+              {MANAGERS_ONLY}
+            </p>
+          )}
+          <fieldset disabled={!editable} style={{ display: 'contents' }}>
+            <div className="ui-form-group">
+              <label htmlFor="company-nip">NIP</label>
+              <input id="company-nip" className="mono nip-input" type="text" value={company.nip} readOnly />
             </div>
-          ) : null}
-          <Button type="submit" data-testid="company-save" disabled={update.isPending}>
-            {update.isPending ? 'Zapisywanie…' : 'Zapisz firmę'}
-          </Button>
+            <div className="ui-form-group">
+              <label htmlFor="company-display-name">Nazwa wyświetlana</label>
+              <input
+                id="company-display-name"
+                data-testid="company-display-name"
+                type="text"
+                maxLength={200}
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+              />
+            </div>
+            <div className="ui-form-group">
+              <label htmlFor="company-email">E-mail do powiadomień</label>
+              <input
+                id="company-email"
+                aria-describedby="company-email-hint"
+                data-testid="company-notification-email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+              <span className="ui-form-hint" id="company-email-hint">E-mail wysyłamy tylko wtedy, gdy administrator serwera skonfigurował pocztę.</span>
+            </div>
+            <p className="ui-form-hint">Data dodania: {formatWarsawDate(company.createdAt)}</p>
+            {formError ? (
+              <div className="ui-form-error" role="alert">
+                {formError}
+              </div>
+            ) : null}
+            {editable ? (
+              <Button type="submit" data-testid="company-save" disabled={update.isPending}>
+                {update.isPending ? 'Zapisywanie…' : 'Zapisz firmę'}
+              </Button>
+            ) : null}
+          </fieldset>
         </form>
       </section>
 
-      <section className="ui-card ui-card--danger" aria-labelledby="company-danger-title">
-        <h2 id="company-danger-title">Działania ryzykowne</h2>
-        <ul className="danger-list">
-          <li>
-            <span>
-              <b>Usuń firmę</b>
-              <span>Operacja nieodwracalna. Usuwa token, faktury otrzymane i wystawione oraz dane do faktur.</span>
-            </span>
-            <button
-              type="button"
-              className="ui-button ui-button--danger-outline ui-button--md"
-              data-testid="tenant-delete-button"
-              onClick={() => setDeleteOpen(true)}
-            >
-              Usuń firmę
-            </button>
-          </li>
-        </ul>
-      </section>
+      {deletable ? (
+        <section className="ui-card ui-card--danger" aria-labelledby="company-danger-title">
+          <h2 id="company-danger-title">Działania ryzykowne</h2>
+          <ul className="danger-list">
+            <li>
+              <span>
+                <b>Usuń firmę</b>
+                <span>Operacja nieodwracalna. Usuwa token, faktury otrzymane i wystawione oraz dane do faktur.</span>
+              </span>
+              <button
+                type="button"
+                className="ui-button ui-button--danger-outline ui-button--md"
+                data-testid="tenant-delete-button"
+                onClick={() => setDeleteOpen(true)}
+              >
+                Usuń firmę
+              </button>
+            </li>
+          </ul>
+        </section>
+      ) : null}
 
       <ConfirmDialog
         open={deleteOpen}
@@ -199,6 +221,11 @@ function DetailsTab({ company }: { company: TenantResponse }): ReactElement {
         <p className="company-notice" data-testid="tenant-delete-invoices" role="status">
           {issuedInvoicesNotice(countQuery.data?.totalCount, countQuery.isError)}
         </p>
+        {otherMembers > 0 ? (
+          <p className="company-notice" data-testid="tenant-delete-members" role="status">
+            Dostęp do firmy stracą też inne osoby (liczba: {otherMembers}).
+          </p>
+        ) : null}
       </ConfirmDialog>
     </div>
   )
