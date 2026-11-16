@@ -28,9 +28,14 @@ public class TenantSyncOptions
     public int XmlDownloadsPerManualRun { get; set; } = 15;
 
     /// <summary>
-    /// Pause between manual XML downloads. KSeF allows 8 per second per NIP and IP; without a pause a real burst got a 429 at download 9.
+    /// Minimum gap between any two KSeF metadata queries or XML downloads of one NIP. KSeF allows 8 per second per NIP and IP; without a pause a real burst got a 429 at request 9.
     /// </summary>
-    public TimeSpan XmlManualDownloadSpacing { get; set; } = TimeSpan.FromMilliseconds(150);
+    public TimeSpan KSeFRequestSpacing { get; set; } = TimeSpan.FromMilliseconds(150);
+
+    /// <summary>
+    /// Minimum gap between two KSeF metadata queries of one NIP. The metadata endpoint also allows only 16 per minute.
+    /// </summary>
+    public TimeSpan KSeFMetadataSpacing { get; set; } = TimeSpan.FromSeconds(4);
 
     /// <summary>
     /// Pause between Worker XML downloads. KSeF allows 16 per minute per NIP and IP.

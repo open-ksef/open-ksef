@@ -32,7 +32,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
     private readonly IKSeFGateway _gateway = Substitute.For<IKSeFGateway>();
     private readonly INotificationService _notifications = Substitute.For<INotificationService>();
-    private readonly XmlDownloadBlocks _blocks = new();
+    private readonly KSeFRequestLimits _blocks = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly List<string> _calls = [];
     private readonly List<string> _downloads = [];
@@ -74,12 +74,12 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     private ApplicationDbContext NewContext() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(_postgres.GetConnectionString()).Options);
 
-    private TenantSyncService SyncService(ApplicationDbContext db, TimeSpan? spacing = null, int budget = 60) => new(
+    private TenantSyncService SyncService(ApplicationDbContext db, TimeSpan? spacing = null, int budget = 60, TimeSpan? requestSpacing = null, TimeSpan? metadataSpacing = null) => new(
         db,
         _gateway,
         new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
-        Options.Create(new TenantSyncOptions { XmlDownloadSpacing = spacing ?? TimeSpan.Zero, XmlDownloadsPerCycle = budget }),
+        Options.Create(new TenantSyncOptions { XmlDownloadSpacing = spacing ?? TimeSpan.Zero, XmlDownloadsPerCycle = budget, KSeFRequestSpacing = requestSpacing ?? TimeSpan.Zero, KSeFMetadataSpacing = metadataSpacing ?? TimeSpan.Zero }),
         _blocks,
         TimeProvider.System,
         NullLogger<TenantSyncService>.Instance);
@@ -102,10 +102,10 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         return await SyncService(db, spacing, budget).SyncAllTenantsAsync();
     }
 
-    private async Task<TenantSyncResult> ManualSyncAsync(bool fullResync = false)
+    private async Task<TenantSyncResult> ManualSyncAsync(bool fullResync = false, TimeSpan? requestSpacing = null, TimeSpan? metadataSpacing = null)
     {
         await using var db = NewContext();
-        return await SyncService(db).SyncTenantAsync(_tenantId, fullResync);
+        return await SyncService(db, requestSpacing: requestSpacing, metadataSpacing: metadataSpacing).SyncTenantAsync(_tenantId, fullResync);
     }
 
     private static async Task AddTenantAsync(ApplicationDbContext db, Guid id, string userId, string nip)
@@ -345,14 +345,15 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     [Fact]
     public async Task ManualSync_Spaces_Downloads_By150Ms()
     {
-        Assert.Equal(TimeSpan.FromMilliseconds(150), new TenantSyncOptions().XmlManualDownloadSpacing);
+        var spacing = new TenantSyncOptions().KSeFRequestSpacing;
+        Assert.Equal(TimeSpan.FromMilliseconds(150), spacing);
         await InsertAsync("A");
         await InsertAsync("B");
         await InsertAsync("C");
         await MigrateAsync();
 
         var started = System.Diagnostics.Stopwatch.StartNew();
-        await ManualSyncAsync();
+        await ManualSyncAsync(requestSpacing: spacing);
 
         Assert.Equal(3, _downloads.Count);
         Assert.True(started.Elapsed >= TimeSpan.FromMilliseconds(290), started.Elapsed.ToString());
@@ -924,6 +925,126 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         _received = _ => throw new TimeoutException("KSeF auth status 450");
 
         Assert.Equal("KSeF auth status 450", (await ManualSyncAsync()).ErrorMessage);
+    }
+
+    [Fact]
+    public async Task FullResync_SpacesEveryKSeFRequestOfTheNip_MetadataAndDownloadsBelow8PerSecond()
+    {
+        var spacing = new TenantSyncOptions().KSeFRequestSpacing;
+        Assert.True(TimeSpan.FromSeconds(1) / spacing < 8);
+        await InsertAsync("OLD", daysAgo: 800);
+        await InsertAsync("U-1");
+        await MigrateAsync();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var at = new List<TimeSpan>();
+        _received = _ =>
+        {
+            at.Add(clock.Elapsed);
+            return Page([]);
+        };
+        _issued = c =>
+        {
+            at.Add(clock.Elapsed);
+            return Page([], c.DateTo);
+        };
+        _xml = _ =>
+        {
+            at.Add(clock.Elapsed);
+            return Xml("2026-11-20");
+        };
+
+        var result = await ManualSyncAsync(fullResync: true, requestSpacing: spacing);
+
+        Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
+        Assert.True(at.Count >= 12, at.Count.ToString());
+        Assert.Equal(2, _downloads.Count);
+        Assert.All(at.Zip(at.Skip(1), (a, b) => b - a), gap => Assert.True(gap >= spacing - TimeSpan.FromMilliseconds(16), gap.ToString()));
+    }
+
+    [Fact]
+    public async Task MetadataPerSecond429_IsRetriedAfterRetryAfter_RunSucceeds_NoDuplicateRow()
+    {
+        await MigrateAsync();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var at = new List<TimeSpan>();
+        _received = _ =>
+        {
+            at.Add(clock.Elapsed);
+            return at.Count == 1 ? throw RateLimited(1) : Page([Bought("KSEF-R1")]);
+        };
+
+        var result = await ManualSyncAsync();
+        var again = await ManualSyncAsync();
+
+        Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
+        Assert.Equal(1, result.NewInvoices);
+        Assert.True(at[1] - at[0] >= TimeSpan.FromMilliseconds(950), (at[1] - at[0]).ToString());
+        Assert.Equal(TenantSyncOutcome.Success, again.Outcome);
+        Assert.Equal(new DateOnly(2026, 11, 20), (await RowAsync("KSEF-R1")).DueDate);
+    }
+
+    [Fact]
+    public async Task MetadataQueries_AreSpacedByMetadataSpacing_DefaultBelow16PerMinute()
+    {
+        Assert.True(TimeSpan.FromMinutes(1) / new TenantSyncOptions().KSeFMetadataSpacing <= 16);
+        await MigrateAsync();
+        var spacing = TimeSpan.FromMilliseconds(400);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var at = new List<TimeSpan>();
+        _received = _ =>
+        {
+            at.Add(clock.Elapsed);
+            return Page([]);
+        };
+        _issued = c =>
+        {
+            at.Add(clock.Elapsed);
+            return Page([], c.DateTo);
+        };
+
+        var result = await ManualSyncAsync(metadataSpacing: spacing);
+
+        Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
+        Assert.True(at.Count >= 3, at.Count.ToString());
+        Assert.All(at.Zip(at.Skip(1), (a, b) => b - a), gap => Assert.True(gap >= spacing - TimeSpan.FromMilliseconds(16), gap.ToString()));
+    }
+
+    [Fact]
+    public async Task MetadataPerSecond429_EveryAttempt_FailsAfterTwoQueries()
+    {
+        await MigrateAsync();
+        var queries = 0;
+        _received = _ =>
+        {
+            queries++;
+            throw RateLimited(1);
+        };
+
+        var result = await ManualSyncAsync();
+
+        Assert.Equal(TenantSyncOutcome.Failed, result.Outcome);
+        Assert.Equal(429, result.ErrorStatusCode);
+        Assert.Equal(2, queries);
+    }
+
+    [Fact]
+    public async Task MetadataHourly429_FailsAtOnce_WithoutWaitingForRetryAfter()
+    {
+        await MigrateAsync();
+        var queries = 0;
+        _received = _ =>
+        {
+            queries++;
+            throw RateLimited(3600);
+        };
+
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var result = await ManualSyncAsync();
+
+        Assert.Equal(TenantSyncOutcome.Failed, result.Outcome);
+        Assert.Equal(429, result.ErrorStatusCode);
+        Assert.Equal(1, queries);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), started.Elapsed.ToString());
     }
 
     [Fact]

@@ -72,8 +72,8 @@ public sealed class PushRetryTests : IAsyncLifetime
         _gateway,
         new InvoiceService(db, new NotificationService(db, [_push], _email, NullLogger<NotificationService>.Instance), NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
-        Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero }),
-        new XmlDownloadBlocks(),
+        Options.Create(new TenantSyncOptions { KSeFMetadataSpacing = TimeSpan.Zero, XmlDownloadSpacing = TimeSpan.Zero }),
+        new KSeFRequestLimits(),
         TimeProvider.System,
         NullLogger<TenantSyncService>.Instance);
 

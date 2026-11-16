@@ -19,6 +19,8 @@ public sealed class TenantSyncService : ITenantSyncService
     private const int IssuedFirstRunMonthsBack = 12;
     private const int MaxIssuedQueriesPerRun = 10;
     private const int MaxConsecutiveDownloadFailures = 3;
+    private const int MaxQueryAttempts = 2;
+    private static readonly TimeSpan MaxQueryRetryAfter = TimeSpan.FromSeconds(30);
     private const int TenantLockKeyspace = 1263748422;
     private static readonly TimeSpan LockPollInterval = TimeSpan.FromSeconds(2);
 
@@ -30,7 +32,7 @@ public sealed class TenantSyncService : ITenantSyncService
     private readonly IInvoiceService _invoiceService;
     private readonly KSeFInvoiceXmlParser _xmlParser;
     private readonly TenantSyncOptions _syncOptions;
-    private readonly XmlDownloadBlocks _xmlBlocks;
+    private readonly KSeFRequestLimits _limits;
     private readonly TimeProvider _time;
     private readonly ILogger<TenantSyncService> _logger;
 
@@ -40,7 +42,7 @@ public sealed class TenantSyncService : ITenantSyncService
         IInvoiceService invoiceService,
         KSeFInvoiceXmlParser xmlParser,
         IOptions<TenantSyncOptions> syncOptions,
-        XmlDownloadBlocks xmlBlocks,
+        KSeFRequestLimits limits,
         TimeProvider time,
         ILogger<TenantSyncService> logger)
     {
@@ -53,7 +55,7 @@ public sealed class TenantSyncService : ITenantSyncService
         {
             _syncOptions.BatchSize = 100;
         }
-        _xmlBlocks = xmlBlocks;
+        _limits = limits;
         _time = time;
         _logger = logger;
     }
@@ -205,7 +207,7 @@ public sealed class TenantSyncService : ITenantSyncService
             return result;
 
         var (queued, errored) = await DownloadQueuedXmlAsync(
-            [tenant], sessions, runStartedAt, _syncOptions.XmlDownloadsPerManualRun, _syncOptions.XmlManualDownloadSpacing, forceFullResync, cancellationToken);
+            [tenant], sessions, runStartedAt, _syncOptions.XmlDownloadsPerManualRun, TimeSpan.Zero, forceFullResync, cancellationToken);
         return result with { QueuedDownloads = queued, ErroredDownloads = errored };
     }
 
@@ -265,7 +267,7 @@ public sealed class TenantSyncService : ITenantSyncService
                             PageSize: _syncOptions.BatchSize,
                             PageOffset: pageOffset);
 
-                        result = await _gateway.QueryInvoicesAsync(session, criteria, cancellationToken);
+                        result = await QueryAsync(tenant.Nip, session, criteria, cancellationToken);
 
                         totalFetched += result.Invoices.Count;
                         if (result.Invoices.Count == 0)
@@ -440,7 +442,7 @@ public sealed class TenantSyncService : ITenantSyncService
             .Take(budget)
             .ToListAsync(cancellationToken);
 
-        if (_xmlBlocks.IsBlocked(nip))
+        if (_limits.IsBlocked(nip))
         {
             _logger.LogInformation("Invoice XML downloads for NIP {Nip} wait for KSeF Retry-After", nip);
             return (waitingCount, 0);
@@ -460,6 +462,7 @@ public sealed class TenantSyncService : ITenantSyncService
             try
             {
                 var session = await CurrentSessionAsync(tenants.First(t => t.Id == row.TenantId), sessions, cancellationToken);
+                await _limits.WaitTurnAsync(nip, _syncOptions.KSeFRequestSpacing, cancellationToken);
                 xml = await _gateway.DownloadInvoiceAsync(session!, row.KSeFInvoiceNumber, cancellationToken);
                 failuresInARow = 0;
 
@@ -481,7 +484,7 @@ public sealed class TenantSyncService : ITenantSyncService
             catch (KsefApiException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
                 var retryAfter = (ex as KsefRateLimitException)?.RecommendedDelay ?? TimeSpan.Zero;
-                _xmlBlocks.Block(nip, retryAfter);
+                _limits.Block(nip, retryAfter);
                 _logger.LogWarning("KSeF 429 on invoice XML for NIP {Nip}, stopping downloads, Retry-After {RetryAfter}", nip, retryAfter);
                 break;
             }
@@ -501,6 +504,25 @@ public sealed class TenantSyncService : ITenantSyncService
         _db.ChangeTracker.Clear();
         _logger.LogInformation("Invoice XML queue for NIP {Nip}: {Completed} of {Queued} done, {Backfilled} original XML backfilled", nip, completed + backfilled, queue.Count, backfilled);
         return (Math.Max(0, waitingCount - completed - errored), errored);
+    }
+
+    private async Task<KSeFInvoiceQueryResult> QueryAsync(
+        string nip, KSeFSession session, KSeFQueryCriteria criteria, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            await _limits.WaitTurnAsync($"{nip}:metadata", _syncOptions.KSeFMetadataSpacing, cancellationToken);
+            await _limits.WaitTurnAsync(nip, _syncOptions.KSeFRequestSpacing, cancellationToken);
+            try
+            {
+                return await _gateway.QueryInvoicesAsync(session, criteria, cancellationToken);
+            }
+            catch (KsefRateLimitException ex) when (attempt < MaxQueryAttempts && ex.RecommendedDelay <= MaxQueryRetryAfter)
+            {
+                _logger.LogWarning("KSeF 429 on invoice metadata for NIP {Nip}, retry {Attempt} after {RetryAfter}", nip, attempt, ex.RecommendedDelay);
+                await Task.Delay(ex.RecommendedDelay, _time, cancellationToken);
+            }
+        }
     }
 
     private async Task<KSeFSession?> CurrentSessionAsync(
@@ -553,7 +575,7 @@ public sealed class TenantSyncService : ITenantSyncService
                         return (fetched, created);
                     }
 
-                    result = await _gateway.QueryInvoicesAsync(session, new KSeFQueryCriteria(
+                    result = await QueryAsync(tenant.Nip, session, new KSeFQueryCriteria(
                         SubjectNip: tenant.Nip,
                         DateFrom: windowStart,
                         DateTo: windowEnd,
