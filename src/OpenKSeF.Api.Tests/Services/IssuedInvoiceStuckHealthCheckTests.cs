@@ -36,18 +36,9 @@ public class IssuedInvoiceStuckHealthCheckTests : IDisposable
         Assert.Equal("1 issued invoice(s) stuck in KSeF, see docs/issuing-stuck-runbook.md", result.Description);
     }
 
-    [Fact]
-    public async Task InvoiceParkedWithFutureEscalatedAt_IsHealthy()
-    {
-        AddIssued(escalatedAt: new DateTime(9999, 12, 31, 0, 0, 0, DateTimeKind.Utc));
-
-        Assert.Equal(HealthStatus.Healthy, (await CheckAsync()).Status);
-    }
-
     private Task<HealthCheckResult> CheckAsync() =>
         new IssuedInvoiceStuckHealthCheck(
                 new ServiceCollection().AddSingleton(_db).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
-                TimeProvider.System,
                 NullLogger<IssuedInvoiceStuckHealthCheck>.Instance)
             .CheckHealthAsync(new HealthCheckContext());
 

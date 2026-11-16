@@ -3,7 +3,7 @@
 An invoice is flagged when it is Queued, Sending or Accepted without UPO `Issuing:StuckAfterHours` (default 24) after `IssuedAt`. Then:
 
 - Worker log at Error, once per window: `Issued invoice {InvoiceId} of tenant {TenantId} needs attention: status ..., attempts ..., session ..., element ..., last error ...`.
-- One push to the registered devices of the company's members, and one e-mail to the company notification address when e-mail is configured (`EMAIL_*`). Not repeated per retry.
+- One push to the registered devices of the company's members, and one e-mail to the company notification address when that address is set and e-mail is configured (`EMAIL_*`). The address is optional: a company without it whose members have no device gets only the list flag. Not repeated per retry.
 - API `/health` turns `Degraded` (still HTTP 200) while any invoice is flagged; the API logs `Issued invoices degraded: ...` once at Warning. See [admin-setup.md](admin-setup.md#stuck-issued-invoices-operator-signal).
 - `needsAttention: true` in the issued list. `IssuedInvoices.EscalatedAt` holds the last log time.
 
