@@ -5,6 +5,7 @@ using System.Text;
 using KSeF.Client.Core.Exceptions;
 using KSeF.Client.Core.Interfaces.Clients;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -1203,6 +1204,48 @@ public class IssuedInvoiceSendProcessorTests
         Assert.Equal(IssuedInvoiceSendProcessor.UnexpectedErrorMessage, (await LoadAsync(poison)).LastError);
         Assert.NotNull((await LoadAsync(queued)).KsefElementRef);
         Assert.Equal(1, _submitter.Sends);
+    }
+
+    [Fact]
+    public async Task UnexpectedErrorOnSendAfterWriteAhead_BackoffDoubles()
+    {
+        var id = await SeedAsync();
+        _submitter.OnSend = () => throw new InvalidOperationException("poison");
+        var delays = new List<double>();
+        for (var i = 0; i < 4; i++)
+        {
+            await RunAsync();
+            var invoice = await LoadAsync(id);
+            delays.Add((invoice.NextAttemptAt!.Value - _time.UtcNow).TotalSeconds);
+            _time.Advance(invoice.NextAttemptAt.Value - _time.UtcNow);
+        }
+
+        Assert.Equal([10, 20, 40, 80], delays);
+    }
+
+    [Fact]
+    public async Task RetrySaveFailsForOneTenant_NextTenantWriteAheadStillSaved()
+    {
+        await SeedAsync(i => i.ScheduleRetry(null, _time.UtcNow.AddMinutes(-10), _time.UtcNow.AddMinutes(-10)), tenant: Guid.NewGuid(), addTenant: false);
+        var next = await SeedAsync();
+        _submitter.OnSend = () => Task.FromResult("el-B");
+
+        await using (var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(_dbName).AddInterceptors(new FailUnexpectedRetry()).Options))
+            await new IssuedInvoiceSendProcessor(db, _submitter, _tokens, _time, new LoggerAdapter<IssuedInvoiceSendProcessor>(_logs)).ProcessAsync("test", CancellationToken.None);
+
+        var invoice = await LoadAsync(next);
+        Assert.Equal(1, _submitter.Sends);
+        Assert.Equal(("el-B", 1), (invoice.KsefElementRef, invoice.AttemptCount));
+    }
+
+    private sealed class FailUnexpectedRetry : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<IssuedInvoice>().Any(e => e.State == EntityState.Modified && e.Entity.LastError == IssuedInvoiceSendProcessor.UnexpectedErrorMessage))
+                throw new InvalidOperationException("db down");
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
     }
 
     [Fact]
