@@ -79,6 +79,7 @@ public class TenantInvitesController(TenantInviteService invites, ICurrentUserSe
         TenantInviteService.Outcome.WrongEmail => StatusCode(StatusCodes.Status403Forbidden, new { error = TenantInviteService.WrongEmailMessage }),
         TenantInviteService.Outcome.AlreadyMember => Conflict(new { error = TenantInviteService.AlreadyMemberMessage }),
         TenantInviteService.Outcome.Limited => StatusCode(StatusCodes.Status429TooManyRequests, new { error = TenantInviteService.LimitMessage }),
+        TenantInviteService.Outcome.PersonLimited => StatusCode(StatusCodes.Status429TooManyRequests, new { error = TenantInviteService.PersonLimitMessage }),
         TenantInviteService.Outcome.NotConfigured => Problem(statusCode: StatusCodes.Status503ServiceUnavailable, detail: $"{SystemConfigKeys.ExternalBaseUrl} (APP_EXTERNAL_BASE_URL) is not configured; invite links cannot be built."),
         _ => NotFound(),
     };

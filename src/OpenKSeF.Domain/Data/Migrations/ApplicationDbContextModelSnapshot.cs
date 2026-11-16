@@ -467,8 +467,7 @@ namespace OpenKSeF.Domain.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "Nip")
-                        .IsUnique();
+                    b.HasIndex("UserId", "Nip");
 
                     b.ToTable("Tenants");
                 });

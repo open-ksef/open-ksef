@@ -11,7 +11,7 @@ Status: accepted (2026-11-15). Requirement REQ-0037. Policy ADR-004.
 
 ## Decision
 
-1. Membership lives in the app DB: `TenantMembers(TenantId, UserId, Role, CreatedAt)`, PK `(TenantId, UserId)`, FK to `Tenants` with cascade. After the authorization switch it is the only source of access. `Tenant.UserId` stays as the write-once creator column: it backs the `(UserId, Nip)` index and image rollback.
+1. Membership lives in the app DB: `TenantMembers(TenantId, UserId, Role, CreatedAt)`, PK `(TenantId, UserId)`, FK to `Tenants` with cascade. After the authorization switch it is the only source of access. `Tenant.UserId` stays as the write-once creator column: it backs the `(UserId, Nip)` index (non-unique since T-766) and image rollback.
 2. `TenantRole { Owner, Administrator, Accountant, Employee }`, stored as a string. `TenantPermissions` maps roles to permission strings, which are also the wire format: `invoices.read`, `invoices.markPaid`, `sync.run`, `notifications.self`, `issuing.draft` (all roles); `issuing.submit` (not Employee); `sync.fullResync`, `credential.manage`, `tenant.edit`, `members.manage` (Owner, Administrator); `tenant.delete` (Owner). `CanManageRole`: only an Owner grants, changes or removes the Owner role. Leaving is not a permission; the last Owner cannot leave.
 3. Authorization is one action filter `[TenantAccess("permission")]` on every `{tenantId}` route: non-member 404, missing permission 403 with a Polish `error`. Sync and the Worker get no user. A reflection test fails any `{tenantId}` action without it.
 4. Effective permissions on the wire: `TenantResponse` gains `role` and `permissions`, additive (ADR-004 C1).
@@ -23,7 +23,7 @@ Status: accepted (2026-11-15). Requirement REQ-0037. Policy ADR-004.
 - Single-user tenants behave as before.
 - Until the switch, membership is written but not read; old and new images are interchangeable.
 - Non-members will get 404 where some endpoints return 403 today. JSON shape unchanged.
-- A creator who left a company still holds its `(UserId, Nip)` slot and gets 409 on re-creating the same NIP. Accepted, rare.
+- T-766: the duplicate-NIP check on create is by current membership, so a creator who left a company can create the same NIP again; `IX_Tenants_UserId_Nip` is non-unique.
 - Rollback is the previous image; invited members lose access until roll-forward. No data loss.
 
 ## Rejected

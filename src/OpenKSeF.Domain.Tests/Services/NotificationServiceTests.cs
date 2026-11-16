@@ -540,9 +540,9 @@ public class NotificationServiceTests : IDisposable
             return Task.CompletedTask;
         }
 
-        public Task<bool> SendInviteEmailAsync(string toEmail, Guid tenantId, string company, string inviterName, string link) => Task.FromResult(false);
+        public Task<bool> SendInviteEmailAsync(string toEmail, Guid tenantId, string company, string nip, TenantRole role, string inviterName, string link, DateTime expiresAtUtc) => Task.FromResult(false);
 
-        public Task<bool> SendAccessGrantedEmailAsync(string toEmail, Guid tenantId, string company, string portalUrl) => Task.FromResult(false);
+        public Task<bool> SendAccessGrantedEmailAsync(string toEmail, Guid tenantId, string company, string nip, TenantRole role, string granterName, string portalUrl) => Task.FromResult(false);
     }
 
     private sealed class ListLogger : ILogger<NotificationService>

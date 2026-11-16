@@ -14,7 +14,8 @@ namespace OpenKSeF.Api.Services;
 public class TenantInviteService(ApplicationDbContext db, INotificationService notifications, IEmailService email, TimeProvider time, ILogger<TenantInviteService> logger)
 {
     public const string AlreadyMemberMessage = "Ta osoba ma już dostęp do tej firmy.";
-    public const string LimitMessage = "Dzienny limit zaproszeń dla tej firmy został wyczerpany.";
+    public const string LimitMessage = "Osiągnięto dzienny limit zaproszeń dla tej firmy (20). Spróbuj ponownie później.";
+    public const string PersonLimitMessage = "Osiągnięto Twój dzienny limit zaproszeń (50). Spróbuj ponownie później.";
     public const string InvalidMessage = "Zaproszenie jest nieprawidłowe lub wygasło.";
     public const string WrongEmailMessage = "To zaproszenie jest dla innego adresu e-mail.";
     public const int TenantDailyLimit = 20;
@@ -22,7 +23,7 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
     public static readonly TimeSpan ValidFor = TimeSpan.FromDays(14);
     private static readonly string[] LimitedActions = [AuditEvent.InviteCreated, AuditEvent.InviteResent, AuditEvent.AccessGranted];
 
-    public enum Outcome { Done, NotFound, Forbidden, AlreadyMember, Limited, WrongEmail, NotConfigured }
+    public enum Outcome { Done, NotFound, Forbidden, AlreadyMember, Limited, PersonLimited, WrongEmail, NotConfigured }
 
     public static string Normalize(string? address) => address?.Trim().ToLowerInvariant() ?? "";
 
@@ -44,8 +45,8 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
         var invite = await db.TenantInvites.FirstOrDefaultAsync(i => i.TenantId == tenantId && i.Email == invitee && i.Status == TenantInviteStatus.Pending);
         if (invite is not null && !TenantPermissions.CanManageRole(actor.Role, invite.Role))
             return (Outcome.Forbidden, null);
-        if (await IsLimitedAsync(tenantId, actorUserId))
-            return (Outcome.Limited, null);
+        if (await LimitAsync(tenantId, actorUserId) is { } limited)
+            return (limited, null);
 
         var now = time.GetUtcNow().UtcDateTime;
         var company = CompanyName(tenant);
@@ -62,7 +63,8 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
             await transaction.CommitAsync();
 
             await notifications.NotifyAccessGrantedAsync(account.UserId, tenantId, company);
-            await TrySendAsync(tenantId, () => email.SendAccessGrantedEmailAsync(invitee, tenantId, company, baseUrl));
+            var granter = await InviterNameAsync(actorUserId);
+            await TrySendAsync(tenantId, () => email.SendAccessGrantedEmailAsync(invitee, tenantId, company, tenant.Nip, role, granter, baseUrl));
             return (Outcome.Done, new CreateInviteResponse("granted", DisplayName: account.DisplayName ?? account.Email));
         }
 
@@ -82,7 +84,7 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
 
         var link = Link(baseUrl, token);
         var inviter = await InviterNameAsync(actorUserId);
-        var emailSent = await TrySendAsync(tenantId, () => email.SendInviteEmailAsync(invitee, tenantId, company, inviter, link));
+        var emailSent = await TrySendAsync(tenantId, () => email.SendInviteEmailAsync(invitee, tenantId, company, tenant.Nip, role, inviter, link, invite.ExpiresAt));
         return (Outcome.Done, new CreateInviteResponse("pending", null, invite.Id, link, invite.ExpiresAt, emailSent));
     }
 
@@ -108,8 +110,8 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
             return (outcome, null);
         if (baseUrl is null)
             return (Outcome.NotConfigured, null);
-        if (await IsLimitedAsync(tenantId, actorUserId))
-            return (Outcome.Limited, null);
+        if (await LimitAsync(tenantId, actorUserId) is { } limited)
+            return (limited, null);
 
         var token = Renew(invite!, time.GetUtcNow().UtcDateTime);
         await TenantAudit.AddAsync(db, tenantId, actorUserId, AuditEvent.InviteResent, invite!.Role.ToString(), targetEmail: invite.Email);
@@ -118,7 +120,7 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
 
         var link = Link(baseUrl, token);
         var inviter = await InviterNameAsync(actorUserId);
-        var emailSent = await TrySendAsync(tenantId, () => email.SendInviteEmailAsync(invite.Email, tenantId, CompanyName(tenant!), inviter, link));
+        var emailSent = await TrySendAsync(tenantId, () => email.SendInviteEmailAsync(invite.Email, tenantId, CompanyName(tenant!), tenant!.Nip, invite.Role, inviter, link, invite.ExpiresAt));
         return (Outcome.Done, new InviteLinkResponse(link, invite.ExpiresAt, emailSent));
     }
 
@@ -185,12 +187,13 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
         return (tenant, await db.TenantMembers.FirstOrDefaultAsync(m => m.TenantId == tenantId && m.UserId == userId));
     }
 
-    private async Task<bool> IsLimitedAsync(Guid tenantId, string actorUserId)
+    private async Task<Outcome?> LimitAsync(Guid tenantId, string actorUserId)
     {
         var since = time.GetUtcNow().UtcDateTime.AddDays(-1);
         var sent = db.AuditEvents.Where(a => a.OccurredAt > since && LimitedActions.Contains(a.Action));
-        return await sent.CountAsync(a => a.TenantId == tenantId) >= TenantDailyLimit
-            || await sent.CountAsync(a => a.ActorUserId == actorUserId) >= ActorDailyLimit;
+        if (await sent.CountAsync(a => a.TenantId == tenantId) >= TenantDailyLimit)
+            return Outcome.Limited;
+        return await sent.CountAsync(a => a.ActorUserId == actorUserId) >= ActorDailyLimit ? Outcome.PersonLimited : null;
     }
 
     private static string Renew(TenantInvite invite, DateTime now)

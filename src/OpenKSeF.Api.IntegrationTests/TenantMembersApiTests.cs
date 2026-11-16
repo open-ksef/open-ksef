@@ -148,6 +148,66 @@ public sealed class TenantMembersApiTests : IAsyncLifetime
         await WithDbAsync(async db => Assert.Equal(1, await db.TenantMembers.CountAsync(m => m.TenantId == _tenantId && m.Role == TenantRole.Owner)));
     }
 
+    [Fact]
+    public async Task LeaveOrRemove_ClearsNotificationEmailOnlyWhenItIsThatPersonsAddress()
+    {
+        var (removedId, _) = await AddMemberAsync(TenantRole.Employee);
+        var (leaverId, leaver) = await AddMemberAsync(TenantRole.Employee);
+        var (keptId, kept) = await AddMemberAsync(TenantRole.Employee);
+        string removedEmail = null!, leaverEmail = null!;
+        await WithDbAsync(async db =>
+        {
+            removedEmail = await db.UserProfiles.Where(p => p.UserId == removedId).Select(p => p.Email!).SingleAsync();
+            leaverEmail = await db.UserProfiles.Where(p => p.UserId == leaverId).Select(p => p.Email!).SingleAsync();
+        });
+        await SetNotificationEmailAsync($" {removedEmail.ToUpperInvariant()} ");
+
+        var members = (await _owner.GetFromJsonAsync<List<MemberDto>>($"/api/tenants/{_tenantId}/members"))!;
+        Assert.Equal([removedId], members.Where(m => m.ReceivesCompanyNotificationEmail).Select(m => m.UserId));
+        Assert.Equal(HttpStatusCode.NoContent, (await _owner.DeleteAsync(Members(removedId))).StatusCode);
+        Assert.Null(await NotificationEmailAsync());
+
+        await SetNotificationEmailAsync(leaverEmail);
+        Assert.Equal(HttpStatusCode.NoContent, (await leaver.DeleteAsync(Members(leaverId))).StatusCode);
+        Assert.Null(await NotificationEmailAsync());
+
+        await SetNotificationEmailAsync("biuro@firma.invalid");
+        Assert.Equal(HttpStatusCode.NoContent, (await kept.DeleteAsync(Members(keptId))).StatusCode);
+        Assert.Equal("biuro@firma.invalid", await NotificationEmailAsync());
+
+        await WithDbAsync(async db =>
+        {
+            var cleared = await db.AuditEvents.Where(a => a.TenantId == _tenantId && a.Action == AuditEvent.NotificationEmailCleared).OrderBy(a => a.OccurredAt).ToListAsync();
+            Assert.Equal([(removedId, _ownerId), (leaverId, leaverId)], cleared.Select(a => (a.TargetUserId!, a.ActorUserId)));
+            Assert.Equal([$" {removedEmail.ToUpperInvariant()} ", leaverEmail], cleared.Select(a => a.TargetEmail));
+        });
+    }
+
+    [Fact]
+    public async Task DuplicateNip_CheckedByCurrentMembership_CreatorWhoLeftCanAddItAgain()
+    {
+        string nip = null!;
+        await WithDbAsync(async db => nip = await db.Tenants.Where(t => t.Id == _tenantId).Select(t => t.Nip).SingleAsync());
+        var (_, coOwner) = await AddMemberAsync(TenantRole.Owner);
+
+        await AssertErrorAsync(await coOwner.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Kopia" }), HttpStatusCode.Conflict, "Masz już dostęp do firmy z tym NIP-em: Members test.");
+        Assert.Equal(HttpStatusCode.NoContent, (await _owner.DeleteAsync(Members(_ownerId))).StatusCode);
+        var readded = await _owner.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Znowu moja" });
+
+        Assert.Equal(HttpStatusCode.Created, readded.StatusCode);
+        await WithDbAsync(async db => Assert.Equal(2, await db.Tenants.CountAsync(t => t.Nip == nip && t.UserId == _ownerId)));
+    }
+
+    private Task SetNotificationEmailAsync(string? address) => WithDbAsync(db =>
+        db.Tenants.Where(t => t.Id == _tenantId).ExecuteUpdateAsync(s => s.SetProperty(t => t.NotificationEmail, address)));
+
+    private async Task<string?> NotificationEmailAsync()
+    {
+        string? address = null;
+        await WithDbAsync(async db => address = await db.Tenants.Where(t => t.Id == _tenantId).Select(t => t.NotificationEmail).SingleAsync());
+        return address;
+    }
+
     internal static async Task WaitForLockWaitersAsync(ApplicationDbContext db, int count)
     {
         for (var i = 0; i < 100; i++)
@@ -221,7 +281,7 @@ public sealed class TenantMembersApiTests : IAsyncLifetime
 
     private sealed record ErrorDto(string Error);
 
-    private sealed record MemberDto(string UserId, string? DisplayName, string Role);
+    private sealed record MemberDto(string UserId, string? DisplayName, string Role, bool ReceivesCompanyNotificationEmail = false);
 
     private sealed record PaidDto(bool IsPaid, string? PaidByName);
 }

@@ -253,7 +253,7 @@ public sealed class TenantInvitesApiTests : IAsyncLifetime
             Assert.Equal(HttpStatusCode.NoContent, (await actor.DeleteAsync($"/api/tenants/{tenantId}")).StatusCode);
         }
 
-        await AssertErrorAsync(last, HttpStatusCode.TooManyRequests, TenantInviteService.LimitMessage);
+        await AssertErrorAsync(last, HttpStatusCode.TooManyRequests, TenantInviteService.PersonLimitMessage);
         await WithDbAsync(async db => Assert.Equal(
             2 * TenantInviteService.TenantDailyLimit,
             await db.AuditEvents.CountAsync(a => a.ActorUserId == actorId && a.TenantId == null && a.Action == AuditEvent.InviteCreated)));
@@ -393,7 +393,9 @@ public sealed class TenantInvitesApiTests : IAsyncLifetime
         await SeedAuditAsync(null, actorId, 49, DateTime.UtcNow.AddHours(-1));
 
         Assert.Equal(HttpStatusCode.OK, (await InviteAsync(actor, NewEmail(), "Employee", tenantId)).StatusCode);
-        await AssertErrorAsync(await InviteAsync(actor, NewEmail(), "Employee", tenantId), HttpStatusCode.TooManyRequests, TenantInviteService.LimitMessage);
+        await AssertErrorAsync(await InviteAsync(actor, NewEmail(), "Employee", tenantId), HttpStatusCode.TooManyRequests, TenantInviteService.PersonLimitMessage);
+        Assert.Equal("Osiągnięto Twój dzienny limit zaproszeń (50). Spróbuj ponownie później.", TenantInviteService.PersonLimitMessage);
+        Assert.Equal("Osiągnięto dzienny limit zaproszeń dla tej firmy (20). Spróbuj ponownie później.", TenantInviteService.LimitMessage);
     }
 
     [Fact]
@@ -420,8 +422,10 @@ public sealed class TenantInvitesApiTests : IAsyncLifetime
         Assert.Equal(("pending", true), (pending.Status, pending.EmailSent));
         Assert.Equal(HttpStatusCode.OK, granted.StatusCode);
         var messages = await Mailpit.MessagesAsync(mailpit);
-        Assert.Contains(("Zaproszenie do firmy Biuro Zapraszające", pendingEmail), messages);
+        Assert.Contains(("Zaproszenie do firmy Biuro Zapraszające w OpenKSeF", pendingEmail), messages);
         Assert.Contains(("Masz dostęp do firmy Biuro Zapraszające", grantedEmail), messages);
+        Assert.Contains("Twoja rola: Pracownik.", await Mailpit.SnippetAsync(mailpit, "Zaproszenie do firmy Biuro Zapraszające w OpenKSeF"));
+        Assert.Contains("Twoja rola: Pracownik.", await Mailpit.SnippetAsync(mailpit, "Masz dostęp do firmy Biuro Zapraszające"));
     }
 
     private async Task<CreateDto> CreatePendingAsync(string email, string role)

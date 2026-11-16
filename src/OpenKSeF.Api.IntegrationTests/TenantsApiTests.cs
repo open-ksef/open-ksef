@@ -100,7 +100,7 @@ public class TenantsApiTests : IDisposable
 
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
-        Assert.Equal("""{"error":"Ta firma (NIP) jest już dodana do Twojego konta."}""", await second.Content.ReadAsStringAsync());
+        Assert.Equal("""{"error":"Masz już dostęp do firmy z tym NIP-em: First Co."}""", await second.Content.ReadAsStringAsync());
 
         var tenantId = (await first.Content.ReadFromJsonAsync<TenantDto>())!.Id;
         using var scope = _factory.Services.CreateScope();

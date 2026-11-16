@@ -1866,6 +1866,9 @@
             "nullable": true,
             "type": "string"
           },
+          "receivesCompanyNotificationEmail": {
+            "type": "boolean"
+          },
           "role": {
             "nullable": true,
             "type": "string"
