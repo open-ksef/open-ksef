@@ -126,6 +126,7 @@ builder.Services.AddAuthorization(options => options.AddPolicy(SystemSettingsCon
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<UserProfileService>();
+builder.Services.AddScoped<TenantMembershipService>();
 
 builder.Services.AddMemoryCache();
 

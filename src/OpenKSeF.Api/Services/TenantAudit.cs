@@ -4,15 +4,16 @@ using OpenKSeF.Domain.Entities;
 
 namespace OpenKSeF.Api.Services;
 
-/// <summary>Appends a tenant audit row with the actor's name as it is now; saved with the caller's next SaveChanges.</summary>
+/// <summary>Appends a tenant audit row with the actor's and target's names as they are now; saved with the caller's next SaveChanges.</summary>
 public static class TenantAudit
 {
-    public static async Task AddAsync(ApplicationDbContext db, Guid tenantId, string actorUserId, string action, string? target = null)
+    public static async Task AddAsync(ApplicationDbContext db, Guid tenantId, string actorUserId, string action, string? target = null, string? targetUserId = null)
     {
-        var actor = await db.UserProfiles
-            .Where(p => p.UserId == actorUserId)
-            .Select(p => new { p.Email, Name = p.DisplayName ?? p.Email })
-            .FirstOrDefaultAsync();
+        var profiles = await db.UserProfiles
+            .Where(p => p.UserId == actorUserId || p.UserId == targetUserId)
+            .Select(p => new { p.UserId, p.Email, Name = p.DisplayName ?? p.Email })
+            .ToListAsync();
+        var actor = profiles.FirstOrDefault(p => p.UserId == actorUserId);
 
         db.AuditEvents.Add(new AuditEvent
         {
@@ -23,6 +24,8 @@ public static class TenantAudit
             ActorEmail = actor?.Email,
             ActorName = actor?.Name,
             Action = action,
+            TargetUserId = targetUserId,
+            TargetEmail = profiles.FirstOrDefault(p => p.UserId == targetUserId)?.Email,
             Target = target,
         });
     }

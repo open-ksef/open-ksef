@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Authorization;
 using OpenKSeF.Api.Models;
+using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
@@ -19,12 +20,14 @@ public class TenantsController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IIssuedInvoiceService _issuedInvoices;
+    private readonly TenantMembershipService _members;
 
-    public TenantsController(ApplicationDbContext db, ICurrentUserService currentUser, IIssuedInvoiceService issuedInvoices)
+    public TenantsController(ApplicationDbContext db, ICurrentUserService currentUser, IIssuedInvoiceService issuedInvoices, TenantMembershipService members)
     {
         _db = db;
         _currentUser = currentUser;
         _issuedInvoices = issuedInvoices;
+        _members = members;
     }
 
     [HttpGet]
@@ -126,6 +129,31 @@ public class TenantsController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("{tenantId:guid}/members")]
+    [TenantAccess(TenantPermissions.MembersManage)]
+    [ProducesResponseType(typeof(List<TenantMemberResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ListMembers(Guid tenantId) => Ok(await _members.ListAsync(tenantId));
+
+    [HttpPut("{tenantId:guid}/members/{userId}")]
+    [TenantAccess(TenantPermissions.MembersManage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ChangeMemberRole(Guid tenantId, string userId, [FromBody] ChangeMemberRoleRequest request) =>
+        MemberResult(await _members.ChangeRoleAsync(tenantId, _currentUser.UserId, userId, Enum.Parse<TenantRole>(request.Role!)));
+
+    [HttpDelete("{tenantId:guid}/members/{userId}")]
+    [TenantAccess(TenantPermissions.InvoicesRead)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> RemoveMember(Guid tenantId, string userId) =>
+        MemberResult(await _members.RemoveAsync(tenantId, _currentUser.UserId, userId));
+
     [HttpDelete("{tenantId:guid}")]
     [TenantAccess(TenantPermissions.TenantDelete)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -143,6 +171,14 @@ public class TenantsController : ControllerBase
             return Conflict(new { message = e.Message });
         }
     }
+
+    private IActionResult MemberResult(TenantMembershipService.Outcome outcome) => outcome switch
+    {
+        TenantMembershipService.Outcome.Done => NoContent(),
+        TenantMembershipService.Outcome.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { error = TenantAccessAttribute.ForbiddenMessage }),
+        TenantMembershipService.Outcome.LastOwner => Conflict(new { error = TenantMembershipService.LastOwnerMessage }),
+        _ => NotFound(),
+    };
 
     private static bool IsUniqueConstraintViolation(DbUpdateException ex)
     {

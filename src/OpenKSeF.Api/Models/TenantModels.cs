@@ -55,3 +55,10 @@ public record TenantResponse(
 }
 
 public record SetMemberNotificationsRequest([param: Required] bool? Enabled);
+
+public record TenantMemberResponse(string UserId, string? DisplayName, string? Email, string Role, DateTime CreatedAt);
+
+public record ChangeMemberRoleRequest(
+    [param: Required]
+    [param: AllowedValues(nameof(TenantRole.Owner), nameof(TenantRole.Administrator), nameof(TenantRole.Accountant), nameof(TenantRole.Employee))]
+    string? Role);
