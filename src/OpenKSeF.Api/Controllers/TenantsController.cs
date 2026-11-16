@@ -17,6 +17,7 @@ namespace OpenKSeF.Api.Controllers;
 [Authorize]
 public class TenantsController : ControllerBase
 {
+    private const int CreateLockKeyspace = 1263748423;
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IIssuedInvoiceService _issuedInvoices;
@@ -66,8 +67,11 @@ public class TenantsController : ControllerBase
             return BadRequest(new { error = "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną." });
 
         var normalizedNip = NipValidator.Normalize(request.Nip);
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        await _db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({CreateLockKeyspace}, hashtext({_currentUser.UserId}))");
         var existing = await _db.Tenants
             .Where(t => t.Nip == normalizedNip && _db.TenantMembers.Any(m => m.TenantId == t.Id && m.UserId == _currentUser.UserId))
+            .OrderBy(t => t.DisplayName).ThenBy(t => t.Id)
             .Select(t => t.DisplayName)
             .ToListAsync();
         if (existing.Count > 0)
@@ -91,6 +95,7 @@ public class TenantsController : ControllerBase
         _db.TenantMembers.Add(owner);
 
         await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         return CreatedAtAction(nameof(Get), new { tenantId = tenant.Id }, TenantResponse.From(tenant, owner));
     }

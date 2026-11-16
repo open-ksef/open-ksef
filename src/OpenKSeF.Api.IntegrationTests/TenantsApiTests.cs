@@ -90,6 +90,21 @@ public class TenantsApiTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateTenant_ParallelPostsOfOneNip_OneCreated_RestConflict()
+    {
+        await AuthenticateAsync();
+        var nip = TestNip.New();
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 8).Select(i => _client.PostAsJsonAsync("/api/tenants", new { nip, displayName = $"Parallel {i}" })));
+
+        Assert.Equal(1, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
+        Assert.Equal(7, responses.Count(r => r.StatusCode == HttpStatusCode.Conflict));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Equal(1, await db.Tenants.CountAsync(t => t.Nip == nip));
+    }
+
+    [Fact]
     public async Task CreateTenant_DuplicateNip_Returns409()
     {
         await AuthenticateAsync();
