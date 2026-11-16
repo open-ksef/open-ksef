@@ -26,7 +26,7 @@ describe('syncHealth (REQ-0013)', () => {
   })
 
   it('stale without a recorded failure: headline only, no reason', () => {
-    expect(syncHealth(row({ syncStatus: 'Warning' }))).toEqual({ problem: 'Stale', headline: 'Nie pobieramy faktur od 03.11.2026, 07:00', reason: null, link: 'check' })
+    expect(syncHealth(row({ syncStatus: 'Warning' }))).toEqual({ problem: 'Stale', headline: 'Nie pobieramy faktur od 03.11.2026, 07:00', reason: null, link: null })
   })
 
   it('NoCredential', () => {
@@ -58,6 +58,11 @@ describe('syncHealth (REQ-0013)', () => {
   ])('Failed %s shows the API text verbatim, token link only when the credential is the cause', (category, cause) => {
     const health = syncHealth(failed(category, `tekst ${category}`, cause))
     expect(health).toEqual({ problem: 'Failed', headline: 'Nie pobieramy faktur od 03.11.2026, 07:00', reason: `tekst ${category}`, link: cause ? 'check' : null })
+  })
+
+  it('a non-credential failure while the last success is fresh raises no alarm', () => {
+    expect(syncHealth({ ...failed('KsefUnavailable', 'x', false), syncStatus: 'Success' })).toBeNull()
+    expect(syncHealth({ ...failed('InvalidToken', 'x', true), syncStatus: 'Success' })?.link).toBe('check')
   })
 
   it('first-ever failure has its own headline', () => {

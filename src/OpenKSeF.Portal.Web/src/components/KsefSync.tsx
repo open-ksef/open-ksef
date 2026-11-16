@@ -27,18 +27,6 @@ export function KsefSync({ state, summary, ksef, disabled, variant }: KsefSyncPr
           health && failing ? (
             <span data-testid="invoice-sync-line" className="received-sync--stale">
               <Icon name="circle-alert" size={14} /> {health.headline}
-              {health.reason ? (
-                <>
-                  <br />
-                  <span data-testid="invoice-sync-reason">{health.reason}</span>
-                </>
-              ) : null}
-              {health.link === 'check' ? (
-                <>
-                  <br />
-                  <Link to="/company/token">Sprawdź token KSeF</Link>
-                </>
-              ) : null}
             </span>
           ) : (
             <span data-testid="invoice-sync-line">Pobrano z KSeF: {formatDateTime(summary.lastSuccessfulSync)}</span>

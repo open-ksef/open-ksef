@@ -265,13 +265,18 @@ describe('StartPage', () => {
       expect(attention()?.textContent).toContain('Nic nie wymaga uwagi.')
     })
 
-    it('states a stale fetch without any reason, with a link to the token', async () => {
+    it('states a stale fetch without a recorded failure: no reason, no token link', async () => {
       useData({ summaries: [summary({ syncStatus: 'Warning', lastSuccessfulSync: '2026-10-31T10:00:00Z' })] })
       await render()
       expect(attention()?.textContent).toContain('Nie pobieramy faktur od 31.10.2026')
-      expect(attention()?.textContent).toContain('Sprawdź token KSeF')
-      expect(attention()?.querySelector('a[href="/company/token"]')).not.toBeNull()
-      expect(text()).not.toContain('Powód')
+      expect(text()).not.toContain('Sprawdź token KSeF')
+      expect(attention()?.querySelector('a[href="/company/token"]')).toBeNull()
+    })
+
+    it('a KSeF outage while the last fetch is fresh raises nothing', async () => {
+      useData({ summaries: [summary({ syncStatus: 'Success', syncProblem: 'Failed', lastSyncErrorCategory: 'KsefUnavailable', lastSyncErrorMessage: 'x', lastSyncErrorCredentialCause: false })] })
+      await render()
+      expect(text()).not.toContain('Nie pobieramy faktur')
     })
 
     it('a failed fetch shows the API reason; KSeF outage gets no token link', async () => {
@@ -289,7 +294,10 @@ describe('StartPage', () => {
       useData({ summaries: [summary({ syncStatus: 'Success', syncProblem: 'Failed', lastSyncErrorCategory: 'InvalidToken', lastSyncErrorMessage: message, lastSyncErrorCredentialCause: true })] })
       await render()
       expect(attention()?.textContent).toContain(message)
-      expect(attention()?.querySelector('a[href="/company/token"]')?.textContent).toBe('Sprawdź token KSeF')
+      const link = attention()?.querySelector('a[href="/company/token"]')
+      expect(link?.textContent).toBe('Sprawdź token KSeF')
+      expect(link?.className).toBe('start-attention-link')
+      expect(text().match(/KSeF odrzucił token/g)).toHaveLength(1)
     })
 
     it('a first-ever failure replaces the waiting card with its reason', async () => {

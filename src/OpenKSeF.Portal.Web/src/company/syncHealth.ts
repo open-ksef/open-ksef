@@ -24,6 +24,7 @@ export function syncHealth(summary: TenantDashboardSummaryResponse | undefined):
         link: null,
       }
     case 'Failed': {
+      if (!summary.lastSyncErrorCredentialCause && summary.syncStatus === 'Success') return null
       const reason = summary.lastSyncErrorMessage ?? null
       return {
         problem: 'Failed',
@@ -33,6 +34,6 @@ export function syncHealth(summary: TenantDashboardSummaryResponse | undefined):
       }
     }
     default:
-      return since && summary.syncStatus !== 'Success' ? { problem: 'Stale', headline: since, reason: null, link: 'check' } : null
+      return since && summary.syncStatus !== 'Success' ? { problem: 'Stale', headline: since, reason: null, link: null } : null
   }
 }

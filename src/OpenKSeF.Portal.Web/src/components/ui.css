@@ -2331,6 +2331,13 @@ input.nip-input {
   text-decoration: underline;
 }
 
+.start-row__main > a.start-attention-link {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ui-link);
+  text-decoration: underline;
+}
+
 .start-row__sub {
   display: block;
   font-size: 13px;

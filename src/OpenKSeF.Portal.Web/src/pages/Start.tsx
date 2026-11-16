@@ -102,7 +102,7 @@ function AttentionCard({ items, rejectedTotal, isLoading, error, onRetry, scanCa
               <span className="start-row__main">
                 {item.to ? <Link to={item.to}>{item.title}</Link> : <b>{item.title}</b>}
                 {item.sub ? <span className="start-row__sub">{item.sub}</span> : null}
-                {item.link ? <Link className="start-row__sub" to={item.link.to}>{item.link.label}</Link> : null}
+                {item.link ? <Link className="start-attention-link" to={item.link.to}>{item.link.label}</Link> : null}
               </span>
             </li>
           ))}
