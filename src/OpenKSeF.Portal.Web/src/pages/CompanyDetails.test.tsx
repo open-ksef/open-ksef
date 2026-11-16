@@ -171,6 +171,20 @@ describe('Firma, Dane firmy', () => {
     expect(deleteTenant).toHaveBeenCalledExactlyOnceWith('a')
   })
 
+  it('shows the API 409 text in the add dialog', async () => {
+    vi.mocked(createTenant).mockRejectedValue(await normalizeError(new Response(JSON.stringify({ error: 'Masz już dostęp do firmy z tym NIP-em: Firma C2.' }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
+    await render()
+    await act(async () => by('company-card')?.click())
+    await settle()
+    await act(async () => by('company-add')?.click())
+    await settle()
+    await type('tenant-form-nip', '3333333333')
+    await act(async () => by('tenant-form-submit')?.click())
+    await settle()
+    expect(container.querySelector('[role="dialog"] [role="alert"]')?.textContent).toBe('Masz już dostęp do firmy z tym NIP-em: Firma C2.')
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
   it('states how many other members lose access in the delete dialog', async () => {
     const member = (userId: string) => ({ userId, displayName: userId, email: null, role: 'Employee' as const, createdAt: '2026-01-01T00:00:00Z' })
     vi.mocked(listMembers).mockResolvedValue([member('me'), member('b'), member('c')])

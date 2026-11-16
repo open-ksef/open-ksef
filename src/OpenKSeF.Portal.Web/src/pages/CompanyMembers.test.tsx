@@ -75,8 +75,8 @@ describe('Firma, Osoby z dostępem', () => {
     for (let tick = 0; tick < 8; tick++) await act(flush)
   }
 
-  async function render(access: Pick<TenantResponse, 'role' | 'permissions' | 'notificationsEnabled'>): Promise<void> {
-    vi.mocked(listTenants).mockResolvedValue([tenant(access)])
+  async function render(access?: Pick<TenantResponse, 'role' | 'permissions' | 'notificationsEnabled'>): Promise<void> {
+    if (access) vi.mocked(listTenants).mockResolvedValue([tenant(access)])
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const router = createMemoryRouter(
       [
@@ -162,6 +162,40 @@ describe('Firma, Osoby z dostępem', () => {
     expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain('Basia straci dostęp do tej firmy.')
     await confirm()
     expect(removeMember).toHaveBeenCalledExactlyOnceWith('a', 'b')
+  })
+
+  it('the remove dialog says the company notification e-mail stops, only for that member', async () => {
+    vi.mocked(listMembers).mockResolvedValue([member('me', 'Owner'), { ...member('b', 'Accountant', 'Basia'), receivesCompanyNotificationEmail: true }, member('c', 'Employee')])
+    await render({ ...ownerAccess })
+    const [, basia, other] = all('member-row')
+
+    await click(basia.querySelector<HTMLElement>('[data-testid="member-remove"]'))
+    expect(by('remove-notification-email')?.textContent).toBe('Adres b@x.pl przestanie dostawać powiadomienia e-mail o nowych fakturach tej firmy.')
+    await click(container.querySelector<HTMLElement>('[role="alertdialog"] .ui-button--outline'))
+
+    await click(other.querySelector<HTMLElement>('[data-testid="member-remove"]'))
+    expect(by('remove-notification-email')).toBeNull()
+  })
+
+  it('the leave dialog says your address stops getting company e-mails', async () => {
+    vi.mocked(listMembers).mockResolvedValue([{ ...member('me', 'Owner'), receivesCompanyNotificationEmail: true }, member('o2', 'Owner')])
+    await render(ownerAccess)
+    await click(by('leave-company-button'))
+    expect(by('leave-notification-email')?.textContent).toBe('Twój adres me@x.pl przestanie dostawać powiadomienia e-mail o nowych fakturach tej firmy.')
+  })
+
+  it('a member without the list matches own e-mail to the company address, case-insensitive', async () => {
+    vi.mocked(listTenants).mockResolvedValue([{ ...tenant(employeeAccess), notificationEmail: ' ME@x.pl ' }])
+    await render()
+    await click(by('leave-company-button'))
+    expect(by('leave-notification-email')).not.toBeNull()
+  })
+
+  it('no e-mail sentence when the company address is someone else', async () => {
+    vi.mocked(listTenants).mockResolvedValue([{ ...tenant(employeeAccess), notificationEmail: 'biuro@x.pl' }])
+    await render()
+    await click(by('leave-company-button'))
+    expect(by('leave-notification-email')).toBeNull()
   })
 
   it('changing your own role asks first; cancel keeps it', async () => {

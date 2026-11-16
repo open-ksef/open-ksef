@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { addOrUpdateCredential, forceCredentialSync } from '@/api/endpoints/credentials'
 import { createTenant } from '@/api/endpoints/tenants'
+import { ApiError } from '@/api/errors'
 import { BrandMark } from '@/components/BrandMark'
 import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
@@ -48,7 +49,7 @@ export function OnboardingPage(): ReactElement {
       setStep(2)
     },
     onError: (err) => {
-      toast.error(`Błąd tworzenia firmy: ${err.message}`)
+      toast.error(err instanceof ApiError && err.status === 409 ? err.message : `Błąd tworzenia firmy: ${err.message}`)
     },
   })
 
