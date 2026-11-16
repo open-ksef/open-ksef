@@ -382,6 +382,17 @@ public class NotificationServiceTests : IDisposable
         Assert.Equal(new Dictionary<string, string> { ["type"] = "access_granted", ["tenantId"] = tenantId.ToString() }, provider.Last.Data);
     }
 
+    [Fact]
+    public async Task NotifyAccessGrantedAsync_UserWithoutDevices_StillGetsSignalR()
+    {
+        var tenantId = await SeedTenantAsync("owner");
+        var signalR = new StubUserPushProvider();
+
+        await new NotificationService(_db, [], _email, _logger, signalR).NotifyAccessGrantedAsync("portal-only", tenantId, "Biuro Testowe");
+
+        Assert.Equal(["portal-only"], signalR.Users);
+    }
+
     private async Task AddMemberAsync(Guid tenantId, string userId, string token, bool notify = true)
     {
         _db.TenantMembers.Add(new TenantMember { TenantId = tenantId, UserId = userId, Role = TenantRole.Employee, NotifyNewInvoices = notify, CreatedAt = DateTime.UtcNow });
@@ -528,6 +539,10 @@ public class NotificationServiceTests : IDisposable
             Summaries.Add((toEmail, tenantId, company, count));
             return Task.CompletedTask;
         }
+
+        public Task<bool> SendInviteEmailAsync(string toEmail, Guid tenantId, string company, string inviterName, string link) => Task.FromResult(false);
+
+        public Task<bool> SendAccessGrantedEmailAsync(string toEmail, Guid tenantId, string company, string portalUrl) => Task.FromResult(false);
     }
 
     private sealed class ListLogger : ILogger<NotificationService>

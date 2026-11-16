@@ -11,6 +11,11 @@ public class AuditEvent
     public const string MemberLeft = "member.left";
     public const string MemberRemoved = "member.removed";
     public const string MemberRoleChanged = "member.roleChanged";
+    public const string InviteCreated = "invite.created";
+    public const string InviteResent = "invite.resent";
+    public const string InviteRevoked = "invite.revoked";
+    public const string InviteAccepted = "invite.accepted";
+    public const string AccessGranted = "access.granted";
 
     public Guid Id { get; set; }
     public DateTime OccurredAt { get; set; }

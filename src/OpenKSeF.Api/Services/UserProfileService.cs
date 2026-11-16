@@ -3,11 +3,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Api.Services;
 
-/// <summary>Keeps a UserProfiles row in step with the caller's token claims; the cache keeps it to one DB check per claim set per 15 min.</summary>
+/// <summary>Keeps a UserProfiles row in step with the caller's token claims and claims pending invites once the e-mail is verified; the cache keeps it to one DB check per claim set per 15 min.</summary>
 public class UserProfileService(ApplicationDbContext db, IMemoryCache cache)
 {
     private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(15);
@@ -45,14 +46,46 @@ public class UserProfileService(ApplicationDbContext db, IMemoryCache cache)
         try
         {
             await db.SaveChangesAsync();
+            if (emailVerified && email is not null)
+                await ClaimInvitesAsync(userId, email);
         }
         catch (DbUpdateException e) when (IssuedInvoiceService.IsUniqueViolation(e))
         {
-            db.Entry(profile).State = EntityState.Detached;
+            db.ChangeTracker.Clear();
             return;
         }
 
         cache.Set(key, true, CacheFor);
+    }
+
+    private async Task ClaimInvitesAsync(string userId, string email)
+    {
+        var now = DateTime.UtcNow;
+        var pending = await db.TenantInvites
+            .Where(i => i.Email == email && i.Status == TenantInviteStatus.Pending && i.ExpiresAt > now)
+            .Select(i => new { i.Id, i.TenantId })
+            .ToListAsync();
+
+        foreach (var p in pending)
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            await TenantInviteService.LockTenantAsync(db, p.TenantId);
+            var invite = await db.TenantInvites.FirstOrDefaultAsync(i => i.Id == p.Id && i.Status == TenantInviteStatus.Pending);
+            if (invite is null)
+                continue;
+
+            var member = await db.TenantMembers.FirstOrDefaultAsync(m => m.TenantId == invite.TenantId && m.UserId == userId);
+            if (member is null)
+            {
+                member = new TenantMember { TenantId = invite.TenantId, UserId = userId, Role = invite.Role, CreatedAt = now };
+                db.TenantMembers.Add(member);
+            }
+
+            invite.Accept(userId, now);
+            await TenantAudit.AddAsync(db, invite.TenantId, userId, AuditEvent.InviteAccepted, member.Role.ToString(), userId, invite.Email);
+            await db.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
     }
 
     private static string? Claim(ClaimsPrincipal user, params string[] types) =>

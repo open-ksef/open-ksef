@@ -20,6 +20,7 @@ public class MigrationPolicyTests
         ["20261115144909_AddTenantMembership"] = "T-161: raw Sql inserts one Owner row per tenant from Tenants.UserId and backfills only the new nullable PaidByUserId on paid rows. IsPaid/PaidAt not written, no row removed.",
         ["20261115200000_RebackfillTenantMembership"] = "T-162 (ADR-006 decision 5): idempotent re-run of the T-161 backfill for rows written by a rolled-back image. Clears PaidByUserId on unpaid rows, inserts a missing creator Owner row, fills PaidByUserId on paid rows. IsPaid/PaidAt not written, no row removed.",
         ["20261116070552_AddMemberNotifyProfilesTenantAudit"] = "T-163/T-164: AlterColumn only relaxes AuditEvents.TargetUserId to nullable; AddForeignKey AuditEvents.TenantId -> Tenants (cascade) on a column added in the same migration, so every existing row is NULL and passes. No row written or removed. Down re-tightens TargetUserId and fails once tenant audit rows exist: roll back by image only.",
+        ["20261116175939_AddTenantInvites"] = "T-166: DropForeignKey + AddForeignKey re-create FK_AuditEvents_Tenants_TenantId with ON DELETE SET NULL instead of CASCADE, so audit rows (and the invite limits counted from them) outlive a deleted company. TenantId is already nullable; every existing row already satisfies the FK; no row written or removed. The rest is a new table. Down restores CASCADE.",
     };
 
     [Fact]
