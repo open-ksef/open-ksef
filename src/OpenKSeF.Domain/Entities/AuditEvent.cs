@@ -8,6 +8,9 @@ public class AuditEvent
     public const string InvoiceUnpaid = "invoice.unpaid";
     public const string CredentialSet = "credential.set";
     public const string CredentialDeleted = "credential.deleted";
+    public const string MemberLeft = "member.left";
+    public const string MemberRemoved = "member.removed";
+    public const string MemberRoleChanged = "member.roleChanged";
 
     public Guid Id { get; set; }
     public DateTime OccurredAt { get; set; }

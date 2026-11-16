@@ -32,6 +32,9 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         ["GET api/tenants/{tenantId}"] = new(null, Read),
         ["PUT api/tenants/{tenantId}"] = new(new { displayName = "Hijacked" }, TenantPermissions.TenantEdit),
         ["DELETE api/tenants/{tenantId}"] = new(null, TenantPermissions.TenantDelete, HttpStatusCode.NoContent),
+        ["GET api/tenants/{tenantId}/members"] = new(null, TenantPermissions.MembersManage),
+        ["PUT api/tenants/{tenantId}/members/{userId}"] = new(new { role = "Employee" }, TenantPermissions.MembersManage, HttpStatusCode.NotFound),
+        ["DELETE api/tenants/{tenantId}/members/{userId}"] = new(null, TenantPermissions.MembersManage, HttpStatusCode.NotFound),
         ["PUT api/tenants/{tenantId}/members/me/notifications"] = new(new { enabled = true }, TenantPermissions.NotificationsSelf, HttpStatusCode.NoContent),
         ["POST api/tenants/{tenantId}/credentials"] = new(new { type = 0 }, TenantPermissions.CredentialManage, HttpStatusCode.BadRequest),
         ["DELETE api/tenants/{tenantId}/credentials"] = new(null, TenantPermissions.CredentialManage, HttpStatusCode.NoContent),
@@ -298,6 +301,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         var path = route.Template
             .Replace("{tenantId}", tenantId.ToString())
             .Replace("{ksefInvoiceNumber}", _seed.KsefNumber)
+            .Replace("{userId}", "no-such-member")
             .Replace("{id}", ResourceId(route.Template, issuedId ?? _seed.IssuedId).ToString());
         if (path.Contains('{'))
             throw new InvalidOperationException($"Unfilled route parameter in {route.Key}");
