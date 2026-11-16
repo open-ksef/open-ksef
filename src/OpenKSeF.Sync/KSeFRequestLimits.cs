@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 namespace OpenKSeF.Sync;
 
 /// <summary>
-/// Per-NIP KSeF request pacing (metadata and XML share it) and XML 429 blocks until Retry-After. In memory, per process.
+/// Per-NIP KSeF request pacing (all requests, plus a slower metadata key) and XML 429 blocks until Retry-After. In memory, per process.
 /// </summary>
 public sealed class KSeFRequestLimits
 {
@@ -16,7 +16,7 @@ public sealed class KSeFRequestLimits
     public void Block(string nip, TimeSpan retryAfter) =>
         _blockedUntil[nip] = DateTime.UtcNow + retryAfter;
 
-    public async Task WaitTurnAsync(string nip, TimeSpan spacing, CancellationToken cancellationToken)
+    public async Task WaitTurnAsync(string key, TimeSpan spacing, CancellationToken cancellationToken)
     {
         while (true)
         {
@@ -24,9 +24,9 @@ public sealed class KSeFRequestLimits
             lock (_nextTurn)
             {
                 var now = DateTime.UtcNow;
-                if (!_nextTurn.TryGetValue(nip, out var next) || next <= now)
+                if (!_nextTurn.TryGetValue(key, out var next) || next <= now)
                 {
-                    _nextTurn[nip] = now + spacing;
+                    _nextTurn[key] = now + spacing;
                     return;
                 }
 

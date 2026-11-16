@@ -33,6 +33,11 @@ public class TenantSyncOptions
     public TimeSpan KSeFRequestSpacing { get; set; } = TimeSpan.FromMilliseconds(150);
 
     /// <summary>
+    /// Minimum gap between two KSeF metadata queries of one NIP. The metadata endpoint also allows only 16 per minute.
+    /// </summary>
+    public TimeSpan KSeFMetadataSpacing { get; set; } = TimeSpan.FromSeconds(4);
+
+    /// <summary>
     /// Pause between Worker XML downloads. KSeF allows 16 per minute per NIP and IP.
     /// </summary>
     public TimeSpan XmlDownloadSpacing { get; set; } = TimeSpan.FromSeconds(4);

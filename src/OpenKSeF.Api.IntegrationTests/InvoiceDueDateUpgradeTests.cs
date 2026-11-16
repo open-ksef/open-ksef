@@ -69,7 +69,7 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
         _gateway,
         new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
-        Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero }),
+        Options.Create(new TenantSyncOptions { KSeFMetadataSpacing = TimeSpan.Zero, XmlDownloadSpacing = TimeSpan.Zero }),
         new KSeFRequestLimits(),
         TimeProvider.System,
         NullLogger<TenantSyncService>.Instance);

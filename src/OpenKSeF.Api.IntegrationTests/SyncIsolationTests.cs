@@ -59,7 +59,7 @@ public sealed class SyncIsolationTests : IAsyncLifetime
         _gateway,
         new InvoiceService(db, Substitute.For<INotificationService>(), _invoiceLogger),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
-        Options.Create(new TenantSyncOptions { BatchSize = 2, XmlDownloadSpacing = TimeSpan.Zero }),
+        Options.Create(new TenantSyncOptions { KSeFMetadataSpacing = TimeSpan.Zero, BatchSize = 2, XmlDownloadSpacing = TimeSpan.Zero }),
         new KSeFRequestLimits(),
         TimeProvider.System,
         NullLogger<TenantSyncService>.Instance);

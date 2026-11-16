@@ -31,6 +31,7 @@ public sealed class OpenKSeFWebApplicationFactory : WebApplicationFactory<Progra
         builder.UseSetting("Auth:ServiceAccount:ClientId", "openksef-api");
         builder.UseSetting("Auth:ServiceAccount:ClientSecret", "test-api-client-secret");
         builder.UseSetting("KSeF:Environment", "test");
+        builder.UseSetting("Sync:KSeFMetadataSpacing", "00:00:00");
         builder.UseSetting("Auth:RequireHttpsMetadata", "false");
         builder.UseSetting("ENCRYPTION_KEY", TestEncryptionKey);
         builder.UseSetting("ASPNETCORE_ENVIRONMENT", "Production");

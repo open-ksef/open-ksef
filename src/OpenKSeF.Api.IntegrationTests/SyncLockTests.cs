@@ -82,7 +82,7 @@ public sealed class SyncLockTests : IAsyncLifetime
         _gateway,
         new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
-        Options.Create(new TenantSyncOptions { XmlDownloadSpacing = TimeSpan.Zero, ManualLockWait = manualLockWait ?? TimeSpan.FromMinutes(1) }),
+        Options.Create(new TenantSyncOptions { KSeFMetadataSpacing = TimeSpan.Zero, XmlDownloadSpacing = TimeSpan.Zero, ManualLockWait = manualLockWait ?? TimeSpan.FromMinutes(1) }),
         new KSeFRequestLimits(),
         TimeProvider.System,
         NullLogger<TenantSyncService>.Instance);

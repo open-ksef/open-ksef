@@ -19,7 +19,7 @@ public sealed class TenantSyncService : ITenantSyncService
     private const int IssuedFirstRunMonthsBack = 12;
     private const int MaxIssuedQueriesPerRun = 10;
     private const int MaxConsecutiveDownloadFailures = 3;
-    private const int MaxQueryAttempts = 3;
+    private const int MaxQueryAttempts = 2;
     private static readonly TimeSpan MaxQueryRetryAfter = TimeSpan.FromSeconds(30);
     private const int TenantLockKeyspace = 1263748422;
     private static readonly TimeSpan LockPollInterval = TimeSpan.FromSeconds(2);
@@ -511,6 +511,7 @@ public sealed class TenantSyncService : ITenantSyncService
     {
         for (var attempt = 1; ; attempt++)
         {
+            await _limits.WaitTurnAsync($"{nip}:metadata", _syncOptions.KSeFMetadataSpacing, cancellationToken);
             await _limits.WaitTurnAsync(nip, _syncOptions.KSeFRequestSpacing, cancellationToken);
             try
             {

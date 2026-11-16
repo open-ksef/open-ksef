@@ -74,12 +74,12 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     private ApplicationDbContext NewContext() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(_postgres.GetConnectionString()).Options);
 
-    private TenantSyncService SyncService(ApplicationDbContext db, TimeSpan? spacing = null, int budget = 60, TimeSpan? requestSpacing = null) => new(
+    private TenantSyncService SyncService(ApplicationDbContext db, TimeSpan? spacing = null, int budget = 60, TimeSpan? requestSpacing = null, TimeSpan? metadataSpacing = null) => new(
         db,
         _gateway,
         new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
-        Options.Create(new TenantSyncOptions { XmlDownloadSpacing = spacing ?? TimeSpan.Zero, XmlDownloadsPerCycle = budget, KSeFRequestSpacing = requestSpacing ?? TimeSpan.Zero }),
+        Options.Create(new TenantSyncOptions { XmlDownloadSpacing = spacing ?? TimeSpan.Zero, XmlDownloadsPerCycle = budget, KSeFRequestSpacing = requestSpacing ?? TimeSpan.Zero, KSeFMetadataSpacing = metadataSpacing ?? TimeSpan.Zero }),
         _blocks,
         TimeProvider.System,
         NullLogger<TenantSyncService>.Instance);
@@ -102,10 +102,10 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         return await SyncService(db, spacing, budget).SyncAllTenantsAsync();
     }
 
-    private async Task<TenantSyncResult> ManualSyncAsync(bool fullResync = false, TimeSpan? requestSpacing = null)
+    private async Task<TenantSyncResult> ManualSyncAsync(bool fullResync = false, TimeSpan? requestSpacing = null, TimeSpan? metadataSpacing = null)
     {
         await using var db = NewContext();
-        return await SyncService(db, requestSpacing: requestSpacing).SyncTenantAsync(_tenantId, fullResync);
+        return await SyncService(db, requestSpacing: requestSpacing, metadataSpacing: metadataSpacing).SyncTenantAsync(_tenantId, fullResync);
     }
 
     private static async Task AddTenantAsync(ApplicationDbContext db, Guid id, string userId, string nip)
@@ -981,6 +981,50 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         Assert.True(at[1] - at[0] >= TimeSpan.FromMilliseconds(950), (at[1] - at[0]).ToString());
         Assert.Equal(TenantSyncOutcome.Success, again.Outcome);
         Assert.Equal(new DateOnly(2026, 11, 20), (await RowAsync("KSEF-R1")).DueDate);
+    }
+
+    [Fact]
+    public async Task MetadataQueries_AreSpacedByMetadataSpacing_DefaultBelow16PerMinute()
+    {
+        Assert.True(TimeSpan.FromMinutes(1) / new TenantSyncOptions().KSeFMetadataSpacing <= 16);
+        await MigrateAsync();
+        var spacing = TimeSpan.FromMilliseconds(400);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var at = new List<TimeSpan>();
+        _received = _ =>
+        {
+            at.Add(clock.Elapsed);
+            return Page([]);
+        };
+        _issued = c =>
+        {
+            at.Add(clock.Elapsed);
+            return Page([], c.DateTo);
+        };
+
+        var result = await ManualSyncAsync(metadataSpacing: spacing);
+
+        Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
+        Assert.True(at.Count >= 3, at.Count.ToString());
+        Assert.All(at.Zip(at.Skip(1), (a, b) => b - a), gap => Assert.True(gap >= spacing - TimeSpan.FromMilliseconds(16), gap.ToString()));
+    }
+
+    [Fact]
+    public async Task MetadataPerSecond429_EveryAttempt_FailsAfterTwoQueries()
+    {
+        await MigrateAsync();
+        var queries = 0;
+        _received = _ =>
+        {
+            queries++;
+            throw RateLimited(1);
+        };
+
+        var result = await ManualSyncAsync();
+
+        Assert.Equal(TenantSyncOutcome.Failed, result.Outcome);
+        Assert.Equal(429, result.ErrorStatusCode);
+        Assert.Equal(2, queries);
     }
 
     [Fact]
