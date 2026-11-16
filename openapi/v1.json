@@ -1752,12 +1752,29 @@
             "nullable": true,
             "type": "string"
           },
+          "lastSyncErrorAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "lastSyncErrorCategory": {
+            "nullable": true,
+            "type": "string"
+          },
+          "lastSyncErrorMessage": {
+            "nullable": true,
+            "type": "string"
+          },
           "lastSyncedAt": {
             "format": "date-time",
             "nullable": true,
             "type": "string"
           },
           "nip": {
+            "nullable": true,
+            "type": "string"
+          },
+          "syncProblem": {
             "nullable": true,
             "type": "string"
           },
