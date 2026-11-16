@@ -17,6 +17,7 @@ export interface TenantMemberResponse {
   email: string | null
   role: TenantRole
   createdAt: string
+  receivesCompanyNotificationEmail?: boolean
 }
 
 export interface CreateInviteRequest {

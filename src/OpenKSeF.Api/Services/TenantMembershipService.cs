@@ -22,8 +22,9 @@ public class TenantMembershipService(ApplicationDbContext db)
             from p in profiles.DefaultIfEmpty()
             orderby m.CreatedAt
             select new { m.UserId, p.DisplayName, p.Email, m.Role, m.CreatedAt }).ToListAsync();
+        var notificationEmail = await db.Tenants.Where(t => t.Id == tenantId).Select(t => t.NotificationEmail).SingleAsync();
 
-        return rows.Select(r => new TenantMemberResponse(r.UserId, r.DisplayName, r.Email, r.Role.ToString(), r.CreatedAt)).ToList();
+        return rows.Select(r => new TenantMemberResponse(r.UserId, r.DisplayName, r.Email, r.Role.ToString(), r.CreatedAt, SameAddress(r.Email, notificationEmail))).ToList();
     }
 
     public async Task<Outcome> ChangeRoleAsync(Guid tenantId, string actorUserId, string targetUserId, TenantRole role)
@@ -64,6 +65,14 @@ public class TenantMembershipService(ApplicationDbContext db)
 
         await TenantAudit.AddAsync(db, tenantId, actorUserId, leaving ? AuditEvent.MemberLeft : AuditEvent.MemberRemoved, target.Role.ToString(), targetUserId);
         db.TenantMembers.Remove(target);
+        var tenant = await db.Tenants.SingleAsync(t => t.Id == tenantId);
+        var targetEmail = await db.UserProfiles.Where(p => p.UserId == targetUserId).Select(p => p.Email).FirstOrDefaultAsync();
+        if (SameAddress(targetEmail, tenant.NotificationEmail))
+        {
+            await TenantAudit.AddAsync(db, tenantId, actorUserId, AuditEvent.NotificationEmailCleared, targetUserId: targetUserId, targetEmail: tenant.NotificationEmail);
+            tenant.NotificationEmail = null;
+            tenant.UpdatedAt = DateTime.UtcNow;
+        }
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
         return Outcome.Done;
@@ -82,6 +91,9 @@ public class TenantMembershipService(ApplicationDbContext db)
             .ToListAsync();
         return (members.SingleOrDefault(m => m.UserId == actorUserId), members.SingleOrDefault(m => m.UserId == targetUserId));
     }
+
+    private static bool SameAddress(string? a, string? b) =>
+        !string.IsNullOrWhiteSpace(a) && string.Equals(a.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private async Task<bool> IsLastOwnerAsync(TenantMember target) =>
         target.Role == TenantRole.Owner

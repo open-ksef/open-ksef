@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Events;
 using OpenKSeF.Domain.Models;
 using NSubstitute;
@@ -52,6 +53,42 @@ public class EmailServiceTests
             "<p>Pobraliśmy z KSeF więcej nowych faktur zakupowych niż wysyłamy osobnych powiadomień. Pozostałe nowe faktury: 15. Zobacz je w aplikacji lub w portalu OpenKSeF.</p>\n" +
             "<p><small>Wysłane przez OpenKSeF</small></p>",
             message.HtmlBody!.ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
+    public void BuildInviteMessage_UsesReqTexts_HtmlAndPlain_ExpiryInPolishTime()
+    {
+        var message = CreateService(new EmailOptions()).BuildInviteMessage(
+            "zaproszona@example.invalid", "Biuro & <Syn>", "1111111111", TenantRole.Accountant, "Anna Nowak", "https://ksef.example.invalid/zaproszenie#t0k", new DateTime(2026, 11, 30, 23, 30, 0, DateTimeKind.Utc));
+
+        Assert.Equal("Zaproszenie do firmy Biuro & <Syn> w OpenKSeF", message.Subject);
+        Assert.Equal(string.Join("\n\n",
+            "Dzień dobry,",
+            "Anna Nowak zaprasza Cię do firmy Biuro & <Syn> (NIP 1111111111) w OpenKSeF. Twoja rola: Księgowy.",
+            "OpenKSeF to aplikacja do przeglądania faktur z Krajowego Systemu e-Faktur (KSeF).",
+            "Przyjmij zaproszenie: https://ksef.example.invalid/zaproszenie#t0k",
+            "Zaloguj się lub załóż konto na adres zaproszona@example.invalid. Link działa raz i jest ważny do 01.12.2026.",
+            "Twój adres e-mail podała osoba zapraszająca. Jeśli nie spodziewasz się tego zaproszenia, zignoruj tę wiadomość. Zaproszenie wygaśnie samo.",
+            "Wiadomość wysłana automatycznie przez OpenKSeF."), message.TextBody.ReplaceLineEndings("\n"));
+        Assert.Contains("<p>Anna Nowak zaprasza Cię do firmy Biuro &amp; &lt;Syn&gt; (NIP 1111111111) w OpenKSeF. Twoja rola: Księgowy.</p>", message.HtmlBody);
+        Assert.Contains("<p><a href=\"https://ksef.example.invalid/zaproszenie#t0k\">Przyjmij zaproszenie</a></p>", message.HtmlBody);
+    }
+
+    [Fact]
+    public void BuildAccessGrantedMessage_UsesReqTexts_HtmlAndPlain()
+    {
+        var message = CreateService(new EmailOptions()).BuildAccessGrantedMessage(
+            "ksiegowa@example.invalid", "NIP 1111111111", "1111111111", TenantRole.Employee, "Jan Kowalski", "https://ksef.example.invalid");
+
+        Assert.Equal("Masz dostęp do firmy NIP 1111111111", message.Subject);
+        Assert.Equal(string.Join("\n\n",
+            "Dzień dobry,",
+            "masz dostęp do firmy NIP 1111111111 (NIP 1111111111) w OpenKSeF. Twoja rola: Pracownik. Dostęp nadał(a): Jan Kowalski.",
+            "Firma jest już na Twojej liście w portalu i w aplikacji mobilnej.",
+            "Otwórz portal: https://ksef.example.invalid",
+            "Jeśli to pomyłka, możesz opuścić firmę w portalu.",
+            "Wiadomość wysłana automatycznie przez OpenKSeF."), message.TextBody.ReplaceLineEndings("\n"));
+        Assert.Contains("<a href=\"https://ksef.example.invalid\">", message.HtmlBody);
     }
 
     [Fact]

@@ -16,6 +16,7 @@ public class AuditEvent
     public const string InviteRevoked = "invite.revoked";
     public const string InviteAccepted = "invite.accepted";
     public const string AccessGranted = "access.granted";
+    public const string NotificationEmailCleared = "tenant.notificationEmailCleared";
 
     public Guid Id { get; set; }
     public DateTime OccurredAt { get; set; }

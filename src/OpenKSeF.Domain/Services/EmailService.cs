@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MimeKit;
 using OpenKSeF.Domain.Abstractions;
+using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Events;
 using OpenKSeF.Domain.Models;
 
@@ -16,6 +17,7 @@ public class EmailService : IEmailService
 {
     internal static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(10);
     private static readonly CultureInfo PolishCulture = CultureInfo.GetCultureInfo("pl-PL");
+    private static readonly TimeZoneInfo PolandTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Warsaw");
 
     private readonly EmailOptions _options;
     private readonly ILogger<EmailService> _logger;
@@ -42,11 +44,11 @@ public class EmailService : IEmailService
     public Task SendNewInvoicesSummaryEmailAsync(string toEmail, Guid tenantId, string company, int count) =>
         SendAsync(() => BuildNewInvoicesSummaryMessage(toEmail, company, count), tenantId, null);
 
-    public Task<bool> SendInviteEmailAsync(string toEmail, Guid tenantId, string company, string inviterName, string link) =>
-        SendAsync(() => BuildInviteMessage(toEmail, company, inviterName, link), tenantId, null);
+    public Task<bool> SendInviteEmailAsync(string toEmail, Guid tenantId, string company, string nip, TenantRole role, string inviterName, string link, DateTime expiresAtUtc) =>
+        SendAsync(() => BuildInviteMessage(toEmail, company, nip, role, inviterName, link, expiresAtUtc), tenantId, null);
 
-    public Task<bool> SendAccessGrantedEmailAsync(string toEmail, Guid tenantId, string company, string portalUrl) =>
-        SendAsync(() => BuildAccessGrantedMessage(toEmail, company, portalUrl), tenantId, null);
+    public Task<bool> SendAccessGrantedEmailAsync(string toEmail, Guid tenantId, string company, string nip, TenantRole role, string granterName, string portalUrl) =>
+        SendAsync(() => BuildAccessGrantedMessage(toEmail, company, nip, role, granterName, portalUrl), tenantId, null);
 
     private async Task<bool> SendAsync(Func<MimeMessage> build, Guid tenantId, Guid? invoiceId)
     {
@@ -120,39 +122,50 @@ public class EmailService : IEmailService
         return message;
     }
 
-    internal MimeMessage BuildInviteMessage(string toEmail, string company, string inviterName, string link)
+    internal MimeMessage BuildInviteMessage(string toEmail, string company, string nip, TenantRole role, string inviterName, string link, DateTime expiresAtUtc)
     {
+        var expires = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(expiresAtUtc, DateTimeKind.Utc), PolandTimeZone).ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+        return BuildMessage(toEmail, $"Zaproszenie do firmy {company} w OpenKSeF",
+            "Dzień dobry,",
+            $"{inviterName} zaprasza Cię do firmy {company} (NIP {nip}) w OpenKSeF. Twoja rola: {RoleName(role)}.",
+            "OpenKSeF to aplikacja do przeglądania faktur z Krajowego Systemu e-Faktur (KSeF).",
+            ("Przyjmij zaproszenie", link),
+            $"Zaloguj się lub załóż konto na adres {toEmail}. Link działa raz i jest ważny do {expires}.",
+            "Twój adres e-mail podała osoba zapraszająca. Jeśli nie spodziewasz się tego zaproszenia, zignoruj tę wiadomość. Zaproszenie wygaśnie samo.",
+            "Wiadomość wysłana automatycznie przez OpenKSeF.");
+    }
+
+    internal MimeMessage BuildAccessGrantedMessage(string toEmail, string company, string nip, TenantRole role, string granterName, string portalUrl) =>
+        BuildMessage(toEmail, $"Masz dostęp do firmy {company}",
+            "Dzień dobry,",
+            $"masz dostęp do firmy {company} (NIP {nip}) w OpenKSeF. Twoja rola: {RoleName(role)}. Dostęp nadał(a): {granterName}.",
+            "Firma jest już na Twojej liście w portalu i w aplikacji mobilnej.",
+            ("Otwórz portal", portalUrl),
+            "Jeśli to pomyłka, możesz opuścić firmę w portalu.",
+            "Wiadomość wysłana automatycznie przez OpenKSeF.");
+
+    private MimeMessage BuildMessage(string toEmail, string subject, params object[] paragraphs)
+    {
+        var html = paragraphs.Select(p => p is (string text, string url)
+            ? $"<p><a href=\"{WebUtility.HtmlEncode(url)}\">{WebUtility.HtmlEncode(text)}</a></p>"
+            : $"<p>{WebUtility.HtmlEncode((string)p)}</p>");
+        var plain = paragraphs.Select(p => p is (string text, string url) ? $"{text}: {url}" : (string)p);
+
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
         message.To.Add(MailboxAddress.Parse(toEmail));
-        message.Subject = $"Zaproszenie do firmy {company}";
-        message.Body = new TextPart("html")
-        {
-            Text = $"""
-                <p>{WebUtility.HtmlEncode(inviterName)} zaprasza Cię do firmy {WebUtility.HtmlEncode(company)} w OpenKSeF.</p>
-                <p><a href="{WebUtility.HtmlEncode(link)}">Przyjmij zaproszenie</a> (link jest ważny 14 dni).</p>
-                <p><small>Wysłane przez OpenKSeF</small></p>
-                """
-        };
+        message.Subject = subject;
+        message.Body = new BodyBuilder { HtmlBody = string.Join("\n", html), TextBody = string.Join("\n\n", plain) }.ToMessageBody();
         return message;
     }
 
-    internal MimeMessage BuildAccessGrantedMessage(string toEmail, string company, string portalUrl)
+    private static string RoleName(TenantRole role) => role switch
     {
-        var message = new MimeMessage();
-        message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
-        message.To.Add(MailboxAddress.Parse(toEmail));
-        message.Subject = $"Masz dostęp do firmy {company}";
-        message.Body = new TextPart("html")
-        {
-            Text = $"""
-                <p>Masz dostęp do firmy {WebUtility.HtmlEncode(company)} w OpenKSeF.</p>
-                <p><a href="{WebUtility.HtmlEncode(portalUrl)}">Otwórz portal</a></p>
-                <p><small>Wysłane przez OpenKSeF</small></p>
-                """
-        };
-        return message;
-    }
+        TenantRole.Owner => "Właściciel",
+        TenantRole.Administrator => "Administrator",
+        TenantRole.Accountant => "Księgowy",
+        _ => "Pracownik",
+    };
 
     private SecureSocketOptions SocketOptions() =>
         !_options.UseSsl ? SecureSocketOptions.None

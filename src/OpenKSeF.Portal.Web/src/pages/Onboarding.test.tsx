@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import axe from 'axe-core'
+import toast from 'react-hot-toast'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
@@ -8,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { addOrUpdateCredential, forceCredentialSync } from '@/api/endpoints/credentials'
 import { createTenant } from '@/api/endpoints/tenants'
+import { normalizeError } from '@/api/errors'
 import { OnboardingPage } from './Onboarding'
 import { ownerAccess } from '@/test/tenant'
 
@@ -87,6 +89,12 @@ describe('Onboarding', () => {
     expect(await serious()).toEqual([])
     await toStep2()
     expect(await serious()).toEqual([])
+  })
+
+  it('shows the API 409 text as is when the NIP is already accessible', async () => {
+    vi.mocked(createTenant).mockRejectedValue(await normalizeError(new Response(JSON.stringify({ error: 'Masz już dostęp do firmy z tym NIP-em: Firma C2.' }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
+    await toStep2()
+    expect(vi.mocked(toast.error).mock.calls[0][0]).toBe('Masz już dostęp do firmy z tym NIP-em: Firma C2.')
   })
 
   it('blocks a NIP with a wrong checksum', async () => {

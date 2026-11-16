@@ -37,7 +37,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Tenant>(entity =>
         {
             entity.HasKey(t => t.Id);
-            entity.HasIndex(t => new { t.UserId, t.Nip }).IsUnique();
+            entity.HasIndex(t => new { t.UserId, t.Nip });
             entity.Property(t => t.UserId).IsRequired().HasMaxLength(256);
             entity.Property(t => t.Nip).IsRequired().HasMaxLength(10);
             entity.Property(t => t.DisplayName).HasMaxLength(200);

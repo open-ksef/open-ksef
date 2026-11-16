@@ -259,6 +259,7 @@ function AddCompanyDialog({ onClose }: { onClose: () => void }): ReactElement {
     onError: async (error) => {
       const nameError = await readFieldError(error, 'DisplayName')
       if (nameError) setFormError(nameError)
+      else if (error instanceof ApiError && error.status === 409) setFormError(error.message)
       else notifyMutationError('create', 'Tenant', error)
     },
   })

@@ -51,6 +51,11 @@ function MembersTab({ company }: { company: TenantResponse }): ReactElement {
   const [resent, setResent] = useState<{ email: string; link: string; expiresAt: string; emailSent: boolean } | null>(null)
 
   const members = useQuery({ queryKey: ['tenant-members', tenantId], queryFn: () => listMembers(tenantId), enabled: manage })
+  const myEmail = user?.profile.email
+  const self = members.data?.find((m) => m.userId === myId)
+  const leaveClearsEmail = self
+    ? self.receivesCompanyNotificationEmail === true
+    : Boolean(myEmail && company.notificationEmail?.trim().toLowerCase() === myEmail.trim().toLowerCase())
   const invites = useQuery({ queryKey: ['tenant-invites', tenantId], queryFn: () => listInvites(tenantId), enabled: manage })
   const refreshLists = async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: ['tenant-members', tenantId] })
@@ -300,7 +305,13 @@ function MembersTab({ company }: { company: TenantResponse }): ReactElement {
         isPending={leave.isPending}
         onConfirm={() => leave.mutate()}
         onCancel={() => setLeaveOpen(false)}
-      />
+      >
+        {leaveClearsEmail ? (
+          <p className="company-notice" data-testid="leave-notification-email" role="status">
+            Twój adres {company.notificationEmail ?? myEmail} przestanie dostawać powiadomienia e-mail o nowych fakturach tej firmy.
+          </p>
+        ) : null}
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={ownRole !== null}
@@ -311,7 +322,6 @@ function MembersTab({ company }: { company: TenantResponse }): ReactElement {
         variant="danger"
         isPending={changeRole.isPending}
         onConfirm={() => {
-          const self = members.data?.find((m) => m.userId === myId)
           if (self && ownRole) changeRole.mutate({ member: self, role: ownRole })
         }}
         onCancel={() => setOwnRole(null)}
@@ -326,7 +336,13 @@ function MembersTab({ company }: { company: TenantResponse }): ReactElement {
         isPending={remove.isPending}
         onConfirm={() => removing && remove.mutate(removing)}
         onCancel={() => setRemoving(null)}
-      />
+      >
+        {removing?.receivesCompanyNotificationEmail ? (
+          <p className="company-notice" data-testid="remove-notification-email" role="status">
+            Adres {company.notificationEmail ?? removing.email} przestanie dostawać powiadomienia e-mail o nowych fakturach tej firmy.
+          </p>
+        ) : null}
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={revoking !== null}

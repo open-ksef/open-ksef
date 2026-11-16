@@ -601,7 +601,7 @@ public sealed class SystemSetupService : ISystemSetupService
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var nip = NipValidator.Normalize(request.FirstTenantNip);
-            var tenantExists = await db.Tenants.AnyAsync(t => t.UserId == userId && t.Nip == nip, ct);
+            var tenantExists = await db.Tenants.AnyAsync(t => t.Nip == nip && db.TenantMembers.Any(m => m.TenantId == t.Id && m.UserId == userId), ct);
             if (!tenantExists)
             {
                 var now = DateTime.UtcNow;
