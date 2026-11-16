@@ -164,6 +164,26 @@ describe('Firma, Osoby z dostępem', () => {
     expect(removeMember).toHaveBeenCalledExactlyOnceWith('a', 'b')
   })
 
+  it('changing your own role asks first; cancel keeps it', async () => {
+    vi.mocked(changeMemberRole).mockResolvedValue(undefined)
+    vi.mocked(listMembers).mockResolvedValue([member('me', 'Owner'), member('o2', 'Owner')])
+    await render(ownerAccess)
+    const mine = () => all('member-row')[0].querySelector('select')!
+
+    await choose(mine(), 'Employee')
+    expect(changeMemberRole).not.toHaveBeenCalled()
+    const dialog = () => container.querySelector('[role="alertdialog"]')
+    expect(dialog()?.textContent).toContain('Zmienić swoją rolę?')
+    expect(dialog()?.textContent).toContain('Nowa rola: Pracownik. Możesz stracić możliwość zarządzania firmą.')
+    await click(dialog()?.querySelector<HTMLElement>('.ui-button--outline'))
+    expect(dialog()).toBeNull()
+    expect((mine() as HTMLSelectElement).value).toBe('Owner')
+
+    await choose(mine(), 'Employee')
+    await confirm()
+    expect(changeMemberRole).toHaveBeenCalledExactlyOnceWith('a', 'me', 'Employee')
+  })
+
   it('an administrator cannot pick, change or remove an owner', async () => {
     vi.mocked(listMembers).mockResolvedValue([member('o', 'Owner'), member('me', 'Administrator'), member('e', 'Employee')])
     await render(adminAccess)
@@ -238,24 +258,24 @@ describe('Firma, Osoby z dostępem', () => {
   it('inviting a new address says Zaproszenie oczekuje with a copyable link', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('navigator', { clipboard: { writeText } })
-    vi.mocked(createInvite).mockResolvedValue({ status: 'pending', inviteId: 'inv-2', link: 'https://k.example/zaproszenie/tok', expiresAt: '2026-11-30T10:00:00Z', emailSent: false })
+    vi.mocked(createInvite).mockResolvedValue({ status: 'pending', inviteId: 'inv-2', link: 'https://k.example/zaproszenie#tok', expiresAt: '2026-11-30T10:00:00Z', emailSent: false })
     await render(ownerAccess)
     await inviteSomeone('e@x.pl')
 
     expect(createInvite).toHaveBeenCalledExactlyOnceWith('a', { email: 'e@x.pl', role: 'Employee' })
     expect(by('invite-pending')?.textContent).toContain('Zaproszenie oczekuje')
-    expect((by('invite-link') as HTMLInputElement).value).toBe('https://k.example/zaproszenie/tok')
+    expect((by('invite-link') as HTMLInputElement).value).toBe('https://k.example/zaproszenie#tok')
     expect(by('invite-link-box')?.textContent).toContain('Przekaż link osobie zapraszanej (e@x.pl) dowolnym kanałem.')
     expect(by('invite-link-box')?.textContent).toContain('ważny do 30.11.2026')
     expect(by('invite-registration-off')).toBeNull()
     await click(by('invite-copy'))
-    expect(writeText).toHaveBeenCalledExactlyOnceWith('https://k.example/zaproszenie/tok')
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('https://k.example/zaproszenie#tok')
     expect(by('invite-copy')?.textContent).toBe('Skopiowano')
   })
 
   it('says the link was e-mailed, and warns when registration is off', async () => {
     vi.mocked(getSetupStatus).mockResolvedValue({ isInitialized: true, registrationAllowed: false })
-    vi.mocked(createInvite).mockResolvedValue({ status: 'pending', inviteId: 'inv-2', link: 'https://k/zaproszenie/t', expiresAt: '2026-11-30T10:00:00Z', emailSent: true })
+    vi.mocked(createInvite).mockResolvedValue({ status: 'pending', inviteId: 'inv-2', link: 'https://k/zaproszenie#t', expiresAt: '2026-11-30T10:00:00Z', emailSent: true })
     await render(ownerAccess)
     await inviteSomeone('e@x.pl')
 
@@ -279,7 +299,7 @@ describe('Firma, Osoby z dostępem', () => {
 
   it('lists pending invites with expiry; resend shows the new link, revoke asks first', async () => {
     vi.mocked(listInvites).mockResolvedValue([invite, { ...invite, id: 'inv-old', email: 'old@x.pl', isExpired: true }])
-    vi.mocked(resendInvite).mockResolvedValue({ link: 'https://k/zaproszenie/new', expiresAt: '2026-11-30T10:00:00Z', emailSent: true })
+    vi.mocked(resendInvite).mockResolvedValue({ link: 'https://k/zaproszenie#new', expiresAt: '2026-11-30T10:00:00Z', emailSent: true })
     vi.mocked(revokeInvite).mockResolvedValue(undefined)
     await render(ownerAccess)
 
@@ -290,7 +310,7 @@ describe('Firma, Osoby z dostępem', () => {
 
     await click(old.querySelector<HTMLElement>('[data-testid="invite-resend"]'))
     expect(resendInvite).toHaveBeenCalledExactlyOnceWith('a', 'inv-old')
-    expect((by('invite-link') as HTMLInputElement).value).toBe('https://k/zaproszenie/new')
+    expect((by('invite-link') as HTMLInputElement).value).toBe('https://k/zaproszenie#new')
 
     await click(all('invite-row')[0].querySelector<HTMLElement>('[data-testid="invite-revoke"]'))
     expect(revokeInvite).not.toHaveBeenCalled()

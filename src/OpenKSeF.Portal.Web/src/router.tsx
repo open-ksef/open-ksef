@@ -69,7 +69,7 @@ export const appRoutes: RouteObject[] = [
         ),
         children: [
           { path: '/onboarding', lazy: () => loadRoute(() => import('@/pages/Onboarding')).then((m) => ({ Component: m.OnboardingPage })) },
-          { path: '/zaproszenie/:token', lazy: () => loadRoute(() => import('@/pages/InviteAccept')).then((m) => ({ Component: m.InviteAcceptPage })) },
+          { path: '/zaproszenie', lazy: () => loadRoute(() => import('@/pages/InviteAccept')).then((m) => ({ Component: m.InviteAcceptPage })) },
         ],
       },
       { path: '/callback', element: <Callback /> },

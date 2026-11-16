@@ -18,7 +18,7 @@ import { todayIso } from '@/invoicing/format'
 import { InvoiceDraftPage } from './InvoiceDraft'
 import { listCredentials } from '@/api/endpoints/credentials'
 import { IssuedInvoiceListPage } from './IssuedInvoiceList'
-import { ownerAccess } from '@/test/tenant'
+import { employeeAccess, ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn() }))
@@ -141,6 +141,19 @@ describe('issuing pages', () => {
 
     await act(async () => typeInto(container.querySelector<HTMLInputElement>('#line-0-unitNetPrice')!, '100'))
     expect(container.querySelector('[data-testid="total-gross"]')?.textContent?.replace(/\s/g, ' ')).toBe('123,00 PLN')
+  })
+
+  it('a member without issuing.submit can draft but not send to KSeF', async () => {
+    vi.mocked(listTenants).mockResolvedValue([
+      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...employeeAccess, createdAt: '2026-01-01T00:00:00Z' },
+    ])
+    await render('/issued/new?tenantId=t-1')
+    await waitFor(() => Boolean(container.querySelector('#line-0-unitNetPrice')))
+
+    const buttons = [...container.querySelectorAll<HTMLButtonElement>('.inv-issue-button')]
+    expect(buttons.length).toBeGreaterThan(0)
+    expect(buttons.every((button) => button.disabled)).toBe(true)
+    expect(container.querySelector('[data-testid="issue-not-allowed"]')?.textContent).toBe('Wysłać fakturę do KSeF może właściciel, administrator lub księgowy.')
   })
 
   it('hides the number preview when the issue date is in another period', async () => {

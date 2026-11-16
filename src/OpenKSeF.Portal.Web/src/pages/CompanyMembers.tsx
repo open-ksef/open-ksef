@@ -47,6 +47,7 @@ function MembersTab({ company }: { company: TenantResponse }): ReactElement {
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [removing, setRemoving] = useState<TenantMemberResponse | null>(null)
   const [revoking, setRevoking] = useState<TenantInviteResponse | null>(null)
+  const [ownRole, setOwnRole] = useState<TenantRole | null>(null)
   const [resent, setResent] = useState<{ email: string; link: string; expiresAt: string; emailSent: boolean } | null>(null)
 
   const members = useQuery({ queryKey: ['tenant-members', tenantId], queryFn: () => listMembers(tenantId), enabled: manage })
@@ -94,7 +95,10 @@ function MembersTab({ company }: { company: TenantResponse }): ReactElement {
       if (member.userId === myId) await queryClient.invalidateQueries({ queryKey: ['tenants'] })
     },
     onError: (error) => toast.error(errorText(error), { duration: 10_000 }),
-    onSettled: () => refreshLists(),
+    onSettled: async () => {
+      setOwnRole(null)
+      await refreshLists()
+    },
   })
 
   const resend = useMutation({
@@ -188,7 +192,11 @@ function MembersTab({ company }: { company: TenantResponse }): ReactElement {
                         data-testid="member-role"
                         value={member.role}
                         disabled={changeRole.isPending}
-                        onChange={(event) => changeRole.mutate({ member, role: event.target.value as TenantRole })}
+                        onChange={(event) => {
+                          const role = event.target.value as TenantRole
+                          if (me) setOwnRole(role)
+                          else changeRole.mutate({ member, role })
+                        }}
                       >
                         {ROLES.filter((role) => canManageRole(role)).map((role) => (
                           <option key={role} value={role}>
@@ -292,6 +300,21 @@ function MembersTab({ company }: { company: TenantResponse }): ReactElement {
         isPending={leave.isPending}
         onConfirm={() => leave.mutate()}
         onCancel={() => setLeaveOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={ownRole !== null}
+        title="Zmienić swoją rolę?"
+        message={`Nowa rola: ${ownRole ? ROLE_LABELS[ownRole] : ''}. Możesz stracić możliwość zarządzania firmą.`}
+        confirmLabel="Zmień rolę"
+        pendingLabel="Zapisywanie…"
+        variant="danger"
+        isPending={changeRole.isPending}
+        onConfirm={() => {
+          const self = members.data?.find((m) => m.userId === myId)
+          if (self && ownRole) changeRole.mutate({ member: self, role: ownRole })
+        }}
+        onCancel={() => setOwnRole(null)}
       />
 
       <ConfirmDialog

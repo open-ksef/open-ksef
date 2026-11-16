@@ -12,6 +12,7 @@ import {
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { ApiError, readValidationEnvelope } from '@/api/errors'
 import type { IssuedInvoiceResponse, IssuedInvoiceStatus, SellerProfileResponse, ValidationIssue } from '@/api/types'
+import { can } from '@/company/CompanyContext'
 import { useCompany } from '@/company/useCompany'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
@@ -121,7 +122,8 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
-  const { setSwitchGuard } = useCompany()
+  const { company, setSwitchGuard } = useCompany()
+  const canSubmit = can(company, 'issuing.submit')
   const [form, setForm] = useState<DraftFormValue>(() => (invoice ? fromResponse(invoice) : emptyDraft()))
   const baseline = useRef(JSON.stringify(form))
   // Not invoice.version: a refetch moves the prop past the content this form holds, and sending that would hide the conflict.
@@ -257,7 +259,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
     <button
       type="button"
       className="ui-button ui-button--primary ui-button--md inv-issue-button"
-      disabled={busy || !profile.isComplete}
+      disabled={busy || !profile.isComplete || !canSubmit}
       onClick={(event) => {
         issueOpener.current = event.currentTarget
         const missing = missingTaxIdError(form) ?? missingRateError(form)
@@ -321,6 +323,11 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
             Uzupełnij dane firmy, aby wystawiać faktury. <Link to={profileHref}>Dane do faktur</Link>
           </div>
         ) : null}
+        {canSubmit ? null : (
+          <div className="inv-alert inv-alert--info" role="status" data-testid="issue-not-allowed">
+            Wysłać fakturę do KSeF może właściciel, administrator lub księgowy.
+          </div>
+        )}
         {failure ? <ErrorBanner message={failure} /> : null}
         <ValidationSummary errors={errors} warnings={warnings} />
 
