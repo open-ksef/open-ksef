@@ -27,6 +27,7 @@ import { InvoiceDraftPage } from './InvoiceDraft'
 import { IssuedInvoiceDetailsPage } from './IssuedInvoiceDetails'
 import { IssuedInvoiceListPage } from './IssuedInvoiceList'
 import { SellerProfilePage } from './SellerProfile'
+import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/credentials', () => ({ listCredentials: vi.fn() }))
@@ -162,7 +163,7 @@ describe('foreign invoices in the portal', () => {
     root = createRoot(container)
     vi.clearAllMocks()
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     vi.mocked(getSellerProfile).mockResolvedValue(profile)
     vi.mocked(getExchangeRateProposal).mockImplementation(async (_tenant, query) => ({ currency: query.currency, rate: 5.1234, tableDate: '2026-11-02' }))

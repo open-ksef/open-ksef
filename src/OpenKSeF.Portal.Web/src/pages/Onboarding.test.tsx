@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { addOrUpdateCredential, forceCredentialSync } from '@/api/endpoints/credentials'
 import { createTenant } from '@/api/endpoints/tenants'
 import { OnboardingPage } from './Onboarding'
+import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/credentials', () => ({ addOrUpdateCredential: vi.fn(), forceCredentialSync: vi.fn() }))
 vi.mock('@/api/endpoints/tenants', () => ({ createTenant: vi.fn() }))
@@ -45,7 +46,7 @@ describe('Onboarding', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-    vi.mocked(createTenant).mockResolvedValue({ id: 't-1', nip: '1111111111', displayName: null, notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' })
+    vi.mocked(createTenant).mockResolvedValue({ id: 't-1', nip: '1111111111', displayName: null, notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' })
     vi.mocked(addOrUpdateCredential).mockResolvedValue({ message: 'ok' })
     vi.mocked(forceCredentialSync).mockResolvedValue({ tenantId: 't-1', fetchedInvoices: 4, newInvoices: 4 } as never)
     container = document.createElement('div')

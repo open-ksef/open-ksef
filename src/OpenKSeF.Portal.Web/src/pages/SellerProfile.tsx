@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { getSellerProfile, updateSellerProfile } from '@/api/endpoints/sellerProfile'
 import { readValidationEnvelope } from '@/api/errors'
 import type { NipLookupResponse, SellerProfileResponse } from '@/api/types'
+import { can, MANAGERS_ONLY } from '@/company/CompanyContext'
 import { useCompany } from '@/company/useCompany'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Skeleton } from '@/components/Skeleton'
@@ -65,7 +66,8 @@ interface SellerProfileFormProps {
 function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfileFormProps): ReactElement {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { setSwitchGuard } = useCompany()
+  const { company, setSwitchGuard } = useCompany()
+  const editable = can(company, 'tenant.edit')
   const patternRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState<SellerProfileFormValue>(() => fromProfile(profile))
   const baseline = useRef(JSON.stringify(form))
@@ -161,6 +163,12 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
 
   return (
     <form onSubmit={onSubmit} noValidate className="inv-stack" aria-label="Dane do faktur">
+      {editable ? null : (
+        <div className="inv-alert inv-alert--info" role="status" data-testid="seller-profile-readonly">
+          {MANAGERS_ONLY}
+        </div>
+      )}
+      <fieldset disabled={!editable} style={{ display: 'contents' }}>
       {!profile.isComplete ? (
         <div className="inv-alert inv-alert--info" role="status">
           Uzupełnij dane firmy, aby wystawiać faktury.
@@ -305,6 +313,7 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
           </button>
         </div>
       </footer>
+      </fieldset>
     </form>
   )
 }

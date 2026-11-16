@@ -15,6 +15,7 @@ import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
 import { InvoiceDraftPage } from './InvoiceDraft'
 import { SellerProfilePage } from './SellerProfile'
+import { employeeAccess, ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn(), updateSellerProfile: vi.fn() }))
@@ -73,7 +74,7 @@ describe('SellerProfilePage', () => {
     root = createRoot(container)
     vi.clearAllMocks()
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     vi.mocked(getSellerProfile).mockResolvedValue(empty)
   })
@@ -105,8 +106,8 @@ describe('SellerProfilePage', () => {
 
   it('edits either company after choosing it in the company card', async () => {
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
-      { id: 't-2', nip: '7740001454', displayName: 'B', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-2', nip: '7740001454', displayName: 'B', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     vi.mocked(getSellerProfile).mockImplementation(async (id) => ({
       ...empty,
@@ -144,6 +145,17 @@ describe('SellerProfilePage', () => {
     await waitFor(() => confirm.mock.calls.length === 1)
     await waitFor(() => input(container, 'legal-name').value === expected)
     confirm.mockRestore()
+  })
+
+  it('a member without tenant.edit sees the data read-only and cannot save', async () => {
+    vi.mocked(listTenants).mockResolvedValue([
+      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...employeeAccess, createdAt: '2026-01-01T00:00:00Z' },
+    ])
+    await render('/company/invoice-data?tenantId=t-1')
+
+    expect(container.querySelector('[data-testid="seller-profile-readonly"]')?.textContent).toBe('Zmienić to może tylko właściciel lub administrator firmy.')
+    expect((container.querySelector('#legal-name') as HTMLInputElement).matches(':disabled')).toBe(true)
+    expect((container.querySelector('button[type="submit"]') as HTMLButtonElement).matches(':disabled')).toBe(true)
   })
 
   it('new invoice with an incomplete profile lands here with the prompt', async () => {

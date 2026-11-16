@@ -12,6 +12,7 @@ const tabs = [
   { to: '/company/invoice-data', label: 'Dane do faktur' },
   { to: '/company/token', label: 'Dostęp do KSeF i pobieranie' },
   { to: '/company/details', label: 'Dane firmy' },
+  { to: '/company/members', label: 'Osoby z dostępem' },
 ]
 
 export function CompanyLayoutPage(): ReactElement {

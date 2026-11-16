@@ -7,25 +7,27 @@ import { RouterProvider, createMemoryRouter, useLocation } from 'react-router-do
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
-import { createTenant, deleteTenant, listTenants, updateTenant } from '@/api/endpoints/tenants'
+import { createTenant, deleteTenant, listMembers, listTenants, updateTenant } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
 import { CompanyCard } from '@/company/CompanyCard'
 import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
 import { CompanyDetailsPage } from './CompanyDetails'
+import { employeeAccess, ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({
   listTenants: vi.fn(),
   createTenant: vi.fn(),
   updateTenant: vi.fn(),
   deleteTenant: vi.fn(),
+  listMembers: vi.fn(),
 }))
 vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedFeed: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn().mockResolvedValue({ ksefEnvironment: 'test' }) }))
 vi.mock('react-hot-toast', () => ({ default: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }))
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
-const company = (id: string, name: string, nip: string) => ({ id, nip, displayName: name, notificationEmail: 'a@b.pl', createdAt: '2026-09-14T10:00:00Z' })
+const company = (id: string, name: string, nip: string) => ({ id, nip, displayName: name, notificationEmail: 'a@b.pl', ...ownerAccess, createdAt: '2026-09-14T10:00:00Z' })
 
 function Location(): ReactElement {
   const { pathname, search } = useLocation()
@@ -85,6 +87,7 @@ describe('Firma, Dane firmy', () => {
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     vi.mocked(listTenants).mockResolvedValue([company('a', 'Firma A', '1111111111'), company('b', 'Firma B', '2222222222')])
     vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 7, totalPages: 7, issuedFetchIncomplete: false })
+    vi.mocked(listMembers).mockResolvedValue([])
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -166,6 +169,24 @@ describe('Firma, Dane firmy', () => {
     await act(async () => dialog.querySelector<HTMLElement>('.ui-button--danger')?.click())
     await settle()
     expect(deleteTenant).toHaveBeenCalledExactlyOnceWith('a')
+  })
+
+  it('states how many other members lose access in the delete dialog', async () => {
+    const member = (userId: string) => ({ userId, displayName: userId, email: null, role: 'Employee' as const, createdAt: '2026-01-01T00:00:00Z' })
+    vi.mocked(listMembers).mockResolvedValue([member('me'), member('b'), member('c')])
+    await render()
+    await openDelete()
+    expect(listMembers).toHaveBeenCalledExactlyOnceWith('a')
+    expect(by('tenant-delete-members')?.textContent).toBe('Dostęp do firmy stracą też inne osoby (liczba: 2).')
+  })
+
+  it('gives a member without tenant.edit and tenant.delete a read-only form and no delete', async () => {
+    vi.mocked(listTenants).mockResolvedValue([{ ...company('a', 'Firma A', '1111111111'), ...employeeAccess }])
+    await render()
+    expect(by('company-readonly')?.textContent).toBe('Zmienić to może tylko właściciel lub administrator firmy.')
+    expect(by('company-display-name')?.matches(':disabled')).toBe(true)
+    expect(by('company-save')).toBeNull()
+    expect(by('tenant-delete-button')).toBeNull()
   })
 
   it('invalidates every cached query after a delete', async () => {

@@ -4,6 +4,55 @@ export interface TenantResponse {
   displayName: string | null
   notificationEmail: string | null
   createdAt: string
+  role: TenantRole
+  permissions: string[]
+  notificationsEnabled: boolean
+}
+
+export type TenantRole = 'Owner' | 'Administrator' | 'Accountant' | 'Employee'
+
+export interface TenantMemberResponse {
+  userId: string
+  displayName: string | null
+  email: string | null
+  role: TenantRole
+  createdAt: string
+}
+
+export interface CreateInviteRequest {
+  email: string
+  role: TenantRole
+}
+
+export interface CreateInviteResponse {
+  status: 'granted' | 'pending'
+  displayName?: string | null
+  inviteId?: string | null
+  link?: string | null
+  expiresAt?: string | null
+  emailSent?: boolean | null
+}
+
+export interface TenantInviteResponse {
+  id: string
+  email: string
+  role: TenantRole
+  invitedByName: string | null
+  createdAt: string
+  expiresAt: string
+  isExpired: boolean
+}
+
+export interface InviteLinkResponse {
+  link: string
+  expiresAt: string
+  emailSent: boolean
+}
+
+export interface AcceptInviteResponse {
+  tenantId: string
+  displayName: string
+  role: TenantRole
 }
 
 export interface CreateTenantRequest {
@@ -49,6 +98,7 @@ export interface InvoiceResponse {
   firstSeenAt: string
   isPaid: boolean
   paidAt: string | null
+  paidByName?: string | null
   hasXml: boolean
   verificationUrl?: string | null
   vendorBankAccount?: string | null

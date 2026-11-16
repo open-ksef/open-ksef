@@ -81,6 +81,52 @@ describe('ProtectedRoute', () => {
     expect(container.textContent).toContain('Protected content')
   })
 
+  it('keeps a user without a company on the invite page instead of onboarding', async () => {
+    vi.mocked(getOnboardingStatus).mockResolvedValue({ isComplete: false, hasTenant: false, hasCredential: false, firstTenantId: null })
+    vi.mocked(useAuth).mockReturnValue({ isLoading: false, isAuthenticated: true, sessionEnded: false } as ReturnType<typeof useAuth>)
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={['/zaproszenie#tok', '/']} initialIndex={0}>
+            <Routes>
+              <Route path="/zaproszenie" element={<ProtectedRoute><div>Invite page</div></ProtectedRoute>} />
+              <Route path="/" element={<ProtectedRoute><div>Home</div></ProtectedRoute>} />
+              <Route path="/onboarding" element={<div>Onboarding page</div>} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      )
+    })
+    for (let tick = 0; tick < 5; tick++) await act(flushPromises)
+
+    expect(container.textContent).toContain('Invite page')
+  })
+
+  it('keeps the invite token out of the login state and in sessionStorage only', async () => {
+    const login = vi.fn().mockResolvedValue(undefined)
+    sessionStorage.clear()
+    localStorage.clear()
+    vi.mocked(useAuth).mockReturnValue({ isLoading: false, isAuthenticated: false, sessionEnded: false, login } as unknown as ReturnType<typeof useAuth>)
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={['/zaproszenie#tok-9']}>
+            <Routes>
+              <Route path="/zaproszenie" element={<ProtectedRoute><div>Invite page</div></ProtectedRoute>} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      )
+    })
+    for (let tick = 0; tick < 5; tick++) await act(flushPromises)
+
+    expect(login).toHaveBeenCalledExactlyOnceWith('/zaproszenie')
+    expect(sessionStorage.getItem('openksef.invite-token')).toBe('tok-9')
+    expect(JSON.stringify({ ...localStorage })).not.toContain('tok-9')
+  })
+
   async function renderAt(path: string, auth: Partial<ReturnType<typeof useAuth>>) {
     vi.mocked(useAuth).mockReturnValue({ isLoading: false, isAuthenticated: false, sessionEnded: false, ...auth } as ReturnType<typeof useAuth>)
     function LoginProbe() {

@@ -48,6 +48,7 @@ export const appRoutes: RouteObject[] = [
               { path: 'invoice-data', element: <SellerProfilePage /> },
               { path: 'token', element: <CompanyTokenPage /> },
               { path: 'details', element: <CompanyDetailsPage /> },
+              { path: 'members', lazy: () => loadRoute(() => import('@/pages/CompanyMembers')).then((m) => ({ Component: m.CompanyMembersPage })) },
             ],
           },
           { path: 'seller-profile', element: <Moved to="/company/invoice-data" /> },
@@ -66,7 +67,10 @@ export const appRoutes: RouteObject[] = [
             <Outlet />
           </ProtectedRoute>
         ),
-        children: [{ path: '/onboarding', lazy: () => loadRoute(() => import('@/pages/Onboarding')).then((m) => ({ Component: m.OnboardingPage })) }],
+        children: [
+          { path: '/onboarding', lazy: () => loadRoute(() => import('@/pages/Onboarding')).then((m) => ({ Component: m.OnboardingPage })) },
+          { path: '/zaproszenie', lazy: () => loadRoute(() => import('@/pages/InviteAccept')).then((m) => ({ Component: m.InviteAcceptPage })) },
+        ],
       },
       { path: '/callback', element: <Callback /> },
       { path: '/login', element: <LoginPage /> },

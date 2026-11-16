@@ -15,6 +15,7 @@ import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
 import { generateInvoice } from '@/vendor/ksef-pdf-generator/ksef-fe-invoice-converter.js'
 import { InvoiceDetailsPage } from './InvoiceDetails'
+import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({
   listTenants: vi.fn(),
@@ -159,7 +160,7 @@ describe('InvoiceDetailsPage', () => {
     vi.resetAllMocks()
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 'tenant-1', nip: '1234567890', displayName: 'Tenant A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 'tenant-1', nip: '1234567890', displayName: 'Tenant A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -748,7 +749,7 @@ describe('InvoiceDetailsPage', () => {
     it('keeps its own mark disabled while another invoice is marked after walking away', async () => {
       const saves = { 'inv-1': deferred<InvoiceResponse>(), 'inv-2': deferred<InvoiceResponse>() }
       const other = invoiceOf({ id: 'inv-2', ksefInvoiceNumber: 'KSEF-002', invoiceNumber: 'FV/2026/002' })
-      vi.mocked(listTenants).mockResolvedValue([{ id: 'tenant-1', nip: '1111111111', displayName: 'Firma', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' }])
+      vi.mocked(listTenants).mockResolvedValue([{ id: 'tenant-1', nip: '1111111111', displayName: 'Firma', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' }])
       vi.mocked(getInvoiceByKSeFNumber).mockImplementation(async (_tenant, number) => (number === 'KSEF-002' ? other : invoiceOf()))
       vi.mocked(getTransferDetails).mockResolvedValue(transferOf())
       vi.mocked(setInvoicePaid).mockImplementation((_tenant, id) => saves[id as 'inv-1' | 'inv-2'].promise)
@@ -785,7 +786,7 @@ describe('InvoiceDetailsPage', () => {
     it('copies the 26 digits alone, and shows no such button without a valid account', async () => {
       const writeText = vi.fn().mockResolvedValue(undefined)
       Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
-      vi.mocked(listTenants).mockResolvedValue([{ id: 'tenant-1', nip: '1111111111', displayName: 'Firma', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' }])
+      vi.mocked(listTenants).mockResolvedValue([{ id: 'tenant-1', nip: '1111111111', displayName: 'Firma', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' }])
       vi.mocked(getInvoiceByKSeFNumber).mockResolvedValue(invoiceOf())
       vi.mocked(getTransferDetails).mockResolvedValue(transferOf({ recipientAccount: 'PL61 1090 1014 0000 0712 1981 2874' }))
       await render('/invoices/KSEF-001?tenantId=tenant-1')
@@ -796,7 +797,7 @@ describe('InvoiceDetailsPage', () => {
     })
 
     it('hides the account button for an account failing the checksum', async () => {
-      vi.mocked(listTenants).mockResolvedValue([{ id: 'tenant-1', nip: '1111111111', displayName: 'Firma', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' }])
+      vi.mocked(listTenants).mockResolvedValue([{ id: 'tenant-1', nip: '1111111111', displayName: 'Firma', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' }])
       vi.mocked(getInvoiceByKSeFNumber).mockResolvedValue(invoiceOf())
       vi.mocked(getTransferDetails).mockResolvedValue(transferOf({ recipientAccount: '12345678901234567890123456' }))
       await render('/invoices/KSEF-001?tenantId=tenant-1')

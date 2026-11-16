@@ -11,6 +11,7 @@ import { listTenants } from '@/api/endpoints/tenants'
 import { useAuth } from '@/auth/useAuth'
 import { memoryStorage } from '@/company/memoryStorage'
 import { appRoutes } from '@/router'
+import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/auth/useAuth', () => ({ useAuth: vi.fn() }))
 vi.mock('@/api/endpoints/system', () => ({ getSetupStatus: vi.fn() }))
@@ -34,7 +35,7 @@ describe('Firma routes', () => {
     vi.mocked(getSetupStatus).mockResolvedValue({ isInitialized: true })
     vi.mocked(getOnboardingStatus).mockResolvedValue({ isComplete: true } as never)
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 'a', nip: '1111111111', displayName: 'Firma A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 'a', nip: '1111111111', displayName: 'Firma A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -75,7 +76,7 @@ describe('Firma routes', () => {
     expect(router.state.location.search).toBe(search)
   })
 
-  it('shows the three tabs, the current one marked, and the current company', async () => {
+  it('shows the four tabs, the current one marked, and the current company', async () => {
     await open('/company/token')
     const tabs = [...container.querySelectorAll('.ui-tabs a')]
 
@@ -83,6 +84,7 @@ describe('Firma routes', () => {
       ['Dane do faktur', '/company/invoice-data'],
       ['Dostęp do KSeF i pobieranie', '/company/token'],
       ['Dane firmy', '/company/details'],
+      ['Osoby z dostępem', '/company/members'],
     ])
     expect(tabs.filter((tab) => tab.getAttribute('aria-current') === 'page').map((tab) => tab.textContent)).toEqual(['Dostęp do KSeF i pobieranie'])
     expect(container.querySelector('.company-head__sub')?.textContent).toContain('NIP 1111111111')

@@ -10,6 +10,7 @@ import { listTenants } from '@/api/endpoints/tenants'
 import { signOutAllDevices } from '@/auth/signOutAll'
 import toast from 'react-hot-toast'
 import { MobileSetupPage } from './MobileSetup'
+import { ownerAccess } from '@/test/tenant'
 
 const { qrValue, pairing } = vi.hoisted(() => ({ qrValue: vi.fn(), pairing: { enabled: false } }))
 
@@ -64,7 +65,7 @@ describe('Telefon', () => {
     vi.clearAllMocks()
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     vi.mocked(listDevices).mockResolvedValue([device, { ...device, id: 'd-2', platform: 1, tenantId: 't-1' }] as never)
-    vi.mocked(listTenants).mockResolvedValue([{ id: 't-1', nip: '1111111111', displayName: 'Firma A', notificationEmail: null, createdAt: '2026-01-01T00:00:00Z' }])
+    vi.mocked(listTenants).mockResolvedValue([{ id: 't-1', nip: '1111111111', displayName: 'Firma A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' }])
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)

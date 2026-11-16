@@ -20,6 +20,7 @@ import { CompanyCard } from './CompanyCard'
 import { CompanyProvider } from './CompanyProvider'
 import { memoryStorage } from './memoryStorage'
 import { useCompany } from './useCompany'
+import { ownerAccess } from '@/test/tenant'
 
 vi.mock('react-hot-toast', () => ({ default: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }))
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
@@ -35,6 +36,7 @@ const tenant = (id: string, displayName: string | null, nip: string) => ({
   nip,
   displayName,
   notificationEmail: null,
+  ...ownerAccess,
   createdAt: '2026-01-01T00:00:00Z',
 })
 
