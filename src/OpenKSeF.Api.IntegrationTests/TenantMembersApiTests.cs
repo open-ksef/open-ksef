@@ -72,7 +72,9 @@ public sealed class TenantMembersApiTests : IAsyncLifetime
         await AssertErrorAsync(await admin.PutAsJsonAsync(Members(_ownerId), new { role = "Employee" }), HttpStatusCode.Forbidden, TenantAccessAttribute.ForbiddenMessage);
         await AssertErrorAsync(await admin.DeleteAsync(Members(_ownerId)), HttpStatusCode.Forbidden, TenantAccessAttribute.ForbiddenMessage);
         await AssertErrorAsync(await admin.PutAsJsonAsync(Members(employeeId), new { role = "Owner" }), HttpStatusCode.Forbidden, TenantAccessAttribute.ForbiddenMessage);
-        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PutAsJsonAsync(Members(employeeId), new { role = "Boss" })).StatusCode);
+        var unknownRole = await admin.PutAsJsonAsync(Members(employeeId), new { role = "Boss" });
+        Assert.Equal(HttpStatusCode.BadRequest, unknownRole.StatusCode);
+        Assert.Contains("Nieznana rola.", await unknownRole.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.NoContent, (await admin.PutAsJsonAsync(Members(employeeId), new { role = "Accountant" })).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await admin.DeleteAsync(Members(employeeId))).StatusCode);
 
@@ -87,6 +89,12 @@ public sealed class TenantMembersApiTests : IAsyncLifetime
             Assert.All(audit, a => Assert.Equal((employeeId, "Test User"), (a.TargetUserId, a.ActorName)));
             Assert.All(audit, a => Assert.NotNull(a.TargetEmail));
         });
+
+        var (leaverId, leaver) = await AddMemberAsync(TenantRole.Employee);
+        var adminId = members.Single(m => m.Role == "Administrator").UserId;
+        await AssertErrorAsync(await leaver.DeleteAsync(Members(adminId)), HttpStatusCode.Forbidden, TenantAccessAttribute.ForbiddenMessage);
+        Assert.Equal(HttpStatusCode.NoContent, (await leaver.DeleteAsync(Members(leaverId))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await leaver.GetAsync($"/api/tenants/{_tenantId}")).StatusCode);
     }
 
     [Fact]

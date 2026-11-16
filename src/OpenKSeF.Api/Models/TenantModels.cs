@@ -60,5 +60,5 @@ public record TenantMemberResponse(string UserId, string? DisplayName, string? E
 
 public record ChangeMemberRoleRequest(
     [param: Required]
-    [param: AllowedValues(nameof(TenantRole.Owner), nameof(TenantRole.Administrator), nameof(TenantRole.Accountant), nameof(TenantRole.Employee))]
+    [param: AllowedValues(nameof(TenantRole.Owner), nameof(TenantRole.Administrator), nameof(TenantRole.Accountant), nameof(TenantRole.Employee), ErrorMessage = "Nieznana rola.")]
     string? Role);
