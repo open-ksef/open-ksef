@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { listInvoices } from '@/api/endpoints/invoices'
 import { listIssuedFeed, listIssuedInvoices } from '@/api/endpoints/issuedInvoices'
 import type { InvoiceResponse, IssuedFeedItemResponse, IssuedInvoiceListItemResponse, TenantDashboardSummaryResponse } from '@/api/types'
+import { syncHealth } from '@/company/syncHealth'
 import { useCompany } from '@/company/useCompany'
 import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
@@ -47,9 +48,10 @@ interface AttentionItem {
   key: string
   icon: IconName
   tone: 'error' | 'warning'
-  to: string
+  to?: string
   title: string
   sub: string
+  link?: { to: string; label: string }
 }
 
 function issuedAttentionItems(rejected: IssuedInvoiceListItemResponse[], issued: IssuedInvoiceListItemResponse[], tenantId: string): AttentionItem[] {
@@ -98,8 +100,9 @@ function AttentionCard({ items, rejectedTotal, isLoading, error, onRetry, scanCa
                 <Icon name={item.icon} size={18} />
               </span>
               <span className="start-row__main">
-                <Link to={item.to}>{item.title}</Link>
+                {item.to ? <Link to={item.to}>{item.title}</Link> : <b>{item.title}</b>}
                 {item.sub ? <span className="start-row__sub">{item.sub}</span> : null}
+                {item.link ? <Link className="start-row__sub" to={item.link.to}>{item.link.label}</Link> : null}
               </span>
             </li>
           ))}
@@ -119,6 +122,12 @@ function AttentionCard({ items, rejectedTotal, isLoading, error, onRetry, scanCa
   )
 }
 
+function CompanySyncLine({ row }: { row: TenantDashboardSummaryResponse }): ReactElement | null {
+  const health = syncHealth(row)
+  if (health) return <span className="start-row__sub received-sync--stale">{health.headline}</span>
+  return row.lastSuccessfulSync ? <span className="start-row__sub">Pobrano z KSeF: {formatDateTime(row.lastSuccessfulSync)}</span> : null
+}
+
 function CompaniesCard({ summaries, tenantId, onSelect }: { summaries: TenantDashboardSummaryResponse[]; tenantId: string; onSelect: (id: string) => void }): ReactElement {
   return (
     <section className="start-card start-card--companies" aria-labelledby="start-companies">
@@ -133,13 +142,7 @@ function CompaniesCard({ summaries, tenantId, onSelect }: { summaries: TenantDas
                 <span className="start-row__sub">
                   NIP {row.nip} · {row.totalInvoices} {invoicesWord(row.totalInvoices)}, {row.invoicesLast7Days} z ostatnich 7 dni
                 </span>
-                {row.lastSuccessfulSync ? (
-                  row.syncStatus === 'Success' ? (
-                    <span className="start-row__sub">Pobrano z KSeF: {formatDateTime(row.lastSuccessfulSync)}</span>
-                  ) : (
-                    <span className="start-row__sub received-sync--stale">Nie pobieramy od {formatDateTime(row.lastSuccessfulSync)}</span>
-                  )
-                ) : null}
+                <CompanySyncLine row={row} />
               </span>
               {row.tenantId === tenantId ? (
                 <span className="start-row__current">Wybrana</span>
@@ -247,17 +250,18 @@ export function StartPage(): ReactElement {
   const siblings = received.map((row) => row.ksefInvoiceNumber)
   const recentIssued = (feedQuery.data?.items ?? []).filter((row) => row.status !== 'Draft').slice(0, rowCount)
 
+  const health = syncHealth(summary)
   const attention = issuedAttentionItems(rejectedQuery.data?.items ?? [], issuedRows, tenantId)
   if (state === 'full' && credential && !credential.hasCredential) {
     attention.push({ key: 'token', icon: 'key-round', tone: 'error', to: '/company/token', title: 'Ta firma nie ma tokenu KSeF', sub: 'Dodaj token KSeF' })
-  } else if (state !== 'no-token' && summary?.lastSuccessfulSync && summary.syncStatus !== 'Success') {
+  } else if (state !== 'no-token' && summary?.lastSuccessfulSync && health && (health.problem === 'Failed' || health.problem === 'Stale')) {
     attention.push({
       key: 'stale',
       icon: 'circle-alert',
       tone: 'error',
-      to: '/company/token',
-      title: `Nie pobieramy faktur od ${formatDateTime(summary.lastSuccessfulSync)}`,
-      sub: 'Sprawdź token KSeF',
+      title: health.headline,
+      sub: health.reason ?? '',
+      link: health.link === 'check' ? { to: '/company/token', label: 'Sprawdź token KSeF' } : undefined,
     })
   }
   const attentionError = rejectedQuery.error ?? issuedQuery.error

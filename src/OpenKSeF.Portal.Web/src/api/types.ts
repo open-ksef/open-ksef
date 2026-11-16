@@ -198,6 +198,11 @@ export interface TenantDashboardSummaryResponse {
   invoicesLast7Days: number
   invoicesLast30Days: number
   syncStatus: 'Success' | 'Warning' | 'Error' | string
+  syncProblem?: 'NoCredential' | 'NeverSynced' | 'Failed' | null
+  lastSyncErrorCategory?: string | null
+  lastSyncErrorMessage?: string | null
+  lastSyncErrorAt?: string | null
+  lastSyncErrorCredentialCause?: boolean
 }
 
 export type KsefEnvironment = 'test' | 'demo' | 'production'

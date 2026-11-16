@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 
 import type { TenantDashboardSummaryResponse } from '@/api/types'
+import { syncHealth } from '@/company/syncHealth'
 import type { CompanyState } from '@/hooks/useCompanyState'
 import type { KsefFetch } from '@/hooks/useKsefFetch'
 import { formatDateTime } from '@/invoicing/format'
@@ -17,18 +18,30 @@ interface KsefSyncProps {
 }
 
 export function KsefSync({ state, summary, ksef, disabled, variant }: KsefSyncProps): ReactElement {
+  const health = syncHealth(summary)
+  const failing = health?.problem === 'Failed' || health?.problem === 'Stale'
   return (
     <>
       <div className="received-sync">
         {summary?.lastSuccessfulSync && state !== 'no-token' ? (
-          summary.syncStatus === 'Success' ? (
-            <span data-testid="invoice-sync-line">Pobrano z KSeF: {formatDateTime(summary.lastSuccessfulSync)}</span>
-          ) : (
+          health && failing ? (
             <span data-testid="invoice-sync-line" className="received-sync--stale">
-              <Icon name="circle-alert" size={14} /> Nie pobieramy faktur od {formatDateTime(summary.lastSuccessfulSync)}
-              <br />
-              <Link to="/company/token">Sprawdź token KSeF</Link>
+              <Icon name="circle-alert" size={14} /> {health.headline}
+              {health.reason ? (
+                <>
+                  <br />
+                  <span data-testid="invoice-sync-reason">{health.reason}</span>
+                </>
+              ) : null}
+              {health.link === 'check' ? (
+                <>
+                  <br />
+                  <Link to="/company/token">Sprawdź token KSeF</Link>
+                </>
+              ) : null}
             </span>
+          ) : (
+            <span data-testid="invoice-sync-line">Pobrano z KSeF: {formatDateTime(summary.lastSuccessfulSync)}</span>
           )
         ) : null}
         <span role="status" data-testid="invoice-fetch-note" className={ksef.missingToken ? 'received-sync--stale' : undefined}>
