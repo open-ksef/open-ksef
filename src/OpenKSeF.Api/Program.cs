@@ -278,9 +278,11 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 builder.Services.AddSingleton<SyncFreshnessHealthCheck>();
+builder.Services.AddSingleton<IssuedInvoiceStuckHealthCheck>();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ApplicationDbContext>()
-    .AddCheck<SyncFreshnessHealthCheck>("sync-freshness");
+    .AddCheck<SyncFreshnessHealthCheck>("sync-freshness")
+    .AddCheck<IssuedInvoiceStuckHealthCheck>("issued-invoices-stuck");
 
 var app = builder.Build();
 

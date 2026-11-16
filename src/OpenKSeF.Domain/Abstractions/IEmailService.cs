@@ -7,6 +7,7 @@ public interface IEmailService
 {
     Task SendNewInvoiceEmailAsync(string toEmail, NewInvoiceDetectedEvent evt);
     Task SendNewInvoicesSummaryEmailAsync(string toEmail, Guid tenantId, string company, int count);
+    Task SendIssuedInvoiceStuckEmailAsync(string toEmail, Guid tenantId, Guid issuedInvoiceId, string? number);
 
     /// <returns>False when e-mail is disabled (Email:Enabled), so nothing was sent.</returns>
     Task<bool> SendInviteEmailAsync(string toEmail, Guid tenantId, string company, string nip, TenantRole role, string inviterName, string link, DateTime expiresAtUtc);

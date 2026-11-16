@@ -428,6 +428,19 @@ All setup endpoints are blocked after the system is initialized (return 403).
 
 The portal checks `/api/system/setup-status` on every protected page load. If `isInitialized` is `false`, all routes redirect to `/admin-setup`. After setup completes, the wizard redirects to `/login`.
 
+## Stuck issued invoices: operator signal
+
+The signal is API `/health`. It returns `Degraded` (HTTP 200) while the Worker has flagged an issued invoice as stuck: Queued, Sending or Accepted without UPO for `Issuing__StuckAfterHours` (default 24) after issue. The API logs `Issued invoices degraded: <n> issued invoice(s) stuck in KSeF` at Warning once when it turns, and `Issued invoices: none stuck` when it clears. Neither holds a buyer, an invoice number or a token. `Degraded` also covers stale sync (`Sync freshness degraded` in the same log).
+
+The API port is not published and the gateway does not route `/health`, so read it inside the container, as the compose health check does, and alert on any body other than `Healthy`, at least once a day. For example a daily cron job on the Docker host:
+
+```bash
+status=$(docker exec openksef-api bash -c "exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET /health HTTP/1.0\r\n\r\n' >&3 && tail -n 1 <&3")
+[ "$status" = Healthy ] || echo "OpenKSeF /health: $status" | mail -s "OpenKSeF degraded" admin@example.invalid
+```
+
+On `Degraded`, read the API log for the reason, then follow [issuing-stuck-runbook.md](issuing-stuck-runbook.md). The flag clears when the invoice gets UPO or is rejected.
+
 ## Troubleshooting
 
 > **Key in the database and deleting rows.** While the key is in the database, the `encryption_key` row is its only copy. If you delete rows from `SystemConfigs` before [adoption](#upgrade-from-v007-or-earlier), you lose stored KSeF tokens and certificates. After adoption, the wizard must run with the same `ENCRYPTION_KEY`, or the credentials stop decrypting.
