@@ -61,21 +61,31 @@ public class UserProfileService(ApplicationDbContext db, IMemoryCache cache)
     private async Task ClaimInvitesAsync(string userId, string email)
     {
         var now = DateTime.UtcNow;
-        var invites = await db.TenantInvites
+        var pending = await db.TenantInvites
             .Where(i => i.Email == email && i.Status == TenantInviteStatus.Pending && i.ExpiresAt > now)
+            .Select(i => new { i.Id, i.TenantId })
             .ToListAsync();
-        if (invites.Count == 0)
-            return;
 
-        foreach (var invite in invites)
+        foreach (var p in pending)
         {
-            if (!await db.TenantMembers.AnyAsync(m => m.TenantId == invite.TenantId && m.UserId == userId))
-                db.TenantMembers.Add(new TenantMember { TenantId = invite.TenantId, UserId = userId, Role = invite.Role, CreatedAt = now });
-            invite.Accept(userId, now);
-            await TenantAudit.AddAsync(db, invite.TenantId, userId, AuditEvent.InviteAccepted, invite.Email, userId);
-        }
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            await TenantInviteService.LockTenantAsync(db, p.TenantId);
+            var invite = await db.TenantInvites.FirstOrDefaultAsync(i => i.Id == p.Id && i.Status == TenantInviteStatus.Pending);
+            if (invite is null)
+                continue;
 
-        await db.SaveChangesAsync();
+            var member = await db.TenantMembers.FirstOrDefaultAsync(m => m.TenantId == invite.TenantId && m.UserId == userId);
+            if (member is null)
+            {
+                member = new TenantMember { TenantId = invite.TenantId, UserId = userId, Role = invite.Role, CreatedAt = now };
+                db.TenantMembers.Add(member);
+            }
+
+            invite.Accept(userId, now);
+            await TenantAudit.AddAsync(db, invite.TenantId, userId, AuditEvent.InviteAccepted, member.Role.ToString(), userId, invite.Email);
+            await db.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
     }
 
     private static string? Claim(ClaimsPrincipal user, params string[] types) =>

@@ -7,7 +7,7 @@ namespace OpenKSeF.Api.Services;
 /// <summary>Appends a tenant audit row with the actor's and target's names as they are now; saved with the caller's next SaveChanges.</summary>
 public static class TenantAudit
 {
-    public static async Task AddAsync(ApplicationDbContext db, Guid tenantId, string actorUserId, string action, string? target = null, string? targetUserId = null)
+    public static async Task AddAsync(ApplicationDbContext db, Guid tenantId, string actorUserId, string action, string? target = null, string? targetUserId = null, string? targetEmail = null)
     {
         var profiles = await db.UserProfiles
             .Where(p => p.UserId == actorUserId || p.UserId == targetUserId)
@@ -25,7 +25,7 @@ public static class TenantAudit
             ActorName = actor?.Name,
             Action = action,
             TargetUserId = targetUserId,
-            TargetEmail = profiles.FirstOrDefault(p => p.UserId == targetUserId)?.Email,
+            TargetEmail = targetEmail ?? profiles.FirstOrDefault(p => p.UserId == targetUserId)?.Email,
             Target = target,
         });
     }

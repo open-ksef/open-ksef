@@ -950,7 +950,7 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.HasOne("OpenKSeF.Domain.Entities.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("OpenKSeF.Domain.Entities.DeviceToken", b =>

@@ -69,7 +69,7 @@ public record CreateInviteRequest(
     [param: MaxLength(320)]
     string? Email,
     [param: Required]
-    [param: AllowedValues(nameof(TenantRole.Owner), nameof(TenantRole.Administrator), nameof(TenantRole.Accountant), nameof(TenantRole.Employee))]
+    [param: AllowedValues(nameof(TenantRole.Owner), nameof(TenantRole.Administrator), nameof(TenantRole.Accountant), nameof(TenantRole.Employee), ErrorMessage = "Nieznana rola.")]
     string? Role);
 
 public record CreateInviteResponse(

@@ -11,6 +11,10 @@ namespace OpenKSeF.Domain.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropForeignKey(
+                name: "FK_AuditEvents_Tenants_TenantId",
+                table: "AuditEvents");
+
             migrationBuilder.CreateTable(
                 name: "TenantInvites",
                 columns: table => new
@@ -60,17 +64,37 @@ namespace OpenKSeF.Domain.Data.Migrations
                 table: "TenantInvites",
                 column: "TokenHash",
                 unique: true);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_AuditEvents_Tenants_TenantId",
+                table: "AuditEvents",
+                column: "TenantId",
+                principalTable: "Tenants",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.SetNull);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropForeignKey(
+                name: "FK_AuditEvents_Tenants_TenantId",
+                table: "AuditEvents");
+
             migrationBuilder.DropTable(
                 name: "TenantInvites");
 
             migrationBuilder.DropIndex(
                 name: "IX_AuditEvents_ActorUserId_OccurredAt",
                 table: "AuditEvents");
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_AuditEvents_Tenants_TenantId",
+                table: "AuditEvents",
+                column: "TenantId",
+                principalTable: "Tenants",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Cascade);
         }
     }
 }

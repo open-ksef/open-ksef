@@ -12,7 +12,7 @@ using OpenKSeF.Domain.Data;
 namespace OpenKSeF.Domain.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20261116171824_AddTenantInvites")]
+    [Migration("20261116175939_AddTenantInvites")]
     partial class AddTenantInvites
     {
         /// <inheritdoc />
@@ -953,7 +953,7 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.HasOne("OpenKSeF.Domain.Entities.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("OpenKSeF.Domain.Entities.DeviceToken", b =>

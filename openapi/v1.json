@@ -5069,6 +5069,9 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "description": "Service Unavailable"
           }
         },
         "tags": [
@@ -5250,6 +5253,9 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "description": "Service Unavailable"
           }
         },
         "tags": [

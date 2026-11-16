@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.Authorization;
@@ -72,7 +74,8 @@ public sealed class TenantIsolationTests : IAsyncLifetime
     };
 
     private readonly TestcontainersFixture _fixture;
-    private readonly OpenKSeFWebApplicationFactory _factory;
+    private readonly OpenKSeFWebApplicationFactory _bare;
+    private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _owner;
     private readonly HttpClient _other;
     private Seed _seed = null!;
@@ -80,7 +83,8 @@ public sealed class TenantIsolationTests : IAsyncLifetime
     public TenantIsolationTests(TestcontainersFixture fixture)
     {
         _fixture = fixture;
-        _factory = new OpenKSeFWebApplicationFactory(fixture);
+        _bare = new OpenKSeFWebApplicationFactory(fixture);
+        _factory = _bare.WithWebHostBuilder(builder => builder.UseSetting("APP_EXTERNAL_BASE_URL", "https://openksef.example.test"));
         _owner = _factory.CreateClient();
         _other = _factory.CreateClient();
     }
@@ -130,7 +134,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
     {
         _owner.Dispose();
         _other.Dispose();
-        return _factory.DisposeAsync().AsTask();
+        return _bare.DisposeAsync().AsTask();
     }
 
     private static bool IsTenantScoped(ApiRouteCatalog.ApiRoute route) =>

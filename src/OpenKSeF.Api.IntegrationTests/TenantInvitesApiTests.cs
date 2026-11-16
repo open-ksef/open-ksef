@@ -17,8 +17,11 @@ namespace OpenKSeF.Api.IntegrationTests;
 [Collection(TestcontainersCollection.Name)]
 public sealed class TenantInvitesApiTests : IAsyncLifetime
 {
+    private const string BaseUrl = "https://openksef.example.test";
+
     private readonly TestcontainersFixture _fixture;
-    private readonly OpenKSeFWebApplicationFactory _factory;
+    private readonly OpenKSeFWebApplicationFactory _bare;
+    private readonly WebApplicationFactory<Program> _factory;
     private readonly List<HttpClient> _clients = [];
     private HttpClient _owner = null!;
     private string _ownerEmail = null!;
@@ -27,7 +30,8 @@ public sealed class TenantInvitesApiTests : IAsyncLifetime
     public TenantInvitesApiTests(TestcontainersFixture fixture)
     {
         _fixture = fixture;
-        _factory = new OpenKSeFWebApplicationFactory(fixture);
+        _bare = new OpenKSeFWebApplicationFactory(fixture);
+        _factory = _bare.WithWebHostBuilder(builder => builder.UseSetting("APP_EXTERNAL_BASE_URL", BaseUrl));
     }
 
     public async Task InitializeAsync()
@@ -39,7 +43,8 @@ public sealed class TenantInvitesApiTests : IAsyncLifetime
     public Task DisposeAsync()
     {
         _clients.ForEach(c => c.Dispose());
-        return _factory.DisposeAsync().AsTask();
+        _factory.Dispose();
+        return _bare.DisposeAsync().AsTask();
     }
 
     [Fact]
@@ -58,7 +63,7 @@ public sealed class TenantInvitesApiTests : IAsyncLifetime
         {
             Assert.False(await db.TenantInvites.AnyAsync(i => i.TenantId == _tenantId));
             var audit = await db.AuditEvents.SingleAsync(a => a.TenantId == _tenantId);
-            Assert.Equal((AuditEvent.AccessGranted, userId, "Accountant"), (audit.Action, audit.TargetUserId, audit.Target));
+            Assert.Equal((AuditEvent.AccessGranted, userId, "Accountant", email), (audit.Action, audit.TargetUserId, audit.Target, audit.TargetEmail));
         });
     }
 
@@ -105,10 +110,153 @@ public sealed class TenantInvitesApiTests : IAsyncLifetime
         await WithDbAsync(async db =>
         {
             Assert.Equal(TenantInviteStatus.Accepted, (await db.TenantInvites.SingleAsync(i => i.Id == created.InviteId)).Status);
-            var audit = await db.AuditEvents.Where(a => a.TenantId == _tenantId).OrderBy(a => a.OccurredAt).Select(a => new { a.Action, a.ActorUserId }).ToListAsync();
-            Assert.Equal([AuditEvent.InviteCreated, AuditEvent.InviteAccepted], audit.Select(a => a.Action));
-            Assert.Equal(userId, audit[1].ActorUserId);
+            var audit = await db.AuditEvents.Where(a => a.TenantId == _tenantId).OrderBy(a => a.OccurredAt).ToListAsync();
+            Assert.Equal(
+                [(AuditEvent.InviteCreated, "Administrator", email), (AuditEvent.InviteAccepted, "Administrator", email)],
+                audit.Select(a => (a.Action, a.Target, a.TargetEmail)));
+            Assert.Equal((userId, userId), (audit[1].ActorUserId, audit[1].TargetUserId));
         });
+    }
+
+    [Fact]
+    public async Task ClaimOnSignIn_ConcurrentRevokeWins()
+    {
+        var email = NewEmail();
+        var created = await CreatePendingAsync(email, "Employee");
+        var userId = await _fixture.CreateUserAsync(email);
+        var invitee = await ClientAsync(email);
+
+        using var blockerScope = _factory.Services.CreateScope();
+        var blocker = blockerScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await using (var hold = await blocker.Database.BeginTransactionAsync())
+        {
+            await blocker.Database.ExecuteSqlAsync($"""SELECT 1 FROM "Tenants" WHERE "Id" = {_tenantId} FOR UPDATE""");
+            await blocker.Database.ExecuteSqlAsync($"""UPDATE "TenantInvites" SET "Status" = 'Revoked' WHERE "Id" = {created.InviteId}""");
+            var signIn = invitee.GetAsync("/api/tenants");
+            using (var probe = _factory.Services.CreateScope())
+                await TenantMembersApiTests.WaitForLockWaitersAsync(probe.ServiceProvider.GetRequiredService<ApplicationDbContext>(), 1);
+            await hold.CommitAsync();
+            Assert.Equal(HttpStatusCode.OK, (await signIn).StatusCode);
+        }
+
+        await WithDbAsync(async db =>
+        {
+            Assert.Equal(TenantInviteStatus.Revoked, (await db.TenantInvites.SingleAsync(i => i.Id == created.InviteId)).Status);
+            Assert.False(await db.TenantMembers.AnyAsync(m => m.UserId == userId));
+        });
+    }
+
+    [Fact]
+    public async Task Accept_RacingResend_GenericNotFound()
+    {
+        var email = NewEmail();
+        var created = await CreatePendingAsync(email, "Employee");
+        var (_, _, invitee) = await NewUserAsync(false, email, signIn: true);
+
+        using var blockerScope = _factory.Services.CreateScope();
+        var blocker = blockerScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await using var hold = await blocker.Database.BeginTransactionAsync();
+        await blocker.Database.ExecuteSqlAsync($"""SELECT 1 FROM "Tenants" WHERE "Id" = {_tenantId} FOR UPDATE""");
+        var accept = invitee.PostAsJsonAsync("/api/invites/accept", new { token = TokenOf(created.Link!) });
+        using (var probe = _factory.Services.CreateScope())
+            await TenantMembersApiTests.WaitForLockWaitersAsync(probe.ServiceProvider.GetRequiredService<ApplicationDbContext>(), 1);
+        await blocker.Database.ExecuteSqlAsync($"""UPDATE "TenantInvites" SET "TokenHash" = {new string('0', 64)} WHERE "Id" = {created.InviteId}""");
+        await hold.CommitAsync();
+
+        await AssertInvalidAsync(await accept);
+    }
+
+    [Fact]
+    public async Task AcceptByExistingMember_Ok_RoleUnchanged_InviteAccepted()
+    {
+        var email = NewEmail();
+        var created = await CreatePendingAsync(email, "Employee");
+        var (userId, _, member) = await NewUserAsync(false, email, signIn: true);
+        await WithDbAsync(async db =>
+        {
+            db.TenantMembers.Add(new TenantMember { TenantId = _tenantId, UserId = userId, Role = TenantRole.Accountant, CreatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        });
+
+        var accept = await member.PostAsJsonAsync("/api/invites/accept", new { token = TokenOf(created.Link!) });
+
+        Assert.Equal(HttpStatusCode.OK, accept.StatusCode);
+        Assert.Equal("Accountant", (await accept.Content.ReadFromJsonAsync<AcceptDto>())!.Role);
+        await WithDbAsync(async db =>
+        {
+            Assert.Equal(TenantRole.Accountant, (await db.TenantMembers.SingleAsync(m => m.TenantId == _tenantId && m.UserId == userId)).Role);
+            Assert.Equal(TenantInviteStatus.Accepted, (await db.TenantInvites.SingleAsync(i => i.Id == created.InviteId)).Status);
+        });
+    }
+
+    [Fact]
+    public async Task ImmediateGrant_ClosesStalePendingInvite()
+    {
+        var email = NewEmail();
+        var created = await CreatePendingAsync(email, "Employee");
+        var userId = Guid.NewGuid().ToString();
+        await WithDbAsync(async db =>
+        {
+            db.UserProfiles.Add(new UserProfile { UserId = userId, Email = email, EmailVerified = true, UpdatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        });
+
+        var granted = (await (await InviteAsync(_owner, email, "Accountant")).Content.ReadFromJsonAsync<CreateDto>())!;
+
+        Assert.Equal("granted", granted.Status);
+        Assert.Empty((await _owner.GetFromJsonAsync<List<InviteDto>>($"/api/tenants/{_tenantId}/invites"))!);
+        await WithDbAsync(async db =>
+        {
+            var invite = await db.TenantInvites.SingleAsync(i => i.Id == created.InviteId);
+            Assert.Equal((TenantInviteStatus.Accepted, userId), (invite.Status, invite.AcceptedByUserId));
+        });
+    }
+
+    [Fact]
+    public async Task UnknownRole_PolishError()
+    {
+        var response = await InviteAsync(_owner, NewEmail(), "Boss");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Nieznana rola.", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task NoExternalBaseUrl_ServiceUnavailable_NoInviteStored()
+    {
+        using var bare = _bare.CreateClient();
+        bare.DefaultRequestHeaders.Authorization = _owner.DefaultRequestHeaders.Authorization;
+        bare.DefaultRequestHeaders.Add("X-Forwarded-For", "203.0.113.98");
+        bare.DefaultRequestHeaders.Host = "attacker.example";
+
+        var response = await bare.PostAsJsonAsync($"/api/tenants/{_tenantId}/invites", new { email = NewEmail(), role = "Employee" });
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.DoesNotContain("attacker.example", await response.Content.ReadAsStringAsync());
+        await WithDbAsync(async db => Assert.False(await db.TenantInvites.AnyAsync(i => i.TenantId == _tenantId)));
+    }
+
+    [Fact]
+    public async Task DeletingCompanies_DoesNotResetActorLimit()
+    {
+        var (actorId, _, actor) = await NewUserAsync(true, signIn: true);
+        var sent = 0;
+        HttpResponseMessage last = null!;
+        while (true)
+        {
+            var tenantId = await CreateTenantAsync(actor, "Firma do usunięcia");
+            for (var i = 0; i < TenantInviteService.TenantDailyLimit && sent <= TenantInviteService.ActorDailyLimit; i++, sent++)
+                last = await InviteAsync(actor, NewEmail(), "Employee", tenantId);
+            if (sent > TenantInviteService.ActorDailyLimit)
+                break;
+            Assert.Equal(HttpStatusCode.OK, last.StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, (await actor.DeleteAsync($"/api/tenants/{tenantId}")).StatusCode);
+        }
+
+        await AssertErrorAsync(last, HttpStatusCode.TooManyRequests, TenantInviteService.LimitMessage);
+        await WithDbAsync(async db => Assert.Equal(
+            2 * TenantInviteService.TenantDailyLimit,
+            await db.AuditEvents.CountAsync(a => a.ActorUserId == actorId && a.TenantId == null && a.Action == AuditEvent.InviteCreated)));
     }
 
     [Fact]
@@ -210,12 +358,19 @@ public sealed class TenantInvitesApiTests : IAsyncLifetime
             db.TenantMembers.Add(new TenantMember { TenantId = _tenantId, UserId = adminId, Role = TenantRole.Administrator, CreatedAt = DateTime.UtcNow });
             await db.SaveChangesAsync();
         });
-        var ownerInvite = await CreatePendingAsync(NewEmail(), "Owner");
+        var ownerEmail = NewEmail();
+        var ownerInvite = await CreatePendingAsync(ownerEmail, "Owner");
 
         await AssertErrorAsync(await InviteAsync(admin, NewEmail(), "Owner"), HttpStatusCode.Forbidden, TenantAccessAttribute.ForbiddenMessage);
+        await AssertErrorAsync(await InviteAsync(admin, ownerEmail, "Employee"), HttpStatusCode.Forbidden, TenantAccessAttribute.ForbiddenMessage);
         await AssertErrorAsync(await admin.PostAsync($"/api/tenants/{_tenantId}/invites/{ownerInvite.InviteId}/resend", null), HttpStatusCode.Forbidden, TenantAccessAttribute.ForbiddenMessage);
         await AssertErrorAsync(await admin.DeleteAsync($"/api/tenants/{_tenantId}/invites/{ownerInvite.InviteId}"), HttpStatusCode.Forbidden, TenantAccessAttribute.ForbiddenMessage);
         Assert.Equal(HttpStatusCode.OK, (await InviteAsync(admin, NewEmail(), "Employee")).StatusCode);
+        await WithDbAsync(async db =>
+        {
+            var invite = await db.TenantInvites.SingleAsync(i => i.Id == ownerInvite.InviteId);
+            Assert.Equal((TenantInviteStatus.Pending, TenantRole.Owner, TenantInviteService.Hash(TokenOf(ownerInvite.Link!))), (invite.Status, invite.Role, invite.TokenHash));
+        });
     }
 
     [Fact]
@@ -284,7 +439,8 @@ public sealed class TenantInvitesApiTests : IAsyncLifetime
 
     private static string TokenOf(string link)
     {
-        var token = link.Split("/zaproszenie/")[1];
+        Assert.StartsWith($"{BaseUrl}/zaproszenie#", link);
+        var token = link.Split("/zaproszenie#")[1];
         Assert.Equal(43, token.Length);
         return token;
     }
@@ -295,13 +451,19 @@ public sealed class TenantInvitesApiTests : IAsyncLifetime
     {
         email ??= NewEmail();
         var userId = await _fixture.CreateUserAsync(email, emailVerified: emailVerified);
+        var client = await ClientAsync(email);
+        if (signIn)
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/tenants")).StatusCode);
+        return (userId, email, client);
+    }
+
+    private async Task<HttpClient> ClientAsync(string email)
+    {
         var client = _factory.CreateClient();
         client.SetBearerToken(await _fixture.GetAccessTokenAsync(email));
         client.DefaultRequestHeaders.Add("X-Forwarded-For", $"203.0.113.{60 + _clients.Count}");
         _clients.Add(client);
-        if (signIn)
-            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/tenants")).StatusCode);
-        return (userId, email, client);
+        return client;
     }
 
     private static async Task<Guid> CreateTenantAsync(HttpClient client, string name)

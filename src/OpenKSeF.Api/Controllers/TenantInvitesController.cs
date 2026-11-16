@@ -22,6 +22,7 @@ public class TenantInvitesController(TenantInviteService invites, ICurrentUserSe
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Create(Guid tenantId, [FromBody] CreateInviteRequest request)
     {
         var (outcome, body) = await invites.CreateAsync(tenantId, currentUser.UserId, request.Email!, Enum.Parse<TenantRole>(request.Role!), BaseUrl);
@@ -41,6 +42,7 @@ public class TenantInvitesController(TenantInviteService invites, ICurrentUserSe
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Resend(Guid tenantId, Guid id)
     {
         var (outcome, body) = await invites.ResendAsync(tenantId, currentUser.UserId, id, BaseUrl);
@@ -68,7 +70,7 @@ public class TenantInvitesController(TenantInviteService invites, ICurrentUserSe
             : Result(outcome, body);
     }
 
-    private string BaseUrl => systemConfig.GetValue(SystemConfigKeys.ExternalBaseUrl)?.TrimEnd('/') ?? $"{Request.Scheme}://{Request.Host}";
+    private string? BaseUrl => systemConfig.GetValue(SystemConfigKeys.ExternalBaseUrl)?.TrimEnd('/') is { Length: > 0 } url ? url : null;
 
     private IActionResult Result(TenantInviteService.Outcome outcome, object? body) => outcome switch
     {
@@ -77,6 +79,7 @@ public class TenantInvitesController(TenantInviteService invites, ICurrentUserSe
         TenantInviteService.Outcome.WrongEmail => StatusCode(StatusCodes.Status403Forbidden, new { error = TenantInviteService.WrongEmailMessage }),
         TenantInviteService.Outcome.AlreadyMember => Conflict(new { error = TenantInviteService.AlreadyMemberMessage }),
         TenantInviteService.Outcome.Limited => StatusCode(StatusCodes.Status429TooManyRequests, new { error = TenantInviteService.LimitMessage }),
+        TenantInviteService.Outcome.NotConfigured => Problem(statusCode: StatusCodes.Status503ServiceUnavailable, detail: $"{SystemConfigKeys.ExternalBaseUrl} (APP_EXTERNAL_BASE_URL) is not configured; invite links cannot be built."),
         _ => NotFound(),
     };
 }

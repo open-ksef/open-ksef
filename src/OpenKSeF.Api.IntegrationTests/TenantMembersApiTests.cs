@@ -148,7 +148,7 @@ public sealed class TenantMembersApiTests : IAsyncLifetime
         await WithDbAsync(async db => Assert.Equal(1, await db.TenantMembers.CountAsync(m => m.TenantId == _tenantId && m.Role == TenantRole.Owner)));
     }
 
-    private static async Task WaitForLockWaitersAsync(ApplicationDbContext db, int count)
+    internal static async Task WaitForLockWaitersAsync(ApplicationDbContext db, int count)
     {
         for (var i = 0; i < 100; i++)
         {

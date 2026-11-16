@@ -22,13 +22,13 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
     public static readonly TimeSpan ValidFor = TimeSpan.FromDays(14);
     private static readonly string[] LimitedActions = [AuditEvent.InviteCreated, AuditEvent.InviteResent, AuditEvent.AccessGranted];
 
-    public enum Outcome { Done, NotFound, Forbidden, AlreadyMember, Limited, WrongEmail }
+    public enum Outcome { Done, NotFound, Forbidden, AlreadyMember, Limited, WrongEmail, NotConfigured }
 
     public static string Normalize(string? address) => address?.Trim().ToLowerInvariant() ?? "";
 
     public static string Hash(string token) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
-    public async Task<(Outcome, CreateInviteResponse?)> CreateAsync(Guid tenantId, string actorUserId, string address, TenantRole role, string baseUrl)
+    public async Task<(Outcome, CreateInviteResponse?)> CreateAsync(Guid tenantId, string actorUserId, string address, TenantRole role, string? baseUrl)
     {
         var invitee = Normalize(address);
         await using var transaction = await db.Database.BeginTransactionAsync();
@@ -37,8 +37,13 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
             return (Outcome.NotFound, null);
         if (!TenantPermissions.CanManageRole(actor.Role, role))
             return (Outcome.Forbidden, null);
+        if (baseUrl is null)
+            return (Outcome.NotConfigured, null);
         if (await db.TenantMembers.AnyAsync(m => m.TenantId == tenantId && db.UserProfiles.Any(p => p.UserId == m.UserId && p.Email == invitee)))
             return (Outcome.AlreadyMember, null);
+        var invite = await db.TenantInvites.FirstOrDefaultAsync(i => i.TenantId == tenantId && i.Email == invitee && i.Status == TenantInviteStatus.Pending);
+        if (invite is not null && !TenantPermissions.CanManageRole(actor.Role, invite.Role))
+            return (Outcome.Forbidden, null);
         if (await IsLimitedAsync(tenantId, actorUserId))
             return (Outcome.Limited, null);
 
@@ -51,7 +56,8 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
         if (account is not null)
         {
             db.TenantMembers.Add(new TenantMember { TenantId = tenantId, UserId = account.UserId, Role = role, CreatedAt = now });
-            await TenantAudit.AddAsync(db, tenantId, actorUserId, AuditEvent.AccessGranted, role.ToString(), account.UserId);
+            invite?.Accept(account.UserId, now);
+            await TenantAudit.AddAsync(db, tenantId, actorUserId, AuditEvent.AccessGranted, role.ToString(), account.UserId, invitee);
             await db.SaveChangesAsync();
             await transaction.CommitAsync();
 
@@ -60,7 +66,6 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
             return (Outcome.Done, new CreateInviteResponse("granted", DisplayName: account.DisplayName ?? account.Email));
         }
 
-        var invite = await db.TenantInvites.FirstOrDefaultAsync(i => i.TenantId == tenantId && i.Email == invitee && i.Status == TenantInviteStatus.Pending);
         if (invite is null)
         {
             invite = new TenantInvite { Id = Guid.NewGuid(), TenantId = tenantId, Email = invitee, TokenHash = "", InvitedByUserId = actorUserId };
@@ -71,7 +76,7 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
         invite.InvitedByUserId = actorUserId;
         invite.CreatedAt = now;
         var token = Renew(invite, now);
-        await TenantAudit.AddAsync(db, tenantId, actorUserId, AuditEvent.InviteCreated, invitee);
+        await TenantAudit.AddAsync(db, tenantId, actorUserId, AuditEvent.InviteCreated, role.ToString(), targetEmail: invitee);
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
 
@@ -95,17 +100,19 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
         return rows.Select(r => new TenantInviteResponse(r.Id, r.Email, r.Role.ToString(), r.InvitedByName, r.CreatedAt, r.ExpiresAt, r.ExpiresAt <= now)).ToList();
     }
 
-    public async Task<(Outcome, InviteLinkResponse?)> ResendAsync(Guid tenantId, string actorUserId, Guid inviteId, string baseUrl)
+    public async Task<(Outcome, InviteLinkResponse?)> ResendAsync(Guid tenantId, string actorUserId, Guid inviteId, string? baseUrl)
     {
         await using var transaction = await db.Database.BeginTransactionAsync();
         var (outcome, tenant, invite) = await PendingForActorAsync(tenantId, actorUserId, inviteId);
         if (outcome != Outcome.Done)
             return (outcome, null);
+        if (baseUrl is null)
+            return (Outcome.NotConfigured, null);
         if (await IsLimitedAsync(tenantId, actorUserId))
             return (Outcome.Limited, null);
 
         var token = Renew(invite!, time.GetUtcNow().UtcDateTime);
-        await TenantAudit.AddAsync(db, tenantId, actorUserId, AuditEvent.InviteResent, invite!.Email);
+        await TenantAudit.AddAsync(db, tenantId, actorUserId, AuditEvent.InviteResent, invite!.Role.ToString(), targetEmail: invite.Email);
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
 
@@ -123,7 +130,7 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
             return outcome;
 
         invite!.Status = TenantInviteStatus.Revoked;
-        await TenantAudit.AddAsync(db, tenantId, actorUserId, AuditEvent.InviteRevoked, invite.Email);
+        await TenantAudit.AddAsync(db, tenantId, actorUserId, AuditEvent.InviteRevoked, invite.Role.ToString(), targetEmail: invite.Email);
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
         return Outcome.Done;
@@ -139,8 +146,8 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
         await using var transaction = await db.Database.BeginTransactionAsync();
         var (tenant, member) = await LockAsync(tenantId.Value, userId);
         var now = time.GetUtcNow().UtcDateTime;
-        var invite = await db.TenantInvites.SingleAsync(i => i.TokenHash == hash);
-        if (tenant is null || invite.Status != TenantInviteStatus.Pending || invite.ExpiresAt <= now)
+        var invite = await db.TenantInvites.SingleOrDefaultAsync(i => i.TokenHash == hash);
+        if (tenant is null || invite is null || invite.Status != TenantInviteStatus.Pending || invite.ExpiresAt <= now)
             return (Outcome.NotFound, null);
         if (Normalize(callerEmail) != invite.Email)
             return (Outcome.WrongEmail, null);
@@ -152,7 +159,7 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
         }
 
         invite.Accept(userId, now);
-        await TenantAudit.AddAsync(db, invite.TenantId, userId, AuditEvent.InviteAccepted, invite.Email, userId);
+        await TenantAudit.AddAsync(db, invite.TenantId, userId, AuditEvent.InviteAccepted, member.Role.ToString(), userId, invite.Email);
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
         return (Outcome.Done, new AcceptInviteResponse(tenant.Id, CompanyName(tenant), member.Role.ToString()));
@@ -167,9 +174,12 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
         return TenantPermissions.CanManageRole(actor.Role, invite.Role) ? (Outcome.Done, tenant, invite) : (Outcome.Forbidden, null, null);
     }
 
+    public static async Task<Tenant?> LockTenantAsync(ApplicationDbContext db, Guid tenantId) =>
+        (await db.Tenants.FromSql($"""SELECT * FROM "Tenants" WHERE "Id" = {tenantId} FOR UPDATE""").ToListAsync()).SingleOrDefault();
+
     private async Task<(Tenant? Tenant, TenantMember? Member)> LockAsync(Guid tenantId, string userId)
     {
-        var tenant = (await db.Tenants.FromSql($"""SELECT * FROM "Tenants" WHERE "Id" = {tenantId} FOR UPDATE""").ToListAsync()).SingleOrDefault();
+        var tenant = await LockTenantAsync(db, tenantId);
         if (tenant is null)
             return (null, null);
         return (tenant, await db.TenantMembers.FirstOrDefaultAsync(m => m.TenantId == tenantId && m.UserId == userId));
@@ -207,7 +217,7 @@ public class TenantInviteService(ApplicationDbContext db, INotificationService n
         }
     }
 
-    private static string Link(string baseUrl, string token) => $"{baseUrl}/zaproszenie/{token}";
+    private static string Link(string baseUrl, string token) => $"{baseUrl}/zaproszenie#{token}";
 
     private static string CompanyName(Tenant tenant) => string.IsNullOrWhiteSpace(tenant.DisplayName) ? $"NIP {tenant.Nip}" : tenant.DisplayName;
 }

@@ -272,7 +272,7 @@ public class ApplicationDbContext : DbContext
             entity.HasOne<Tenant>()
                 .WithMany()
                 .HasForeignKey(a => a.TenantId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<UserProfile>(entity =>
