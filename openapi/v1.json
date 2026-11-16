@@ -1761,6 +1761,9 @@
             "nullable": true,
             "type": "string"
           },
+          "lastSyncErrorCredentialCause": {
+            "type": "boolean"
+          },
           "lastSyncErrorMessage": {
             "nullable": true,
             "type": "string"

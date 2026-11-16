@@ -9,7 +9,7 @@ using OpenKSeF.Sync.Issuing;
 
 namespace OpenKSeF.Sync;
 
-/// <summary>Maps a failed sync to a stored category and, where an approved text exists, a Polish reason. Never keeps the KSeF response.</summary>
+/// <summary>Maps a failed sync to a stored category and its REQ-0013 Polish reason. Never keeps the KSeF response.</summary>
 public static partial class SyncFailure
 {
     public const string InvalidToken = "InvalidToken";
@@ -41,8 +41,15 @@ public static partial class SyncFailure
     {
         InvalidToken => IssuedInvoiceSendProcessor.InvalidTokenMessage,
         InvalidCertificate => IssuedInvoiceSendProcessor.InvalidCertificateMessage,
+        LoginRefused => "KSeF nie pozwolił zalogować się na tę firmę. Sprawdź, czy token lub certyfikat jest wystawiony dla tego NIP-u i ma uprawnienie do przeglądania faktur.",
+        RateLimited => "KSeF chwilowo ograniczył liczbę zapytań. Spróbujemy ponownie przy następnym pobraniu, nic nie musisz robić.",
+        KsefUnavailable => "Nie udało się połączyć z KSeF. Spróbujemy ponownie automatycznie. Jeśli problem trwa dłużej niż dobę, napisz do administratora OpenKSeF.",
+        StoreFailed => "Nie udało się zapisać pobranych faktur. Spróbujemy ponownie przy następnym pobraniu. Jeśli błąd wraca, napisz do administratora OpenKSeF.",
+        Other => "Pobieranie z KSeF nie powiodło się. Spróbujemy ponownie automatycznie. Jeśli błąd wraca, napisz do administratora OpenKSeF.",
         _ => null,
     };
+
+    public static bool IsCredentialCause(string? category) => category is InvalidToken or InvalidCertificate or LoginRefused;
 
     // KSeF.Client's AuthCoordinator hides a refused login in a TimeoutException; its message carries the last auth status code.
     private static int? AuthStatus(string message) =>

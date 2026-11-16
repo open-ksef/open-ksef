@@ -13,4 +13,5 @@ public record TenantDashboardSummaryResponse(
     string? SyncProblem = null,
     string? LastSyncErrorCategory = null,
     string? LastSyncErrorMessage = null,
-    DateTime? LastSyncErrorAt = null);
+    DateTime? LastSyncErrorAt = null,
+    bool LastSyncErrorCredentialCause = false);

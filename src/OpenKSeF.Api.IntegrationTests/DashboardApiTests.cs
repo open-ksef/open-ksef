@@ -45,7 +45,10 @@ public sealed class DashboardApiTests : IDisposable
         Assert.Equal(("NeverSynced", null), (cards[neverSynced].SyncProblem, cards[neverSynced].LastSyncErrorCategory));
         Assert.Equal(("Failed", "InvalidToken", IssuedInvoiceSendProcessor.InvalidTokenMessage), (cards[failed].SyncProblem, cards[failed].LastSyncErrorCategory, cards[failed].LastSyncErrorMessage));
         Assert.NotNull(cards[failed].LastSyncErrorAt);
-        Assert.Equal(("Failed", "KsefUnavailable", null), (cards[unavailable].SyncProblem, cards[unavailable].LastSyncErrorCategory, cards[unavailable].LastSyncErrorMessage));
+        Assert.Equal(("Failed", "KsefUnavailable", SyncFailure.Message(SyncFailure.KsefUnavailable)), (cards[unavailable].SyncProblem, cards[unavailable].LastSyncErrorCategory, cards[unavailable].LastSyncErrorMessage));
+        Assert.True(cards[failed].LastSyncErrorCredentialCause);
+        Assert.False(cards[unavailable].LastSyncErrorCredentialCause);
+        Assert.False(cards[noCredential].LastSyncErrorCredentialCause);
         Assert.Equal((null, "Success"), (cards[healthy].SyncProblem, cards[healthy].SyncStatus));
     }
 
@@ -84,7 +87,7 @@ public sealed class DashboardApiTests : IDisposable
 
     private sealed record IdDto(Guid Id);
 
-    private sealed record CardDto(Guid TenantId, string SyncStatus, string? SyncProblem, string? LastSyncErrorCategory, string? LastSyncErrorMessage, DateTime? LastSyncErrorAt);
+    private sealed record CardDto(Guid TenantId, string SyncStatus, string? SyncProblem, string? LastSyncErrorCategory, string? LastSyncErrorMessage, DateTime? LastSyncErrorAt, bool LastSyncErrorCredentialCause);
 
     private sealed record OldCardDto(Guid TenantId, string Nip, string? DisplayName, DateTime? LastSyncedAt, DateTime? LastSuccessfulSync, int TotalInvoices, int InvoicesLast7Days, int InvoicesLast30Days, string SyncStatus);
 }

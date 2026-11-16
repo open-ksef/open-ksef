@@ -69,6 +69,7 @@ public class DashboardController : ControllerBase
             LastSyncErrorCategory = r.ErrorCategory,
             LastSyncErrorMessage = SyncFailure.Message(r.ErrorCategory),
             LastSyncErrorAt = r.ErrorAt,
+            LastSyncErrorCredentialCause = SyncFailure.IsCredentialCause(r.ErrorCategory),
         }).ToList());
     }
 }
