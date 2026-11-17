@@ -384,18 +384,44 @@ public sealed class IssuedInvoiceSendProcessor(
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>Equal up to encoding, BOM or whitespace, or not readable as XML: never proof of another document.</summary>
+    /// <summary>
+    /// Equal up to encoding, BOM, whitespace between elements, namespace prefixes, attribute order or comments,
+    /// or not readable as XML: never proof of another document.
+    /// </summary>
     private static bool MayBeSameDocument(byte[] downloaded, byte[] sent)
     {
         try
         {
-            return XNode.DeepEquals(XDocument.Load(new MemoryStream(downloaded)), XDocument.Load(new MemoryStream(sent)));
+            return SameContent(XDocument.Load(new MemoryStream(downloaded)).Root!, XDocument.Load(new MemoryStream(sent)).Root!);
         }
         catch (XmlException)
         {
             return true;
         }
     }
+
+    private static bool SameContent(XElement a, XElement b)
+    {
+        if (a.Name != b.Name || !Attributes(a).SequenceEqual(Attributes(b)))
+            return false;
+
+        var left = Content(a).ToList();
+        var right = Content(b).ToList();
+        return left.Count == right.Count && left.Zip(right).All(pair => pair switch
+        {
+            (XElement x, XElement y) => SameContent(x, y),
+            (XText x, XText y) => x.Value == y.Value,
+            _ => false
+        });
+    }
+
+    private static IEnumerable<(XName Name, string Value)> Attributes(XElement element) => element.Attributes()
+        .Where(a => !a.IsNamespaceDeclaration)
+        .OrderBy(a => a.Name.NamespaceName, StringComparer.Ordinal)
+        .ThenBy(a => a.Name.LocalName, StringComparer.Ordinal)
+        .Select(a => (a.Name, a.Value));
+
+    private static IEnumerable<XNode> Content(XElement element) => element.Nodes().Where(n => n is XElement or XText);
 
     private static string? DuplicateDetails(KSeFSentInvoice duplicate)
     {

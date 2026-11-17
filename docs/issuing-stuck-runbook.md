@@ -108,13 +108,13 @@ A new post that returns 200 accepts the invoice. A new post that returns 440 wit
 
 KSeF says the seller NIP, invoice type and number exist, and the original was not listed with our hash. `KsefElementRef` is set. The 440 details are not stored, so read them from KSeF.
 
-After more than one POST the worker resolves it by itself when the session list does not decide (403, 400, or the number not listed). It downloads `GET {base}/invoices/ksef/{originalKsefNumber}` with the tenant's own token and compares the response body, byte for byte, with `SentXml`. KSeF returns the stored bytes unchanged (checked on KSeF TEST), so there is no XML normalisation and a BOM or whitespace difference counts as different.
+After more than one POST the worker resolves it by itself when the session list does not decide (403, 400, or the number not listed). It downloads `GET {base}/invoices/ksef/{originalKsefNumber}` with the tenant's own token and compares the response body, byte for byte, with `SentXml`. KSeF returns the stored bytes unchanged (checked on KSeF TEST). Only identical bytes accept. A body that is the same XML in another form (encoding, BOM, whitespace, namespace prefixes, attribute order), empty, or not XML waits, as in the table.
 
 | Download result | Worker outcome |
 |---|---|
 | Identical bytes | Accepted with `originalKsefNumber`, logged `... is already in KSeF as {KsefNumber}, confirmed by identical downloaded bytes`. No UPO is fetched, see "Missing UPO" |
 | Both parse as XML and differ in content | Rejected as number taken, with the KSeF number in the details, logged `... KSeF number {KsefNumber} holds other bytes` |
-| Same XML in other bytes (encoding, BOM, whitespace), empty or not XML | Waits and escalates, logged `... holds the same XML in other bytes, or a body that is not XML`. Send the invoice id and KSeF number to the principal engineer |
+| Same XML in other bytes (encoding, BOM, whitespace, namespace prefixes, attribute order), empty or not XML | Waits and escalates, logged `... holds the same XML in other bytes, or a body that is not XML`. Send the invoice id and KSeF number to the principal engineer |
 | 400 (21164 not found, 21165 not yet available), 403, 404 | Waits, logged `Original {KsefNumber} of issued invoice {InvoiceId} cannot be downloaded: {Status} ...` |
 | 401, 429, 5xx, network error | Waits with the usual retry. Never rejects |
 

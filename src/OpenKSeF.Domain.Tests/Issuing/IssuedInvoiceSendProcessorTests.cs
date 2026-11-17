@@ -456,6 +456,60 @@ public class IssuedInvoiceSendProcessorTests
         { "not xml", Encoding.UTF8.GetBytes("{\"status\":\"ok\"}") },
     };
 
+    public static TheoryData<string, string, string> SameXmlOtherForm() => new()
+    {
+        { "prefix", "<Faktura xmlns=\"urn:fa\"><P a=\"1\">x</P></Faktura>", "<f:Faktura xmlns:f=\"urn:fa\"><f:P a=\"1\">x</f:P></f:Faktura>" },
+        { "attribute order", "<Faktura><P a=\"1\" b=\"2\">x</P></Faktura>", "<Faktura><P b=\"2\" a=\"1\">x</P></Faktura>" },
+    };
+
+    [Theory]
+    [MemberData(nameof(SameXmlOtherForm))]
+    public async Task Duplicate440_AfterResend_SessionNotListable_PrefixOrAttributeOrderOnly_StaysSending(string _, string sent, string original)
+    {
+        var sentBytes = Encoding.UTF8.GetBytes(sent);
+        var id = await SeedAsync(i => i.AttachSentXml(sentBytes, Convert.ToHexString(SHA256.HashData(sentBytes)), "test", null));
+        await using (var db = NewDb())
+        {
+            var invoice = await db.IssuedInvoices.SingleAsync(i => i.Id == id);
+            invoice.MarkSendStarted("sess-1", _time.UtcNow);
+            invoice.MarkSendStarted("sess-2", _time.UtcNow);
+            invoice.RecordElementRef("el-2", _time.UtcNow);
+            await db.SaveChangesAsync();
+        }
+        _submitter.OnGet = _ => Duplicate();
+        _submitter.OnList = _ => throw new KsefApiException("session", HttpStatusCode.Forbidden, null!, null!);
+        _submitter.OnDownload = _ => Encoding.UTF8.GetBytes(original);
+
+        await RunAsync();
+
+        var held = await LoadAsync(id);
+        Assert.Equal((IssuedInvoiceStatus.Sending, IssuedInvoiceSendProcessor.DuplicateUnresolvedMessage), (held.Status, held.LastError));
+        Assert.Null(held.KsefStatusCode);
+        Assert.Equal(["KSEF-ORIG"], _submitter.Downloads);
+    }
+
+    [Fact]
+    public async Task Duplicate440_AfterResend_SessionNotListable_SameNamesOtherValue_Rejected()
+    {
+        var sentBytes = Encoding.UTF8.GetBytes("<Faktura><P a=\"1\">x</P></Faktura>");
+        var id = await SeedAsync(i => i.AttachSentXml(sentBytes, Convert.ToHexString(SHA256.HashData(sentBytes)), "test", null));
+        await using (var db = NewDb())
+        {
+            var invoice = await db.IssuedInvoices.SingleAsync(i => i.Id == id);
+            invoice.MarkSendStarted("sess-1", _time.UtcNow);
+            invoice.MarkSendStarted("sess-2", _time.UtcNow);
+            invoice.RecordElementRef("el-2", _time.UtcNow);
+            await db.SaveChangesAsync();
+        }
+        _submitter.OnGet = _ => Duplicate();
+        _submitter.OnList = _ => throw new KsefApiException("session", HttpStatusCode.Forbidden, null!, null!);
+        _submitter.OnDownload = _ => Encoding.UTF8.GetBytes("<Faktura><P a=\"2\">x</P></Faktura>");
+
+        await RunAsync();
+
+        Assert.Equal(IssuedInvoiceStatus.Rejected, (await LoadAsync(id)).Status);
+    }
+
     [Theory]
     [MemberData(nameof(SameXmlOrUnreadable))]
     public async Task Duplicate440_AfterResend_SessionNotListable_SameXmlOtherBytesOrUnreadable_StaysSending_NeverRejected(string _, byte[] body)
