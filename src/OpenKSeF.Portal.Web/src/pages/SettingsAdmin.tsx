@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { registerDevice } from '@/api/endpoints/devices'
 import { listTenants } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
+import { useAuth } from '@/auth/useAuth'
 
 import {
   DEFAULT_RELAY_URL,
@@ -26,7 +27,7 @@ import { SettingsHeader } from '@/components/SettingsHeader'
 import { polishPlural } from '@/invoicing/format'
 import { notifyMutationError, notifyMutationSuccess } from '@/notifications'
 import { DataControllerFields } from '@/privacy/DataControllerFields'
-import { dataControllerError } from '@/privacy/dataController'
+import { dataControllerError, hasAdminRole } from '@/privacy/dataController'
 
 function ManualDeviceRegistration(): ReactElement {
   const [token, setToken] = useState('')
@@ -227,6 +228,7 @@ function TwoFactorReset(): ReactElement {
 
 export function SettingsAdminPage(): ReactElement {
   const queryClient = useQueryClient()
+  const isInstanceAdmin = hasAdminRole(useAuth().user?.access_token)
   const [kcUsername, setKcUsername] = useState('')
   const [kcPassword, setKcPassword] = useState('')
   const [authenticated, setAuthenticated] = useState(false)
@@ -461,7 +463,7 @@ export function SettingsAdminPage(): ReactElement {
       <section>
         <SettingsHeader current="/settings/admin" />
         <div className="company-grid">
-          <TwoFactorReset />
+          {isInstanceAdmin && <TwoFactorReset />}
           <section className="ui-card settings-login" aria-labelledby="settings-login-title">
             <h2 id="settings-login-title">Zaloguj się jako administrator</h2>
             <p className="company-muted">Tylko dla osoby, która zarządza tą instancją OpenKSeF.</p>
@@ -502,7 +504,7 @@ export function SettingsAdminPage(): ReactElement {
       {saveWarning && <div className="auth-notice auth-notice--warning settings-error" role="status" data-testid="settings-save-warning">{saveWarning}</div>}
 
       <div className="company-grid">
-        <TwoFactorReset />
+        {isInstanceAdmin && <TwoFactorReset />}
         <section className="ui-card" aria-labelledby="settings-basic-title">
           <h2 id="settings-basic-title">Podstawowe</h2>
           <div className="onboarding-form">
