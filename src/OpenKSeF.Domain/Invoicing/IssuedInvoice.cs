@@ -312,6 +312,14 @@ public sealed class IssuedInvoice
         UpdatedAt = now;
     }
 
+    /// <summary>Accepted on a byte-identical download of the original. No element of ours holds it, so no UPO is fetched and it leaves the outbox.</summary>
+    public void MarkAcceptedFromOriginal(string ksefNumber, DateTime now)
+    {
+        MarkAccepted(ksefNumber, now, 200, null, now);
+        KsefElementRef = null;
+        NextAttemptAt = null;
+    }
+
     public void AttachUpo(byte[] upoXml, DateTime now)
     {
         EnsureStatus(IssuedInvoiceStatus.Accepted);

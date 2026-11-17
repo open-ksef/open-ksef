@@ -15,7 +15,7 @@ using OpenKSeF.Domain.Services;
 namespace OpenKSeF.Sync.Issuing;
 
 /// <summary>Online-session send of FA(3) invoices through CIRFMF KSeF.Client.</summary>
-public sealed class KSeFInvoiceSubmitter(IKSeFClient client, ICryptographyService cryptography, IEncryptionService encryption) : IKSeFInvoiceSubmitter
+public sealed class KSeFInvoiceSubmitter(IKSeFClient client, ICryptographyService cryptography, IEncryptionService encryption, IKSeFGateway gateway) : IKSeFInvoiceSubmitter
 {
     public async Task<KSeFSession> LoginAsync(string nip, KSeFCredential credential, CancellationToken ct = default)
     {
@@ -84,6 +84,9 @@ public sealed class KSeFInvoiceSubmitter(IKSeFClient client, ICryptographyServic
 
         return invoices;
     }
+
+    public Task<byte[]> DownloadInvoiceAsync(string accessToken, string ksefNumber, CancellationToken ct = default) =>
+        gateway.DownloadInvoiceAsync(new KSeFSession(accessToken, DateTime.MaxValue), ksefNumber, ct);
 
     public async Task<byte[]?> GetUpoAsync(string accessToken, string sessionRef, string elementRef, CancellationToken ct = default)
     {

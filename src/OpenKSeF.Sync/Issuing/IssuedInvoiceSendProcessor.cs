@@ -327,7 +327,7 @@ public sealed class IssuedInvoiceSendProcessor(
     /// </summary>
     private async Task ResolveDuplicateAsync(IssuedInvoice invoice, KSeFSentInvoice duplicate, string accessToken, CancellationToken ksef, CancellationToken ct)
     {
-        var listed = duplicate.OriginalSessionRef is null ? [] : await ListOriginalSessionAsync(invoice, accessToken, duplicate.OriginalSessionRef, ksef, ct);
+        var listed = duplicate.OriginalSessionRef is null ? [] : await ListOriginalSessionAsync(accessToken, duplicate.OriginalSessionRef, ksef, ct);
         var hash = Convert.ToBase64String(SHA256.HashData(invoice.SentXml!));
         var original = listed.FirstOrDefault(s => s is { Code: KSeFSentInvoice.Accepted, KsefNumber: not null } && s.InvoiceHash == hash);
         if (original is not null)
@@ -343,8 +343,22 @@ public sealed class IssuedInvoiceSendProcessor(
         var otherDocumentListed = duplicate.OriginalKsefNumber is not null && listed.Any(s => s.KsefNumber == duplicate.OriginalKsefNumber);
         if (!otherDocumentListed && invoice.AttemptCount > 1)
         {
-            await WaitForUnresolvedAsync(invoice, ct);
-            return;
+            var downloaded = duplicate.OriginalKsefNumber is null ? null : await DownloadOriginalAsync(invoice, accessToken, duplicate.OriginalKsefNumber, ksef, ct);
+            if (downloaded is null)
+            {
+                await WaitForUnresolvedAsync(invoice, ct);
+                return;
+            }
+
+            if (downloaded.AsSpan().SequenceEqual(invoice.SentXml!))
+            {
+                logger.LogInformation("Issued invoice {InvoiceId} is already in KSeF as {KsefNumber}, confirmed by identical downloaded bytes", invoice.Id, duplicate.OriginalKsefNumber);
+                invoice.MarkAcceptedFromOriginal(duplicate.OriginalKsefNumber!, Now());
+                await db.SaveChangesAsync(ct);
+                return;
+            }
+
+            logger.LogWarning("Issued invoice {InvoiceId}: KSeF number {KsefNumber} holds other bytes", invoice.Id, duplicate.OriginalKsefNumber);
         }
 
         invoice.MarkRejected(duplicate.Code, NumberTakenMessage, DuplicateDetails(duplicate), Now());
@@ -378,16 +392,30 @@ public sealed class IssuedInvoiceSendProcessor(
         }
     }
 
-    private async Task<IReadOnlyList<KSeFSentInvoice>> ListOriginalSessionAsync(IssuedInvoice invoice, string accessToken, string sessionRef, CancellationToken ksef, CancellationToken ct)
+    private async Task<IReadOnlyList<KSeFSentInvoice>> ListOriginalSessionAsync(string accessToken, string sessionRef, CancellationToken ksef, CancellationToken ct)
     {
         try
         {
             return await submitter.ListInvoicesAsync(accessToken, sessionRef, ksef);
         }
-        catch (KsefApiException e) when (e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound || (invoice.AttemptCount == 1 && !IsTransient(e, ct)))
+        catch (KsefApiException e) when (!IsTransient(e, ct))
         {
             logger.LogInformation("Original KSeF session {SessionRef} cannot be listed: {Error}", sessionRef, e.Message);
             return [];
+        }
+    }
+
+    /// <summary>Exact bytes of the original, or null while KSeF cannot give them: not found yet, no InvoiceRead (403), unknown number. Transient errors propagate to the retry.</summary>
+    private async Task<byte[]?> DownloadOriginalAsync(IssuedInvoice invoice, string accessToken, string ksefNumber, CancellationToken ksef, CancellationToken ct)
+    {
+        try
+        {
+            return await submitter.DownloadInvoiceAsync(accessToken, ksefNumber, ksef);
+        }
+        catch (KsefApiException e) when (!IsTransient(e, ct))
+        {
+            logger.LogWarning("Original {KsefNumber} of issued invoice {InvoiceId} cannot be downloaded: {Status} {Error}", ksefNumber, invoice.Id, (int)e.StatusCode, e.Message);
+            return null;
         }
     }
 

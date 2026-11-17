@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -6,6 +7,7 @@ using System.Text;
 using KSeF.Client.Api.Builders.Certificates;
 using KSeF.Client.Api.Builders.X509Certificates;
 using KSeF.Client.Api.Services;
+using KSeF.Client.Core.Exceptions;
 using KSeF.Client.Core.Interfaces;
 using KSeF.Client.Core.Interfaces.Clients;
 using KSeF.Client.Core.Interfaces.Services;
@@ -78,6 +80,34 @@ public class KSeFTestSendTests(ITestOutputHelper output)
     }
 
     [KSeFTestFact]
+    public async Task DownloadByKsefNumber_ReturnsExactSentBytes_WithIssuingToken()
+    {
+        await using var ksef = await TestKSeF.StartAsync();
+        var number = $"OKSEF-T284/{DateTime.UtcNow:yyMMddHHmmss}";
+        var current = await ksef.ProcessUntilDoneAsync(ksef.NewInvoice(number, "Usługa testowa T-284", buyerNip: "1111111111"), ksef.TokenCredential(ksef.Token), output);
+        AssertAcceptedWithUpo(current);
+
+        var login = (await ksef.Submitter.LoginAsync(ksef.SellerNip, ksef.TokenCredential(ksef.Token))).Token;
+        byte[]? downloaded = null;
+        var deadline = DateTime.UtcNow.AddMinutes(2);
+        while (downloaded is null)
+        {
+            try
+            {
+                downloaded = await ksef.Submitter.DownloadInvoiceAsync(login, current.KsefNumber!);
+            }
+            catch (KsefApiException e) when (e.StatusCode == HttpStatusCode.BadRequest && DateTime.UtcNow < deadline)
+            {
+                output.WriteLine($"download not ready: {e.Message}");
+                await Task.Delay(TimeSpan.FromSeconds(10));
+            }
+        }
+
+        output.WriteLine($"sent={current.SentXml!.Length}B downloaded={downloaded.Length}B identical={downloaded.AsSpan().SequenceEqual(current.SentXml)}");
+        Assert.Equal(current.SentXml, downloaded);
+    }
+
+    [KSeFTestFact]
     public async Task CorruptedToken_UnsentRejected_SentStaysSending_QuicklyAndWithoutSend()
     {
         await using var ksef = await TestKSeF.StartAsync();
@@ -142,7 +172,7 @@ public class KSeFTestSendTests(ITestOutputHelper output)
         public string Token => env["KSEF_TEST_TOKEN_2"];
         private IKSeFClient Client => provider.GetRequiredService<IKSeFClient>();
         private ICryptographyService Cryptography => provider.GetRequiredService<ICryptographyService>();
-        public KSeFInvoiceSubmitter Submitter => new(Client, Cryptography, _encryption);
+        public KSeFInvoiceSubmitter Submitter => new(Client, Cryptography, _encryption, Gateway());
 
         public static async Task<TestKSeF> StartAsync()
         {
