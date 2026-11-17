@@ -8,7 +8,7 @@ const row = (overrides: Partial<TenantDashboardSummaryResponse> = {}): TenantDas
   nip: '1111111111',
   displayName: 'A',
   lastSyncedAt: null,
-  lastSuccessfulSync: '2026-11-03T06:00:00Z',
+  lastSuccessfulSync: '2026-11-03T06:00:00',
   totalInvoices: 1,
   invoicesLast7Days: 0,
   invoicesLast30Days: 0,
@@ -16,7 +16,7 @@ const row = (overrides: Partial<TenantDashboardSummaryResponse> = {}): TenantDas
   syncProblem: null,
   ...overrides,
 })
-const failed = (category: string, message: string | null, credentialCause: boolean, lastSuccessfulSync: string | null = '2026-11-03T06:00:00Z') =>
+const failed = (category: string, message: string | null, credentialCause: boolean, lastSuccessfulSync: string | null = '2026-11-03T06:00:00') =>
   row({ syncProblem: 'Failed', syncStatus: 'Warning', lastSyncErrorCategory: category, lastSyncErrorMessage: message, lastSyncErrorCredentialCause: credentialCause, lastSuccessfulSync })
 
 describe('syncHealth (REQ-0013)', () => {
@@ -26,7 +26,7 @@ describe('syncHealth (REQ-0013)', () => {
   })
 
   it('stale without a recorded failure: headline only, no reason', () => {
-    expect(syncHealth(row({ syncStatus: 'Warning' }))).toEqual({ problem: 'Stale', headline: 'Nie pobieramy faktur od 03.11.2026, 07:00', reason: null, link: null })
+    expect(syncHealth(row({ syncStatus: 'Warning' }))).toEqual({ problem: 'Stale', headline: 'Nie pobieramy faktur od 03.11.2026, 06:00', reason: null, link: null })
   })
 
   it('NoCredential', () => {
@@ -57,7 +57,7 @@ describe('syncHealth (REQ-0013)', () => {
     ['Other', false],
   ])('Failed %s shows the API text verbatim, token link only when the credential is the cause', (category, cause) => {
     const health = syncHealth(failed(category, `tekst ${category}`, cause))
-    expect(health).toEqual({ problem: 'Failed', headline: 'Nie pobieramy faktur od 03.11.2026, 07:00', reason: `tekst ${category}`, link: cause ? 'check' : null })
+    expect(health).toEqual({ problem: 'Failed', headline: 'Nie pobieramy faktur od 03.11.2026, 06:00', reason: `tekst ${category}`, link: cause ? 'check' : null })
   })
 
   it('a non-credential failure while the last success is fresh raises no alarm', () => {
@@ -70,6 +70,6 @@ describe('syncHealth (REQ-0013)', () => {
   })
 
   it('Failed without a message falls back to headline plus token link', () => {
-    expect(syncHealth(failed('Unknown', null, false))).toEqual({ problem: 'Failed', headline: 'Nie pobieramy faktur od 03.11.2026, 07:00', reason: null, link: 'check' })
+    expect(syncHealth(failed('Unknown', null, false))).toEqual({ problem: 'Failed', headline: 'Nie pobieramy faktur od 03.11.2026, 06:00', reason: null, link: 'check' })
   })
 })

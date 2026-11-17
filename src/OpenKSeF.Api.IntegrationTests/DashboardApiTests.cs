@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Domain.Data;
@@ -10,11 +11,12 @@ using OpenKSeF.Sync.Issuing;
 namespace OpenKSeF.Api.IntegrationTests;
 
 [Collection(TestcontainersCollection.Name)]
-public sealed class DashboardApiTests : IDisposable
+public sealed class DashboardApiTests : IAsyncLifetime
 {
     private readonly TestcontainersFixture _fixture;
     private readonly OpenKSeFWebApplicationFactory _factory;
     private readonly HttpClient _client;
+    private readonly List<Guid> _tenantIds = [];
 
     public DashboardApiTests(TestcontainersFixture fixture)
     {
@@ -23,8 +25,12 @@ public sealed class DashboardApiTests : IDisposable
         _client = _factory.CreateClient();
     }
 
-    public void Dispose()
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync()
     {
+        using (var scope = _factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Tenants.Where(t => _tenantIds.Contains(t.Id)).ExecuteDeleteAsync();
         _client.Dispose();
         _factory.Dispose();
     }
@@ -73,6 +79,7 @@ public sealed class DashboardApiTests : IDisposable
         var response = await _client.PostAsJsonAsync("/api/tenants", new { nip = TestNip.New(), displayName = "Dashboard test" });
         response.EnsureSuccessStatusCode();
         var tenantId = (await response.Content.ReadFromJsonAsync<IdDto>())!.Id;
+        _tenantIds.Add(tenantId);
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var now = DateTime.UtcNow;
