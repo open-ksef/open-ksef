@@ -47,7 +47,7 @@ describe('Self-host compose and release', () => {
   const repoRoot = resolve(projectRoot, '../..')
   const read = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8').replace(/\r\n/g, '\n')
   const compose = read('docker-compose.yml')
-  const services = (compose.split('\nvolumes:')[0].match(/^ {2}[a-z-]+:$/gm) ?? []).map((line) => line.trim().slice(0, -1))
+  const services = (compose.split('\nservices:\n')[1].split('\nvolumes:')[0].match(/^ {2}[a-z-]+:$/gm) ?? []).map((line) => line.trim().slice(0, -1))
   const block = (name: string) => compose.split(`\n  ${name}:\n`)[1].split(/\n {2}[a-z-]+:\n|\nvolumes:/)[0]
 
   it('tags every own image with OPENKSEF_VERSION and never a literal :latest', () => {

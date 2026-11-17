@@ -10,6 +10,12 @@
 #   (:latest follows the newest release; both exist from the first release that ships the relay)
 #   docker compose -f docker-compose.push-relay.yml up -d
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   push-relay:
     image: ${PUSH_RELAY_IMAGE:-openksef-push-relay:dev-local}
@@ -18,6 +24,7 @@ services:
       context: ./src/OpenKSeF.PushRelay
       dockerfile: Dockerfile
     restart: unless-stopped
+    logging: *logging
     environment:
       Relay__ApiKey: ${PUSH_RELAY_API_KEY:-}
       Relay__AdminKey: ${PUSH_RELAY_ADMIN_KEY:-}
