@@ -337,7 +337,6 @@ describe('Ustawienia', () => {
     await login()
 
     expect([...container.querySelectorAll('h2')].map((heading) => heading.textContent)).toEqual([
-      'Weryfikacja dwuetapowa użytkownika',
       'Podstawowe',
       'Administrator danych',
       'Autoryzacja',
@@ -353,6 +352,32 @@ describe('Ustawienia', () => {
   })
 
   describe('2FA reset', () => {
+    const tokenWith = (roles: string[]) => `h.${btoa(JSON.stringify({ realm_access: { roles } })).replace(/=+$/, '')}.s`
+    const asUser = (roles: string[]) =>
+      vi.mocked(useAuth).mockReturnValue({ user: { profile: { name: 'Jan Testowy' }, access_token: tokenWith(roles) }, logout } as never)
+
+    beforeEach(() => asUser(['openksef-admin']))
+
+    it('is hidden from a user without the instance admin role, before and after the admin login', async () => {
+      asUser(['user'])
+      vi.mocked(getSettings).mockResolvedValue({ smtp: {} } as never)
+      await render(<SettingsAdminPage />)
+      expect(by('admin-reset-email')).toBeNull()
+      expect(container.textContent).not.toContain('Weryfikacja dwuetapowa')
+
+      await login()
+      expect(by('settings-url')).not.toBeNull()
+      expect(by('admin-reset-email')).toBeNull()
+    })
+
+    it('shows the card to the instance admin without the admin password', async () => {
+      await render(<SettingsAdminPage />)
+
+      expect(by('settings-kc-user')).not.toBeNull()
+      expect(by('admin-reset-email')).not.toBeNull()
+      expect(getSettings).not.toHaveBeenCalled()
+    })
+
     const user = { resetAvailable: true, reason: null, userId: 'u1', firstName: 'Jan', lastName: 'Próbny', email: 'jan@firma-testowa.pl', status: 'enabled', recoveryCodesLeft: 9, enabledAt: null } as const
 
     async function find(email = 'jan@firma-testowa.pl'): Promise<void> {
