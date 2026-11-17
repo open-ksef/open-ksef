@@ -30,6 +30,8 @@ builder.Services.AddOpenKSeFCore(builder.Configuration).AddSyncServices(builder.
 builder.Services.AddSingleton<KSeFRuntimeConfig>();
 builder.Services.AddHostedService<InvoiceSyncService>();
 builder.Services.AddHostedService<IssuedInvoiceSendService>();
+builder.Services.AddScoped<AuditRetentionService>();
+builder.Services.AddHostedService<AuditRetentionWorker>();
 
 var host = builder.Build();
 
