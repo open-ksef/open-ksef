@@ -11,6 +11,8 @@ public class SyncState
     public DateTime? LastSuccessfulSync { get; set; }
     public DateTime? IssuedContinuationAt { get; set; }
     public DateTime? ReceivedContinuationAt { get; set; }
+    public string? LastErrorCategory { get; set; }
+    public DateTime? LastErrorAt { get; set; }
 
     public Tenant Tenant { get; set; } = null!;
 

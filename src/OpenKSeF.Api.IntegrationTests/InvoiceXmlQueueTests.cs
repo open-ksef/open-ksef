@@ -904,6 +904,78 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         Assert.Equal(LastSync, (await db.SyncStates.SingleAsync()).LastSuccessfulSync!.Value, TimeSpan.FromMilliseconds(1));
     }
 
+    [Theory]
+    [InlineData("token", "InvalidToken")]
+    [InlineData("other-login", "LoginRefused")]
+    [InlineData("503", "KsefUnavailable")]
+    [InlineData("429", "RateLimited")]
+    [InlineData("internal", "Other")]
+    [InlineData("http-timeout", "KsefUnavailable")]
+    public async Task FailedSync_KeepsCategoryWithoutKsefText_NextSuccessClearsIt(string failure, string category)
+    {
+        await MigrateAsync();
+        Exception error = failure switch
+        {
+            "token" => new TimeoutException("Uwierzytelnianie nie zakończyło się kodem 200 w ciągu 60s. Ostatni status: 450, Opis: Uwierzytelnianie zakończone niepowodzeniem, Szczegóły: Nieprawidłowy token"),
+            "other-login" => new TimeoutException("Uwierzytelnianie nie zakończyło się kodem 200 w ciągu 60s. Ostatni status: 415, Opis: Brak uprawnień, Szczegóły: -"),
+            "503" => new KsefApiException("KSeF HTTP 503 secret-body", HttpStatusCode.ServiceUnavailable),
+            "429" => new KsefApiException("rate limited", HttpStatusCode.TooManyRequests),
+            "http-timeout" => new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing."),
+            _ => new InvalidOperationException("Host=db;Password=internal"),
+        };
+        _gateway.InitSessionAsync(Arg.Any<string>(), Arg.Any<KSeFCredential>(), Arg.Any<CancellationToken>()).Returns<KSeFSession>(_ => throw error);
+
+        Assert.Equal(TenantSyncOutcome.Failed, (await ManualSyncAsync()).Outcome);
+
+        await using (var db = NewContext())
+        {
+            var state = await db.SyncStates.SingleAsync();
+            Assert.Equal(category, state.LastErrorCategory);
+            Assert.NotNull(state.LastErrorAt);
+            Assert.Equal(LastSync, state.LastSuccessfulSync!.Value, TimeSpan.FromMilliseconds(1));
+        }
+
+        _gateway.InitSessionAsync(Arg.Any<string>(), Arg.Any<KSeFCredential>(), Arg.Any<CancellationToken>()).Returns(new KSeFSession("session", DateTime.UtcNow.AddHours(1)));
+        Assert.Equal(TenantSyncOutcome.Success, (await ManualSyncAsync()).Outcome);
+
+        await using (var db = NewContext())
+        {
+            var state = await db.SyncStates.SingleAsync();
+            Assert.Equal((null, null), (state.LastErrorCategory, state.LastErrorAt));
+        }
+    }
+
+    [Fact]
+    public async Task DatabaseDownWhileRecordingTheFailure_StillReturnsTheFailedResult()
+    {
+        await MigrateAsync();
+        _gateway.InitSessionAsync(Arg.Any<string>(), Arg.Any<KSeFCredential>(), Arg.Any<CancellationToken>()).Returns<KSeFSession>(_ =>
+        {
+            using (var db = NewContext())
+                db.Database.ExecuteSqlRaw("""ALTER TABLE "SyncStates" RENAME TO "SyncStatesGone" """);
+            throw new KsefApiException("KSeF HTTP 503", HttpStatusCode.ServiceUnavailable);
+        });
+
+        var result = await ManualSyncAsync();
+
+        Assert.Equal(TenantSyncOutcome.Failed, result.Outcome);
+    }
+
+    [Fact]
+    public async Task FirstSyncFails_StoresCategoryOnANewSyncState_WithoutASuccessDate()
+    {
+        await MigrateAsync();
+        await using (var db = NewContext())
+            await db.SyncStates.ExecuteDeleteAsync();
+        _received = _ => throw new KsefApiException("KSeF HTTP 502", HttpStatusCode.BadGateway);
+
+        Assert.Equal(TenantSyncOutcome.Failed, (await ManualSyncAsync()).Outcome);
+
+        await using var check = NewContext();
+        var state = await check.SyncStates.SingleAsync();
+        Assert.Equal(("KsefUnavailable", (DateTime?)null, (DateTime?)null), (state.LastErrorCategory, state.LastSuccessfulSync, state.LastSyncedAt));
+    }
+
     [Fact]
     public async Task FailedSync_ReturnsMappedMessage_KeepsKsefMessage()
     {

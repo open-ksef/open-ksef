@@ -395,6 +395,13 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<DateTime?>("IssuedContinuationAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("LastErrorAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCategory")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<DateTime?>("LastSuccessfulSync")
                         .HasColumnType("timestamp with time zone");
 

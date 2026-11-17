@@ -129,6 +129,7 @@ public class ApplicationDbContext : DbContext
         {
             entity.HasKey(s => s.Id);
             entity.HasIndex(s => s.TenantId).IsUnique();
+            entity.Property(s => s.LastErrorCategory).HasMaxLength(32);
             entity.HasOne(s => s.Tenant)
                 .WithOne(t => t.SyncState)
                 .HasForeignKey<SyncState>(s => s.TenantId)

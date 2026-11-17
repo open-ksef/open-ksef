@@ -5,13 +5,13 @@ import { Link } from 'react-router-dom'
 import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import type { TenantCredentialStatusResponse, TenantDashboardSummaryResponse } from '@/api/types'
 import { companyName } from '@/company/CompanyContext'
+import { NO_CREDENTIAL_REASON, syncHealth } from '@/company/syncHealth'
 import { useCompany } from '@/company/useCompany'
 import type { CompanyState } from '@/hooks/useCompanyState'
 import { formatDateTime } from '@/invoicing/format'
 import { EmptyState } from './EmptyState'
 import { Icon } from './Icon'
 
-const NO_TOKEN_MESSAGE = 'Bez tokenu nie pobierzemy faktur ani nie wystawimy nowych.'
 const PRIMARY = 'ui-button ui-button--primary ui-button--md'
 const OUTLINE = 'ui-button ui-button--outline ui-button--md'
 
@@ -47,7 +47,7 @@ export function CompanyStateCard({ state, place, summary, credential, attentionC
         <EmptyState
           icon="key-round"
           title="Ta firma nie ma tokenu KSeF"
-          message={`${NO_TOKEN_MESSAGE} Token z uprawnieniem odczytu i zapisu wygenerujesz w Aplikacji Podatnika KSeF.`}
+          message={`${NO_CREDENTIAL_REASON} Token z uprawnieniem odczytu i zapisu wygenerujesz w Aplikacji Podatnika KSeF.`}
           actions={
             <div className="ui-empty-state__actions">
               <AddToken />
@@ -60,7 +60,7 @@ export function CompanyStateCard({ state, place, summary, credential, attentionC
       <EmptyState
         icon="key-round"
         title="Firma dodana. Brakuje tokenu KSeF"
-        message={NO_TOKEN_MESSAGE}
+        message={NO_CREDENTIAL_REASON}
         actions={
           <ol className="start-steps">
             <li>
@@ -107,12 +107,37 @@ export function CompanyStateCard({ state, place, summary, credential, attentionC
     )
   }
 
-  if (state === 'first-fetch') {
+  const health = syncHealth(summary)
+  if (health?.problem === 'Failed' && (state === 'first-fetch' || state === 'first-fetch-late')) {
+    return (
+      <EmptyState
+        icon="circle-alert"
+        title={health.headline}
+        message={health.reason ?? ''}
+        actions={
+          health.link === 'check' ? (
+            <div className="ui-empty-state__actions">
+              <Link to="/company/token" className={PRIMARY}>
+                <Icon name="key-round" /> Sprawdź token KSeF
+              </Link>
+            </div>
+          ) : null
+        }
+      />
+    )
+  }
+
+  const neverSynced = health?.problem === 'NeverSynced'
+  if (state === 'first-fetch' || (state === 'first-fetch-late' && neverSynced)) {
     return (
       <EmptyState
         icon="clock"
-        title="Czekamy na pierwsze pobranie z KSeF"
-        message="Pobieranie uruchamia się samo co kilka godzin. Pierwsze obejmie ostatnie 6 miesięcy. Możesz uruchomić je teraz przyciskiem Pobierz z KSeF albo zamknąć stronę."
+        title={neverSynced ? health.headline : 'Czekamy na pierwsze pobranie z KSeF'}
+        message={
+          neverSynced
+            ? (health.reason ?? '')
+            : 'Pobieranie uruchamia się samo co kilka godzin. Pierwsze obejmie ostatnie 6 miesięcy. Możesz uruchomić je teraz przyciskiem Pobierz z KSeF albo zamknąć stronę.'
+        }
         actions={
           place === 'start' ? (
             <p className="start-note">

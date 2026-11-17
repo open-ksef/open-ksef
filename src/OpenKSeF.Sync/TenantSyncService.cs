@@ -309,6 +309,8 @@ public sealed class TenantSyncService : ITenantSyncService
 
             syncState.LastSyncedAt = now;
             syncState.LastSuccessfulSync = now;
+            syncState.LastErrorCategory = null;
+            syncState.LastErrorAt = null;
 
             if (storedState is null)
                 _db.SyncStates.Add(syncState);
@@ -345,6 +347,7 @@ public sealed class TenantSyncService : ITenantSyncService
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "Sync failed for tenant {TenantId}", tenant.Id);
+            await RecordFailureAsync(tenant.Id, SyncFailure.Classify(ex, credential.Type));
 
             var statusCode = (ex as KsefApiException)?.StatusCode;
             return new TenantSyncResult(
@@ -362,6 +365,28 @@ public sealed class TenantSyncService : ITenantSyncService
         finally
         {
             _db.ChangeTracker.Clear();
+        }
+    }
+
+    private async Task RecordFailureAsync(Guid tenantId, string category)
+    {
+        _db.ChangeTracker.Clear();
+        try
+        {
+            var state = await _db.SyncStates.FirstOrDefaultAsync(s => s.TenantId == tenantId);
+            if (state is null)
+            {
+                state = new SyncState { Id = Guid.NewGuid(), TenantId = tenantId };
+                _db.SyncStates.Add(state);
+            }
+
+            state.LastErrorCategory = category;
+            state.LastErrorAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not store the sync failure of tenant {TenantId}", tenantId);
         }
     }
 

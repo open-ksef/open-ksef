@@ -265,13 +265,70 @@ describe('StartPage', () => {
       expect(attention()?.textContent).toContain('Nic nie wymaga uwagi.')
     })
 
-    it('states a stale fetch without any reason, with a link to the token', async () => {
+    it('states a stale fetch without a recorded failure: no reason, no token link', async () => {
       useData({ summaries: [summary({ syncStatus: 'Warning', lastSuccessfulSync: '2026-10-31T10:00:00Z' })] })
       await render()
       expect(attention()?.textContent).toContain('Nie pobieramy faktur od 31.10.2026')
-      expect(attention()?.textContent).toContain('Sprawdź token KSeF')
-      expect(attention()?.querySelector('a[href="/company/token"]')).not.toBeNull()
-      expect(text()).not.toContain('Powód')
+      expect(text()).not.toContain('Sprawdź token KSeF')
+      expect(attention()?.querySelector('a[href="/company/token"]')).toBeNull()
+    })
+
+    it('a KSeF outage while the last fetch is fresh raises nothing', async () => {
+      useData({ summaries: [summary({ syncStatus: 'Success', syncProblem: 'Failed', lastSyncErrorCategory: 'KsefUnavailable', lastSyncErrorMessage: 'x', lastSyncErrorCredentialCause: false })] })
+      await render()
+      expect(text()).not.toContain('Nie pobieramy faktur')
+    })
+
+    it('a failed fetch shows the API reason; KSeF outage gets no token link', async () => {
+      const message = 'Nie udało się połączyć z KSeF. Spróbujemy ponownie automatycznie. Jeśli problem trwa dłużej niż dobę, napisz do administratora OpenKSeF.'
+      useData({ summaries: [summary({ syncStatus: 'Warning', lastSuccessfulSync: '2026-10-31T10:00:00Z', syncProblem: 'Failed', lastSyncErrorCategory: 'KsefUnavailable', lastSyncErrorMessage: message, lastSyncErrorCredentialCause: false })] })
+      await render()
+      expect(attention()?.textContent).toContain('Nie pobieramy faktur od 31.10.2026')
+      expect(attention()?.textContent).toContain(message)
+      expect(attention()?.querySelector('a[href="/company/token"]')).toBeNull()
+      expect(text()).not.toContain('Sprawdź token KSeF')
+    })
+
+    it('a rejected token shows the reason and the token link', async () => {
+      const message = 'KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.'
+      useData({ summaries: [summary({ syncStatus: 'Success', syncProblem: 'Failed', lastSyncErrorCategory: 'InvalidToken', lastSyncErrorMessage: message, lastSyncErrorCredentialCause: true })] })
+      await render()
+      expect(attention()?.textContent).toContain(message)
+      const link = attention()?.querySelector('a[href="/company/token"]')
+      expect(link?.textContent).toBe('Sprawdź token KSeF')
+      expect(link?.className).toBe('start-attention-link')
+      expect(text().match(/KSeF odrzucił token/g)).toHaveLength(1)
+    })
+
+    it('the header sync line stays one headline: no reason, no token link', async () => {
+      useData({ summaries: [summary({ syncStatus: 'Error', syncProblem: 'Failed', lastSyncErrorCategory: 'InvalidToken', lastSyncErrorMessage: 'KSeF odrzucił token.', lastSyncErrorCredentialCause: true })] })
+      await render()
+      const line = document.querySelector('[data-testid="invoice-sync-line"]')
+      expect(line?.textContent).toContain('Nie pobieramy faktur od')
+      expect(document.querySelector('[data-testid="invoice-sync-reason"]')).toBeNull()
+      expect(line?.querySelector('a')).toBeNull()
+    })
+
+    it('a first-ever failure replaces the waiting card with its reason', async () => {
+      const message = 'KSeF chwilowo ograniczył liczbę zapytań. Spróbujemy ponownie przy następnym pobraniu, nic nie musisz robić.'
+      useData({ summaries: [summary({ totalInvoices: 0, lastSuccessfulSync: null, syncStatus: 'Error', syncProblem: 'Failed', lastSyncErrorCategory: 'RateLimited', lastSyncErrorMessage: message })], invoices: [] })
+      await render()
+      expect(text()).toContain('Nie udało się jeszcze pobrać faktur')
+      expect(text()).toContain(message)
+      expect(text()).not.toContain('Czekamy na pierwsze pobranie')
+      expect(text()).not.toContain('Sprawdź token KSeF')
+    })
+
+    it('never synced shows the NeverSynced text, no reason and no token link, even after a day', async () => {
+      useData({
+        summaries: [summary({ totalInvoices: 0, lastSuccessfulSync: null, syncStatus: 'Error', syncProblem: 'NeverSynced' })],
+        credentials: [credential({ lastUpdatedAt: '2026-01-01T00:00:00Z' })],
+        invoices: [],
+      })
+      await render()
+      expect(text()).toContain('Faktury nie były jeszcze pobierane')
+      expect(text()).toContain('Pierwsze pobranie ruszy samo w ciągu kilku godzin. Możesz też kliknąć „Pobierz z KSeF”.')
+      expect(text()).not.toContain('Sprawdź token KSeF')
     })
 
     it('with invoices and no token shows the normal page and the token item', async () => {
