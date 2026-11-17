@@ -114,7 +114,8 @@ $composeFile = Join-Path $root 'docker-compose.dev.yml'
 $buildFlag = @(if (-not $SkipBuild) { '--build' })
 
 Write-Host "`n[docker] Starting services ..." -ForegroundColor Cyan
-& docker compose -f $composeFile up -d @buildFlag
+# PS 5.1 turns redirected native stderr into terminating errors under 'Stop'.
+& { $ErrorActionPreference = 'Continue'; & docker compose -f $composeFile up -d @buildFlag 2>&1 | ForEach-Object { "$_" } }
 if ($LASTEXITCODE -ne 0) { throw "docker compose up failed" }
 
 # ── 3. Wait for health endpoints ─────────────────────────────────────
