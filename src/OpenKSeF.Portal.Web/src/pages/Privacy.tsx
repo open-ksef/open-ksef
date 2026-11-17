@@ -45,9 +45,12 @@ export function PrivacyPage(): ReactElement {
           <ul>
             <li><strong>Konto:</strong> adres e-mail, imię i nazwisko (jeśli podane), identyfikator użytkownika.</li>
             <li><strong>Firmy:</strong> NIP, nazwa, token lub certyfikat KSeF (zaszyfrowane), opcjonalny e-mail do powiadomień.</li>
-            <li><strong>Faktury otrzymane z KSeF:</strong> nagłówek, pozycje, dane kontrahentów, numer rachunku sprzedawcy, dane faktora, oznaczenia płatności (MPP, zapłata) i status płatności ustawiony przez użytkownika.</li>
+            <li><strong>Dostęp do firm:</strong> firmy, do których masz dostęp, Twoja rola w każdej z nich i ustawienie powiadomień.</li>
+            <li><strong>Faktury otrzymane z KSeF:</strong> nagłówek, pozycje, dane kontrahentów, numer rachunku sprzedawcy, dane faktora, oznaczenia płatności (MPP, zapłata) oraz status płatności z datą i osobą, która oznaczyła fakturę jako opłaconą.</li>
             <li><strong>Faktury sprzedaży z KSeF:</strong> numer, kwoty, daty, dane nabywcy i pozycje.</li>
             <li><strong>Faktury wystawione:</strong> dane sprzedawcy i nabywcy (także osoby prywatnej), nabywcy zagranicznego (kraj, numer VAT UE lub podatkowy), waluta i kurs, rachunek sprzedawcy, pozycje; po wysłaniu plik XML, numer KSeF, UPO lub powód odrzucenia.</li>
+            <li><strong>Historia zmian w firmie:</strong> kto, kiedy i co zmienił, np. status płatności, token KSeF, zaproszenia, dostęp i role.</li>
+            <li><strong>Zaproszenia:</strong> e-mail osoby zaproszonej, rola, kto zaprosił i kto przyjął, daty utworzenia, wygaśnięcia i przyjęcia.</li>
             <li><strong>Urządzenia:</strong> token urządzenia do powiadomień push.</li>
           </ul>
           <p>

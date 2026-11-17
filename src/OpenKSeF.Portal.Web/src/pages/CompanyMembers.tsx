@@ -463,7 +463,7 @@ function InviteDialog({ tenantId, roles, onInvited, onClose }: InviteDialogProps
                   <span>
                     <b>Zaproszenie oczekuje</b>
                     <br />
-                    {result.email} nie ma jeszcze konta. Dostęp dostanie po zalogowaniu na ten adres.
+                    Dostęp dostanie po zalogowaniu na {result.email} i przyjęciu zaproszenia.
                   </span>
                 </div>
                 {response.link && response.expiresAt ? (
