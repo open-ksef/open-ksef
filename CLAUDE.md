@@ -71,6 +71,7 @@ Always consult these docs (especially the XSD schemas) before making assumptions
 - `Domain/DTOs/` holds only the Sync->Domain contract (`InvoiceDto`, `InvoiceLineDto`, `InvoiceXmlDetails`).
 - Every HTTP request/response type lives in `Api/Models/`, shaped for JSON consumers (portal, mobile app).
 - Do not expose EF entities directly in API responses. Map to a response model.
+- Tenant access is by membership ([ADR-006](docs/adr/adr-006-tenant-membership.md)): every `{tenantId}` action carries `[TenantAccess("permission")]` (`Api/Authorization/TenantAccessAttribute.cs`), which reads `TenantMembers`; non-member 404, missing permission 403. Never check `Tenant.UserId` for access.
 - API contract and DB migration changes follow [ADR-004](docs/adr/adr-004-contract-and-migration-policy.md): additive mobile surface, expand-only migrations, M1 four-line PR body.
 
 ### DbContext usage
@@ -209,6 +210,7 @@ dotnet build src/OpenKSeF.sln
 # Unit tests
 dotnet test src/OpenKSeF.Api.Tests/OpenKSeF.Api.Tests.csproj
 dotnet test src/OpenKSeF.Domain.Tests/OpenKSeF.Domain.Tests.csproj
+dotnet test src/OpenKSeF.PushRelay.Tests/OpenKSeF.PushRelay.Tests.csproj
 
 # API integration tests (Testcontainers -- needs Docker Desktop, no docker-compose)
 dotnet test src/OpenKSeF.Api.IntegrationTests/OpenKSeF.Api.IntegrationTests.csproj
@@ -229,6 +231,7 @@ After modifying code, **always run the relevant tests before committing**:
 |--------------|-----|
 | Portal Web (`src/OpenKSeF.Portal.Web`) | `cd src/OpenKSeF.Portal.Web && npm test` and `npm run lint` |
 | Backend C# (`src/OpenKSeF.Api`, `Domain`, `Sync`, `Worker`) | `dotnet test src/OpenKSeF.Api.Tests` and `dotnet test src/OpenKSeF.Domain.Tests` |
+| Push relay (`src/OpenKSeF.PushRelay`) | `dotnet test src/OpenKSeF.PushRelay.Tests` |
 | Both / unsure | `./scripts/run-all-tests.ps1` (runs all .NET + Portal tests; integration tests need Docker) |
 | Docker / compose changes | `dotnet test src/OpenKSeF.Api.IntegrationTests` (uses Testcontainers) |
 
