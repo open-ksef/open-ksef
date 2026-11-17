@@ -6,7 +6,7 @@ COPY . .
 WORKDIR "/src/OpenKSeF.Api"
 RUN --mount=type=secret,id=nuget_cirfmf_pat,required=true \
     NuGetPackageSourceCredentials_CIRFMF="Username=openksef;Password=$(cat /run/secrets/nuget_cirfmf_pat)" \
-    dotnet publish -c Release -o /app/publish /p:UseAppHost=false
+    dotnet publish -c Release -o /app/publish /p:UseAppHost=false /p:RestoreLockedMode=true
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
