@@ -37,7 +37,7 @@ export function SellerProfilePage(): ReactElement {
   const error = tenantsQuery.error ?? profileQuery.error
 
   return (
-    <div className="invoicing">
+    <div className="inv-stack">
       {error ? (
         <ErrorBanner
           message={error instanceof Error ? error.message : 'Nie udało się załadować danych'}

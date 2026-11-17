@@ -5,7 +5,7 @@ export function NotFoundPage(): ReactElement {
   return (
     <main className="auth-page">
       <div className="auth-card" style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '48px', marginBottom: '8px' }}>404</div>
+        <div style={{ fontSize: '28px', fontWeight: 700, marginBottom: '8px' }}>404</div>
         <h1 className="auth-card__title">Nie znaleziono strony</h1>
         <p className="auth-card__desc">Strona, której szukasz, nie istnieje lub została przeniesiona.</p>
         <div className="auth-card__actions">

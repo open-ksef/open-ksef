@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -27,6 +27,21 @@ function contrast(a: string, b: string): number {
 }
 
 describe('design tokens', () => {
+  it('defines every --ui-* token that src references', () => {
+    const defined = new Set([...ui.matchAll(/(--ui-[a-z0-9-]+):/g)].map((m) => m[1]))
+    const files = readdirSync(src, { recursive: true, encoding: 'utf8' }).filter((f) => /\.(css|tsx?)$/.test(f))
+    const undefinedRefs = files.flatMap((f) =>
+      [...readFileSync(resolve(src, f), 'utf8').matchAll(/var\(\s*(--ui-[a-z0-9-]+)/g)].map((m) => m[1]).filter((t) => !defined.has(t)).map((t) => `${f}: ${t}`),
+    )
+    expect(undefinedRefs).toEqual([])
+  })
+
+  it('keeps CSS font sizes on the type scale', () => {
+    const files = readdirSync(src, { recursive: true, encoding: 'utf8' }).filter((f) => f.endsWith('.css'))
+    const sizes = new Set(files.flatMap((f) => [...readFileSync(resolve(src, f), 'utf8').matchAll(/font-size:\s*(\d+)px/g)].map((m) => Number(m[1]))))
+    expect([...sizes].filter((size) => ![12, 13, 14, 16, 18, 22, 28].includes(size))).toEqual([])
+  })
+
   it('keeps the two dark sets identical', () => {
     expect(Object.keys(darkMedia).length).toBeGreaterThan(20)
     expect(darkForced).toEqual(darkMedia)

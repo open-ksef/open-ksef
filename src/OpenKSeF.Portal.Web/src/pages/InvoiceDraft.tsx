@@ -76,7 +76,7 @@ export function InvoiceDraftPage(): ReactElement {
   const loading = tenantsQuery.isLoading || profileQuery.isLoading || (Boolean(id) && invoiceQuery.isLoading)
 
   return (
-    <div className="invoicing">
+    <div className="inv-stack">
       {error ? (
         <ErrorBanner
           message={error instanceof Error ? error.message : 'Nie udało się załadować danych'}
