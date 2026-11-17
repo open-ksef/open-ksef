@@ -15,9 +15,10 @@ interface KsefSyncProps {
   ksef: KsefFetch
   disabled: boolean
   variant: 'primary' | 'outline'
+  brief?: boolean
 }
 
-export function KsefSync({ state, summary, ksef, disabled, variant }: KsefSyncProps): ReactElement {
+export function KsefSync({ state, summary, ksef, disabled, variant, brief = false }: KsefSyncProps): ReactElement {
   const health = syncHealth(summary)
   const failing = health?.problem === 'Failed' || health?.problem === 'Stale'
   return (
@@ -27,6 +28,18 @@ export function KsefSync({ state, summary, ksef, disabled, variant }: KsefSyncPr
           health && failing ? (
             <span data-testid="invoice-sync-line" className="received-sync--stale">
               <Icon name="circle-alert" size={14} /> {health.headline}
+              {!brief && health.reason ? (
+                <>
+                  <br />
+                  <span data-testid="invoice-sync-reason">{health.reason}</span>
+                </>
+              ) : null}
+              {!brief && health.link === 'check' ? (
+                <>
+                  <br />
+                  <Link to="/company/token">Sprawdź token KSeF</Link>
+                </>
+              ) : null}
             </span>
           ) : (
             <span data-testid="invoice-sync-line">Pobrano z KSeF: {formatDateTime(summary.lastSuccessfulSync)}</span>

@@ -300,6 +300,15 @@ describe('StartPage', () => {
       expect(text().match(/KSeF odrzucił token/g)).toHaveLength(1)
     })
 
+    it('the header sync line stays one headline: no reason, no token link', async () => {
+      useData({ summaries: [summary({ syncStatus: 'Error', syncProblem: 'Failed', lastSyncErrorCategory: 'InvalidToken', lastSyncErrorMessage: 'KSeF odrzucił token.', lastSyncErrorCredentialCause: true })] })
+      await render()
+      const line = document.querySelector('[data-testid="invoice-sync-line"]')
+      expect(line?.textContent).toContain('Nie pobieramy faktur od')
+      expect(document.querySelector('[data-testid="invoice-sync-reason"]')).toBeNull()
+      expect(line?.querySelector('a')).toBeNull()
+    })
+
     it('a first-ever failure replaces the waiting card with its reason', async () => {
       const message = 'KSeF chwilowo ograniczył liczbę zapytań. Spróbujemy ponownie przy następnym pobraniu, nic nie musisz robić.'
       useData({ summaries: [summary({ totalInvoices: 0, lastSuccessfulSync: null, syncStatus: 'Error', syncProblem: 'Failed', lastSyncErrorCategory: 'RateLimited', lastSyncErrorMessage: message })], invoices: [] })

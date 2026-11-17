@@ -287,7 +287,7 @@ export function StartPage(): ReactElement {
     <section className={isFull && !isLoading && !error ? 'start start--full' : 'start'}>
       <header className="page-header received-head">
         <h1>Co dziś do zrobienia</h1>
-        <KsefSync state={state} summary={summary} ksef={ksef} disabled={!tenantId} variant="outline" />
+        <KsefSync state={state} summary={summary} ksef={ksef} disabled={!tenantId} variant="outline" brief />
         <Link to="/issued/new" className="ui-button ui-button--primary ui-button--md">
           <Icon name="plus" /> Nowa faktura
         </Link>

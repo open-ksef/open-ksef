@@ -739,14 +739,16 @@ describe('InvoiceListPage', () => {
       expect(line()?.querySelector('a')).toBeNull()
     })
 
-    it.each(['Warning', 'Error'])('warns with one headline line on %s, no reason or link in the header', async (syncStatus) => {
+    it.each(['Warning', 'Error'])('warns with the reason and links to the token on %s', async (syncStatus) => {
       vi.mocked(getDashboardOverview).mockResolvedValue([
         summary({ syncStatus, syncProblem: 'Failed', lastSyncErrorCategory: 'InvalidToken', lastSyncErrorMessage: 'KSeF odrzucił token.', lastSyncErrorCredentialCause: true }),
       ])
       await render('/invoices?tenantId=tenant-1')
 
-      expect(line()?.textContent?.trim()).toBe('Nie pobieramy faktur od 01.11.2026, 06:00')
-      expect(line()?.querySelector('a')).toBeNull()
+      expect(line()?.textContent).toContain('Nie pobieramy faktur od 01.11.2026, 06:00')
+      expect(byTestId('invoice-sync-reason')?.textContent).toBe('KSeF odrzucił token.')
+      expect(line()?.querySelector('a')?.textContent).toBe('Sprawdź token KSeF')
+      expect(line()?.querySelector('a')?.getAttribute('href')).toBe('/company/token')
     })
 
     it('shows nothing before the first successful fetch', async () => {
