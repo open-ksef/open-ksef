@@ -1,8 +1,15 @@
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: openksef-postgres
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -26,6 +33,7 @@ services:
     image: ghcr.io/open-ksef/openksef-keycloak:${OPENKSEF_VERSION:-latest}
     container_name: openksef-keycloak
     restart: unless-stopped
+    logging: *logging
     command: start
     depends_on:
       postgres:
@@ -48,6 +56,7 @@ services:
     image: ghcr.io/open-ksef/openksef-api:${OPENKSEF_VERSION:-latest}
     container_name: openksef-api
     restart: unless-stopped
+    logging: *logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,6 +94,7 @@ services:
     image: ghcr.io/open-ksef/openksef-worker:${OPENKSEF_VERSION:-latest}
     container_name: openksef-worker
     restart: unless-stopped
+    logging: *logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,6 +121,7 @@ services:
     image: ghcr.io/open-ksef/openksef-portal-web:${OPENKSEF_VERSION:-latest}
     container_name: openksef-portal-web
     restart: unless-stopped
+    logging: *logging
     depends_on:
       keycloak:
         condition: service_started
@@ -123,6 +134,7 @@ services:
     image: ghcr.io/open-ksef/openksef-gateway:${OPENKSEF_VERSION:-latest}
     container_name: openksef-gateway
     restart: unless-stopped
+    logging: *logging
     depends_on:
       keycloak:
         condition: service_started
