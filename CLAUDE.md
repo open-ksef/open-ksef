@@ -147,6 +147,13 @@ Sync imports received (`Subject2`) metadata, then issued (`Subject1`) metadata: 
 
 KSeF TEST rate limit: 20 `invoices/query/metadata` requests per hour per NIP. A first sync with a 12-month lookback uses 4+ of them (3-month windows plus paging), and every `dev-env-up` re-run restarts the worker, which syncs on startup. The script skips its own sync per tenant when that tenant synced successfully within the last hour. On 429 (`Przekroczono limit 20 żądań na godzinę`) the script prints `PARTIAL` and exits 1: wait for the window to reset, then run `powershell -File scripts/setup-test-data.ps1` once. Do not loop it.
 
+`KSeFGatewayContractTests` (`Domain.Tests`, `Category=KSeF`) runs the real `KSeFGateway` against KSeF TEST: token session, received metadata over the last 89 days (pages 1 and 2, size 10), one XML download parsed by `KSeFInvoiceXmlParser`. It skips unless `E2E_TEST_NIP` and `E2E_TEST_KSEF_TOKEN` are in the process environment (never read from `.env.test`, so CI and plain `dotnet test` skip). It asserts the TEST host and blocks production hosts with `KSeFProductionGuard`. It uses 2 of the 20 metadata queries per hour and prints counts only. Run it once, from the repo root:
+
+```powershell
+Get-Content .env.test | Where-Object { $_ -match '^(E2E_TEST_NIP|E2E_TEST_KSEF_TOKEN)=(.*)$' } | ForEach-Object { Set-Item "env:$($Matches[1])" $Matches[2].Trim('"', "'") }
+dotnet test src/OpenKSeF.Domain.Tests --filter Category=KSeF
+```
+
 The script is **idempotent** -- re-running skips existing data. It:
 1. Authenticates as `testuser` via OIDC direct-access grant
 2. Creates tenant with the test NIP if missing
