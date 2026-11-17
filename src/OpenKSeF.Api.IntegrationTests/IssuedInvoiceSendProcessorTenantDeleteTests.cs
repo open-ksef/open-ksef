@@ -1,5 +1,7 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using KSeF.Client.Core.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OpenKSeF.Domain.Abstractions;
@@ -12,7 +14,7 @@ using Testcontainers.PostgreSql;
 
 namespace OpenKSeF.Api.IntegrationTests;
 
-/// <summary>Postgres, not InMemory: the send processor relies on the 0-row UPDATE of a deleted invoice raising DbUpdateConcurrencyException.</summary>
+/// <summary>Postgres, not InMemory: the send processor relies on the 0-row UPDATE of a deleted invoice raising DbUpdateConcurrencyException, and the 440 exit compares bytes read back from bytea.</summary>
 public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
 {
     private const string ConcurrentSkipLog = "changed concurrently, skipped this cycle";
@@ -182,10 +184,97 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
         Assert.NotNull((await check.IssuedInvoices.SingleAsync(i => i.Id == other)).UpoXml);
     }
 
+    private async Task<Guid> SeedHeldOn440Async(string number)
+    {
+        var tenant = await SeedTenantAsync("5260250274");
+        var xml = Fa(number);
+        var id = await SeedInvoiceAsync(tenant, number, Now, invoice =>
+        {
+            invoice.AttachSentXml(xml, Convert.ToHexString(SHA256.HashData(xml)), "test", null);
+            invoice.MarkSendStarted("sess-1", Now);
+            invoice.MarkSendStarted("sess-2", Now);
+            invoice.RecordElementRef("el-2", Now);
+        });
+        _submitter.OnGet = _ => new KSeFSentInvoice("el-2", null, KSeFSentInvoice.Duplicate, "Duplikat faktury", ["Duplikat faktury"], null, Now,
+            OriginalKsefNumber: "5260250274-20261103-0100A0B0C0D0-E1", OriginalSessionRef: "sess-orig");
+        _submitter.OnList = _ => throw new KsefApiException("forbidden", HttpStatusCode.Forbidden, null!, null!);
+        return id;
+    }
+
+    private static byte[] Fa(string content) => Encoding.UTF8.GetBytes($"<Faktura>{content}</Faktura>");
+
+    private async Task<IssuedInvoice> LoadAsync(Guid id)
+    {
+        await using var db = NewContext();
+        return await db.IssuedInvoices.AsNoTracking().SingleAsync(i => i.Id == id);
+    }
+
+    [Fact]
+    public async Task Held440_SessionNotListable_IdenticalBytes_AcceptedWithOriginalNumber_LeavesOutbox()
+    {
+        var id = await SeedHeldOn440Async("FV/440/1");
+        _submitter.OnDownload = _ => Fa("FV/440/1");
+
+        await RunAsync();
+        _time.Now = Now.AddHours(1);
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Accepted, invoice.Status);
+        Assert.Equal("5260250274-20261103-0100A0B0C0D0-E1", invoice.KsefNumber);
+        Assert.Null(invoice.NextAttemptAt);
+        Assert.Null(invoice.KsefElementRef);
+        Assert.Equal("sess-orig", invoice.KsefSessionRef);
+        Assert.Empty(_submitter.Posted);
+    }
+
+    [Fact]
+    public async Task Held440_SessionNotListable_DifferentBytes_RejectedAsNumberTaken_WithKsefNumber()
+    {
+        var id = await SeedHeldOn440Async("FV/440/2");
+        _submitter.OnDownload = _ => Fa("FV/440/2 inna treść");
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Rejected, invoice.Status);
+        Assert.Equal(KSeFSentInvoice.Duplicate, invoice.KsefStatusCode);
+        Assert.Equal(IssuedInvoiceSendProcessor.NumberTakenMessage, invoice.KsefStatusDescription);
+        Assert.Contains("Numer KSeF: 5260250274-20261103-0100A0B0C0D0-E1", invoice.KsefStatusDetails);
+        Assert.Null(invoice.KsefNumber);
+    }
+
+    [Fact]
+    public async Task Held440_SessionNotListable_DownloadFails_StaysSending_AcrossRestarts()
+    {
+        var id = await SeedHeldOn440Async("FV/440/3");
+        var failures = new Queue<Exception>([
+            new KsefApiException("brak InvoiceRead", HttpStatusCode.Forbidden, null!, null!),
+            new KsefApiException("server", HttpStatusCode.InternalServerError, null!, null!),
+            new HttpRequestException("network"),
+        ]);
+        _submitter.OnDownload = _ => throw failures.Dequeue();
+
+        while (failures.Count > 0)
+        {
+            await RunAsync();
+            var held = await LoadAsync(id);
+            Assert.Equal(IssuedInvoiceStatus.Sending, held.Status);
+            Assert.Null(held.KsefStatusCode);
+            Assert.NotNull(held.NextAttemptAt);
+            _time.Now = held.NextAttemptAt!.Value;
+        }
+
+        Assert.Empty(_submitter.Posted);
+    }
+
     private sealed class FakeSubmitter : IKSeFInvoiceSubmitter
     {
         public Func<Task>? BeforeNextOpen;
         public Func<string, Task<byte[]?>> OnUpo = _ => Task.FromResult<byte[]?>(null);
+        public Func<string, KSeFSentInvoice?> OnGet = _ => null;
+        public Func<string, IReadOnlyList<KSeFSentInvoice>> OnList = _ => [];
+        public Func<string, byte[]> OnDownload = _ => throw new NotSupportedException();
         public List<string> Posted { get; } = [];
 
         public Task<KSeFSession> LoginAsync(string nip, KSeFCredential credential, CancellationToken ct = default) => Task.FromResult(new KSeFSession("access-token", DateTime.MaxValue));
@@ -206,10 +295,12 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
         }
 
         public Task<KSeFSentInvoice?> GetInvoiceAsync(string accessToken, string sessionRef, string elementRef, CancellationToken ct = default) =>
-            Task.FromResult<KSeFSentInvoice?>(null);
+            Task.FromResult(OnGet(elementRef));
 
         public Task<IReadOnlyList<KSeFSentInvoice>> ListInvoicesAsync(string accessToken, string sessionRef, CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<KSeFSentInvoice>>([]);
+            Task.FromResult(OnList(sessionRef));
+
+        public Task<byte[]> DownloadInvoiceAsync(string accessToken, string ksefNumber, CancellationToken ct = default) => Task.FromResult(OnDownload(ksefNumber));
 
         public Task<byte[]?> GetUpoAsync(string accessToken, string sessionRef, string elementRef, CancellationToken ct = default) => OnUpo(elementRef);
 
@@ -218,6 +309,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
 
     private sealed class FixedTime : TimeProvider
     {
+        public DateTime Now = IssuedInvoiceSendProcessorTenantDeleteTests.Now;
         public override DateTimeOffset GetUtcNow() => Now;
     }
 

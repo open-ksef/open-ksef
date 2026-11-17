@@ -387,15 +387,207 @@ public class IssuedInvoiceSendProcessorTests
             await RunAsync();
 
             var invoice = await LoadAsync(id);
+            var delay = TimeSpan.FromMinutes(originalSession is null ? 15 : Math.Min(15 << Math.Min(cycle, 4), 240));
             Assert.Equal(IssuedInvoiceStatus.Sending, invoice.Status);
             Assert.Equal(IssuedInvoiceSendProcessor.DuplicateUnresolvedMessage, invoice.LastError);
-            Assert.Equal(_time.UtcNow.AddMinutes(15), invoice.NextAttemptAt);
+            Assert.Equal(_time.UtcNow.Add(delay), invoice.NextAttemptAt);
             Assert.Null(invoice.KsefStatusCode);
-            _time.Advance(TimeSpan.FromMinutes(15));
+            _time.Advance(delay);
         }
 
         Assert.Equal(100, _submitter.Gets);
         Assert.Equal(2, _submitter.Sends);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.BadRequest)]
+    public async Task Duplicate440_AfterResend_SessionNotListable_IdenticalBytesDownloaded_AcceptedWithOriginalNumber(HttpStatusCode listError)
+    {
+        var id = await SeedResentAsync();
+        _submitter.OnGet = _ => Duplicate();
+        _submitter.OnList = _ => throw new KsefApiException("session", listError, null!, null!);
+        _submitter.OnDownload = _ => [.. Xml];
+
+        await RunAsync();
+        _time.Advance(TimeSpan.FromHours(1));
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Accepted, invoice.Status);
+        Assert.Equal("KSEF-ORIG", invoice.KsefNumber);
+        Assert.Equal(200, invoice.KsefStatusCode);
+        Assert.Null(invoice.LastError);
+        Assert.Equal("sess-orig", invoice.KsefSessionRef);
+        Assert.Null(invoice.KsefElementRef);
+        Assert.Null(invoice.NextAttemptAt);
+        Assert.Equal(["KSEF-ORIG"], _submitter.Downloads);
+        Assert.Empty(_submitter.UpoRequests);
+        Assert.Equal((2, 1), (_submitter.Sends, _submitter.Gets));
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.BadRequest)]
+    public async Task Duplicate440_AfterResend_SessionNotListable_OtherDocumentDownloaded_RejectedAsNumberTakenWithKsefNumber(HttpStatusCode listError)
+    {
+        var id = await SeedResentAsync();
+        _submitter.OnGet = _ => Duplicate();
+        _submitter.OnList = _ => throw new KsefApiException("session", listError, null!, null!);
+        _submitter.OnDownload = _ => Encoding.UTF8.GetBytes("<Faktura>inna</Faktura>");
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Rejected, invoice.Status);
+        Assert.Equal(440, invoice.KsefStatusCode);
+        Assert.Equal(IssuedInvoiceSendProcessor.NumberTakenMessage, invoice.KsefStatusDescription);
+        Assert.Equal("Duplikat faktury; Numer KSeF: KSEF-ORIG", invoice.KsefStatusDetails);
+        Assert.Null(invoice.KsefNumber);
+        Assert.Equal(2, _submitter.Sends);
+    }
+
+    public static TheoryData<string, byte[]> SameXmlOrUnreadable() => new()
+    {
+        { "bom", [0xEF, 0xBB, 0xBF, .. Xml] },
+        { "whitespace", Encoding.UTF8.GetBytes("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Faktura />\n") },
+        { "utf16", Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes("<Faktura/>")).ToArray() },
+        { "empty", [] },
+        { "not xml", Encoding.UTF8.GetBytes("{\"status\":\"ok\"}") },
+    };
+
+    public static TheoryData<string, string, string> SameXmlOtherForm() => new()
+    {
+        { "prefix", "<Faktura xmlns=\"urn:fa\"><P a=\"1\">x</P></Faktura>", "<f:Faktura xmlns:f=\"urn:fa\"><f:P a=\"1\">x</f:P></f:Faktura>" },
+        { "attribute order", "<Faktura><P a=\"1\" b=\"2\">x</P></Faktura>", "<Faktura><P b=\"2\" a=\"1\">x</P></Faktura>" },
+    };
+
+    [Theory]
+    [MemberData(nameof(SameXmlOtherForm))]
+    public async Task Duplicate440_AfterResend_SessionNotListable_PrefixOrAttributeOrderOnly_StaysSending(string _, string sent, string original)
+    {
+        var sentBytes = Encoding.UTF8.GetBytes(sent);
+        var id = await SeedAsync(i => i.AttachSentXml(sentBytes, Convert.ToHexString(SHA256.HashData(sentBytes)), "test", null));
+        await using (var db = NewDb())
+        {
+            var invoice = await db.IssuedInvoices.SingleAsync(i => i.Id == id);
+            invoice.MarkSendStarted("sess-1", _time.UtcNow);
+            invoice.MarkSendStarted("sess-2", _time.UtcNow);
+            invoice.RecordElementRef("el-2", _time.UtcNow);
+            await db.SaveChangesAsync();
+        }
+        _submitter.OnGet = _ => Duplicate();
+        _submitter.OnList = _ => throw new KsefApiException("session", HttpStatusCode.Forbidden, null!, null!);
+        _submitter.OnDownload = _ => Encoding.UTF8.GetBytes(original);
+
+        await RunAsync();
+
+        var held = await LoadAsync(id);
+        Assert.Equal((IssuedInvoiceStatus.Sending, IssuedInvoiceSendProcessor.DuplicateUnresolvedMessage), (held.Status, held.LastError));
+        Assert.Null(held.KsefStatusCode);
+        Assert.Equal(["KSEF-ORIG"], _submitter.Downloads);
+    }
+
+    [Fact]
+    public async Task Duplicate440_AfterResend_SessionNotListable_SameNamesOtherValue_Rejected()
+    {
+        var sentBytes = Encoding.UTF8.GetBytes("<Faktura><P a=\"1\">x</P></Faktura>");
+        var id = await SeedAsync(i => i.AttachSentXml(sentBytes, Convert.ToHexString(SHA256.HashData(sentBytes)), "test", null));
+        await using (var db = NewDb())
+        {
+            var invoice = await db.IssuedInvoices.SingleAsync(i => i.Id == id);
+            invoice.MarkSendStarted("sess-1", _time.UtcNow);
+            invoice.MarkSendStarted("sess-2", _time.UtcNow);
+            invoice.RecordElementRef("el-2", _time.UtcNow);
+            await db.SaveChangesAsync();
+        }
+        _submitter.OnGet = _ => Duplicate();
+        _submitter.OnList = _ => throw new KsefApiException("session", HttpStatusCode.Forbidden, null!, null!);
+        _submitter.OnDownload = _ => Encoding.UTF8.GetBytes("<Faktura><P a=\"2\">x</P></Faktura>");
+
+        await RunAsync();
+
+        Assert.Equal(IssuedInvoiceStatus.Rejected, (await LoadAsync(id)).Status);
+    }
+
+    [Theory]
+    [MemberData(nameof(SameXmlOrUnreadable))]
+    public async Task Duplicate440_AfterResend_SessionNotListable_SameXmlOtherBytesOrUnreadable_StaysSending_NeverRejected(string _, byte[] body)
+    {
+        var id = await SeedResentAsync();
+        _submitter.OnGet = _ => Duplicate();
+        _submitter.OnList = _ => throw new KsefApiException("session", HttpStatusCode.Forbidden, null!, null!);
+        _submitter.OnDownload = _ => body;
+
+        for (var cycle = 0; cycle < 5; cycle++)
+        {
+            await RunAsync();
+            var invoice = await LoadAsync(id);
+            Assert.Equal(IssuedInvoiceStatus.Sending, invoice.Status);
+            Assert.Equal(IssuedInvoiceSendProcessor.DuplicateUnresolvedMessage, invoice.LastError);
+            Assert.Null(invoice.KsefStatusCode);
+            Assert.Null(invoice.KsefNumber);
+            _time.Advance(TimeSpan.FromHours(4));
+        }
+
+        Assert.Equal(5, _submitter.Downloads.Count);
+    }
+
+    public static TheoryData<Exception> DownloadFailures() => new()
+    {
+        new KsefApiException("21164 nie istnieje", HttpStatusCode.BadRequest, null!, null!),
+        new KsefApiException("21165 nie jest jeszcze dostępna", HttpStatusCode.BadRequest, null!, null!),
+        new KsefApiException("brak InvoiceRead", HttpStatusCode.Forbidden, null!, null!),
+        new KsefApiException("not found", HttpStatusCode.NotFound, null!, null!),
+        new KsefApiException("unauthorized", HttpStatusCode.Unauthorized, null!, null!),
+        new KsefApiException("server", HttpStatusCode.InternalServerError, null!, null!),
+        new KsefRateLimitException("429", 120, null, null!),
+        new HttpRequestException("network"),
+        new TaskCanceledException("timeout"),
+    };
+
+    [Theory]
+    [MemberData(nameof(DownloadFailures))]
+    public async Task Duplicate440_AfterResend_SessionNotListable_DownloadFails_StaysSending_NeverRejected_ThenAcceptedOnIdenticalBytes(Exception failure)
+    {
+        var id = await SeedResentAsync();
+        _submitter.OnGet = _ => Duplicate();
+        _submitter.OnList = _ => throw new KsefApiException("session", HttpStatusCode.Forbidden, null!, null!);
+        _submitter.OnDownload = _ => throw failure;
+
+        for (var cycle = 0; cycle < 10; cycle++)
+        {
+            await RunAsync();
+            var held = await LoadAsync(id);
+            Assert.Equal(IssuedInvoiceStatus.Sending, held.Status);
+            Assert.Null(held.KsefStatusCode);
+            Assert.Null(held.KsefNumber);
+            Assert.NotNull(held.LastError);
+            Assert.NotNull(held.NextAttemptAt);
+            _time.Advance(TimeSpan.FromHours(4));
+        }
+
+        _submitter.OnDownload = _ => [.. Xml];
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal((IssuedInvoiceStatus.Accepted, "KSEF-ORIG"), (invoice.Status, invoice.KsefNumber));
+        Assert.Equal(11, _submitter.Downloads.Count);
+        Assert.Equal(2, _submitter.Sends);
+    }
+
+    [Fact]
+    public async Task Duplicate440_FirstAttempt_NeverDownloads()
+    {
+        var id = await SeedAsync(Sent);
+        _submitter.OnGet = _ => Duplicate();
+        _submitter.OnList = _ => throw new KsefApiException("session", HttpStatusCode.Forbidden, null!, null!);
+        _submitter.OnDownload = _ => [.. Xml];
+
+        await RunAsync();
+
+        Assert.Equal(IssuedInvoiceStatus.Rejected, (await LoadAsync(id)).Status);
+        Assert.Empty(_submitter.Downloads);
     }
 
     [Fact]
@@ -813,7 +1005,7 @@ public class IssuedInvoiceSendProcessorTests
     [Fact]
     public async Task Submitter_Http401OnLogin_StaysKsefApiException()
     {
-        var submitter = new KSeFInvoiceSubmitter(DispatchProxy.Create<IKSeFClient, UnauthorizedClient>(), null!, _encryption);
+        var submitter = new KSeFInvoiceSubmitter(DispatchProxy.Create<IKSeFClient, UnauthorizedClient>(), null!, _encryption, null!);
         var credential = new KSeFCredential { Type = CredentialType.Token, EncryptedToken = _encryption.Encrypt("token") };
 
         var error = await Assert.ThrowsAsync<KsefApiException>(() => submitter.LoginAsync("5260250274", credential));
@@ -1623,6 +1815,8 @@ public class IssuedInvoiceSendProcessorTests
         public Func<string, KSeFSentInvoice?> OnGet = _ => null;
         public Func<string, IReadOnlyList<KSeFSentInvoice>> OnList = _ => [];
         public Func<byte[]?> OnUpo = () => null;
+        public Func<string, byte[]> OnDownload = _ => throw new KsefApiException("21164 Faktura o podanym identyfikatorze nie istnieje.", HttpStatusCode.BadRequest, null!, null!);
+        public List<string> Downloads = [];
         public Func<Task> OnClose = () => Task.CompletedTask;
         public int Logins, Opens, Sends, Gets, Closes;
         public List<(string SessionRef, string ElementRef)> UpoRequests = [];
@@ -1661,6 +1855,12 @@ public class IssuedInvoiceSendProcessorTests
 
         public Task<IReadOnlyList<KSeFSentInvoice>> ListInvoicesAsync(string accessToken, string sessionRef, CancellationToken ct = default) =>
             Task.FromResult(OnList(sessionRef));
+
+        public Task<byte[]> DownloadInvoiceAsync(string accessToken, string ksefNumber, CancellationToken ct = default)
+        {
+            Downloads.Add(ksefNumber);
+            return Task.FromResult(OnDownload(ksefNumber));
+        }
 
         public Task<byte[]?> GetUpoAsync(string accessToken, string sessionRef, string elementRef, CancellationToken ct = default)
         {

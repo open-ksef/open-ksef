@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Xml;
+using System.Xml.Linq;
 using KSeF.Client.Core.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -44,6 +46,7 @@ public sealed class IssuedInvoiceSendProcessor(
 
     private static readonly TimeSpan MinBackoff = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan MaxHold = TimeSpan.FromHours(4);
     private static readonly TimeSpan UpoRetry = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan MinPoll = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan MaxPoll = TimeSpan.FromMinutes(5);
@@ -327,7 +330,7 @@ public sealed class IssuedInvoiceSendProcessor(
     /// </summary>
     private async Task ResolveDuplicateAsync(IssuedInvoice invoice, KSeFSentInvoice duplicate, string accessToken, CancellationToken ksef, CancellationToken ct)
     {
-        var listed = duplicate.OriginalSessionRef is null ? [] : await ListOriginalSessionAsync(invoice, accessToken, duplicate.OriginalSessionRef, ksef, ct);
+        var listed = duplicate.OriginalSessionRef is null ? [] : await ListOriginalSessionAsync(accessToken, duplicate.OriginalSessionRef, ksef, ct);
         var hash = Convert.ToBase64String(SHA256.HashData(invoice.SentXml!));
         var original = listed.FirstOrDefault(s => s is { Code: KSeFSentInvoice.Accepted, KsefNumber: not null } && s.InvoiceHash == hash);
         if (original is not null)
@@ -343,19 +346,82 @@ public sealed class IssuedInvoiceSendProcessor(
         var otherDocumentListed = duplicate.OriginalKsefNumber is not null && listed.Any(s => s.KsefNumber == duplicate.OriginalKsefNumber);
         if (!otherDocumentListed && invoice.AttemptCount > 1)
         {
-            await WaitForUnresolvedAsync(invoice, ct);
-            return;
+            var downloaded = duplicate.OriginalKsefNumber is null ? null : await DownloadOriginalAsync(invoice, accessToken, duplicate.OriginalKsefNumber, ksef, ct);
+            if (downloaded is null)
+            {
+                await HoldUnresolvedAsync(invoice, duplicate.OriginalKsefNumber is not null, ct);
+                return;
+            }
+
+            if (downloaded.AsSpan().SequenceEqual(invoice.SentXml!))
+            {
+                logger.LogInformation("Issued invoice {InvoiceId} is already in KSeF as {KsefNumber}, confirmed by identical downloaded bytes", invoice.Id, duplicate.OriginalKsefNumber);
+                invoice.MarkAcceptedFromOriginal(duplicate.OriginalKsefNumber!, duplicate.OriginalSessionRef, Now());
+                await db.SaveChangesAsync(ct);
+                return;
+            }
+
+            if (MayBeSameDocument(downloaded, invoice.SentXml!))
+            {
+                logger.LogWarning("Issued invoice {InvoiceId}: KSeF number {KsefNumber} holds the same XML in other bytes, or a body that is not XML", invoice.Id, duplicate.OriginalKsefNumber);
+                await HoldUnresolvedAsync(invoice, true, ct);
+                return;
+            }
+
+            logger.LogWarning("Issued invoice {InvoiceId}: KSeF number {KsefNumber} holds other bytes", invoice.Id, duplicate.OriginalKsefNumber);
         }
 
         invoice.MarkRejected(duplicate.Code, NumberTakenMessage, DuplicateDetails(duplicate), Now());
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task WaitForUnresolvedAsync(IssuedInvoice invoice, CancellationToken ct)
+    /// <summary>A hold after a download doubles from 15 min up to 4 h, so held invoices spend little of the per-NIP download budget sync also uses.</summary>
+    private async Task HoldUnresolvedAsync(IssuedInvoice invoice, bool downloadTried, CancellationToken ct)
     {
-        invoice.ScheduleRetry(DuplicateUnresolvedMessage, Now().Add(MaxBackoff), Now());
+        var previous = invoice.LastError == DuplicateUnresolvedMessage ? invoice.NextAttemptAt - invoice.UpdatedAt : null;
+        var delay = downloadTried && previous is { } p && p >= MaxBackoff ? TimeSpan.FromTicks(Math.Min(p.Ticks * 2, MaxHold.Ticks)) : MaxBackoff;
+        invoice.ScheduleRetry(DuplicateUnresolvedMessage, Now().Add(delay), Now());
         await db.SaveChangesAsync(ct);
     }
+
+    /// <summary>
+    /// Equal up to encoding, BOM, whitespace between elements, namespace prefixes, attribute order or comments,
+    /// or not readable as XML: never proof of another document.
+    /// </summary>
+    private static bool MayBeSameDocument(byte[] downloaded, byte[] sent)
+    {
+        try
+        {
+            return SameContent(XDocument.Load(new MemoryStream(downloaded)).Root!, XDocument.Load(new MemoryStream(sent)).Root!);
+        }
+        catch (XmlException)
+        {
+            return true;
+        }
+    }
+
+    private static bool SameContent(XElement a, XElement b)
+    {
+        if (a.Name != b.Name || !Attributes(a).SequenceEqual(Attributes(b)))
+            return false;
+
+        var left = Content(a).ToList();
+        var right = Content(b).ToList();
+        return left.Count == right.Count && left.Zip(right).All(pair => pair switch
+        {
+            (XElement x, XElement y) => SameContent(x, y),
+            (XText x, XText y) => x.Value == y.Value,
+            _ => false
+        });
+    }
+
+    private static IEnumerable<(XName Name, string Value)> Attributes(XElement element) => element.Attributes()
+        .Where(a => !a.IsNamespaceDeclaration)
+        .OrderBy(a => a.Name.NamespaceName, StringComparer.Ordinal)
+        .ThenBy(a => a.Name.LocalName, StringComparer.Ordinal)
+        .Select(a => (a.Name, a.Value));
+
+    private static IEnumerable<XNode> Content(XElement element) => element.Nodes().Where(n => n is XElement or XText);
 
     private static string? DuplicateDetails(KSeFSentInvoice duplicate)
     {
@@ -378,16 +444,30 @@ public sealed class IssuedInvoiceSendProcessor(
         }
     }
 
-    private async Task<IReadOnlyList<KSeFSentInvoice>> ListOriginalSessionAsync(IssuedInvoice invoice, string accessToken, string sessionRef, CancellationToken ksef, CancellationToken ct)
+    private async Task<IReadOnlyList<KSeFSentInvoice>> ListOriginalSessionAsync(string accessToken, string sessionRef, CancellationToken ksef, CancellationToken ct)
     {
         try
         {
             return await submitter.ListInvoicesAsync(accessToken, sessionRef, ksef);
         }
-        catch (KsefApiException e) when (e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound || (invoice.AttemptCount == 1 && !IsTransient(e, ct)))
+        catch (KsefApiException e) when (!IsTransient(e, ct))
         {
             logger.LogInformation("Original KSeF session {SessionRef} cannot be listed: {Error}", sessionRef, e.Message);
             return [];
+        }
+    }
+
+    /// <summary>Exact bytes of the original, or null while KSeF cannot give them: not found yet, no InvoiceRead (403), unknown number. Transient errors propagate to the retry.</summary>
+    private async Task<byte[]?> DownloadOriginalAsync(IssuedInvoice invoice, string accessToken, string ksefNumber, CancellationToken ksef, CancellationToken ct)
+    {
+        try
+        {
+            return await submitter.DownloadInvoiceAsync(accessToken, ksefNumber, ksef);
+        }
+        catch (KsefApiException e) when (!IsTransient(e, ct))
+        {
+            logger.LogWarning("Original {KsefNumber} of issued invoice {InvoiceId} cannot be downloaded: {Status} {Error}", ksefNumber, invoice.Id, (int)e.StatusCode, e.Message);
+            return null;
         }
     }
 

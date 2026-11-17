@@ -16,6 +16,8 @@ public interface IKSeFInvoiceSubmitter
 
     Task<IReadOnlyList<KSeFSentInvoice>> ListInvoicesAsync(string accessToken, string sessionRef, CancellationToken ct = default);
 
+    Task<byte[]> DownloadInvoiceAsync(string accessToken, string ksefNumber, CancellationToken ct = default);
+
     Task<byte[]?> GetUpoAsync(string accessToken, string sessionRef, string elementRef, CancellationToken ct = default);
 
     Task CloseSessionAsync(KSeFOnlineSession session, CancellationToken ct = default);
