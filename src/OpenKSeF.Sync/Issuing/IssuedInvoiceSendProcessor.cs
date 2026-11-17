@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Xml;
+using System.Xml.Linq;
 using KSeF.Client.Core.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -44,6 +46,7 @@ public sealed class IssuedInvoiceSendProcessor(
 
     private static readonly TimeSpan MinBackoff = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan MaxHold = TimeSpan.FromHours(4);
     private static readonly TimeSpan UpoRetry = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan MinPoll = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan MaxPoll = TimeSpan.FromMinutes(5);
@@ -346,15 +349,22 @@ public sealed class IssuedInvoiceSendProcessor(
             var downloaded = duplicate.OriginalKsefNumber is null ? null : await DownloadOriginalAsync(invoice, accessToken, duplicate.OriginalKsefNumber, ksef, ct);
             if (downloaded is null)
             {
-                await WaitForUnresolvedAsync(invoice, ct);
+                await HoldUnresolvedAsync(invoice, duplicate.OriginalKsefNumber is not null, ct);
                 return;
             }
 
             if (downloaded.AsSpan().SequenceEqual(invoice.SentXml!))
             {
                 logger.LogInformation("Issued invoice {InvoiceId} is already in KSeF as {KsefNumber}, confirmed by identical downloaded bytes", invoice.Id, duplicate.OriginalKsefNumber);
-                invoice.MarkAcceptedFromOriginal(duplicate.OriginalKsefNumber!, Now());
+                invoice.MarkAcceptedFromOriginal(duplicate.OriginalKsefNumber!, duplicate.OriginalSessionRef, Now());
                 await db.SaveChangesAsync(ct);
+                return;
+            }
+
+            if (MayBeSameDocument(downloaded, invoice.SentXml!))
+            {
+                logger.LogWarning("Issued invoice {InvoiceId}: KSeF number {KsefNumber} holds the same XML in other bytes, or a body that is not XML", invoice.Id, duplicate.OriginalKsefNumber);
+                await HoldUnresolvedAsync(invoice, true, ct);
                 return;
             }
 
@@ -365,10 +375,26 @@ public sealed class IssuedInvoiceSendProcessor(
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task WaitForUnresolvedAsync(IssuedInvoice invoice, CancellationToken ct)
+    /// <summary>A hold after a download doubles from 15 min up to 4 h, so held invoices spend little of the per-NIP download budget sync also uses.</summary>
+    private async Task HoldUnresolvedAsync(IssuedInvoice invoice, bool downloadTried, CancellationToken ct)
     {
-        invoice.ScheduleRetry(DuplicateUnresolvedMessage, Now().Add(MaxBackoff), Now());
+        var previous = invoice.LastError == DuplicateUnresolvedMessage ? invoice.NextAttemptAt - invoice.UpdatedAt : null;
+        var delay = downloadTried && previous is { } p && p >= MaxBackoff ? TimeSpan.FromTicks(Math.Min(p.Ticks * 2, MaxHold.Ticks)) : MaxBackoff;
+        invoice.ScheduleRetry(DuplicateUnresolvedMessage, Now().Add(delay), Now());
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Equal up to encoding, BOM or whitespace, or not readable as XML: never proof of another document.</summary>
+    private static bool MayBeSameDocument(byte[] downloaded, byte[] sent)
+    {
+        try
+        {
+            return XNode.DeepEquals(XDocument.Load(new MemoryStream(downloaded)), XDocument.Load(new MemoryStream(sent)));
+        }
+        catch (XmlException)
+        {
+            return true;
+        }
     }
 
     private static string? DuplicateDetails(KSeFSentInvoice duplicate)

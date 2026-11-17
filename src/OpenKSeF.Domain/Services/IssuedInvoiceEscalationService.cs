@@ -24,7 +24,7 @@ public sealed class IssuedInvoiceEscalationService(
         var cutoff = now - threshold;
         var stuck = await db.IssuedInvoices
             .Where(i => (i.Status == IssuedInvoiceStatus.Queued || i.Status == IssuedInvoiceStatus.Sending
-                         || (i.Status == IssuedInvoiceStatus.Accepted && i.UpoXml == null))
+                         || (i.Status == IssuedInvoiceStatus.Accepted && i.UpoXml == null && i.KsefElementRef != null))
                         && i.IssuedAt <= cutoff
                         && (i.EscalatedAt == null || i.EscalatedAt <= cutoff))
             .OrderBy(i => i.IssuedAt)

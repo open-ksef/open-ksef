@@ -312,12 +312,17 @@ public sealed class IssuedInvoice
         UpdatedAt = now;
     }
 
-    /// <summary>Accepted on a byte-identical download of the original. No element of ours holds it, so no UPO is fetched and it leaves the outbox.</summary>
-    public void MarkAcceptedFromOriginal(string ksefNumber, DateTime now)
+    /// <summary>
+    /// Accepted on a byte-identical download of the original. No element of ours holds it, so no UPO is fetched,
+    /// it leaves the outbox and escalation (which skips Accepted rows without an element ref).
+    /// </summary>
+    public void MarkAcceptedFromOriginal(string ksefNumber, string? originalSessionRef, DateTime now)
     {
         MarkAccepted(ksefNumber, now, 200, null, now);
+        KsefSessionRef = originalSessionRef ?? KsefSessionRef;
         KsefElementRef = null;
         NextAttemptAt = null;
+        EscalatedAt = null;
     }
 
     public void AttachUpo(byte[] upoXml, DateTime now)

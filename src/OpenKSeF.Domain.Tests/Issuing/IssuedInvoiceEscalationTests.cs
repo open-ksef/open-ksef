@@ -66,6 +66,27 @@ public class IssuedInvoiceEscalationTests
         invoice.MarkAccepted("KSEF-1", IssuedAt, 200, "Sukces", IssuedAt);
     }
 
+    [Fact]
+    public async Task AcceptedFromDownloadedOriginal_LeavesEscalation_FlagCleared()
+    {
+        var id = await SeedAsync(Sending);
+        _time.Advance(Threshold);
+        await RunAsync();
+        Assert.Single(_logs.Errors);
+
+        await MutateAsync(id, i => i.MarkAcceptedFromOriginal("KSEF-1", "sess-orig", _time.GetUtcNow().UtcDateTime));
+        for (var cycle = 0; cycle < 3; cycle++)
+        {
+            _time.Advance(Threshold);
+            await RunAsync();
+        }
+
+        await using var db = NewDb();
+        Assert.Null((await db.IssuedInvoices.SingleAsync(i => i.Id == id)).EscalatedAt);
+        Assert.Single(_logs.Errors);
+        Assert.Single(_notifications.Calls);
+    }
+
     [Theory]
     [InlineData(IssuedInvoiceStatus.Queued)]
     [InlineData(IssuedInvoiceStatus.Sending)]

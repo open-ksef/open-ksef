@@ -187,8 +187,10 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
     private async Task<Guid> SeedHeldOn440Async(string number)
     {
         var tenant = await SeedTenantAsync("5260250274");
+        var xml = Fa(number);
         var id = await SeedInvoiceAsync(tenant, number, Now, invoice =>
         {
+            invoice.AttachSentXml(xml, Convert.ToHexString(SHA256.HashData(xml)), "test", null);
             invoice.MarkSendStarted("sess-1", Now);
             invoice.MarkSendStarted("sess-2", Now);
             invoice.RecordElementRef("el-2", Now);
@@ -198,6 +200,8 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
         _submitter.OnList = _ => throw new KsefApiException("forbidden", HttpStatusCode.Forbidden, null!, null!);
         return id;
     }
+
+    private static byte[] Fa(string content) => Encoding.UTF8.GetBytes($"<Faktura>{content}</Faktura>");
 
     private async Task<IssuedInvoice> LoadAsync(Guid id)
     {
@@ -209,7 +213,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
     public async Task Held440_SessionNotListable_IdenticalBytes_AcceptedWithOriginalNumber_LeavesOutbox()
     {
         var id = await SeedHeldOn440Async("FV/440/1");
-        _submitter.OnDownload = _ => Encoding.UTF8.GetBytes("FV/440/1");
+        _submitter.OnDownload = _ => Fa("FV/440/1");
 
         await RunAsync();
         _time.Now = Now.AddHours(1);
@@ -220,6 +224,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
         Assert.Equal("5260250274-20261103-0100A0B0C0D0-E1", invoice.KsefNumber);
         Assert.Null(invoice.NextAttemptAt);
         Assert.Null(invoice.KsefElementRef);
+        Assert.Equal("sess-orig", invoice.KsefSessionRef);
         Assert.Empty(_submitter.Posted);
     }
 
@@ -227,7 +232,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
     public async Task Held440_SessionNotListable_DifferentBytes_RejectedAsNumberTaken_WithKsefNumber()
     {
         var id = await SeedHeldOn440Async("FV/440/2");
-        _submitter.OnDownload = _ => Encoding.UTF8.GetBytes("FV/440/2 inna treść");
+        _submitter.OnDownload = _ => Fa("FV/440/2 inna treść");
 
         await RunAsync();
 

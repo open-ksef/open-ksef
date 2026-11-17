@@ -113,9 +113,14 @@ After more than one POST the worker resolves it by itself when the session list 
 | Download result | Worker outcome |
 |---|---|
 | Identical bytes | Accepted with `originalKsefNumber`, logged `... is already in KSeF as {KsefNumber}, confirmed by identical downloaded bytes`. No UPO is fetched, see "Missing UPO" |
-| Other bytes | Rejected as number taken, with the KSeF number in the details, logged `... KSeF number {KsefNumber} holds other bytes` |
-| 400 (21164 not found, 21165 not yet available), 403, 404 | Waits, logged `Original {KsefNumber} of issued invoice {InvoiceId} cannot be downloaded: {Status} ...`, rechecked every 15 minutes |
+| Both parse as XML and differ in content | Rejected as number taken, with the KSeF number in the details, logged `... KSeF number {KsefNumber} holds other bytes` |
+| Same XML in other bytes (encoding, BOM, whitespace), empty or not XML | Waits and escalates, logged `... holds the same XML in other bytes, or a body that is not XML`. Send the invoice id and KSeF number to the principal engineer |
+| 400 (21164 not found, 21165 not yet available), 403, 404 | Waits, logged `Original {KsefNumber} of issued invoice {InvoiceId} cannot be downloaded: {Status} ...` |
 | 401, 429, 5xx, network error | Waits with the usual retry. Never rejects |
+
+A wait after a download rechecks after 15 minutes, doubling up to 4 hours.
+
+"Number taken" can point to an earlier version of this same invoice: one rejected after 430 or 450 while its first copy was accepted, then re-issued with new content. Rejecting the current content is correct, but the owner checks that KSeF number in the application before issuing anything new for the sale.
 
 1. Read the Worker log for the invoice id. A repeating `cannot be downloaded: 403` means the token has no `InvoiceRead`. The owner generates a token with `InvoiceRead` and `InvoiceWrite` and replaces it in company settings. The sync of received invoices needs `InvoiceRead` too. The next cycle records the outcome. No database change.
 2. A repeating `cannot be downloaded: 400` with 21164 for days: KSeF does not find the number from its own 440. Check the 440 itself: `GET {base}/sessions/{KsefSessionRef}/invoices/{KsefElementRef}` returns `status.extensions.originalKsefNumber`. Send both refs and the number to the principal engineer and open a ticket with the Ministry.
@@ -130,7 +135,7 @@ The invoice is legally in KSeF: it has `KsefNumber` and the KOD I link works. Th
 1. Check `GET {base}/sessions/{KsefSessionRef}/invoices/{KsefElementRef}/upo`. A 200 with XML means the next cycle stores it. A 404 or 5xx means KSeF has not generated it. A 400 or 403 fails the worker's call too: see "Any other text" in the table above.
 2. If it stays missing for days, open a ticket with the Ministry with the KSeF number. The owner can keep working, and the worker keeps fetching.
 
-Accepted after an unresolved 440 by identical downloaded bytes: `KsefElementRef` and `NextAttemptAt` are empty and the worker does not fetch a UPO, because no element of ours holds the original. `AcceptedAt` is the time of the download, not of KSeF acceptance; the KSeF number carries the acceptance date. The invoice stays flagged as Accepted without UPO. The UPO is in the original session: `GET {base}/sessions/{originalSessionReferenceNumber}/invoices/ksef/{KsefNumber}/upo`, or the owner downloads it in the application.
+Accepted after an unresolved 440 by identical downloaded bytes: `KsefElementRef` and `NextAttemptAt` are empty, `KsefSessionRef` holds the original session, and the worker does not fetch a UPO, because no element of ours holds the original. Escalation skips it and its flag is cleared. `AcceptedAt` is the time of the download, not of KSeF acceptance; the KSeF number carries the acceptance date. The UPO, when needed: `GET {base}/sessions/{KsefSessionRef}/invoices/ksef/{KsefNumber}/upo`, or the owner downloads it in the application.
 
 ## After resolving
 
