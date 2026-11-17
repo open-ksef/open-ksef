@@ -22,28 +22,21 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Configure CIRFMF NuGet feed
-        run: |
-          dotnet nuget update source CIRFMF \
-            --source https://nuget.pkg.github.com/CIRFMF/index.json \
-            --username ${{ github.actor }} \
-            --password ${{ secrets.NUGET_CIRFMF_PAT }} \
-            --store-password-in-clear-text \
-            --configfile nuget.config
-
       - name: Verify NuGet source mapping
         run: ../scripts/verify-nuget-source-mapping.sh
 
       - name: Restore
+        env:
+          NuGetPackageSourceCredentials_CIRFMF: Username=${{ github.actor }};Password=${{ secrets.NUGET_CIRFMF_PAT }}
         run: |
-          dotnet restore OpenKSeF.Api/OpenKSeF.Api.csproj
-          dotnet restore OpenKSeF.Worker/OpenKSeF.Worker.csproj
-          dotnet restore OpenKSeF.PushRelay/OpenKSeF.PushRelay.csproj
-          dotnet restore OpenKSeF.Domain/OpenKSeF.Domain.csproj
-          dotnet restore OpenKSeF.Domain.Tests/OpenKSeF.Domain.Tests.csproj
-          dotnet restore OpenKSeF.Api.Tests/OpenKSeF.Api.Tests.csproj
-          dotnet restore OpenKSeF.PushRelay.Tests/OpenKSeF.PushRelay.Tests.csproj
-          dotnet restore OpenKSeF.Api.IntegrationTests/OpenKSeF.Api.IntegrationTests.csproj
+          dotnet restore OpenKSeF.Api/OpenKSeF.Api.csproj --locked-mode
+          dotnet restore OpenKSeF.Worker/OpenKSeF.Worker.csproj --locked-mode
+          dotnet restore OpenKSeF.PushRelay/OpenKSeF.PushRelay.csproj --locked-mode
+          dotnet restore OpenKSeF.Domain/OpenKSeF.Domain.csproj --locked-mode
+          dotnet restore OpenKSeF.Domain.Tests/OpenKSeF.Domain.Tests.csproj --locked-mode
+          dotnet restore OpenKSeF.Api.Tests/OpenKSeF.Api.Tests.csproj --locked-mode
+          dotnet restore OpenKSeF.PushRelay.Tests/OpenKSeF.PushRelay.Tests.csproj --locked-mode
+          dotnet restore OpenKSeF.Api.IntegrationTests/OpenKSeF.Api.IntegrationTests.csproj --locked-mode
 
       - name: Build
         run: |

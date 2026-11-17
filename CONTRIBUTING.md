@@ -35,6 +35,7 @@ To restore NuGet packages you need a **GitHub Personal Access Token (classic)** 
      --password <your-pat> \
      --store-password-in-clear-text
    ```
+4. Package versions are locked in each project's `packages.lock.json`; CI and image builds restore with `--locked-mode`. After you add or change a `PackageReference`, run `dotnet restore src/OpenKSeF.sln` and commit the updated lock files.
 
 ### Quick start
 
