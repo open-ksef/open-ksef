@@ -298,6 +298,8 @@ describe('Firma, Osoby z dostępem', () => {
 
     expect(createInvite).toHaveBeenCalledExactlyOnceWith('a', { email: 'e@x.pl', role: 'Employee' })
     expect(by('invite-pending')?.textContent).toContain('Zaproszenie oczekuje')
+    expect(by('invite-pending')?.textContent).toContain('Dostęp dostanie po zalogowaniu na')
+    expect(by('invite-pending')?.textContent).not.toContain('nie ma jeszcze konta')
     expect((by('invite-link') as HTMLInputElement).value).toBe('https://k.example/zaproszenie#tok')
     expect(by('invite-link-box')?.textContent).toContain('Przekaż link osobie zapraszanej (e@x.pl) dowolnym kanałem.')
     expect(by('invite-link-box')?.textContent).toContain('ważny do 30.11.2026')

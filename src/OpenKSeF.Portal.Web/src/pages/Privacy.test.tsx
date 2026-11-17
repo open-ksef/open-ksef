@@ -66,4 +66,14 @@ describe('PrivacyPage', () => {
     expect(container.textContent).toContain('Jakie dane przechowuje ta instancja')
     expect(container.querySelector('a[href="https://open-ksef.pl/docs/polityka-prywatnosci"]')).not.toBeNull()
   })
+
+  it('lists memberships, paid-by, company history and invites', async () => {
+    vi.mocked(getSetupStatus).mockResolvedValue({ isInitialized: true, dataControllerName: null, dataControllerContact: null })
+    await render()
+
+    const items = [...container.querySelectorAll('li strong')].map((s) => s.textContent)
+    expect(items).toEqual(expect.arrayContaining(['Dostęp do firm:', 'Historia zmian w firmie:', 'Zaproszenia:']))
+    expect(container.textContent).toContain('osobą, która oznaczyła fakturę jako opłaconą')
+    expect(container.textContent).toContain('Twoja rola')
+  })
 })
