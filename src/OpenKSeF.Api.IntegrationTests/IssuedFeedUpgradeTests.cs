@@ -640,7 +640,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task FullResync_StartsAtEarliestReceivedRow_NotAtAnIssuedOne()
+    public async Task FullResync_StartsAtFirstSyncWindow_NotAtAnOlderIssuedRow()
     {
         await MigrateAndSeedExistingTenantAsync();
         _issued = c => Page(
@@ -660,7 +660,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         await using (var db = NewContext())
             await SyncService(db).SyncTenantAsync(_tenantId, forceFullResync: true);
 
-        Assert.Equal(Issued.AddHours(-1), from[0]!.Value, TimeSpan.FromSeconds(1));
+        Assert.Equal(DateTime.UtcNow.AddMonths(-new TenantSyncOptions().InitialSyncMonthsBack), from[0]!.Value, TimeSpan.FromMinutes(1));
     }
 
     [Fact]
