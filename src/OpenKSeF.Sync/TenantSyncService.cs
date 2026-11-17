@@ -193,10 +193,11 @@ public sealed class TenantSyncService : ITenantSyncService
         DateTime? fullResyncWindowStart = null;
         if (forceFullResync)
         {
-            var earliestIssueDate = await _db.InvoiceHeaders
+            // KSeF filters on PermanentStorage date, which never precedes AcquisitionDate; IssueDate can be years older.
+            var earliestAcquisition = await _db.InvoiceHeaders
                 .Where(h => h.TenantId == tenantId && h.Direction == InvoiceDirection.Received)
-                .MinAsync(h => (DateTime?)h.IssueDate, cancellationToken);
-            fullResyncWindowStart = earliestIssueDate?.AddHours(-1)
+                .MinAsync(h => (DateTime?)(h.AcquisitionDate ?? h.IssueDate), cancellationToken);
+            fullResyncWindowStart = earliestAcquisition?.AddHours(-1)
                 ?? DateTime.UtcNow.AddMonths(-_syncOptions.InitialSyncMonthsBack);
         }
 
