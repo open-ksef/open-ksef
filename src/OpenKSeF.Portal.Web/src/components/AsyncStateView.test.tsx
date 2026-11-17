@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AsyncStateView } from './AsyncStateView'
 
@@ -14,7 +14,10 @@ describe('AsyncStateView', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
+    vi.useFakeTimers()
   })
+
+  afterEach(() => vi.useRealTimers())
 
   it('renders loading, error, empty and success states', async () => {
     const onRetry = vi.fn()
@@ -33,6 +36,8 @@ describe('AsyncStateView', () => {
         </AsyncStateView>,
       )
     })
+    expect(container.querySelector('.skeleton-line')).toBeNull()
+    await act(async () => vi.advanceTimersByTime(300))
     expect(container.querySelector('.skeleton-line')).toBeTruthy()
 
     await act(async () => {

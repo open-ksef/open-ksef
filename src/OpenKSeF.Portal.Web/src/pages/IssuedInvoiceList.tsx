@@ -13,6 +13,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { Icon } from '@/components/Icon'
 import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
 import '@/components/invoicing/invoicing.css'
+import { Skeleton } from '@/components/Skeleton'
 import { Table, type TableColumn } from '@/components/Table'
 import { useCredentials } from '@/hooks/useCredentials'
 import { selectWordAt, useRowOpen } from '@/hooks/useRowOpen'
@@ -256,6 +257,7 @@ export function IssuedInvoiceListPage(): ReactElement {
           isLoading={tenantsQuery.isLoading || listQuery.isLoading || pastLastPage || (unfilteredEmpty && credentialsQuery.isLoading)}
           error={tenantsQuery.error ?? listQuery.error ?? (unfilteredEmpty ? credentialsQuery.error : null)}
           isEmpty={rows.length === 0 && (!incomplete || !unfilteredEmpty)}
+          loading={<Skeleton variant="table" columns={columns} label="Wczytywanie faktur…" />}
           emptyTitle="Brak faktur spełniających kryteria"
           emptyMessage="Zmień filtry lub kliknij „Nowa faktura”."
           onRetry={() => {

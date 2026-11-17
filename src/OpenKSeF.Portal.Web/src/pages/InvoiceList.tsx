@@ -11,6 +11,7 @@ import { CompanyStateCard } from '@/components/CompanyStateCard'
 import { DueDate } from '@/components/DueDate'
 import { KsefSync } from '@/components/KsefSync'
 import { PaidStatus } from '@/components/PaidStatus'
+import { Skeleton } from '@/components/Skeleton'
 import '@/components/invoicing/invoicing.css'
 import { Table, type TableColumn } from '@/components/Table'
 import { FIRST_FETCH_POLL_MS, useCompanyState } from '@/hooks/useCompanyState'
@@ -269,7 +270,7 @@ export function InvoiceListPage(): ReactElement {
           isLoading={tenantsQuery.isLoading || invoicesQuery.isLoading || pastLastPage || (unfilteredEmpty && stateLoading)}
           error={tenantsQuery.error ?? invoicesQuery.error ?? (unfilteredEmpty ? stateError : null)}
           isEmpty={rows.length === 0}
-          loadingLines={6}
+          loading={<Skeleton variant="table" columns={columns} label="Wczytywanie faktur…" />}
           emptyTitle={unpaid ? 'Nie ma nieopłaconych faktur' : 'Nie znaleziono faktur'}
           emptyMessage="Zmień filtry lub wybierz inną firmę."
           onRetry={() => {
