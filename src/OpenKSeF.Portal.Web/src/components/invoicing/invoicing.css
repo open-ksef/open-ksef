@@ -1,33 +1,7 @@
-.invoicing {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
 .inv-stack {
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.invoicing .num {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.invoicing .mono {
-  font-family: var(--ui-font-mono);
-  font-size: 13px;
 }
 
 .inv-header {
@@ -35,12 +9,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-}
-
-.inv-header h1 {
-  margin: 0;
-  font-size: 24px;
-  line-height: 32px;
 }
 
 .inv-header__actions {
@@ -91,11 +59,6 @@
   line-height: 30px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-}
-
-.invoicing input.nip-input {
-  flex: 0 0 144px;
-  width: 144px;
 }
 
 .inv-form {
@@ -497,10 +460,6 @@
     height: 44px;
   }
 
-  .inv-chips button {
-    min-height: 44px;
-  }
-
   .inv-dock {
     bottom: 64px;
   }
@@ -529,10 +488,6 @@ fieldset.inv-card {
 .inv-field-error {
   font-size: 12px;
   color: var(--ui-error);
-}
-
-.invoicing [aria-invalid='true'] {
-  border-color: var(--ui-error);
 }
 
 .inv-badge {
@@ -608,7 +563,6 @@ fieldset.inv-card {
   padding: 0 12px;
   font-size: 13px;
   font-weight: 500;
-  cursor: pointer;
 }
 
 .inv-chips button[aria-pressed='true'] {
@@ -616,6 +570,12 @@ fieldset.inv-card {
   border-color: var(--ui-primary);
   color: var(--ui-link);
   font-weight: 600;
+}
+
+@media (max-width: 820px) {
+  .inv-chips button {
+    min-height: 44px;
+  }
 }
 
 .inv-readonly {

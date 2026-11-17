@@ -596,9 +596,21 @@ summary.company-card:focus-visible {
   transform: translateY(0);
 }
 
-.ui-button--sm { padding: 5px 10px; font-size: 12px; min-height: 30px; }
+.ui-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ui-button--sm { padding: 5px 10px; font-size: 12px; min-height: 32px; }
 .ui-button--md { padding: 7px 14px; font-size: 13px; }
-.ui-button--lg { padding: 10px 20px; font-size: 15px; min-height: 42px; }
+.ui-button--lg { padding: 10px 20px; font-size: 14px; min-height: 42px; }
+
+@media (max-width: 820px) {
+  .ui-button {
+    min-height: 44px;
+  }
+}
 
 .ui-button--primary {
   background: var(--ui-primary);
@@ -723,6 +735,30 @@ textarea:focus {
   box-shadow: 0 0 0 2px var(--ui-focus);
 }
 
+:is(input, select, textarea)[aria-invalid='true'] {
+  border-color: var(--ui-error);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mono {
+  font-family: var(--ui-font-mono);
+  font-size: 13px;
+}
+
 select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -756,7 +792,7 @@ label {
   padding: 11px 14px;
   text-align: left;
   background: var(--ui-surface-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -806,8 +842,11 @@ label {
 }
 
 .ui-status-badge::before {
-  content: '●';
-  font-size: 8px;
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .ui-status-badge--success {
@@ -855,7 +894,7 @@ label {
 }
 
 .ui-empty-state__icon {
-  font-size: 36px;
+  font-size: 28px;
   margin-bottom: 12px;
   color: var(--ui-muted);
   opacity: 0.6;
@@ -959,7 +998,7 @@ label {
 }
 
 .ui-modal-title {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--ui-text);
   letter-spacing: -0.02em;
@@ -1326,7 +1365,7 @@ label {
   font-size: 13px;
   font-weight: 600;
   padding: 6px 12px;
-  min-height: unset;
+  min-height: 32px;
 }
 
 /* ─── Received invoice details ───────────────────────────────────────────── */
@@ -2040,6 +2079,7 @@ dd {
 }
 
 input.nip-input {
+  flex: 0 0 144px;
   width: 144px;
 }
 
@@ -2581,7 +2621,7 @@ input.nip-input {
 }
 
 .auth-card__desc {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--ui-muted);
   margin: 4px 0 0;
   text-align: center;
@@ -2608,7 +2648,7 @@ input.nip-input {
   width: 100%;
   justify-content: center;
   padding: 12px 20px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -2632,7 +2672,7 @@ input.nip-input {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   margin-bottom: 4px;
 }
@@ -2721,7 +2761,7 @@ input.nip-input {
   gap: 10px;
   width: 100%;
   padding: 12px 20px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--ui-text);
   background: var(--ui-surface);
@@ -2970,7 +3010,7 @@ button.wiz__skip:hover {
 }
 
 .onboarding-title {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--ui-text);
   letter-spacing: -0.02em;
@@ -3083,11 +3123,11 @@ button.wiz__skip:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 22px;
 }
 
 .onboarding-success__title {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--ui-text);
   margin: 0;

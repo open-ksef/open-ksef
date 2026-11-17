@@ -327,4 +327,4 @@
 .privacy-page p, .privacy-page ul { margin: 0 0 8px; }
 .privacy-page ul { list-style: disc; padding-left: 20px; }
 .privacy-page .onboarding-title { text-align: left; }
-.privacy-page a { color: var(--ui-primary); }
+.privacy-page a { color: var(--ui-primary); text-decoration: underline; }

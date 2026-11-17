@@ -44,7 +44,7 @@ export function IssuedInvoiceDetailsPage(): ReactElement {
   const error = tenantsQuery.error ?? invoiceQuery.error
 
   return (
-    <div className="invoicing">
+    <div className="inv-stack">
       {error ? (
         <ErrorBanner
           message={error instanceof Error ? error.message : 'Nie udało się załadować faktury'}

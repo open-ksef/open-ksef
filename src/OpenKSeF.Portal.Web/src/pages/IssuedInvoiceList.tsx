@@ -189,7 +189,7 @@ export function IssuedInvoiceListPage(): ReactElement {
   ]
 
   return (
-    <div className="invoicing">
+    <div className="inv-stack">
       <header className="page-header received-head">
         <h1>Wystawione faktury</h1>
         {profileQuery.data ? <EnvBadge environment={profileQuery.data.ksefEnvironment} /> : null}
