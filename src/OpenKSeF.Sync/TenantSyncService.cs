@@ -197,8 +197,10 @@ public sealed class TenantSyncService : ITenantSyncService
             var earliestAcquisition = await _db.InvoiceHeaders
                 .Where(h => h.TenantId == tenantId && h.Direction == InvoiceDirection.Received)
                 .MinAsync(h => (DateTime?)(h.AcquisitionDate ?? h.IssueDate), cancellationToken);
-            fullResyncWindowStart = earliestAcquisition?.AddHours(-1)
-                ?? DateTime.UtcNow.AddMonths(-_syncOptions.InitialSyncMonthsBack);
+            var firstSyncStart = DateTime.UtcNow.AddMonths(-_syncOptions.InitialSyncMonthsBack);
+            fullResyncWindowStart = earliestAcquisition?.AddHours(-1) < firstSyncStart
+                ? earliestAcquisition.Value.AddHours(-1)
+                : firstSyncStart;
         }
 
         var runStartedAt = DateTime.UtcNow;

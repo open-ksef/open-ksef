@@ -27,11 +27,15 @@ public sealed class FullResyncWindowTests : IAsyncLifetime
     private ApplicationDbContext NewContext() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(_postgres.GetConnectionString()).Options);
 
-    [Fact]
-    public async Task FullResync_InvoiceIssuedYearsAgo_StartsAtAcquisitionDate_StaysWithinHourlyQueryLimit()
+    [Theory]
+    [InlineData(10, false)]
+    [InlineData(400, true)]
+    public async Task FullResync_InvoiceIssuedYearsAgo_StartsAtOlderOfAcquisitionAndFirstSyncWindow_StaysWithinHourlyQueryLimit(int acquiredDaysAgo, bool startsAtAcquisition)
     {
         var now = DateTime.UtcNow;
-        var acquired = now.AddDays(-10);
+        var acquired = now.AddDays(-acquiredDaysAgo);
+        var options = new TenantSyncOptions { KSeFMetadataSpacing = TimeSpan.Zero, XmlDownloadSpacing = TimeSpan.Zero, XmlDownloadsPerManualRun = 0 };
+        var firstSyncStart = now.AddMonths(-options.InitialSyncMonthsBack);
         await using (var db = NewContext())
         {
             await db.Database.MigrateAsync();
@@ -71,7 +75,7 @@ public sealed class FullResyncWindowTests : IAsyncLifetime
                 _gateway,
                 new InvoiceService(db, Substitute.For<INotificationService>(), NullLogger<InvoiceService>.Instance),
                 new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
-                Options.Create(new TenantSyncOptions { KSeFMetadataSpacing = TimeSpan.Zero, XmlDownloadSpacing = TimeSpan.Zero, XmlDownloadsPerManualRun = 0 }),
+                Options.Create(options),
                 new KSeFRequestLimits(),
                 TimeProvider.System,
                 NullLogger<TenantSyncService>.Instance);
@@ -85,6 +89,9 @@ public sealed class FullResyncWindowTests : IAsyncLifetime
             .ToList();
         Assert.InRange(queries.Count, 1, KSeFMetadataQueriesPerHour);
         var firstReceived = queries.First(q => q.Direction == InvoiceDirection.Received);
-        Assert.Equal(acquired.AddHours(-1), firstReceived.DateFrom!.Value, TimeSpan.FromMilliseconds(1));
+        if (startsAtAcquisition)
+            Assert.Equal(acquired.AddHours(-1), firstReceived.DateFrom!.Value, TimeSpan.FromMilliseconds(1));
+        else
+            Assert.Equal(firstSyncStart, firstReceived.DateFrom!.Value, TimeSpan.FromMinutes(1));
     }
 }
