@@ -86,7 +86,7 @@ export function InvoiceDraftPage(): ReactElement {
           }}
         />
       ) : loading || !profileQuery.data ? (
-        <Skeleton lines={8} />
+        <Skeleton variant="card" lines={8} label={id ? 'Wczytywanie faktury…' : 'Wczytywanie…'} />
       ) : !id && !profileQuery.data.isComplete ? (
         <Navigate to={`/company/invoice-data?tenantId=${encodeURIComponent(tenantId)}&next=new`} replace />
       ) : invoiceQuery.data && (!EDITABLE.includes(invoiceQuery.data.status) || isReissueBlocked(invoiceQuery.data)) ? (

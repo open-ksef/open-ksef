@@ -9,6 +9,7 @@ interface AsyncStateViewProps {
   error: unknown
   isEmpty: boolean
   loadingLines?: number
+  loading?: ReactNode
   emptyTitle: string
   emptyMessage: string
   onRetry: () => void
@@ -20,13 +21,14 @@ export function AsyncStateView({
   error,
   isEmpty,
   loadingLines = 5,
+  loading,
   emptyTitle,
   emptyMessage,
   onRetry,
   children,
 }: AsyncStateViewProps): ReactElement {
   if (isLoading) {
-    return <Skeleton lines={loadingLines} />
+    return <>{loading ?? <Skeleton lines={loadingLines} />}</>
   }
 
   if (error) {

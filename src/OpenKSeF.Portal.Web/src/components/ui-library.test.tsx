@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Button } from './Button'
 import { EmptyState } from './EmptyState'
@@ -17,6 +17,27 @@ describe('UI component library', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => vi.useRealTimers())
+
+  it('table skeleton shows real column headers at once and rows with one status after 300 ms', async () => {
+    await act(async () => {
+      root.render(<Skeleton variant="table" columns={[{ label: 'Nabywca' }, { label: 'Brutto' }]} label="Wczytywanie faktur…" />)
+    })
+
+    expect(Array.from(container.querySelectorAll('th')).map((th) => th.textContent)).toEqual(['Nabywca', 'Brutto'])
+    expect(container.querySelectorAll('tbody tr').length).toBe(0)
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('')
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
+
+    await act(async () => vi.advanceTimersByTime(300))
+
+    expect(container.querySelectorAll('tbody tr').length).toBe(8)
+    expect(container.querySelectorAll('[role="status"]').length).toBe(1)
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('Wczytywanie faktur…')
+    expect(container.querySelector('tbody')?.getAttribute('aria-hidden')).toBe('true')
   })
 
   it('renders skeleton, empty state and error banner', async () => {
@@ -34,6 +55,7 @@ describe('UI component library', () => {
       )
     })
 
+    await act(async () => vi.advanceTimersByTime(300))
     expect(container.querySelectorAll('.skeleton-line').length).toBe(2)
 
     const createButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Create')

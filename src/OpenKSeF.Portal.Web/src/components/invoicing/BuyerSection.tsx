@@ -47,6 +47,7 @@ export function BuyerSection({ value, onChange, fieldErrors = {} }: BuyerSection
         <input
           id={id}
           type="text"
+          autoComplete={key === 'name' && isPerson ? 'name' : undefined}
           aria-required="true"
           aria-invalid={error ? 'true' : 'false'}
           aria-describedby={error ? `${id}-error` : undefined}
@@ -98,6 +99,11 @@ export function BuyerSection({ value, onChange, fieldErrors = {} }: BuyerSection
         {textField('addressLine1', 'Adres (ulica, numer)')}
         {textField('addressLine2', 'Kod pocztowy i miejscowość')}
       </div>
+      {isPerson ? (
+        <div className="inv-alert inv-alert--info">
+          Faktura trafi do KSeF, ale osoba prywatna jej tam nie zobaczy. Po wystawieniu pobierz PDF i przekaż go nabywcy.
+        </div>
+      ) : null}
     </section>
   )
 }

@@ -190,6 +190,8 @@ describe('issuing pages', () => {
     for (const id of ['#buyer-name', '#buyer-addressLine1', '#buyer-addressLine2']) {
       expect(container.querySelector(id)?.getAttribute('aria-required')).toBe('true')
     }
+    expect(container.querySelector('#buyer-name')?.getAttribute('autocomplete')).toBe('name')
+    expect(container.querySelector('.inv-alert--info')?.textContent).toContain('osoba prywatna jej tam nie zobaczy')
   })
 
   it('zw line reveals the exemption basis with the art. 113 preset', async () => {

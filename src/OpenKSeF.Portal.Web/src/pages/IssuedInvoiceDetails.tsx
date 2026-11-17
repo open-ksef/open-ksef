@@ -51,7 +51,7 @@ export function IssuedInvoiceDetailsPage(): ReactElement {
           onRetry={() => void invoiceQuery.refetch()}
         />
       ) : !invoiceQuery.data ? (
-        <Skeleton lines={8} />
+        <Skeleton variant="card" lines={8} label="Wczytywanie faktury…" />
       ) : (
         <InvoiceDetails tenantId={tenantId} invoice={invoiceQuery.data} />
       )}

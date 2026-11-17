@@ -878,9 +878,28 @@ label {
   animation: ui-shimmer 1.5s ease-in-out infinite;
 }
 
+.skeleton-line--title {
+  width: 40%;
+  height: 28px;
+}
+
+.ui-skeleton--card {
+  padding: 16px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+}
+
 @keyframes ui-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line {
+    animation: none;
+    background: var(--ui-surface-2);
+  }
 }
 
 /* ─── Empty State ────────────────────────────────────────────────────────── */
@@ -1246,6 +1265,10 @@ label {
 .received-list .received-num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.received-list .received-num .skeleton-line {
+  margin-left: auto;
 }
 
 .received-amount {
