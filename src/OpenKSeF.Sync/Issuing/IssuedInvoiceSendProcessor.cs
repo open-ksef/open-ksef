@@ -479,7 +479,7 @@ public sealed class IssuedInvoiceSendProcessor(
         {
             return (await submitter.GetAcceptedAtAsync(accessToken, ksefNumber, ksef))?.UtcDateTime;
         }
-        catch (Exception e) when (e is KsefApiException or HttpRequestException or TimeoutException || e is OperationCanceledException && !ct.IsCancellationRequested)
+        catch (Exception e) when (!ct.IsCancellationRequested)
         {
             logger.LogWarning("KSeF acceptance time of {KsefNumber} for issued invoice {InvoiceId} is unavailable, KSeF number date shown instead: {Error}", ksefNumber, invoice.Id, e.Message);
             return null;

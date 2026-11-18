@@ -454,6 +454,7 @@ public class IssuedInvoiceSendProcessorTests
         new KsefApiException("server", HttpStatusCode.ServiceUnavailable, null!, null!),
         new HttpRequestException("network"),
         new TaskCanceledException("timeout"),
+        new System.Text.Json.JsonException("bad body"),
     };
 
     [Theory]
