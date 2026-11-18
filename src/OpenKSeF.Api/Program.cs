@@ -69,7 +69,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(60),
             ValidIssuers = validIssuers,
-            ValidAudiences = new[] { "openksef-api", "account" }
+            ValidAudience = "openksef-api"
         };
 
         options.Events = new JwtBearerEvents
