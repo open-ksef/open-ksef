@@ -33,7 +33,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
     private readonly IKSeFGateway _gateway = Substitute.For<IKSeFGateway>();
     private readonly INotificationService _notifications = Substitute.For<INotificationService>();
-    private readonly KSeFRequestLimits _blocks = new();
+    private readonly KSeFRequestLimits _blocks = new(TimeProvider.System);
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly List<string> _calls = [];
     private readonly List<string> _downloads = [];

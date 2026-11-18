@@ -5,35 +5,29 @@ namespace OpenKSeF.Sync;
 /// <summary>
 /// Per-NIP KSeF request pacing (all requests, plus a slower metadata key) and XML 429 blocks until Retry-After. In memory, per process.
 /// </summary>
-public sealed class KSeFRequestLimits
+public sealed class KSeFRequestLimits(TimeProvider time)
 {
-    private readonly ConcurrentDictionary<string, DateTime> _blockedUntil = new();
-    private readonly Dictionary<string, DateTime> _nextTurn = new();
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _blockedUntil = new();
+    private readonly Dictionary<string, DateTimeOffset> _nextTurn = new();
 
     public bool IsBlocked(string nip) =>
-        _blockedUntil.TryGetValue(nip, out var until) && until > DateTime.UtcNow;
+        _blockedUntil.TryGetValue(nip, out var until) && until > time.GetUtcNow();
 
     public void Block(string nip, TimeSpan retryAfter) =>
-        _blockedUntil[nip] = DateTime.UtcNow + retryAfter;
+        _blockedUntil[nip] = time.GetUtcNow() + retryAfter;
 
     public async Task WaitTurnAsync(string key, TimeSpan spacing, CancellationToken cancellationToken)
     {
-        while (true)
+        TimeSpan wait;
+        lock (_nextTurn)
         {
-            TimeSpan wait;
-            lock (_nextTurn)
-            {
-                var now = DateTime.UtcNow;
-                if (!_nextTurn.TryGetValue(key, out var next) || next <= now)
-                {
-                    _nextTurn[key] = now + spacing;
-                    return;
-                }
-
-                wait = next - now;
-            }
-
-            await Task.Delay(wait, cancellationToken);
+            var now = time.GetUtcNow();
+            var turn = _nextTurn.TryGetValue(key, out var next) && next > now ? next : now;
+            _nextTurn[key] = turn + spacing;
+            wait = turn - now;
         }
+
+        if (wait > TimeSpan.Zero)
+            await Task.Delay(wait, time, cancellationToken);
     }
 }

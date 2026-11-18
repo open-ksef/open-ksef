@@ -486,7 +486,7 @@ public sealed class TenantSyncService : ITenantSyncService
         foreach (var row in queue)
         {
             if (attempted++ > 0 && spacing > TimeSpan.Zero)
-                await Task.Delay(spacing, cancellationToken);
+                await Task.Delay(spacing, _time, cancellationToken);
 
             byte[]? xml = null;
             try
