@@ -100,3 +100,11 @@ describe('design tokens', () => {
     expect(readFileSync(resolve(import.meta.dirname, 'index.html'), 'utf8')).not.toContain('fonts.g')
   })
 })
+
+describe('nip input', () => {
+  it('sets no flex-basis, so a column .ui-form-group keeps it one line tall', () => {
+    const rule = ui.slice(ui.indexOf('input.nip-input {'), ui.indexOf('}', ui.indexOf('input.nip-input {')))
+    expect(rule).toContain('flex: none;')
+    expect(rule).toContain('width: 144px;')
+  })
+})
