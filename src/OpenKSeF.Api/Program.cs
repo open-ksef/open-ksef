@@ -69,7 +69,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(60),
             ValidIssuers = validIssuers,
-            ValidAudience = "openksef-api"
+            ValidAudiences = builder.Configuration.GetValue<bool>("Auth:AcceptAccountAudience") ? ["account"] : null
         };
 
         options.Events = new JwtBearerEvents
@@ -82,6 +82,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 {
                     context.Token = accessToken;
                 }
+                return Task.CompletedTask;
+            },
+            OnAuthenticationFailed = context =>
+            {
+                if (context.Exception is SecurityTokenInvalidAudienceException)
+                    context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("OpenKSeF.Api.Auth").LogWarning(
+                        "Access token rejected: no openksef-api audience. Keycloak clients openksef-portal-web and openksef-mobile need the openksef-api audience mapper: save Settings once, or add the mapper in the Keycloak admin console. Locked out: set Auth__AcceptAccountAudience=true, save Settings, then remove it. See docs/admin-setup.md#token-audience-upgrade.");
                 return Task.CompletedTask;
             }
         };

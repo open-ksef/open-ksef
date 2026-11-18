@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -364,7 +363,7 @@ public class CertificateCredentialApiTests : IDisposable
     {
         await AuthenticateAsync();
         var tenantId = await CreateTestTenantAsync();
-        var errors = new ErrorLog();
+        var errors = new LogCapture(LogLevel.Error);
         using var baseFactory = new OpenKSeFWebApplicationFactory(_fixture);
         using var kestrel = baseFactory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
             s.AddSingleton<ILoggerFactory>(new LoggerFactory([errors]))));
@@ -439,20 +438,6 @@ public class CertificateCredentialApiTests : IDisposable
     }
 
     private sealed record ErrorDto([property: JsonPropertyName("error")] string Error);
-
-    private sealed class ErrorLog : ILoggerProvider, ILogger
-    {
-        public ConcurrentQueue<string> Entries { get; } = new();
-        public ILogger CreateLogger(string categoryName) => this;
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Error;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        {
-            if (IsEnabled(logLevel))
-                Entries.Enqueue($"{formatter(state, exception)} {exception}");
-        }
-        public void Dispose() { }
-    }
 
     private sealed record TenantDto(
         [property: JsonPropertyName("id")] Guid Id,
