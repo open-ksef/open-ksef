@@ -171,8 +171,11 @@ describe('Firma, Dane firmy', () => {
     expect(deleteTenant).toHaveBeenCalledExactlyOnceWith('a')
   })
 
-  it('shows the API 409 text in the add dialog', async () => {
-    vi.mocked(createTenant).mockRejectedValue(await normalizeError(new Response(JSON.stringify({ error: 'Masz już dostęp do firmy z tym NIP-em: Firma C2.' }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
+  it.each([
+    'Masz już dostęp do firmy z tym NIP-em: Firma C2.',
+    'Firma z tym NIP-em jest już dodana na tym serwerze OpenKSeF. Poproś osobę, która nią zarządza, o zaproszenie do firmy. Jeśli nie wiesz, kto to jest, napisz do administratora serwera.',
+  ])('shows the API 409 text in the add dialog: %s', async (error) => {
+    vi.mocked(createTenant).mockRejectedValue(await normalizeError(new Response(JSON.stringify({ error }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
     await render()
     await act(async () => by('company-card')?.click())
     await settle()
@@ -181,7 +184,7 @@ describe('Firma, Dane firmy', () => {
     await type('tenant-form-nip', '3333333333')
     await act(async () => by('tenant-form-submit')?.click())
     await settle()
-    expect(container.querySelector('[role="dialog"] [role="alert"]')?.textContent).toBe('Masz już dostęp do firmy z tym NIP-em: Firma C2.')
+    expect(container.querySelector('[role="dialog"] [role="alert"]')?.textContent).toBe(error)
     expect(toast.error).not.toHaveBeenCalled()
   })
 

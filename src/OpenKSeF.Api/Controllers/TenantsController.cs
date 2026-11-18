@@ -17,7 +17,6 @@ namespace OpenKSeF.Api.Controllers;
 [Authorize]
 public class TenantsController : ControllerBase
 {
-    private const int CreateLockKeyspace = 1263748423;
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IIssuedInvoiceService _issuedInvoices;
@@ -68,7 +67,7 @@ public class TenantsController : ControllerBase
 
         var normalizedNip = NipValidator.Normalize(request.Nip);
         await using var transaction = await _db.Database.BeginTransactionAsync();
-        await _db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({CreateLockKeyspace}, hashtext({_currentUser.UserId}))");
+        await TenantNipGuard.LockAsync(_db, normalizedNip);
         var existing = await _db.Tenants
             .Where(t => t.Nip == normalizedNip && _db.TenantMembers.Any(m => m.TenantId == t.Id && m.UserId == _currentUser.UserId))
             .OrderBy(t => t.DisplayName).ThenBy(t => t.Id)
@@ -76,6 +75,8 @@ public class TenantsController : ControllerBase
             .ToListAsync();
         if (existing.Count > 0)
             return Conflict(new { error = $"Masz już dostęp do firmy z tym NIP-em: {(string.IsNullOrWhiteSpace(existing[0]) ? $"NIP {normalizedNip}" : existing[0])}." });
+        if (await TenantNipGuard.ActiveTenantExistsAsync(_db, normalizedNip))
+            return Conflict(new { error = TenantNipGuard.TakenMessage });
 
         var now = DateTime.UtcNow;
 

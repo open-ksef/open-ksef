@@ -92,10 +92,13 @@ describe('Onboarding', () => {
     expect(await serious()).toEqual([])
   })
 
-  it('shows the API 409 text as is when the NIP is already accessible', async () => {
-    vi.mocked(createTenant).mockRejectedValue(await normalizeError(new Response(JSON.stringify({ error: 'Masz już dostęp do firmy z tym NIP-em: Firma C2.' }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
+  it.each([
+    'Masz już dostęp do firmy z tym NIP-em: Firma C2.',
+    'Firma z tym NIP-em jest już dodana na tym serwerze OpenKSeF. Poproś osobę, która nią zarządza, o zaproszenie do firmy. Jeśli nie wiesz, kto to jest, napisz do administratora serwera.',
+  ])('shows the API 409 text as is: %s', async (error) => {
+    vi.mocked(createTenant).mockRejectedValue(await normalizeError(new Response(JSON.stringify({ error }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
     await toStep2()
-    expect(vi.mocked(toast.error).mock.calls[0][0]).toBe('Masz już dostęp do firmy z tym NIP-em: Firma C2.')
+    expect(vi.mocked(toast.error).mock.calls[0][0]).toBe(error)
   })
 
   it('blocks a NIP with a wrong checksum', async () => {
