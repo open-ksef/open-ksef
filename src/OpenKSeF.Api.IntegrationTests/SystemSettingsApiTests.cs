@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Npgsql;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
@@ -88,6 +89,13 @@ public class SystemSettingsApiTests : IAsyncLifetime
     }
 
     private Task<HttpResponseMessage> PutSettingsAsync(object body) => _client.PutAsJsonAsync("/api/system/settings", body);
+
+    private async Task<HttpStatusCode> GetTenantsStatusAsync(string token, HttpClient? client = null)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/tenants");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return (await (client ?? _client).SendAsync(request)).StatusCode;
+    }
 
     private async Task<Guid> SeedCredentialAsync()
     {
@@ -173,9 +181,27 @@ public class SystemSettingsApiTests : IAsyncLifetime
         }
     }
 
-    [Fact]
-    public async Task AccessTokenWithOnlyAccountAudience_IsStillAccepted()
+    [Theory]
+    [InlineData(null, HttpStatusCode.Unauthorized)]
+    [InlineData("false", HttpStatusCode.Unauthorized)]
+    [InlineData("true", HttpStatusCode.OK)]
+    public async Task AccessTokenWithOnlyAccountAudience_FollowsAcceptAccountAudience_ApiAudience_Returns200(string? acceptAccount, HttpStatusCode accountOnly)
     {
+        var log = new LogCapture(LogLevel.Warning);
+        using var factory = _factory.WithWebHostBuilder(builder =>
+        {
+            if (acceptAccount is not null)
+                builder.UseSetting("Auth:AcceptAccountAudience", acceptAccount);
+            builder.ConfigureTestServices(services => services.AddSingleton<ILoggerFactory>(new LoggerFactory([log])));
+        });
+        using var client = factory.CreateClient();
+        foreach (var clientId in new[] { "openksef-portal-web", "openksef-mobile" })
+        {
+            var apiToken = await _fixture.GetAccessTokenAsync(clientId: clientId);
+            Assert.Contains("openksef-api", TestcontainersFixture.AccessTokenAudiences(apiToken));
+            Assert.Equal(HttpStatusCode.OK, await GetTenantsStatusAsync(apiToken, client));
+        }
+
         await _fixture.DeleteApiAudienceMappersAsync("openksef-portal-web");
         await _fixture.AddAudienceMapperAsync("openksef-portal-web", "qa-account-audience",
             new() { ["included.custom.audience"] = "account", ["access.token.claim"] = "true" });
@@ -183,10 +209,10 @@ public class SystemSettingsApiTests : IAsyncLifetime
         {
             var token = await _fixture.GetAccessTokenAsync(clientId: "openksef-portal-web");
             Assert.Equal(["account"], TestcontainersFixture.AccessTokenAudiences(token));
-
-            using var request = new HttpRequestMessage(HttpMethod.Get, "/api/tenants");
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(request)).StatusCode);
+            Assert.Equal(accountOnly, await GetTenantsStatusAsync(token, client));
+            var warnings = log.Entries.Where(e => e.Contains("openksef-api audience mapper")).ToArray();
+            Assert.Equal(accountOnly == HttpStatusCode.Unauthorized ? 1 : 0, warnings.Length);
+            Assert.All(warnings, w => Assert.DoesNotContain(token, w));
         }
         finally
         {
@@ -232,10 +258,7 @@ public class SystemSettingsApiTests : IAsyncLifetime
             Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("error").GetString()));
             Assert.Empty(await _fixture.GetApiAudienceMappersAsync("openksef-portal-web"));
             var token = await _fixture.GetAccessTokenAsync(clientId: "openksef-portal-web");
-            Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/api/tenants")
-            {
-                Headers = { Authorization = new AuthenticationHeaderValue("Bearer", token) },
-            })).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, await GetTenantsStatusAsync(token));
         }
         finally
         {

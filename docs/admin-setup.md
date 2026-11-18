@@ -328,6 +328,14 @@ Do this before you pull a release that requires the `openksef-admin` role, other
 
 The settings endpoints also allow 10 requests per 15 minutes per client address. Over the limit they return 429.
 
+## Token audience: upgrade
+
+The API accepts only access tokens with `aud=openksef-api`. A token with only `aud=account` gets 401 on every call, Settings included, and the API logs a warning that names the missing audience mapper.
+
+1. Before you upgrade, run v0.0.22 or later and save **Ustawienia** once. The save adds the `openksef-api` audience mapper to the Keycloak clients `openksef-portal-web` and `openksef-mobile`.
+2. Fallback: in the Keycloak admin console, realm `openksef`, open each of `openksef-portal-web` and `openksef-mobile` -> **Client scopes** -> the `-dedicated` scope -> **Add mapper** -> **By configuration** -> **Audience**. Set **Included Client Audience** to `openksef-api` and turn on **Add to access token**.
+3. Emergency, when already locked out: set `Auth__AcceptAccountAudience=true` on the API, restart it, log in, save **Ustawienia**, then remove the variable and restart again.
+
 ## Upgrade: ports and Keycloak admin
 
 Read this before you pull a release whose `docker-compose.yml` publishes only the gateway. Nothing is deleted: the database volume and all data stay. What changes is how you reach the services from outside Docker.
