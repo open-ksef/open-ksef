@@ -10,13 +10,12 @@ import { BrandMark } from '@/components/BrandMark'
 import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 import { nipError } from '@/invoicing/nip'
-import { TOKEN_REJECTIONS } from '@/invoicing/status'
+import { INVALID_TOKEN_REJECTION } from '@/invoicing/status'
 
 type Step = 1 | 2 | 3
 
 const STEPS: Step[] = [1, 2, 3]
 const STEP_NAMES: Record<Step, string> = { 1: 'Dane firmy', 2: 'Połącz z KSeF', 3: 'Gotowe' }
-const KSEF_REJECTED_TOKEN = TOKEN_REJECTIONS[1]
 const TOKEN_INVALID = 'KSeF nie przyjął tokenu. Sprawdź, czy skopiowano go w całości i czy nie wygasł.'
 const TOKEN_PERMISSIONS = [
   { icon: 'inbox', name: 'Przeglądanie faktur', text: 'Pobieramy faktury otrzymane i powiadamiamy o nowych.' },
@@ -77,7 +76,7 @@ export function OnboardingPage(): ReactElement {
       void queryClient.invalidateQueries({ queryKey: ['invoices'] })
     },
     onError: (err) => {
-      if (err.message !== KSEF_REJECTED_TOKEN) return
+      if (err.message !== INVALID_TOKEN_REJECTION) return
       setValidationError(TOKEN_INVALID)
       setStep(2)
     },

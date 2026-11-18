@@ -14,6 +14,7 @@ using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Events;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
+using OpenKSeF.Sync.Issuing;
 using Testcontainers.PostgreSql;
 
 namespace OpenKSeF.Api.IntegrationTests;
@@ -997,6 +998,10 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         _received = _ => throw new TimeoutException("KSeF auth status 450");
 
         Assert.Equal("KSeF auth status 450", (await ManualSyncAsync()).ErrorMessage);
+
+        _received = _ => throw new TimeoutException("Uwierzytelnianie nie zakończyło się kodem 200 w ciągu 60s. Ostatni status: 450, Opis: Uwierzytelnianie zakończone niepowodzeniem, Szczegóły: Nieprawidłowy token");
+
+        Assert.Equal(IssuedInvoiceSendProcessor.InvalidTokenMessage, (await ManualSyncAsync()).ErrorMessage);
     }
 
     [Fact]

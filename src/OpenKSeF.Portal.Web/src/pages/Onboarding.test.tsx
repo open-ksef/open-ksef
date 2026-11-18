@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { addOrUpdateCredential, forceCredentialSync } from '@/api/endpoints/credentials'
 import { createTenant } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
+import { INVALID_TOKEN_REJECTION } from '@/invoicing/status'
 import { OnboardingPage } from './Onboarding'
 import { ownerAccess } from '@/test/tenant'
 
@@ -153,7 +154,7 @@ describe('Onboarding', () => {
   })
 
   it('returns to the token step with a field error when KSeF rejects the token', async () => {
-    vi.mocked(forceCredentialSync).mockRejectedValue(new Error('KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.'))
+    vi.mocked(forceCredentialSync).mockRejectedValue(new Error(INVALID_TOKEN_REJECTION))
     await toStep2()
     await type('onboarding-token', 'token')
     await next()
