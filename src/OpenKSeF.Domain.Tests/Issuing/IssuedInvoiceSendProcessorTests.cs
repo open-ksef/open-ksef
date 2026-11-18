@@ -424,6 +424,61 @@ public class IssuedInvoiceSendProcessorTests
         Assert.Equal(["KSEF-ORIG"], _submitter.Downloads);
         Assert.Empty(_submitter.UpoRequests);
         Assert.Equal((2, 1), (_submitter.Sends, _submitter.Gets));
+        Assert.Equal(["KSEF-ORIG"], _submitter.AcceptedAtQueries);
+        Assert.Null(invoice.AcceptedAt);
+        Assert.True(invoice.UpoUnavailable);
+    }
+
+    [Fact]
+    public async Task Duplicate440_IdenticalBytesDownloaded_MetadataFound_AcceptedAtIsKsefTime()
+    {
+        var id = await SeedResentAsync();
+        var storedAt = new DateTimeOffset(2026, 11, 2, 9, 15, 0, TimeSpan.FromHours(1));
+        _submitter.OnGet = _ => Duplicate();
+        _submitter.OnList = _ => throw new KsefApiException("session", HttpStatusCode.Forbidden, null!, null!);
+        _submitter.OnDownload = _ => [.. Xml];
+        _submitter.OnAcceptedAt = _ => storedAt;
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Accepted, invoice.Status);
+        Assert.Equal(storedAt.UtcDateTime, invoice.AcceptedAt);
+        Assert.True(invoice.UpoUnavailable);
+    }
+
+    public static TheoryData<Exception> MetadataFailures() => new()
+    {
+        new KsefApiException("brak uprawnień", HttpStatusCode.Forbidden, null!, null!),
+        new KsefRateLimitException("429", 120, null, null!),
+        new KsefApiException("server", HttpStatusCode.ServiceUnavailable, null!, null!),
+        new HttpRequestException("network"),
+        new TaskCanceledException("timeout"),
+        new System.Text.Json.JsonException("bad body"),
+    };
+
+    [Theory]
+    [MemberData(nameof(MetadataFailures))]
+    public async Task Duplicate440_IdenticalBytesDownloaded_MetadataFails_StillAccepted_NoResend(Exception failure)
+    {
+        var id = await SeedResentAsync();
+        _submitter.OnGet = _ => Duplicate();
+        _submitter.OnList = _ => throw new KsefApiException("session", HttpStatusCode.Forbidden, null!, null!);
+        _submitter.OnDownload = _ => [.. Xml];
+        _submitter.OnAcceptedAt = _ => throw failure;
+
+        await RunAsync();
+        _time.Advance(TimeSpan.FromHours(1));
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal(IssuedInvoiceStatus.Accepted, invoice.Status);
+        Assert.Equal("KSEF-ORIG", invoice.KsefNumber);
+        Assert.Null(invoice.AcceptedAt);
+        Assert.Null(invoice.NextAttemptAt);
+        Assert.True(invoice.UpoUnavailable);
+        Assert.Equal((2, 1), (_submitter.Sends, _submitter.Gets));
+        Assert.Single(_submitter.Downloads);
     }
 
     [Theory]
@@ -1817,6 +1872,8 @@ public class IssuedInvoiceSendProcessorTests
         public Func<byte[]?> OnUpo = () => null;
         public Func<string, byte[]> OnDownload = _ => throw new KsefApiException("21164 Faktura o podanym identyfikatorze nie istnieje.", HttpStatusCode.BadRequest, null!, null!);
         public List<string> Downloads = [];
+        public Func<string, DateTimeOffset?> OnAcceptedAt = _ => null;
+        public List<string> AcceptedAtQueries = [];
         public Func<Task> OnClose = () => Task.CompletedTask;
         public int Logins, Opens, Sends, Gets, Closes;
         public List<(string SessionRef, string ElementRef)> UpoRequests = [];
@@ -1860,6 +1917,12 @@ public class IssuedInvoiceSendProcessorTests
         {
             Downloads.Add(ksefNumber);
             return Task.FromResult(OnDownload(ksefNumber));
+        }
+
+        public Task<DateTimeOffset?> GetAcceptedAtAsync(string accessToken, string ksefNumber, CancellationToken ct = default)
+        {
+            AcceptedAtQueries.Add(ksefNumber);
+            return Task.FromResult(OnAcceptedAt(ksefNumber));
         }
 
         public Task<byte[]?> GetUpoAsync(string accessToken, string sessionRef, string elementRef, CancellationToken ct = default)

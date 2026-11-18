@@ -356,7 +356,8 @@ public sealed class IssuedInvoiceSendProcessor(
             if (downloaded.AsSpan().SequenceEqual(invoice.SentXml!))
             {
                 logger.LogInformation("Issued invoice {InvoiceId} is already in KSeF as {KsefNumber}, confirmed by identical downloaded bytes", invoice.Id, duplicate.OriginalKsefNumber);
-                invoice.MarkAcceptedFromOriginal(duplicate.OriginalKsefNumber!, duplicate.OriginalSessionRef, Now());
+                var acceptedAt = await GetOriginalAcceptedAtAsync(invoice, accessToken, duplicate.OriginalKsefNumber!, ksef, ct);
+                invoice.MarkAcceptedFromOriginal(duplicate.OriginalKsefNumber!, duplicate.OriginalSessionRef, acceptedAt, Now());
                 await db.SaveChangesAsync(ct);
                 return;
             }
@@ -467,6 +468,20 @@ public sealed class IssuedInvoiceSendProcessor(
         catch (KsefApiException e) when (!IsTransient(e, ct))
         {
             logger.LogWarning("Original {KsefNumber} of issued invoice {InvoiceId} cannot be downloaded: {Status} {Error}", ksefNumber, invoice.Id, (int)e.StatusCode, e.Message);
+            return null;
+        }
+    }
+
+    /// <summary>Null on any KSeF failure: the invoice is already proven accepted, so a missing timestamp never holds it for another download.</summary>
+    private async Task<DateTime?> GetOriginalAcceptedAtAsync(IssuedInvoice invoice, string accessToken, string ksefNumber, CancellationToken ksef, CancellationToken ct)
+    {
+        try
+        {
+            return (await submitter.GetAcceptedAtAsync(accessToken, ksefNumber, ksef))?.UtcDateTime;
+        }
+        catch (Exception e) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning("KSeF acceptance time of {KsefNumber} for issued invoice {InvoiceId} is unavailable, KSeF number date shown instead: {Error}", ksefNumber, invoice.Id, e.Message);
             return null;
         }
     }

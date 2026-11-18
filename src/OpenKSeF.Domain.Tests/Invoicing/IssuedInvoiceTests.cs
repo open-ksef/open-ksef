@@ -391,12 +391,46 @@ public class IssuedInvoiceTests
         Assert.Equal([1, 2, 3], invoice.SentXml);
         Assert.Null(invoice.LastError);
         Assert.NotNull(invoice.NextAttemptAt);
+        Assert.False(invoice.UpoUnavailable);
 
         invoice.AttachUpo([7], Now.AddSeconds(40));
         Assert.Null(invoice.NextAttemptAt);
         Assert.Equal([7], invoice.UpoXml);
+        Assert.False(invoice.UpoUnavailable);
         Assert.Throws<InvoiceStateException>(() => invoice.MarkRejected(440, "Duplikat", null, Now));
         Assert.Throws<InvoiceStateException>(() => invoice.MarkSendStarted("S-2", Now));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void MarkAcceptedFromOriginal_KeepsKsefAcceptanceTime_UpoUnavailable(bool timeKnown)
+    {
+        var invoice = ValidDraft();
+        invoice.Issue(CompleteProfile(), "1234563218", "FV/1/11/2026", Now);
+        invoice.AttachSentXml([1, 2, 3], "hash", "test", null);
+        invoice.MarkSendStarted("S-2", Now.AddSeconds(1));
+        invoice.RecordElementRef("E-2", Now.AddSeconds(2));
+        DateTime? acceptedAt = timeKnown ? Now.AddDays(-1) : null;
+
+        invoice.MarkAcceptedFromOriginal("1111111111-20261102-0100A0B0C0D0-E1", "S-1", acceptedAt, Now.AddSeconds(3));
+
+        Assert.Equal(IssuedInvoiceStatus.Accepted, invoice.Status);
+        Assert.Equal(acceptedAt, invoice.AcceptedAt);
+        Assert.Null(invoice.KsefElementRef);
+        Assert.True(invoice.UpoUnavailable);
+        Assert.Equal(new DateOnly(2026, 11, 2), invoice.KsefNumberDate);
+    }
+
+    [Theory]
+    [InlineData("1111111111-20261102-0100A0B0C0D0-E1", "2026-11-02")]
+    [InlineData("1111111111-20261302-0100A0B0C0D0-E1", null)]
+    [InlineData("1111111111", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void KsefNumberDateOf_ParsesSecondSegment(string? ksefNumber, string? expected)
+    {
+        Assert.Equal(expected is null ? null : DateOnly.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), IssuedInvoice.KsefNumberDateOf(ksefNumber));
     }
 
     [Fact]

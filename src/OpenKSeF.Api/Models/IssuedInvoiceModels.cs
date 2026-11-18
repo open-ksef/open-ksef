@@ -67,7 +67,9 @@ public record IssuedInvoiceKsefResponse(
     string? LastError,
     string? VerificationUrl,
     bool HasUpo,
-    string? DuplicateKsefNumber);
+    string? DuplicateKsefNumber,
+    DateOnly? AcceptedOn,
+    bool UpoUnavailable);
 
 public record IssuedInvoiceResponse(
     Guid Id,

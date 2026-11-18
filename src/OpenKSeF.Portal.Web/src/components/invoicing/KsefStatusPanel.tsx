@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 
 import type { IssuedInvoiceResponse } from '@/api/types'
 import { Icon } from '@/components/Icon'
-import { formatDateTime } from '@/invoicing/format'
+import { formatDate, formatDateTime } from '@/invoicing/format'
 import { rejectionCause } from '@/invoicing/status'
 import type { TokenReturnState } from '@/pages/CompanyToken'
 
@@ -96,10 +96,13 @@ export function KsefStatusPanel({ invoice, tenantId, editHref, copyAction, delet
               ) : null}
             </dd>
             <dt>Przyjęta</dt>
-            <dd>{formatDateTime(ksef.acceptedAt)}</dd>
+            <dd>{ksef.acceptedAt ? formatDateTime(ksef.acceptedAt) : formatDate(ksef.acceptedOn)}</dd>
             <dt>UPO</dt>
-            <dd>{ksef.hasUpo ? 'Pobrane' : 'Oczekuje na UPO'}</dd>
+            <dd>{ksef.hasUpo ? 'Pobrane' : ksef.upoUnavailable ? 'Niedostępne w OpenKSeF' : 'Oczekuje na UPO'}</dd>
           </dl>
+          {ksef.upoUnavailable ? (
+            <p className="inv-help">KSeF przyjął fakturę wcześniej, a OpenKSeF nie ma dostępu do jej UPO. UPO pobierzesz w Aplikacji Podatnika KSeF.</p>
+          ) : null}
           <p className="inv-help">Faktury przyjętej w KSeF nie można usunąć ani edytować.</p>
         </div>
         <div className="status-panel__next">

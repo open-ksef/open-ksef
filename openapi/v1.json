@@ -656,6 +656,11 @@
             "nullable": true,
             "type": "string"
           },
+          "acceptedOn": {
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
           "duplicateKsefNumber": {
             "nullable": true,
             "type": "string"
@@ -687,6 +692,9 @@
           "statusMessage": {
             "nullable": true,
             "type": "string"
+          },
+          "upoUnavailable": {
+            "type": "boolean"
           },
           "verificationUrl": {
             "nullable": true,

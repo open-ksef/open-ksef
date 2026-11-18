@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using OpenKSeF.Domain.Abstractions;
 
@@ -95,6 +96,10 @@ public sealed class IssuedInvoice
 
     public string? DuplicateKsefNumber =>
         IsNumberTakenInKsef && KsefStatusDetails is { } details && KsefNumberInText.Match(details) is { Success: true } match ? match.Value : null;
+
+    public bool UpoUnavailable => Status == IssuedInvoiceStatus.Accepted && KsefElementRef is null && UpoXml is null;
+
+    public DateOnly? KsefNumberDate => KsefNumberDateOf(KsefNumber);
 
     private IssuedInvoice() { }
 
@@ -316,9 +321,10 @@ public sealed class IssuedInvoice
     /// Accepted on a byte-identical download of the original. No element of ours holds it, so no UPO is fetched,
     /// it leaves the outbox and escalation (which skips Accepted rows without an element ref).
     /// </summary>
-    public void MarkAcceptedFromOriginal(string ksefNumber, string? originalSessionRef, DateTime now)
+    public void MarkAcceptedFromOriginal(string ksefNumber, string? originalSessionRef, DateTime? acceptedAt, DateTime now)
     {
         MarkAccepted(ksefNumber, now, 200, null, now);
+        AcceptedAt = acceptedAt;
         KsefSessionRef = originalSessionRef ?? KsefSessionRef;
         KsefElementRef = null;
         NextAttemptAt = null;
@@ -370,6 +376,11 @@ public sealed class IssuedInvoice
         EnsureStatus(IssuedInvoiceStatus.Queued, IssuedInvoiceStatus.Sending, IssuedInvoiceStatus.Accepted);
         EscalatedAt = now;
     }
+
+    public static DateOnly? KsefNumberDateOf(string? ksefNumber) =>
+        ksefNumber?.Split('-') is [_, var date, ..] && DateOnly.TryParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+            ? parsed
+            : null;
 
     private void EnsureStatus(params IssuedInvoiceStatus[] allowed)
     {

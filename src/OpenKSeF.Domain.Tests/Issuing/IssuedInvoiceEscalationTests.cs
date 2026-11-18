@@ -74,7 +74,7 @@ public class IssuedInvoiceEscalationTests
         await RunAsync();
         Assert.Single(_logs.Errors);
 
-        await MutateAsync(id, i => i.MarkAcceptedFromOriginal("KSEF-1", "sess-orig", _time.GetUtcNow().UtcDateTime));
+        await MutateAsync(id, i => i.MarkAcceptedFromOriginal("KSEF-1", "sess-orig", null, _time.GetUtcNow().UtcDateTime));
         for (var cycle = 0; cycle < 3; cycle++)
         {
             _time.Advance(Threshold);
