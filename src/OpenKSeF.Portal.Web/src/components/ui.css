@@ -2102,7 +2102,7 @@ dd {
 }
 
 input.nip-input {
-  flex: 0 0 144px;
+  flex: none;
   width: 144px;
 }
 
