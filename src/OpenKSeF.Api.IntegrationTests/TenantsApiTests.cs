@@ -4,8 +4,11 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
+using OpenKSeF.Api.Services;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
+using OpenKSeF.Domain.Invoicing;
 
 namespace OpenKSeF.Api.IntegrationTests;
 
@@ -46,9 +49,10 @@ public class TenantsApiTests : IDisposable
     {
         await AuthenticateAsync();
 
+        var nip = TestNip.New();
         var response = await _client.PostAsJsonAsync("/api/tenants", new
         {
-            nip = "1111111111",
+            nip,
             displayName = "Integration Test Co",
             notificationEmail = "test@example.com"
         });
@@ -56,7 +60,7 @@ public class TenantsApiTests : IDisposable
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var tenant = await response.Content.ReadFromJsonAsync<TenantDto>();
         Assert.NotNull(tenant);
-        Assert.Equal("1111111111", tenant.Nip);
+        Assert.Equal(nip, tenant.Nip);
         Assert.Equal("Integration Test Co", tenant.DisplayName);
     }
 
@@ -90,7 +94,7 @@ public class TenantsApiTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateTenant_ParallelPostsOfOneNip_OneCreated_RestConflict()
+    public async Task CreateTenant_ParallelPostsOfOneNip_OneUser_OneCreated_RestConflict()
     {
         await AuthenticateAsync();
         var nip = TestNip.New();
@@ -102,6 +106,136 @@ public class TenantsApiTests : IDisposable
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Equal(1, await db.Tenants.CountAsync(t => t.Nip == nip));
+    }
+
+    [Fact]
+    public async Task CreateTenant_ParallelPostsOfOneNip_TwoUsers_OneCreated_RestConflict()
+    {
+        await AuthenticateAsync();
+        using var other = _factory.CreateClient();
+        other.SetBearerToken(await _fixture.GetAccessTokenAsync("otheruser"));
+        var nip = TestNip.New();
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 8).Select(i => (i % 2 == 0 ? _client : other).PostAsJsonAsync("/api/tenants", new { nip, displayName = $"Parallel {i}" })));
+
+        Assert.Equal(1, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
+        Assert.Equal(7, responses.Count(r => r.StatusCode == HttpStatusCode.Conflict));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Equal(1, await db.Tenants.CountAsync(t => t.Nip == nip));
+    }
+
+    [Fact]
+    public async Task CreateTenant_NipOfAnotherUsersCompany_409WithOnlyError_NothingCreated()
+    {
+        await AuthenticateAsync();
+        var nip = TestNip.New();
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Firma A" })).StatusCode);
+        using var other = _factory.CreateClient();
+        other.SetBearerToken(await _fixture.GetAccessTokenAsync("otheruser"));
+
+        var response = await other.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Firma B" });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("""{"error":"Firma z tym NIP-em jest już dodana na tym serwerze OpenKSeF. Poproś osobę, która nią zarządza, o zaproszenie do firmy. Jeśli nie wiesz, kto to jest, napisz do administratora serwera."}""", await response.Content.ReadAsStringAsync());
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Equal(1, await db.Tenants.CountAsync(t => t.Nip == nip));
+    }
+
+    [Fact]
+    public async Task CreateTenant_RetainedDeletedCompany_DoesNotBlockNip()
+    {
+        await AuthenticateAsync();
+        var nip = TestNip.New();
+        var retainedId = (await (await _client.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Retained" })).Content.ReadFromJsonAsync<TenantDto>())!.Id;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            await db.Database.ExecuteSqlAsync($"""UPDATE "Tenants" SET "UserId" = 'deleted:' || "Id" WHERE "Id" = {retainedId}""");
+            await db.TenantMembers.Where(m => m.TenantId == retainedId).ExecuteDeleteAsync();
+        }
+        using var other = _factory.CreateClient();
+        other.SetBearerToken(await _fixture.GetAccessTokenAsync("otheruser"));
+
+        var response = await other.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Nowa" });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotEqual(retainedId, (await response.Content.ReadFromJsonAsync<TenantDto>())!.Id);
+    }
+
+    [Fact]
+    public async Task ExistingDuplicates_AfterRestart_Unchanged_StillUsable_ThirdUserGets409()
+    {
+        var nip = TestNip.New();
+        var ownerIds = new[]
+        {
+            TestcontainersFixture.AccessTokenClaims(await _fixture.GetAccessTokenAsync()).GetProperty("sub").GetString()!,
+            TestcontainersFixture.AccessTokenClaims(await _fixture.GetAccessTokenAsync("otheruser")).GetProperty("sub").GetString()!,
+        };
+        var tenantIds = new[] { Guid.NewGuid(), Guid.NewGuid() };
+        var now = DateTime.UtcNow;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            for (var i = 0; i < 2; i++)
+            {
+                db.Tenants.Add(new Tenant { Id = tenantIds[i], UserId = ownerIds[i], Nip = nip, DisplayName = $"Duplikat {i}", CreatedAt = now, UpdatedAt = now });
+                db.TenantMembers.Add(new TenantMember { TenantId = tenantIds[i], UserId = ownerIds[i], Role = TenantRole.Owner, CreatedAt = now });
+                db.TenantMembers.Add(new TenantMember { TenantId = tenantIds[i], UserId = ownerIds[1 - i], Role = TenantRole.Accountant, CreatedAt = now });
+                db.KSeFCredentials.Add(new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantIds[i], EncryptedToken = "encrypted", CreatedAt = now, UpdatedAt = now });
+                db.InvoiceHeaders.Add(new InvoiceHeader
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenantIds[i],
+                    KSeFInvoiceNumber = $"DUP-{Guid.NewGuid():N}",
+                    KSeFReferenceNumber = "DUP",
+                    VendorName = "Dostawca",
+                    VendorNip = "1111111111",
+                    Direction = InvoiceDirection.Received,
+                    IssueDate = now,
+                    FirstSeenAt = now,
+                    LastUpdatedAt = now,
+                    IsPaid = true,
+                    PaidAt = now.AddHours(-i),
+                    PaidByUserId = ownerIds[i],
+                });
+                var issued = IssuedInvoice.Draft(Guid.NewGuid(), tenantIds[i], new DateOnly(2026, 11, 3), now);
+                issued.SetBuyer(BuyerKind.Company, "1111111111", "Nabywca", "ul. Testowa 1", "00-001 Warszawa");
+                db.IssuedInvoices.Add(issued);
+            }
+            await db.SaveChangesAsync();
+        }
+        var before = await SnapshotAsync(_factory, tenantIds);
+
+        await using var restarted = new OpenKSeFWebApplicationFactory(_fixture);
+        using var third = restarted.CreateClient();
+        var thirdEmail = $"tenants-third-{Guid.NewGuid():N}@openksef.test";
+        await _fixture.CreateUserAsync(thirdEmail);
+        third.SetBearerToken(await _fixture.GetAccessTokenAsync(thirdEmail));
+
+        var conflict = await third.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Trzecia" });
+
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        Assert.Equal(TenantNipGuard.TakenMessage, (await conflict.Content.ReadFromJsonAsync<ErrorDto>())!.Error);
+        foreach (var (user, tenantId) in new[] { ("testuser", tenantIds[0]), ("otheruser", tenantIds[1]) })
+        {
+            using var owner = restarted.CreateClient();
+            owner.SetBearerToken(await _fixture.GetAccessTokenAsync(user));
+            Assert.Equal(tenantIds.Order(), (await owner.GetFromJsonAsync<List<TenantDto>>("/api/tenants"))!.Where(t => t.Nip == nip).Select(t => t.Id).Order());
+            Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/api/tenants/{tenantId}/invoices")).StatusCode);
+        }
+        Assert.Equal(before, await SnapshotAsync(restarted, tenantIds));
+    }
+
+    private static async Task<List<string>> SnapshotAsync(OpenKSeFWebApplicationFactory factory, Guid[] tenantIds)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var rows = new List<string>();
+        foreach (var (table, key) in new[] { ("Tenants", "Id"), ("TenantMembers", "TenantId"), ("KSeFCredentials", "TenantId"), ("InvoiceHeaders", "TenantId"), ("IssuedInvoices", "TenantId") })
+            rows.AddRange(await db.Database.SqlQueryRaw<string>($$"""SELECT row_to_json(t)::text AS "Value" FROM "{{table}}" t WHERE t."{{key}}" = ANY({0}) ORDER BY 1""", tenantIds).ToListAsync());
+        return rows;
     }
 
     [Fact]
@@ -328,4 +462,6 @@ public class TenantsApiTests : IDisposable
         string? NotificationEmail,
         DateTime CreatedAt,
         bool NotificationsEnabled = false);
+
+    private sealed record ErrorDto(string Error);
 }

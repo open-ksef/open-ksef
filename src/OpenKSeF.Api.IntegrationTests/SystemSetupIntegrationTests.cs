@@ -233,6 +233,44 @@ public class SystemSetupIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Apply_FirstTenantNipOfActiveCompany_Completes_NoSecondCompany()
+    {
+        await ClearSystemConfigAsync();
+        var nip = TestNip.New();
+        var existingId = Guid.NewGuid();
+        using (var seed = _factory.Services.CreateScope())
+        {
+            var seedDb = seed.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            seedDb.Tenants.Add(new Tenant { Id = existingId, UserId = "existing-owner", Nip = nip, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            await seedDb.SaveChangesAsync();
+        }
+        try
+        {
+            var authResp = await _client.PostAsJsonAsync("/api/system/setup/authenticate", new SetupAuthenticateRequest("admin", "admin"));
+            authResp.EnsureSuccessStatusCode();
+            var auth = await authResp.Content.ReadFromJsonAsync<SetupAuthenticateResponse>();
+
+            var response = await ApplyAsync(auth!.SetupToken, new SetupApplyRequest
+            {
+                ExternalBaseUrl = "http://localhost:8080",
+                KSeFBaseUrl = "test",
+                AdminEmail = $"taken-nip-{Guid.NewGuid():N}@open-ksef.pl",
+                AdminPassword = "TakenNip-2026!",
+                FirstTenantNip = nip,
+            });
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            Assert.Equal([existingId], await db.Tenants.Where(t => t.Nip == nip).Select(t => t.Id).ToListAsync());
+        }
+        finally
+        {
+            await ClearSystemConfigAsync();
+        }
+    }
+
+    [Fact]
     public async Task Apply_DataControllerNameTooLong_Is400_NothingStored()
     {
         await ClearSystemConfigAsync();

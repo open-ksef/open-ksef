@@ -184,18 +184,56 @@ public sealed class TenantMembersApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task DuplicateNip_CheckedByCurrentMembership_CreatorWhoLeftCanAddItAgain()
+    public async Task DuplicateNip_MemberGetsAccessText_CreatorWhoLeftGetsTakenText_BackOnlyByInvite()
     {
-        string nip = null!;
-        await WithDbAsync(async db => nip = await db.Tenants.Where(t => t.Id == _tenantId).Select(t => t.Nip).SingleAsync());
+        var nip = await NipAsync();
         var (_, coOwner) = await AddMemberAsync(TenantRole.Owner);
 
         await AssertErrorAsync(await coOwner.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Kopia" }), HttpStatusCode.Conflict, "Masz już dostęp do firmy z tym NIP-em: Members test.");
         Assert.Equal(HttpStatusCode.NoContent, (await _owner.DeleteAsync(Members(_ownerId))).StatusCode);
-        var readded = await _owner.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Znowu moja" });
+        await AssertErrorAsync(await _owner.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Znowu moja" }), HttpStatusCode.Conflict, TenantNipGuard.TakenMessage);
+        await WithDbAsync(async db => Assert.Equal([_tenantId], await db.Tenants.Where(t => t.Nip == nip).Select(t => t.Id).ToListAsync()));
 
-        Assert.Equal(HttpStatusCode.Created, readded.StatusCode);
-        await WithDbAsync(async db => Assert.Equal(2, await db.Tenants.CountAsync(t => t.Nip == nip && t.UserId == _ownerId)));
+        await WithDbAsync(async db =>
+        {
+            db.TenantMembers.Add(new TenantMember { TenantId = _tenantId, UserId = _ownerId, Role = TenantRole.Employee, CreatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        });
+        Assert.Equal(HttpStatusCode.OK, (await _owner.GetAsync($"/api/tenants/{_tenantId}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task DuplicateNip_AfterOwnerDeletesCompany_AnotherUserAddsNewEmptyCompany()
+    {
+        var nip = await NipAsync();
+        await SeedInvoiceAsync();
+        await WithDbAsync(async db =>
+        {
+            db.KSeFCredentials.Add(new KSeFCredential { Id = Guid.NewGuid(), TenantId = _tenantId, EncryptedToken = "encrypted", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        });
+        var (_, employee) = await AddMemberAsync(TenantRole.Employee);
+        await AssertErrorAsync(await employee.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Moja" }), HttpStatusCode.Conflict, "Masz już dostęp do firmy z tym NIP-em: Members test.");
+
+        Assert.Equal(HttpStatusCode.NoContent, (await _owner.DeleteAsync($"/api/tenants/{_tenantId}")).StatusCode);
+        var created = await employee.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Moja" });
+
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var newId = (await created.Content.ReadFromJsonAsync<IdDto>())!.Id;
+        await WithDbAsync(async db =>
+        {
+            Assert.Equal([newId], await db.Tenants.Where(t => t.Nip == nip).Select(t => t.Id).ToListAsync());
+            Assert.False(await db.InvoiceHeaders.AnyAsync(i => i.TenantId == newId));
+            Assert.False(await db.KSeFCredentials.AnyAsync(c => c.TenantId == newId));
+            Assert.Single(await db.TenantMembers.Where(m => m.TenantId == newId).ToListAsync());
+        });
+    }
+
+    private async Task<string> NipAsync()
+    {
+        string nip = null!;
+        await WithDbAsync(async db => nip = await db.Tenants.Where(t => t.Id == _tenantId).Select(t => t.Nip).SingleAsync());
+        return nip;
     }
 
     private Task SetNotificationEmailAsync(string? address) => WithDbAsync(db =>

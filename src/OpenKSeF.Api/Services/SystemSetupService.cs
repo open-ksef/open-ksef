@@ -601,8 +601,13 @@ public sealed class SystemSetupService : ISystemSetupService
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var nip = NipValidator.Normalize(request.FirstTenantNip);
-            var tenantExists = await db.Tenants.AnyAsync(t => t.Nip == nip && db.TenantMembers.Any(m => m.TenantId == t.Id && m.UserId == userId), ct);
-            if (!tenantExists)
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await TenantNipGuard.LockAsync(db, nip, ct);
+            if (await TenantNipGuard.ActiveTenantExistsAsync(db, nip, ct))
+            {
+                _logger.LogInformation("First tenant skipped: NIP already used by an active company");
+            }
+            else
             {
                 var now = DateTime.UtcNow;
                 var tenantId = Guid.NewGuid();
@@ -617,6 +622,7 @@ public sealed class SystemSetupService : ISystemSetupService
                 });
                 db.TenantMembers.Add(new TenantMember { TenantId = tenantId, UserId = userId, Role = TenantRole.Owner, CreatedAt = now });
                 await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
                 _logger.LogInformation("Created first tenant with NIP {Nip} for user {UserId}", nip, userId);
             }
         }
