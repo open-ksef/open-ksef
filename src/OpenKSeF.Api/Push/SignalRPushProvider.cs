@@ -17,18 +17,26 @@ public class SignalRPushProvider : IUserPushProvider
     private readonly IHubContext<NotificationHub> _hubContext;
     private readonly ISystemConfigService _systemConfig;
     private readonly RelayHealth _relayHealth;
+    private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<SignalRPushProvider> _logger;
 
-    public SignalRPushProvider(IHubContext<NotificationHub> hubContext, ISystemConfigService systemConfig, RelayHealth relayHealth, ILogger<SignalRPushProvider> logger)
+    public SignalRPushProvider(IHubContext<NotificationHub> hubContext, ISystemConfigService systemConfig, RelayHealth relayHealth, IHostApplicationLifetime lifetime, ILogger<SignalRPushProvider> logger)
     {
         _hubContext = hubContext;
         _systemConfig = systemConfig;
         _relayHealth = relayHealth;
+        _lifetime = lifetime;
         _logger = logger;
     }
 
     public async Task<bool> SendToUserAsync(string userId, PushNotification notification)
     {
+        if (_lifetime.ApplicationStopping.IsCancellationRequested)
+        {
+            _logger.LogInformation("SignalR notification not sent to user {UserId}: the API is shutting down", userId);
+            return false;
+        }
+
         try
         {
             await _hubContext.Clients.User(userId).SendAsync("ReceiveNotification", new

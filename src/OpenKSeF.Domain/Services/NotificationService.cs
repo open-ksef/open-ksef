@@ -181,6 +181,7 @@ public class NotificationService : INotificationService
 
     private async Task<bool> PushToDevicesAsync(List<Entities.DeviceToken> deviceTokens, Guid? invoiceId, PushNotification notification, IEnumerable<string>? signalRUserIds = null)
     {
+        var signalRLost = false;
         if (_userPushProvider is not null)
         {
             var userIds = signalRUserIds ?? deviceTokens.Select(d => d.UserId).Distinct();
@@ -188,10 +189,11 @@ public class NotificationService : INotificationService
             {
                 try
                 {
-                    await _userPushProvider.SendToUserAsync(userId, notification);
+                    signalRLost |= !await _userPushProvider.SendToUserAsync(userId, notification);
                 }
                 catch (Exception ex)
                 {
+                    signalRLost = true;
                     _logger.LogWarning(ex, "SignalR push failed for user {UserId}", userId);
                 }
             }
@@ -200,7 +202,7 @@ public class NotificationService : INotificationService
         if (deviceTokens.Count == 0)
         {
             _logger.LogDebug("No device tokens for notification {InvoiceId}", invoiceId);
-            return true;
+            return !signalRLost;
         }
 
         var tokensToRemove = new List<Entities.DeviceToken>();
@@ -236,7 +238,7 @@ public class NotificationService : INotificationService
         }
 
         // A retry re-sends to every device, so once one device has it, a retry would only duplicate.
-        return sent || !failed;
+        return sent || (!failed && !signalRLost);
     }
 
     public async Task SendConfirmationAsync(string deviceToken, Platform platform)

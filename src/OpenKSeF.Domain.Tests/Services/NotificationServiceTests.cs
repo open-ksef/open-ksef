@@ -363,6 +363,20 @@ public class NotificationServiceTests : IDisposable
     }
 
     [Theory]
+    [InlineData("device-portal", true, true)]
+    [InlineData("device-portal", false, false)]
+    [InlineData("fcm-token-a", false, true)]
+    public async Task NotifyNewInvoiceAsync_SignalRNotDelivered_SettledOnlyWhenNativePushSent(string token, bool signalRDelivered, bool settled)
+    {
+        var tenantId = await SeedDeviceAsync(token);
+        var signalR = new StubUserPushProvider(signalRDelivered);
+
+        Assert.Equal(settled, await new NotificationService(_db, [new StubPushProvider(PushResult.Sent)], _email, _logger, signalR).NotifyNewInvoiceAsync(CreateEvent(tenantId)));
+        Assert.Equal(settled, await new NotificationService(_db, [new StubPushProvider(PushResult.Sent)], _email, _logger, signalR).NotifyNewInvoicesSummaryAsync(tenantId, 3));
+        Assert.Equal(["user-1", "user-1"], signalR.Users);
+    }
+
+    [Theory]
     [InlineData(PushResult.Sent, true)]
     [InlineData(PushResult.Failed, false)]
     public async Task NotifyNewInvoiceAsync_OneDeviceFails_SettledWhenAnotherGotIt(PushResult other, bool settled)
@@ -498,7 +512,7 @@ public class NotificationServiceTests : IDisposable
         }
     }
 
-    private sealed class StubUserPushProvider : IUserPushProvider
+    private sealed class StubUserPushProvider(bool delivered = true) : IUserPushProvider
     {
         public PushNotification? Last { get; private set; }
 
@@ -508,7 +522,7 @@ public class NotificationServiceTests : IDisposable
         {
             Users.Add(userId);
             Last = notification;
-            return Task.FromResult(true);
+            return Task.FromResult(delivered);
         }
     }
 

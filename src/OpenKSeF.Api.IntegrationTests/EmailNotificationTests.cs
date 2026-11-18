@@ -5,6 +5,7 @@ using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -575,5 +576,63 @@ public sealed class ApiEmailNotificationTests(TestcontainersFixture fixture) : I
                 new NewInvoiceDetectedEvent(tenantId, Guid.NewGuid(), "Dostawca API", "FV/2", 10m, "PLN"));
 
         Assert.Equal([("Nowa faktura od Dostawca API", "api@example.invalid")], await Mailpit.MessagesAsync(_mailpit));
+    }
+
+    [Fact]
+    public async Task ApiHost_Stopping_SignalROnlyRowStaysUnnotified_NextHostSendsIt()
+    {
+        var tenantId = Guid.NewGuid();
+        var invoiceId = Guid.NewGuid();
+        var userId = $"portal-{tenantId}";
+        var now = DateTime.UtcNow;
+        await using (var stopping = new OpenKSeFWebApplicationFactory(fixture))
+        {
+            using (var scope = stopping.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                db.Tenants.Add(new Tenant { Id = tenantId, UserId = userId, Nip = "1111111111", CreatedAt = now, UpdatedAt = now });
+                db.TenantMembers.Add(new TenantMember { TenantId = tenantId, UserId = userId, Role = TenantRole.Owner, CreatedAt = now });
+                db.DeviceTokens.Add(new DeviceToken { Id = Guid.NewGuid(), UserId = userId, Token = $"device-{tenantId}", Platform = Platform.Android, TenantId = tenantId, CreatedAt = now, UpdatedAt = now });
+                db.InvoiceHeaders.Add(new InvoiceHeader
+                {
+                    Id = invoiceId,
+                    TenantId = tenantId,
+                    Direction = InvoiceDirection.Received,
+                    KSeFInvoiceNumber = $"STOP-{invoiceId:N}",
+                    KSeFReferenceNumber = "REF-1",
+                    InvoiceNumber = "FV/1/2026",
+                    VendorName = "Dostawca",
+                    VendorNip = "1111111111",
+                    AmountNet = 100m,
+                    AmountVat = 23m,
+                    AmountGross = 123m,
+                    Currency = "PLN",
+                    IssueDate = now,
+                    AcquisitionDate = now,
+                    FirstSeenAt = now
+                });
+                await db.SaveChangesAsync();
+            }
+
+            using var syncScope = stopping.Services.CreateScope();
+            var invoices = syncScope.ServiceProvider.GetRequiredService<IInvoiceService>();
+            await syncScope.ServiceProvider.GetRequiredService<ApplicationDbContext>().InvoiceHeaders.AnyAsync();
+            stopping.Services.GetRequiredService<IHostApplicationLifetime>().StopApplication();
+            await invoices.NotifyNewInvoicesAsync(tenantId, [invoiceId]);
+        }
+
+        await using var restarted = new OpenKSeFWebApplicationFactory(fixture);
+        using (var scope = restarted.Services.CreateScope())
+            Assert.Null((await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().InvoiceHeaders.SingleAsync(i => i.Id == invoiceId)).NotifiedAt);
+
+        using (var scope = restarted.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<IInvoiceService>().NotifyPendingAsync(tenantId);
+
+        using (var scope = restarted.Services.CreateScope())
+        {
+            var invoice = await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().InvoiceHeaders.SingleAsync(i => i.Id == invoiceId);
+            Assert.NotNull(invoice.NotifiedAt);
+            Assert.False(invoice.IsPaid);
+        }
     }
 }
