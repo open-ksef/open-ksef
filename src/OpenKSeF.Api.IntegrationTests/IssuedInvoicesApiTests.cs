@@ -1001,7 +1001,7 @@ public class IssuedInvoicesApiTests : IDisposable
         Assert.Equal("Rejected", rejected!.Status);
         Assert.Equal(403, rejected.Ksef.StatusCode);
         Assert.Equal(
-            "Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie do zapisu.",
+            "Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie Wystawianie faktur.",
             rejected.Ksef.StatusMessage);
     }
 

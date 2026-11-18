@@ -31,7 +31,7 @@ export interface TokenReturnState {
   rejectedInvoice?: { id: string; number: string | null; tenantId: string }
 }
 
-const TOKEN_HELP = 'Token z uprawnieniem odczytu i zapisu, z Aplikacji Podatnika KSeF. Bez zapisu nie wystawisz faktur.'
+const TOKEN_HELP = 'Token z uprawnieniami Przeglądanie faktur i Wystawianie faktur, z Aplikacji Podatnika KSeF. Bez uprawnienia Wystawianie faktur tylko odbierasz.'
 const CERTIFICATE_HELP = 'Certyfikat typu Uwierzytelnianie z Aplikacji Podatnika KSeF 2.0. Użyj go, gdy nie masz tokenu.'
 const EXPIRY_WARNING_MS = 30 * 24 * 60 * 60 * 1000
 const LONG_TOAST = { duration: 12_000 }
@@ -189,7 +189,7 @@ function TokenTab({ company }: { company: TenantResponse }): ReactElement {
       {rejected && !saved ? (
         <div className="inv-alert inv-alert--info company-note" role="status">
           <Icon name="key-round" />
-          <span>Podmieniasz token po odrzuceniu faktury {rejected.number ?? 'bez numeru'}. Token musi mieć uprawnienie do zapisu.</span>
+          <span>Podmieniasz token po odrzuceniu faktury {rejected.number ?? 'bez numeru'}. Token musi mieć uprawnienie Wystawianie faktur.</span>
         </div>
       ) : null}
       {error ? <ErrorBanner message={error instanceof Error ? error.message : 'Nie udało się załadować danych'} onRetry={refetch} /> : null}

@@ -162,7 +162,7 @@ describe('Firma, Dostęp do KSeF i pobieranie', () => {
     expect((by('credential-method-token') as HTMLInputElement).checked).toBe(true)
     expect(container.querySelector('legend')?.textContent).toBe('Sposób logowania do KSeF')
     expect(container.querySelector('#token-title')?.textContent).toBe('Dostęp do KSeF')
-    expect(by('credential-token-help')?.textContent).toContain('odczytu i zapisu')
+    expect(by('credential-token-help')?.textContent).toContain('Przeglądanie faktur i Wystawianie faktur')
     expect(by('credential-token-help')?.textContent).toContain('Aplikacji Podatnika KSeF')
 
     await act(async () => by('invoice-fetch-button')?.click())

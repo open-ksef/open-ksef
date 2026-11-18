@@ -116,8 +116,52 @@ describe('Onboarding', () => {
     expect(by('onboarding-token')).not.toBeNull()
     expect(container.querySelector('input[type="file"]')).toBeNull()
     expect(container.textContent).not.toMatch(/certyfikat/i)
-    expect(by('onboarding-instruction')?.textContent).toContain('odczytu i zapisu')
+    expect(by('onboarding-instruction')?.textContent).toContain('Przeglądanie faktur i Wystawianie faktur')
     expect(by('onboarding-instruction')?.textContent).toContain('Aplikacji Podatnika KSeF')
+  })
+
+  it('step 2 lists the token permissions and how to generate the token', async () => {
+    await toStep2()
+
+    const card = by('onboarding-permissions')
+    expect(card?.querySelector('h2')?.textContent).toBe('Uprawnienia tokenu')
+    expect([...(card?.querySelectorAll('li') ?? [])].map((li) => li.textContent)).toEqual([
+      'Przeglądanie fakturPobieramy faktury otrzymane i powiadamiamy o nowych.',
+      'Wystawianie fakturWysyłamy Twoje faktury do KSeF. Bez tego uprawnienia tylko odbierasz.',
+    ])
+    expect(by('onboarding-howto')?.querySelector('summary')?.textContent).toBe('Jak wygenerować token')
+    expect(by('onboarding-howto')?.querySelectorAll('li')[2].textContent).toBe('Wygeneruj token z uprawnieniami: Przeglądanie faktur i Wystawianie faktur.')
+  })
+
+  it('shows a missing token as a field error under the input', async () => {
+    await toStep2()
+    await next()
+
+    expect(by('onboarding-token-error')?.textContent).toBe('Token KSeF jest wymagany')
+    expect(by('onboarding-token')?.getAttribute('aria-invalid')).toBe('true')
+    expect(by('onboarding-token')?.getAttribute('aria-describedby')).toContain('onboarding-token-error')
+  })
+
+  it('shows a save failure under the input, not as a toast', async () => {
+    vi.mocked(addOrUpdateCredential).mockRejectedValue(new Error('Serwer niedostępny'))
+    await toStep2()
+    await type('onboarding-token', 'token')
+    await next()
+
+    expect(by('onboarding-token-error')?.textContent).toBe('Błąd zapisywania tokenu KSeF: Serwer niedostępny')
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('returns to the token step with a field error when KSeF rejects the token', async () => {
+    vi.mocked(forceCredentialSync).mockRejectedValue(new Error('KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.'))
+    await toStep2()
+    await type('onboarding-token', 'token')
+    await next()
+
+    expect(by('onboarding-success')).toBeNull()
+    expect(container.querySelector('[aria-current="step"]')?.textContent).toContain('Połącz z KSeF')
+    expect(by('onboarding-token-error')?.textContent).toBe('KSeF nie przyjął tokenu. Sprawdź, czy skopiowano go w całości i czy nie wygasł.')
+    expect(by('onboarding-token')?.getAttribute('aria-invalid')).toBe('true')
   })
 
   it('skip goes straight to Start without saving a token or fetching', async () => {

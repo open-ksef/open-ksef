@@ -38,7 +38,7 @@ List filters:
 
 The `ksef` block:
 - `environment`: `test`, `demo` or `production`. The environment the invoice was sent to; while it is Draft or Rejected, the current one.
-- `statusCode`, `statusMessage`, `statusDetails`: the KSeF result, filled by the send worker only. A rejection carries the KSeF code and text. A token or certificate without write permission gives code 403 and the message "Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie do zapisu."
+- `statusCode`, `statusMessage`, `statusDetails`: the KSeF result, filled by the send worker only. A rejection carries the KSeF code and text. A token or certificate without write permission gives code 403 and the message "Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie Wystawianie faktur."
 - `lastError`: a retryable problem while the invoice stays Sending, or a missing UPO on an Accepted invoice.
 - `verificationUrl`: the KOD I link, only when Accepted. Built at issue time by KSeF.Client `IVerificationLinkService` from seller NIP, `issueDate` and the SHA-256 of the stored XML.
 - `hasUpo`: `upo` is downloadable.

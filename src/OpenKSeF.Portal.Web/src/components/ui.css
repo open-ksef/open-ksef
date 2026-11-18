@@ -2949,9 +2949,81 @@ button.wiz__skip:hover {
   background: none;
 }
 
+.wiz__perms {
+  margin: 0 0 12px;
+  padding: 16px;
+  background: var(--ui-surface-2);
+  border-radius: var(--ui-radius-md);
+}
+
+.wiz__perms h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.wiz__perms ul {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wiz__perms li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--ui-muted);
+}
+
+.wiz__perms b {
+  display: block;
+  color: var(--ui-text);
+  font-size: 14px;
+}
+
+.wiz__perm-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--ui-surface);
+  color: var(--ui-accent);
+}
+
+.wiz__howto {
+  margin: 0 0 16px;
+}
+
+.wiz__howto summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wiz__howto ol {
+  list-style: decimal;
+}
+
+.wiz__field-error {
+  font-size: 13px;
+  color: var(--ui-error);
+}
+
 @media (max-width: 820px) {
   .wiz__actions .ui-button,
   button.wiz__skip {
+    min-height: 44px;
+  }
+
+  .wiz__howto summary {
+    display: flex;
+    align-items: center;
     min-height: 44px;
   }
 }
