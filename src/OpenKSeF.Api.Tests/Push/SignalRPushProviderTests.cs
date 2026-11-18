@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using OpenKSeF.Api.Hubs;
@@ -54,6 +55,18 @@ public class SignalRPushProviderTests
         Assert.True(await NativePush(config, health));
     }
 
+    [Fact]
+    public async Task ApplicationStopping_ReturnsFalse_WithoutSending()
+    {
+        var hub = Substitute.For<IHubContext<NotificationHub>>();
+        var lifetime = Substitute.For<IHostApplicationLifetime>();
+        lifetime.ApplicationStopping.Returns(new CancellationToken(true));
+        var provider = new SignalRPushProvider(hub, Config(null, null, null), new RelayHealth(), lifetime, NullLogger<SignalRPushProvider>.Instance);
+
+        Assert.False(await provider.SendToUserAsync("user-1", new PushNotification { Title = "T", Body = "B" }));
+        Assert.Empty(hub.ReceivedCalls());
+    }
+
     private static ISystemConfigService Config(string? relayUrl, string? relayKey, string? firebaseJson)
     {
         var config = Substitute.For<ISystemConfigService>();
@@ -68,7 +81,7 @@ public class SignalRPushProviderTests
         var proxy = Substitute.For<IClientProxy>();
         var hub = Substitute.For<IHubContext<NotificationHub>>();
         hub.Clients.User("user-1").Returns(proxy);
-        var provider = new SignalRPushProvider(hub, config, health, NullLogger<SignalRPushProvider>.Instance);
+        var provider = new SignalRPushProvider(hub, config, health, Substitute.For<IHostApplicationLifetime>(), NullLogger<SignalRPushProvider>.Instance);
 
         Assert.True(await provider.SendToUserAsync("user-1", new PushNotification { Title = "T", Body = "B" }));
 

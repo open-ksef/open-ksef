@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Protocol;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using OpenKSeF.Api.Hubs;
@@ -137,7 +138,7 @@ public class MobileContractApiTests : IDisposable
                 [],
                 Substitute.For<IEmailService>(),
                 NullLogger<NotificationService>.Instance,
-                new SignalRPushProvider(hub, _factory.Services.GetRequiredService<ISystemConfigService>(), new RelayHealth(), NullLogger<SignalRPushProvider>.Instance)));
+                new SignalRPushProvider(hub, _factory.Services.GetRequiredService<ISystemConfigService>(), new RelayHealth(), _factory.Services.GetRequiredService<IHostApplicationLifetime>(), NullLogger<SignalRPushProvider>.Instance)));
         }
         var call = proxy.ReceivedCalls().Single().GetArguments();
         var protocol = _factory.Services.GetServices<IHubProtocol>().Single(p => p.Name == "json");
