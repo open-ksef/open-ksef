@@ -68,6 +68,8 @@ const ksef = {
   verificationUrl: null,
   hasUpo: false,
   duplicateKsefNumber: null,
+  acceptedOn: null,
+  upoUnavailable: false,
 }
 
 const invoice = (patch: Partial<IssuedInvoiceResponse>): IssuedInvoiceResponse => ({
@@ -999,6 +1001,26 @@ describe('issue and detail pages', () => {
     expect(container.textContent).toContain('Faktura jest przyjęta w KSeF i ma numer. Brak UPO nie wymaga ponownego wystawienia.')
     expect(container.textContent).not.toContain('Nie wystawiaj')
     expect(buttonByText(container, 'Kopiuj jako nową')).toBeDefined()
+  })
+
+  it('Accepted from the original without KSeF time shows the KSeF number date and UPO not available', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(
+      invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: '1111111111-20261102-ABC', acceptedOn: '2026-11-02', upoUnavailable: true } }),
+    )
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => Boolean(container.querySelector('#ksef-panel-title')))
+    expect(container.textContent).toContain('Przyjęta02.11.2026UPO')
+    expect(container.textContent).toContain('Niedostępne w OpenKSeF')
+    expect(container.textContent).toContain('UPO pobierzesz w Aplikacji Podatnika KSeF.')
+    expect(container.textContent).not.toContain('Oczekuje na UPO')
+  })
+
+  it('Accepted without UPO keeps "Oczekuje na UPO" and no unavailable help', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: 'K-1', acceptedAt: '2026-11-03T10:05:00Z' } }))
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => Boolean(container.querySelector('#ksef-panel-title')))
+    expect(container.textContent).toContain('Oczekuje na UPO')
+    expect(container.textContent).not.toContain('Niedostępne w OpenKSeF')
   })
 
   it('Accepted with UPO hides a stale lastError', async () => {

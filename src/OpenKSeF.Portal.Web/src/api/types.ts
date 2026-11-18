@@ -353,6 +353,8 @@ export interface IssuedInvoiceKsef {
   verificationUrl: string | null
   hasUpo: boolean
   duplicateKsefNumber: string | null
+  acceptedOn: string | null
+  upoUnavailable: boolean
 }
 
 export interface IssuedInvoiceResponse {

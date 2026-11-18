@@ -7,9 +7,11 @@ using KSeF.Client.Core.Interfaces.Clients;
 using KSeF.Client.Core.Interfaces.Services;
 using KSeF.Client.Core.Models;
 using KSeF.Client.Core.Models.Authorization;
+using KSeF.Client.Core.Models.Invoices;
 using KSeF.Client.Core.Models.Sessions;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Entities;
+using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Services;
 
 namespace OpenKSeF.Sync.Issuing;
@@ -87,6 +89,24 @@ public sealed class KSeFInvoiceSubmitter(IKSeFClient client, ICryptographyServic
 
     public Task<byte[]> DownloadInvoiceAsync(string accessToken, string ksefNumber, CancellationToken ct = default) =>
         gateway.DownloadInvoiceAsync(new KSeFSession(accessToken, DateTime.MaxValue), ksefNumber, ct);
+
+    /// <remarks>DateRange is required by KSeF, so the window is built around the date in the KSeF number. No HWM restriction: it could hide a just-stored row.</remarks>
+    public async Task<DateTimeOffset?> GetAcceptedAtAsync(string accessToken, string ksefNumber, CancellationToken ct = default)
+    {
+        if (IssuedInvoice.KsefNumberDateOf(ksefNumber) is not { } date)
+            return null;
+
+        var day = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var filters = new InvoiceQueryFilters
+        {
+            KsefNumber = ksefNumber,
+            SubjectType = InvoiceSubjectType.Subject1,
+            DateRange = new DateRange { DateType = DateType.PermanentStorage, From = day.AddDays(-1), To = day.AddDays(8) }
+        };
+        var result = await client.QueryInvoiceMetadataAsync(filters, accessToken, pageSize: 10, cancellationToken: ct);
+        var row = result.Invoices?.FirstOrDefault(i => i.KsefNumber == ksefNumber);
+        return row is null ? null : row.PermanentStorageDate != default ? row.PermanentStorageDate : row.AcquisitionDate;
+    }
 
     public async Task<byte[]?> GetUpoAsync(string accessToken, string sessionRef, string elementRef, CancellationToken ct = default)
     {

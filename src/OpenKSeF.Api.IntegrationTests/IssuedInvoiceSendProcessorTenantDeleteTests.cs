@@ -214,6 +214,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
     {
         var id = await SeedHeldOn440Async("FV/440/1");
         _submitter.OnDownload = _ => Fa("FV/440/1");
+        _submitter.AcceptedAt = new DateTimeOffset(2026, 11, 3, 8, 30, 0, TimeSpan.Zero);
 
         await RunAsync();
         _time.Now = Now.AddHours(1);
@@ -225,6 +226,8 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
         Assert.Null(invoice.NextAttemptAt);
         Assert.Null(invoice.KsefElementRef);
         Assert.Equal("sess-orig", invoice.KsefSessionRef);
+        Assert.Equal(new DateTime(2026, 11, 3, 8, 30, 0, DateTimeKind.Utc), invoice.AcceptedAt);
+        Assert.True(invoice.UpoUnavailable);
         Assert.Empty(_submitter.Posted);
     }
 
@@ -275,6 +278,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
         public Func<string, KSeFSentInvoice?> OnGet = _ => null;
         public Func<string, IReadOnlyList<KSeFSentInvoice>> OnList = _ => [];
         public Func<string, byte[]> OnDownload = _ => throw new NotSupportedException();
+        public DateTimeOffset? AcceptedAt;
         public List<string> Posted { get; } = [];
 
         public Task<KSeFSession> LoginAsync(string nip, KSeFCredential credential, CancellationToken ct = default) => Task.FromResult(new KSeFSession("access-token", DateTime.MaxValue));
@@ -301,6 +305,8 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
             Task.FromResult(OnList(sessionRef));
 
         public Task<byte[]> DownloadInvoiceAsync(string accessToken, string ksefNumber, CancellationToken ct = default) => Task.FromResult(OnDownload(ksefNumber));
+
+        public Task<DateTimeOffset?> GetAcceptedAtAsync(string accessToken, string ksefNumber, CancellationToken ct = default) => Task.FromResult(AcceptedAt);
 
         public Task<byte[]?> GetUpoAsync(string accessToken, string sessionRef, string elementRef, CancellationToken ct = default) => OnUpo(elementRef);
 

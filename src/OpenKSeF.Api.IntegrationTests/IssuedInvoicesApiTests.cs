@@ -916,6 +916,33 @@ public class IssuedInvoicesApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Accepted_FromOriginal_WithoutKsefTime_ShowsKsefNumberDate_UpoUnavailable()
+    {
+        var tenantId = await CreateTenantAsync();
+        var normal = await CreateDraftAsync(tenantId);
+        await IssueAsync(tenantId, normal.Id);
+        await MutateAsync(normal.Id, MarkAccepted);
+        var fromOriginal = await CreateDraftAsync(tenantId);
+        await IssueAsync(tenantId, fromOriginal.Id);
+        await MutateAsync(fromOriginal.Id, invoice =>
+        {
+            MarkSending(invoice);
+            invoice.MarkAcceptedFromOriginal("1111111111-20261102-ABCDEF123456-AB", "session-orig", null, DateTime.UtcNow);
+        });
+
+        var normalKsef = (await _client.GetFromJsonAsync<JsonObject>($"{Base(tenantId)}/{normal.Id}"))!["ksef"]!;
+        Assert.NotNull(normalKsef["acceptedAt"]);
+        Assert.Null(normalKsef["acceptedOn"]);
+        Assert.False(normalKsef["upoUnavailable"]!.GetValue<bool>());
+
+        var ksef = (await _client.GetFromJsonAsync<JsonObject>($"{Base(tenantId)}/{fromOriginal.Id}"))!["ksef"]!;
+        Assert.Null(ksef["acceptedAt"]);
+        Assert.Equal("2026-11-02", ksef["acceptedOn"]!.GetValue<string>());
+        Assert.True(ksef["upoUnavailable"]!.GetValue<bool>());
+        Assert.False(ksef["hasUpo"]!.GetValue<bool>());
+    }
+
+    [Fact]
     public async Task VerificationUrl_OnlyWhenAccepted_EqualsVerificationLinkServiceOutput()
     {
         var tenantId = await CreateTenantAsync();

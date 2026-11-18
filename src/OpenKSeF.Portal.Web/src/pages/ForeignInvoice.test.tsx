@@ -80,6 +80,8 @@ const ksef = {
   verificationUrl: null,
   hasUpo: false,
   duplicateKsefNumber: null,
+  acceptedOn: null,
+  upoUnavailable: false,
 }
 
 const invoice = (patch: Partial<IssuedInvoiceResponse> = {}): IssuedInvoiceResponse => ({
