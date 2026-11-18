@@ -47,7 +47,7 @@ export function CompanyStateCard({ state, place, summary, credential, attentionC
         <EmptyState
           icon="key-round"
           title="Ta firma nie ma tokenu KSeF"
-          message={`${NO_CREDENTIAL_REASON} Token z uprawnieniem odczytu i zapisu wygenerujesz w Aplikacji Podatnika KSeF.`}
+          message={`${NO_CREDENTIAL_REASON} Token z uprawnieniami Przeglądanie faktur i Wystawianie faktur wygenerujesz w Aplikacji Podatnika KSeF.`}
           actions={
             <div className="ui-empty-state__actions">
               <AddToken />
@@ -78,7 +78,7 @@ export function CompanyStateCard({ state, place, summary, credential, attentionC
               <span className="start-steps__n">1</span>
               <span className="start-steps__text">
                 <b>Wklej token KSeF</b>
-                <span>Token z uprawnieniem odczytu i zapisu, z Aplikacji Podatnika KSeF.</span>
+                <span>Token z uprawnieniami Przeglądanie faktur i Wystawianie faktur, z Aplikacji Podatnika KSeF.</span>
               </span>
               <AddToken />
             </li>

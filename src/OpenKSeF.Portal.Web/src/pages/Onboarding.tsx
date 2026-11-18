@@ -10,11 +10,17 @@ import { BrandMark } from '@/components/BrandMark'
 import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 import { nipError } from '@/invoicing/nip'
+import { INVALID_TOKEN_REJECTION } from '@/invoicing/status'
 
 type Step = 1 | 2 | 3
 
 const STEPS: Step[] = [1, 2, 3]
 const STEP_NAMES: Record<Step, string> = { 1: 'Dane firmy', 2: 'Połącz z KSeF', 3: 'Gotowe' }
+const TOKEN_INVALID = 'KSeF nie przyjął tokenu. Sprawdź, czy skopiowano go w całości i czy nie wygasł.'
+const TOKEN_PERMISSIONS = [
+  { icon: 'inbox', name: 'Przeglądanie faktur', text: 'Pobieramy faktury otrzymane i powiadamiamy o nowych.' },
+  { icon: 'send', name: 'Wystawianie faktur', text: 'Wysyłamy Twoje faktury do KSeF. Bez tego uprawnienia tylko odbierasz.' },
+] as const
 
 interface CompanyForm {
   nip: string
@@ -59,7 +65,7 @@ export function OnboardingPage(): ReactElement {
       void queryClient.invalidateQueries({ queryKey: ['credentials'] })
     },
     onError: (err) => {
-      toast.error(`Błąd zapisywania tokenu KSeF: ${err.message}`)
+      setValidationError(`Błąd zapisywania tokenu KSeF: ${err.message}`)
     },
   })
 
@@ -68,6 +74,11 @@ export function OnboardingPage(): ReactElement {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       void queryClient.invalidateQueries({ queryKey: ['invoices'] })
+    },
+    onError: (err) => {
+      if (err.message !== INVALID_TOKEN_REJECTION) return
+      setValidationError(TOKEN_INVALID)
+      setStep(2)
     },
   })
 
@@ -197,6 +208,33 @@ export function OnboardingPage(): ReactElement {
             <h1>Połącz z KSeF</h1>
             <p className="wiz__lead">Dodaj token KSeF, aby pobierać i wystawiać faktury.</p>
 
+            <section className="wiz__perms" aria-labelledby="onboarding-perms-title" data-testid="onboarding-permissions">
+              <h2 id="onboarding-perms-title">Uprawnienia tokenu</h2>
+              <ul>
+                {TOKEN_PERMISSIONS.map((permission) => (
+                  <li key={permission.name}>
+                    <span className="wiz__perm-icon">
+                      <Icon name={permission.icon} size={16} />
+                    </span>
+                    <span>
+                      <b>{permission.name}</b>
+                      {permission.text}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <details className="onboarding-instruction wiz__howto" data-testid="onboarding-howto">
+              <summary>Jak wygenerować token</summary>
+              <ol>
+                <li>Otwórz Aplikację Podatnika KSeF 2.0.</li>
+                <li>Zaloguj się jako firma lub osoba z uprawnieniami.</li>
+                <li>Wygeneruj token z uprawnieniami: Przeglądanie faktur i Wystawianie faktur.</li>
+                <li>Skopiuj token od razu i wklej poniżej.</li>
+              </ol>
+            </details>
+
             <div className="onboarding-form">
               <div className="ui-form-group">
                 <label htmlFor="onboarding-token">Token KSeF</label>
@@ -207,19 +245,20 @@ export function OnboardingPage(): ReactElement {
                   type="password"
                   autoComplete="new-password"
                   placeholder="Wklej token uwierzytelniający KSeF tutaj..."
+                  aria-invalid={validationError ? 'true' : 'false'}
+                  aria-describedby={validationError ? 'onboarding-token-error onboarding-instruction' : 'onboarding-instruction'}
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                 />
-                <span className="ui-form-hint" data-testid="onboarding-instruction">
-                  Token z uprawnieniem odczytu i zapisu, z Aplikacji Podatnika KSeF. Bez zapisu nie wystawisz faktur.
+                {validationError && (
+                  <span className="wiz__field-error" id="onboarding-token-error" role="alert" data-testid="onboarding-token-error">
+                    {validationError}
+                  </span>
+                )}
+                <span className="ui-form-hint" id="onboarding-instruction" data-testid="onboarding-instruction">
+                  Token z uprawnieniami Przeglądanie faktur i Wystawianie faktur, z Aplikacji Podatnika KSeF.
                 </span>
               </div>
-
-              {validationError && (
-                <div className="ui-form-error" role="alert">
-                  {validationError}
-                </div>
-              )}
             </div>
 
             <div className="wiz__actions">

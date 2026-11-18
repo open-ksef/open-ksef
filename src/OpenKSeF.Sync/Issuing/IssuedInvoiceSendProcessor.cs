@@ -32,7 +32,7 @@ public sealed class IssuedInvoiceSendProcessor(
     public static readonly TimeSpan CloseCap = TimeSpan.FromSeconds(10);
     public const string UnavailableMessage = "KSeF nie odpowiada, ponowimy wysyłkę";
     public const string RateLimitedMessage = "KSeF ogranicza liczbę żądań, ponowimy wysyłkę";
-    public const string NoWritePermissionMessage = "Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie do zapisu.";
+    public const string NoWritePermissionMessage = "Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie Wystawianie faktur.";
     public const string EnvironmentChangedMessage = "Środowisko KSeF zmienione";
     public const string InvalidTokenMessage = "KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.";
     public const string InvalidCertificateMessage = "KSeF odrzucił certyfikat (nieprawidłowy, wygasły lub unieważniony). Wgraj nowy certyfikat KSeF w ustawieniach firmy.";

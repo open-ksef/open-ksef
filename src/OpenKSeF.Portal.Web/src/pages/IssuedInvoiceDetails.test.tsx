@@ -530,8 +530,8 @@ describe('issue and detail pages', () => {
   })
 
   it.each([
-    ['no write permission', 403, 'Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie do zapisu.'],
-    ['KSeF login 415 (no permissions)', 415, 'Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie do zapisu.'],
+    ['no write permission', 403, 'Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie Wystawianie faktur.'],
+    ['KSeF login 415 (no permissions)', 415, 'Brak uprawnienia do wystawiania faktur w KSeF. Podmień w ustawieniach firmy token lub certyfikat na taki, który ma uprawnienie Wystawianie faktur.'],
     ['invalid token', 450, 'KSeF odrzucił token (nieprawidłowy lub unieważniony). Wygeneruj nowy token i podmień go w ustawieniach firmy.'],
     ['missing token', null, 'Wysyłka faktur wymaga tokenu lub certyfikatu KSeF w ustawieniach firmy'],
     ['rejected certificate', 450, 'KSeF odrzucił certyfikat (nieprawidłowy, wygasły lub unieważniony). Wgraj nowy certyfikat KSeF w ustawieniach firmy.'],

@@ -350,7 +350,8 @@ public sealed class TenantSyncService : ITenantSyncService
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "Sync failed for tenant {TenantId}", tenant.Id);
-            await RecordFailureAsync(tenant.Id, SyncFailure.Classify(ex, credential.Type));
+            var category = SyncFailure.Classify(ex, credential.Type);
+            await RecordFailureAsync(tenant.Id, category);
 
             var statusCode = (ex as KsefApiException)?.StatusCode;
             return new TenantSyncResult(
@@ -360,6 +361,7 @@ public sealed class TenantSyncService : ITenantSyncService
                 ErrorMessage: ex switch
                 {
                     DbUpdateException => "Invoice data could not be stored.",
+                    _ when SyncFailure.IsCredentialCause(category) => SyncFailure.Message(category),
                     KsefApiException or TimeoutException => ex.Message,
                     _ => "Synchronization failed. Details are in the server log.",
                 },
