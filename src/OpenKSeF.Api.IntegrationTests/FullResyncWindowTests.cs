@@ -76,7 +76,7 @@ public sealed class FullResyncWindowTests : IAsyncLifetime
                 new InvoiceService(db, Substitute.For<INotificationService>(), NullLogger<InvoiceService>.Instance),
                 new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
                 Options.Create(options),
-                new KSeFRequestLimits(),
+                new KSeFRequestLimits(TimeProvider.System),
                 TimeProvider.System,
                 NullLogger<TenantSyncService>.Instance);
 

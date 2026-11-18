@@ -74,7 +74,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance),
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions { KSeFMetadataSpacing = TimeSpan.Zero, XmlDownloadSpacing = TimeSpan.Zero }),
-        new KSeFRequestLimits(),
+        new KSeFRequestLimits(TimeProvider.System),
         TimeProvider.System,
         _logger);
 
