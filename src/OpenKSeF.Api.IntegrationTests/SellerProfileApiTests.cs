@@ -239,6 +239,35 @@ public class SellerProfileApiTests : IDisposable
         Assert.Equal("Pierwszy zapis", profile!.LegalName);
     }
 
+    [Fact]
+    public async Task Put_NextNumberDuringIssue_WaitsForIssueAndNeverLowersCounter()
+    {
+        var tenantId = await CreateTenantAsync();
+        Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync(
+            $"/api/tenants/{tenantId}/seller-profile", Request(nextNumber: 5, nextNumberPeriod: "2026-11"))).StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var issuing = scope.ServiceProvider.GetRequiredService<ISellerProfileService>();
+        Assert.Equal(5, await issuing.AllocateNumberAsync(tenantId, "2026-11"));
+        await SeedIssuedInvoiceAsync(db, tenantId, "FV/5/11/2026");
+        Assert.Equal(6, await issuing.AllocateNumberAsync(tenantId, "2026-11"));
+        await SeedIssuedInvoiceAsync(db, tenantId, "FV/6/11/2026");
+
+        var put = _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", Request(nextNumber: 6, nextNumberPeriod: "2026-11"));
+        await WaitForBlockedStatementAsync();
+        await transaction.CommitAsync();
+
+        var response = await put;
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var error = Assert.Single((await response.Content.ReadFromJsonAsync<ValidationEnvelope>())!.Errors);
+        Assert.Equal("SP-VAL-006", error.Code);
+
+        using var verify = _factory.Services.CreateScope();
+        Assert.Equal(7, await verify.ServiceProvider.GetRequiredService<ISellerProfileService>().AllocateNumberAsync(tenantId, "2026-11"));
+    }
+
     private async Task WaitForBlockedStatementAsync()
     {
         using var scope = _factory.Services.CreateScope();
@@ -257,11 +286,15 @@ public class SellerProfileApiTests : IDisposable
     private async Task SeedIssuedInvoiceAsync(Guid tenantId, string number)
     {
         using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await SeedIssuedInvoiceAsync(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(), tenantId, number);
+    }
+
+    private static async Task SeedIssuedInvoiceAsync(ApplicationDbContext db, Guid tenantId, string number)
+    {
         var profile = await db.SellerProfiles.SingleAsync(p => p.TenantId == tenantId);
         var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, new DateOnly(2026, 11, 1), DateTime.UtcNow);
         invoice.SetBuyer(BuyerKind.Company, "5261040828", "Nabywca", "ul. Krótka 2", null);
-        invoice.AddLine("Usługa", "szt.", 1, 100m, VatRate.Rate23);
+        invoice.ReplaceLines([("Usługa", "szt.", 1m, 100m, VatRate.Rate23)]);
         invoice.Issue(profile, "5261040828", number, DateTime.UtcNow);
         db.IssuedInvoices.Add(invoice);
         await db.SaveChangesAsync();
