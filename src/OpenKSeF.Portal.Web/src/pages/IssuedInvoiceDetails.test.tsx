@@ -96,6 +96,7 @@ const invoice = (patch: Partial<IssuedInvoiceResponse>): IssuedInvoiceResponse =
   updatedAt: '2026-11-03T10:00:00Z',
   issuedAt: null,
   version: 5,
+  sellerVersion: 3,
   ...patch,
 })
 
@@ -200,7 +201,42 @@ describe('issue and detail pages', () => {
 
     await act(async () => buttonByText(container.querySelector<HTMLElement>('[role="alertdialog"]')!, 'Wystaw i wyślij')!.click())
     await waitFor(() => container.textContent?.includes('czekamy na przyjęcie') ?? false)
-    expect(vi.mocked(issueIssuedInvoice).mock.calls[0]).toEqual(['t-1', 'i-1', 5])
+    expect(vi.mocked(issueIssuedInvoice).mock.calls[0]).toEqual(['t-1', 'i-1', 5, 3])
+  })
+
+  it('INV-SELLER-CHANGED closes the confirmation, refetches the draft and profile, and the next confirm sends the new sellerVersion', async () => {
+    const message = 'Dane sprzedawcy zostały zmienione po otwarciu potwierdzenia. Sprawdź je i potwierdź wystawienie ponownie.'
+    const production = { ...ksef, environment: 'production' } as IssuedInvoiceResponse['ksef']
+    const stale = invoice({ number: null, ksef: production })
+    const fresh = invoice({ number: null, ksef: production, sellerVersion: 4, seller: { ...stale.seller, name: 'Nowa nazwa sprzedawcy' } })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(stale)
+    vi.mocked(updateIssuedInvoice).mockResolvedValueOnce(stale).mockResolvedValue(fresh)
+    vi.mocked(issueIssuedInvoice)
+      .mockRejectedValueOnce(
+        await normalizeError(
+          new Response(JSON.stringify({ message, code: 'INV-SELLER-CHANGED' }), { status: 409, headers: { 'Content-Type': 'application/json' } }),
+        ),
+      )
+      .mockResolvedValue(invoice({ status: 'Sending' }))
+    await render('/issued/i-1/edit?tenantId=t-1')
+
+    await clickIssue()
+    await waitFor(() => Boolean(container.querySelector('[role="alertdialog"]')))
+    const profileCalls = vi.mocked(getSellerProfile).mock.calls.length
+    vi.mocked(getIssuedInvoice).mockResolvedValue(fresh)
+    await act(async () => buttonByText(container.querySelector<HTMLElement>('[role="alertdialog"]')!, 'Wystaw i wyślij')!.click())
+    await waitFor(() => container.textContent?.includes(message) ?? false)
+
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull()
+    expect(vi.mocked(issueIssuedInvoice).mock.calls[0]).toEqual(['t-1', 'i-1', 5, 3])
+    await waitFor(() => vi.mocked(getSellerProfile).mock.calls.length > profileCalls)
+    expect(getIssuedInvoice).toHaveBeenCalledTimes(2)
+
+    await clickIssue()
+    await waitFor(() => container.querySelector('[data-testid="confirm-seller"]')?.textContent?.includes('Nowa nazwa sprzedawcy') ?? false)
+    await act(async () => buttonByText(container.querySelector<HTMLElement>('[role="alertdialog"]')!, 'Wystaw i wyślij')!.click())
+    await waitFor(() => vi.mocked(issueIssuedInvoice).mock.calls.length === 2)
+    expect(vi.mocked(issueIssuedInvoice).mock.calls[1]).toEqual(['t-1', 'i-1', 5, 4])
   })
 
   const envKsef = (environment: unknown) => ({ ...ksef, environment }) as IssuedInvoiceResponse['ksef']
@@ -526,11 +562,11 @@ describe('issue and detail pages', () => {
       await clickIssue()
       await waitFor(() => Boolean(dialogEl()))
       expect(dialogEl()?.textContent).toContain(message)
-      expect(vi.mocked(issueIssuedInvoice).mock.calls).toEqual([['t-1', 'i-1', 5]])
+      expect(vi.mocked(issueIssuedInvoice).mock.calls).toEqual([['t-1', 'i-1', 5, 3]])
 
       await act(async () => buttonByText(dialogEl()!, 'Potwierdź')!.click())
       await waitFor(() => container.textContent?.includes('czekamy na przyjęcie') ?? false)
-      expect(vi.mocked(issueIssuedInvoice).mock.calls[1]).toEqual(['t-1', 'i-1', 5, true])
+      expect(vi.mocked(issueIssuedInvoice).mock.calls[1]).toEqual(['t-1', 'i-1', 5, 3, true])
     })
 
     it('a second 422 after Potwierdź shows its errors inline without another confirm', async () => {
@@ -742,7 +778,7 @@ describe('issue and detail pages', () => {
       await waitFor(() => vi.mocked(issueIssuedInvoice).mock.calls.length === 1)
 
       expect(vi.mocked(updateIssuedInvoice).mock.calls[0][3]).toBe(5)
-      expect(issueIssuedInvoice).toHaveBeenCalledWith('t-1', 'i-1', 6)
+      expect(issueIssuedInvoice).toHaveBeenCalledWith('t-1', 'i-1', 6, 3)
     })
 
     it('a stale save shows the server message and keeps the form and the typing', async () => {

@@ -388,6 +388,7 @@ export interface IssuedInvoiceResponse {
   exchangeRate?: number | null
   exchangeRateDate?: string | null
   version: number
+  sellerVersion: number
 }
 
 export interface ExchangeRateProposalResponse {

@@ -108,6 +108,7 @@ const invoice = (patch: Partial<IssuedInvoiceResponse> = {}): IssuedInvoiceRespo
   updatedAt: '2026-11-03T10:00:00Z',
   issuedAt: null,
   version: 5,
+  sellerVersion: 3,
   exchangeRate: 5.1,
   exchangeRateDate: '2026-11-02',
   ...patch,

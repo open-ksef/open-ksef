@@ -62,8 +62,14 @@ export function deleteIssuedInvoice(tenantId: string, id: string, version?: numb
   return apiClient.delete<void>(item(tenantId, id), { query: { version } })
 }
 
-export function issueIssuedInvoice(tenantId: string, id: string, version?: number, confirmPastIssueDate?: boolean): Promise<IssuedInvoiceResponse> {
-  return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/issue`, undefined, { query: { version, confirmPastIssueDate } })
+export function issueIssuedInvoice(
+  tenantId: string,
+  id: string,
+  version?: number,
+  sellerVersion?: number,
+  confirmPastIssueDate?: boolean,
+): Promise<IssuedInvoiceResponse> {
+  return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/issue`, undefined, { query: { version, sellerVersion, confirmPastIssueDate } })
 }
 
 export function copyIssuedInvoice(tenantId: string, id: string): Promise<IssuedInvoiceResponse> {
