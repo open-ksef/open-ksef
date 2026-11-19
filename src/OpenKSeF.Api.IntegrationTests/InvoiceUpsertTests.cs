@@ -84,6 +84,27 @@ public class InvoiceUpsertTests(TestcontainersFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ShiftedIssueDate_CorrectedOnUpdate_PaidFlagsKept()
+    {
+        var invoice = Invoice("KSEF-SHIFT");
+        var id = (await UpsertAsync([invoice with { IssueDate = invoice.IssueDate.AddDays(-1) }]))[0];
+        var paidAt = new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
+        await using (var db = NewContext())
+        {
+            var row = await db.InvoiceHeaders.SingleAsync();
+            row.IsPaid = true;
+            row.PaidAt = paidAt;
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Empty(await UpsertAsync([invoice]));
+
+        await using var check = NewContext();
+        var stored = await check.InvoiceHeaders.SingleAsync();
+        Assert.Equal((id, invoice.IssueDate, true, paidAt), (stored.Id, stored.IssueDate, stored.IsPaid, stored.PaidAt));
+    }
+
+    [Fact]
     public async Task SameNumberTwiceInPage_StoresOneRow()
     {
         var invoice = Invoice("KSEF-DUP");

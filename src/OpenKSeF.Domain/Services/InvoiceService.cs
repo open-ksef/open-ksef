@@ -98,6 +98,7 @@ public class InvoiceService : IInvoiceService
                 existing.AmountVat = invoice.AmountVat;
                 existing.AmountGross = invoice.AmountGross;
                 existing.Currency = invoice.Currency ?? "PLN";
+                existing.IssueDate = invoice.IssueDate;
                 existing.AcquisitionDate = invoice.AcquisitionDate;
                 existing.InvoiceType = invoice.InvoiceType;
                 existing.LastUpdatedAt = now;
