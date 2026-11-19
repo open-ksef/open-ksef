@@ -7,6 +7,7 @@ import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import { createTenant, deleteTenant, listMembers, updateTenant } from '@/api/endpoints/tenants'
 import { ApiError, readFieldError } from '@/api/errors'
 import type { TenantResponse } from '@/api/types'
+import { ClaimCompanyForm } from '@/company/ClaimCompanyForm'
 import { CompanyBox } from '@/company/CompanyBox'
 import { can, MANAGERS_ONLY } from '@/company/CompanyContext'
 import { useCompany } from '@/company/useCompany'
@@ -238,14 +239,17 @@ function AddCompanyDialog({ onClose }: { onClose: () => void }): ReactElement {
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
+  const [conflict, setConflict] = useState(false)
+  const [claiming, setClaiming] = useState(false)
 
   useEffect(() => {
+    if (claiming) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  }, [onClose, claiming])
 
   const create = useMutation({
     mutationFn: createTenant,
@@ -259,7 +263,10 @@ function AddCompanyDialog({ onClose }: { onClose: () => void }): ReactElement {
     onError: async (error) => {
       const nameError = await readFieldError(error, 'DisplayName')
       if (nameError) setFormError(nameError)
-      else if (error instanceof ApiError && error.status === 409) setFormError(error.message)
+      else if (error instanceof ApiError && error.status === 409) {
+        setFormError(error.message)
+        setConflict(true)
+      }
       else notifyMutationError('create', 'Tenant', error)
     },
   })
@@ -268,8 +275,11 @@ function AddCompanyDialog({ onClose }: { onClose: () => void }): ReactElement {
     event.preventDefault()
     const error = nipError(nip) ?? (isBadEmail(email) ? EMAIL_ERROR : null)
     setFormError(error)
+    setConflict(false)
     if (!error) create.mutate({ nip, displayName: displayName || null, notificationEmail: email || null })
   }
+
+  if (claiming) return <ClaimCompanyForm initialNip={nip} onCancel={() => setClaiming(false)} />
 
   return (
     <div
@@ -332,6 +342,11 @@ function AddCompanyDialog({ onClose }: { onClose: () => void }): ReactElement {
           <Button variant="outline" onClick={onClose}>
             Anuluj
           </Button>
+          {conflict ? (
+            <Button variant="secondary" data-testid="tenant-form-claim" onClick={() => setClaiming(true)}>
+              Przejmij firmę
+            </Button>
+          ) : null}
           <Button type="submit" data-testid="tenant-form-submit" disabled={create.isPending}>
             {create.isPending ? 'Zapisywanie…' : 'Zapisz firmę'}
           </Button>

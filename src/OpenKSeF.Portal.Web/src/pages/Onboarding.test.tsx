@@ -8,14 +8,14 @@ import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { addOrUpdateCredential, forceCredentialSync } from '@/api/endpoints/credentials'
-import { createTenant } from '@/api/endpoints/tenants'
+import { claimTenant, createTenant } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
 import { INVALID_TOKEN_REJECTION } from '@/invoicing/status'
 import { OnboardingPage } from './Onboarding'
 import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/credentials', () => ({ addOrUpdateCredential: vi.fn(), forceCredentialSync: vi.fn() }))
-vi.mock('@/api/endpoints/tenants', () => ({ createTenant: vi.fn() }))
+vi.mock('@/api/endpoints/tenants', () => ({ createTenant: vi.fn(), claimTenant: vi.fn() }))
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 
 describe('Onboarding', () => {
@@ -94,11 +94,35 @@ describe('Onboarding', () => {
 
   it.each([
     'Masz już dostęp do firmy z tym NIP-em: Firma C2.',
-    'Firma z tym NIP-em jest już dodana na tym serwerze OpenKSeF. Poproś osobę, która nią zarządza, o zaproszenie do firmy. Jeśli nie wiesz, kto to jest, napisz do administratora serwera.',
+    'Firma z tym NIP-em jest już dodana na tym serwerze OpenKSeF. Poproś osobę, która nią zarządza, o zaproszenie do firmy. Jeśli nie wiesz, kto to jest, napisz do administratora serwera. Jeśli masz token KSeF z uprawnieniem Zarządzanie uprawnieniami dla tego NIP-u, możesz przejąć firmę w portalu OpenKSeF (Przejmij firmę).',
   ])('shows the API 409 text as is: %s', async (error) => {
     vi.mocked(createTenant).mockRejectedValue(await normalizeError(new Response(JSON.stringify({ error }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
     await toStep2()
     expect(vi.mocked(toast.error).mock.calls[0][0]).toBe(error)
+  })
+
+  it('offers Przejmij firmę after a 409 and a claim opens the company', async () => {
+    vi.mocked(createTenant).mockRejectedValue(await normalizeError(new Response(JSON.stringify({ error: 'zajęta' }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
+    vi.mocked(claimTenant).mockResolvedValue({ id: 't-9', nip: '1111111111', displayName: 'Firma X', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' })
+    expect(by('onboarding-claim')).toBeNull()
+    await toStep2()
+    await act(async () => by('onboarding-claim')?.click())
+    await settle()
+    expect((by('claim-nip') as HTMLInputElement).value).toBe('1111111111')
+    await type('claim-token', 'ref|nip-1111111111|secret')
+    await act(async () => by('claim-submit')?.click())
+    await settle()
+    await act(async () => by('claim-submit')?.click())
+    await settle()
+    expect(claimTenant).toHaveBeenCalledExactlyOnceWith({ nip: '1111111111', token: 'ref|nip-1111111111|secret' })
+    expect(router.state.location.pathname + router.state.location.search).toBe('/?tenantId=t-9')
+    expect(by('start')).not.toBeNull()
+  })
+
+  it('does not offer Przejmij firmę after a non-409 error', async () => {
+    vi.mocked(createTenant).mockRejectedValue(await normalizeError(new Response('{}', { status: 500 })))
+    await toStep2()
+    expect(by('onboarding-claim')).toBeNull()
   })
 
   it('blocks a NIP with a wrong checksum', async () => {

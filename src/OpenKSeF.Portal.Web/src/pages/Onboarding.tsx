@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { addOrUpdateCredential, forceCredentialSync } from '@/api/endpoints/credentials'
 import { createTenant } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
+import { ClaimCompanyForm } from '@/company/ClaimCompanyForm'
 import { BrandMark } from '@/components/BrandMark'
 import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
@@ -45,6 +46,8 @@ export function OnboardingPage(): ReactElement {
   const [tenantLabel, setTenantLabel] = useState('')
   const [token, setToken] = useState('')
   const [leaving, setLeaving] = useState(false)
+  const [conflict, setConflict] = useState(false)
+  const [claiming, setClaiming] = useState(false)
 
   const createTenantMutation = useMutation({
     mutationFn: createTenant,
@@ -55,7 +58,9 @@ export function OnboardingPage(): ReactElement {
       setStep(2)
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError && err.status === 409 ? err.message : `Błąd tworzenia firmy: ${err.message}`)
+      const taken = err instanceof ApiError && err.status === 409
+      setConflict(taken)
+      toast.error(taken ? err.message : `Błąd tworzenia firmy: ${err.message}`)
     },
   })
 
@@ -84,6 +89,7 @@ export function OnboardingPage(): ReactElement {
 
   const handleStep1Submit = () => {
     setValidationError(null)
+    setConflict(false)
 
     const invalidNip = nipError(form.nip)
     if (invalidNip) {
@@ -195,11 +201,18 @@ export function OnboardingPage(): ReactElement {
             </div>
 
             <div className="wiz__actions">
-              <span />
+              {conflict ? (
+                <Button variant="outline" data-testid="onboarding-claim" onClick={() => setClaiming(true)}>
+                  Przejmij firmę
+                </Button>
+              ) : (
+                <span />
+              )}
               <Button data-testid="onboarding-next" onClick={handleStep1Submit} disabled={createTenantMutation.isPending}>
                 {createTenantMutation.isPending ? 'Zapisywanie…' : 'Dalej'}
               </Button>
             </div>
+            {claiming ? <ClaimCompanyForm initialNip={form.nip} onCancel={() => setClaiming(false)} /> : null}
           </>
         )}
 
