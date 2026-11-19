@@ -96,7 +96,7 @@ public class EmailServiceTests
     {
         var message = CreateService(new EmailOptions()).BuildOwnershipClaimedMessage("a1@example.invalid", "Biuro & <Syn>", "1111111111", "Bogna Nowak");
 
-        Assert.Equal("Firma Biuro & <Syn> ma nowego właściciela", message.Subject);
+        Assert.Equal("Firma Biuro & <Syn> (NIP 1111111111) ma nowego właściciela", message.Subject);
         Assert.Equal(string.Join("\n\n",
             "Dzień dobry,",
             "Firma Biuro & <Syn> (NIP 1111111111) ma nowego właściciela: Bogna Nowak. Potwierdził dostęp do KSeF dla tego NIP-u tokenem KSeF. Twój dostęp do firmy w OpenKSeF został usunięty. Jeśli to pomyłka, napisz do administratora serwera.",

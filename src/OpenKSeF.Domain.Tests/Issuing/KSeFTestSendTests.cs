@@ -175,23 +175,10 @@ public class KSeFTestSendTests(ITestOutputHelper output)
     {
         await using var ksef = await TestKSeF.StartAsync();
         var access = await ksef.SealLoginAsync();
-        var generated = await ksef.Client.GenerateKsefTokenAsync(new KsefTokenRequest
-        {
-            Permissions = [KsefTokenPermissionType.CredentialsManage],
-            Description = $"OpenKSeF T-801 {DateTime.UtcNow:yyMMddHHmmss}"
-        }, access);
+        var generated = await ksef.GenerateActiveTokenAsync(access, KsefTokenPermissionType.CredentialsManage);
         try
         {
-            AuthenticationKsefToken meta;
-            var deadline = DateTime.UtcNow.AddMinutes(2);
-            do
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2));
-                meta = await ksef.Client.GetKsefTokenAsync(generated.ReferenceNumber, access);
-            }
-            while (meta.Status == AuthenticationKsefTokenStatus.Pending && DateTime.UtcNow < deadline);
-            output.WriteLine($"T-801 assumption 2: generated token status={meta.Status} segments=[{string.Join(",", generated.Token.Split('|').SkipLast(1).Select(s => $"{s.Length}:{s[..Math.Min(4, s.Length)]}"))},secret:{generated.Token.Split('|')[^1].Length}] refAndNipFirst={generated.Token.StartsWith($"{generated.ReferenceNumber}|nip-{ksef.SellerNip}|")}");
-            Assert.Equal(AuthenticationKsefTokenStatus.Active, meta.Status);
+            output.WriteLine($"T-801 assumption 2: generated token segments=[{string.Join(",", generated.Token.Split('|').SkipLast(1).Select(s => $"{s.Length}:{s[..Math.Min(4, s.Length)]}"))},secret:{generated.Token.Split('|')[^1].Length}] refAndNipFirst={generated.Token.StartsWith($"{generated.ReferenceNumber}|nip-{ksef.SellerNip}|")}");
 
             var grant = await ksef.Gateway(new OutputLogger(output)).CheckTokenAsync(ksef.SellerNip, generated.Token);
             output.WriteLine($"T-801 assumption 2: CheckTokenAsync permissions=[{string.Join(',', grant?.Permissions ?? [])}] authRef={grant?.AuthReferenceNumber}");
@@ -205,6 +192,33 @@ public class KSeFTestSendTests(ITestOutputHelper output)
         finally
         {
             await ksef.Client.RevokeKsefTokenAsync(generated.ReferenceNumber, access);
+        }
+    }
+
+    [KSeFTestFact]
+    public async Task ClaimCheck_SplicedReference_NotProven()
+    {
+        await using var ksef = await TestKSeF.StartAsync();
+        var access = await ksef.SealLoginAsync();
+        var cm = await ksef.GenerateActiveTokenAsync(access, KsefTokenPermissionType.CredentialsManage);
+        try
+        {
+            var cr = await ksef.GenerateActiveTokenAsync(access, KsefTokenPermissionType.CredentialsRead);
+            try
+            {
+                var spliced = cm.ReferenceNumber + cr.Token[cr.Token.IndexOf('|')..];
+                var grant = await ksef.Gateway(new OutputLogger(output)).CheckTokenAsync(ksef.SellerNip, spliced);
+                output.WriteLine($"T-801 splice: CM reference + CredentialsRead secret -> {(grant is null ? "null" : $"grant [{string.Join(',', grant.Permissions)}]")}");
+                Assert.Null(grant);
+            }
+            finally
+            {
+                await ksef.Client.RevokeKsefTokenAsync(cr.ReferenceNumber, access);
+            }
+        }
+        finally
+        {
+            await ksef.Client.RevokeKsefTokenAsync(cm.ReferenceNumber, access);
         }
     }
 
@@ -297,6 +311,29 @@ public class KSeFTestSendTests(ITestOutputHelper output)
 
         public KSeFCredential TokenCredential(string token) =>
             new() { Id = Guid.NewGuid(), Type = CredentialType.Token, EncryptedToken = _encryption.Encrypt(token) };
+
+        public async Task<KsefTokenResponse> GenerateActiveTokenAsync(string access, KsefTokenPermissionType permission)
+        {
+            var generated = await Client.GenerateKsefTokenAsync(new KsefTokenRequest
+            {
+                Permissions = [permission],
+                Description = $"OpenKSeF T-801 {permission} {DateTime.UtcNow:yyMMddHHmmss}"
+            }, access);
+            var deadline = DateTime.UtcNow.AddMinutes(2);
+            AuthenticationKsefToken meta;
+            do
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                meta = await Client.GetKsefTokenAsync(generated.ReferenceNumber, access);
+            }
+            while (meta.Status == AuthenticationKsefTokenStatus.Pending && DateTime.UtcNow < deadline);
+            if (meta.Status != AuthenticationKsefTokenStatus.Active)
+            {
+                await Client.RevokeKsefTokenAsync(generated.ReferenceNumber, access);
+                Assert.Fail($"token {permission} stayed {meta.Status}");
+            }
+            return generated;
+        }
 
         /// <summary>
         /// KSeF TEST accepts a self-signed seal for the NIP; that login enrolls a real KSeF Authentication certificate,

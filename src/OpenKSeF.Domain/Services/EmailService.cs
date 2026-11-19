@@ -167,7 +167,7 @@ public class EmailService : IEmailService
             "Wiadomość wysłana automatycznie przez OpenKSeF.");
 
     internal MimeMessage BuildOwnershipClaimedMessage(string toEmail, string company, string nip, string newOwnerName) =>
-        BuildMessage(toEmail, $"Firma {company} ma nowego właściciela",
+        BuildMessage(toEmail, $"Firma {company} (NIP {nip}) ma nowego właściciela",
             "Dzień dobry,",
             $"Firma {company} (NIP {nip}) ma nowego właściciela: {newOwnerName}. Potwierdził dostęp do KSeF dla tego NIP-u tokenem KSeF. Twój dostęp do firmy w OpenKSeF został usunięty. Jeśli to pomyłka, napisz do administratora serwera.",
             "Wiadomość wysłana automatycznie przez OpenKSeF.");

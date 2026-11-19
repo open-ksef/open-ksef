@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using KSeF.Client.Core.Exceptions;
+using KSeF.Client.DI;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
@@ -56,6 +57,7 @@ public sealed class TenantClaimApiTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        _factory.Services.GetRequiredService<KSeFClientOptions>().BaseUrl = KsefEnvironmentsUris.PROD;
         var now = DateTime.UtcNow;
         await WithDbAsync(async db =>
         {
@@ -166,6 +168,56 @@ public sealed class TenantClaimApiTests : IAsyncLifetime
         await AssertErrorAsync(await claimant.PostAsJsonAsync(Url, new { nip = _nip, token = "20261119-EC-0000000000-0000000000-00|nip-1111111111|secret" }), HttpStatusCode.BadRequest, TenantClaimService.NotProvenMessage(_nip));
 
         Assert.Empty(_gateway.ReceivedCalls());
+    }
+
+    [Fact]
+    public async Task Claim_ClientNotOnProductionUrl_409_WithoutKSeFCall()
+    {
+        _factory.Services.GetRequiredService<KSeFClientOptions>().BaseUrl = KsefEnvironmentsUris.TEST;
+        var (_, claimant) = await ClientAsync();
+
+        await AssertErrorAsync(await claimant.PostAsJsonAsync(Url, Body()), HttpStatusCode.Conflict, TenantClaimService.ProductionOnlyMessage);
+
+        Assert.Empty(_gateway.ReceivedCalls());
+    }
+
+    [Fact]
+    public async Task Claim_ClaimantBecomesMemberWhileWaitingForRowLock_409AlreadyMember_OwnersKept()
+    {
+        var (userId, claimant) = await ClientAsync();
+        Grant(Cm);
+        using var scope = _factory.Services.CreateScope();
+        var holder = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await using var transaction = await holder.Database.BeginTransactionAsync();
+        await TenantInviteService.LockTenantAsync(holder, _tenantId);
+
+        var claim = claimant.PostAsJsonAsync(Url, Body());
+        await TenantMembersApiTests.WaitForLockWaitersAsync(holder, 1);
+        holder.TenantMembers.Add(new TenantMember { TenantId = _tenantId, UserId = userId, Role = TenantRole.Employee, CreatedAt = DateTime.UtcNow });
+        await holder.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        await AssertErrorAsync(await claim, HttpStatusCode.Conflict, "Masz już dostęp do firmy z tym NIP-em: Firma C.");
+        await WithDbAsync(async db =>
+            Assert.Equal([_a1, _a2], (await db.TenantMembers.Where(m => m.TenantId == _tenantId && m.Role == TenantRole.Owner).Select(m => m.UserId).ToListAsync()).Order()));
+    }
+
+    [Fact]
+    public async Task Claim_ClaimantWithBlankDisplayName_EmailNamesTheirAddress()
+    {
+        var (userId, claimant) = await ClientAsync();
+        Assert.Equal(HttpStatusCode.OK, (await claimant.GetAsync("/api/tenants")).StatusCode);
+        string email = null!;
+        await WithDbAsync(async db =>
+        {
+            await db.UserProfiles.Where(p => p.UserId == userId).ExecuteUpdateAsync(s => s.SetProperty(p => p.DisplayName, " "));
+            email = await db.UserProfiles.Where(p => p.UserId == userId).Select(p => p.Email!).SingleAsync();
+        });
+        Grant(Cm);
+
+        Assert.Equal(HttpStatusCode.OK, (await claimant.PostAsJsonAsync(Url, Body())).StatusCode);
+
+        await _email.Received(2).SendOwnershipClaimedEmailAsync(Arg.Any<string>(), _tenantId, "Firma C", _nip, email);
     }
 
     [Theory]

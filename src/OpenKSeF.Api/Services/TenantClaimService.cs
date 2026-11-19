@@ -1,4 +1,5 @@
 using KSeF.Client.Core.Exceptions;
+using KSeF.Client.DI;
 using Microsoft.EntityFrameworkCore;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Abstractions;
@@ -14,6 +15,7 @@ public class TenantClaimService(
     ApplicationDbContext db,
     IKSeFGateway gateway,
     IKSeFIssuingEnvironment environment,
+    KSeFClientOptions ksefOptions,
     TenantClaimLimiter limiter,
     IEmailService email,
     ILogger<TenantClaimService> logger)
@@ -37,7 +39,7 @@ public class TenantClaimService(
             return new Result(Outcome.Invalid, TenantNipGuard.InvalidNipMessage);
 
         var nip = NipValidator.Normalize(rawNip);
-        if (environment.Current != "production")
+        if (environment.Current != "production" || ksefOptions.BaseUrl != KsefEnvironmentsUris.PROD)
             return new Result(Outcome.Conflict, ProductionOnlyMessage);
         if (await RefuseAsync(nip, userId) is { Refused: { } refused })
             return refused;
@@ -75,6 +77,8 @@ public class TenantClaimService(
         var tenant = await TenantInviteService.LockTenantAsync(db, tenantId);
         if (tenant is null)
             return new Result(Outcome.Conflict, NoCompanyMessage);
+        if (await db.TenantMembers.AnyAsync(m => m.TenantId == tenantId && m.UserId == userId))
+            return new Result(Outcome.Conflict, TenantNipGuard.AlreadyMemberMessage(string.IsNullOrWhiteSpace(tenant.DisplayName) ? $"NIP {tenant.Nip}" : tenant.DisplayName));
 
         var owners = await db.TenantMembers.Where(m => m.TenantId == tenantId && m.Role == TenantRole.Owner).ToListAsync();
         var ownerIds = owners.Select(o => o.UserId).ToList();
@@ -105,7 +109,7 @@ public class TenantClaimService(
         logger.LogInformation("Company {TenantId} claimed by user {UserId}; {Count} former Owners removed", tenantId, userId, owners.Count);
 
         var company = string.IsNullOrWhiteSpace(tenant.DisplayName) ? $"NIP {tenant.Nip}" : tenant.DisplayName;
-        var claimant = await db.UserProfiles.Where(p => p.UserId == userId).Select(p => p.DisplayName ?? p.Email).FirstOrDefaultAsync() ?? "Użytkownik OpenKSeF";
+        var claimant = await db.UserProfiles.Where(p => p.UserId == userId).Select(p => string.IsNullOrWhiteSpace(p.DisplayName) ? p.Email : p.DisplayName).FirstOrDefaultAsync() ?? "Użytkownik OpenKSeF";
         foreach (var address in ownerEmails.Select(o => o.Email).OfType<string>().Where(e => !string.IsNullOrWhiteSpace(e)))
             await TrySendAsync(tenantId, () => email.SendOwnershipClaimedEmailAsync(address, tenantId, company, tenant.Nip, claimant));
 
