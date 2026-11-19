@@ -184,7 +184,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
     [InlineData("POST", "api/tenants/{0}/credentials")]
     public async Task NonMember_InvalidBody_GetsNotFoundBeforeValidation(string method, string template)
     {
-        var request = new HttpRequestMessage(new HttpMethod(method), "/" + string.Format(template, _seed.TenantA)) { Content = JsonContent.Create(new { }) };
+        var request = new HttpRequestMessage(new HttpMethod(method), "/" + string.Format(template, _seed.TenantA)) { Content = JsonContent.Create(new { type = "nope", notificationEmail = "x" }) };
 
         Assert.True(IsActionNotFound(await _other.SendAsync(request)));
     }
