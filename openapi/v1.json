@@ -948,6 +948,10 @@
           "seller": {
             "$ref": "#/components/schemas/IssuedInvoiceSellerResponse"
           },
+          "sellerVersion": {
+            "format": "int32",
+            "type": "integer"
+          },
           "splitPayment": {
             "type": "boolean"
           },
@@ -6896,6 +6900,14 @@
             "schema": {
               "default": false,
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sellerVersion",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
             }
           }
         ],
