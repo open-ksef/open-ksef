@@ -1526,12 +1526,12 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Fact]
-    public async Task TransientErrorOnSendAfterWriteAhead_BackoffDoubles()
+    public async Task TransientErrorOnSendAfterWriteAhead_BackoffDoublesUpTo15Minutes()
     {
         var id = await SeedAsync();
         _submitter.OnSend = () => throw new HttpRequestException("connection reset");
         var delays = new List<double>();
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < 9; i++)
         {
             await RunAsync();
             var invoice = await LoadAsync(id);
@@ -1539,7 +1539,7 @@ public class IssuedInvoiceSendProcessorTests
             _time.Advance(invoice.NextAttemptAt.Value - _time.UtcNow);
         }
 
-        Assert.Equal([10, 20, 40, 80], delays);
+        Assert.Equal([10, 20, 40, 80, 160, 320, 640, 900, 900], delays);
     }
 
     [Fact]
