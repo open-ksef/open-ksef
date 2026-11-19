@@ -263,6 +263,8 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo { Title = "OpenKSeF API", Version = "v1" });
+    options.MapType<uint>(() => new OpenApiSchema { Type = "integer", Format = "int64" });
+    options.MapType<uint?>(() => new OpenApiSchema { Type = "integer", Format = "int64", Nullable = true });
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Type = SecuritySchemeType.Http,

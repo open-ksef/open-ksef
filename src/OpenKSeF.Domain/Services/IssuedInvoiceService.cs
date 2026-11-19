@@ -513,11 +513,15 @@ public class IssuedInvoiceService(
         }
 
         var nip = await db.Tenants.Where(t => t.Id == invoice.TenantId).Select(t => t.Nip).SingleAsync(ct);
-        var profile = await db.SellerProfiles.SingleOrDefaultAsync(p => p.TenantId == invoice.TenantId, ct);
+        var row = await db.SellerProfiles.AsNoTracking()
+            .Where(p => p.TenantId == invoice.TenantId)
+            .Select(p => new { Profile = p, Version = EF.Property<uint>(p, "Version") })
+            .SingleOrDefaultAsync(ct);
+        var profile = row?.Profile;
         var account = profile?.PaymentAccountFor(invoice.BuyerKind);
         var seller = new IssuedInvoiceSeller(nip, profile?.LegalName, profile?.AddressLine1, profile?.AddressLine2, account?.BankAccount, profile?.CashAccounting ?? false,
             account?.Iban, account?.Swift, account?.BankName);
-        return new IssuedInvoiceView(invoice, seller, environment.Current, IssueChecks.Warnings(invoice), VersionOf(invoice), profile is null ? 0 : SellerVersionOf(profile));
+        return new IssuedInvoiceView(invoice, seller, environment.Current, IssueChecks.Warnings(invoice), VersionOf(invoice), row?.Version ?? 0);
     }
 
     private DateOnly Today() => IssuedInvoice.PolandDate(timeProvider.GetUtcNow());

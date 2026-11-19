@@ -1561,6 +1561,30 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Fact]
+    public async Task CachedTokenRejectedOnSend_LogsInAgain_ListsOldSession_SendsOnce()
+    {
+        await SeedAsync(Sent);
+        _submitter.OnGet = _ => Status(150);
+        await RunAsync();
+        var id = await SeedAsync(addTenant: false);
+        var sends = 0;
+        _submitter.OnSend = () => ++sends == 1 ? throw new KsefApiException("unauthorized", HttpStatusCode.Unauthorized, null!, null!) : Task.FromResult("el-2");
+        var listed = new List<string>();
+        _submitter.OnList = sessionRef =>
+        {
+            listed.Add(sessionRef);
+            return [];
+        };
+
+        await RunAsync();
+
+        var invoice = await LoadAsync(id);
+        Assert.Equal((2, 2), (_submitter.Logins, _submitter.Sends));
+        Assert.Equal((2, "el-2"), (invoice.AttemptCount, invoice.KsefElementRef));
+        Assert.NotEqual(listed.Single(), invoice.KsefSessionRef);
+    }
+
+    [Fact]
     public async Task FreshTokenRejected_NoSecondLogin()
     {
         var id = await SeedAsync(Sent);
