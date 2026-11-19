@@ -627,7 +627,7 @@ public class IssuedInvoiceSendProcessorTests
 
         var invoice = await LoadAsync(id);
         Assert.Equal((IssuedInvoiceStatus.Accepted, "KSEF-ORIG"), (invoice.Status, invoice.KsefNumber));
-        Assert.Equal(11, _submitter.Downloads.Count);
+        Assert.Equal(failure is KsefApiException { StatusCode: HttpStatusCode.Unauthorized } ? 12 : 11, _submitter.Downloads.Count);
         Assert.Equal(2, _submitter.Sends);
     }
 
@@ -1395,7 +1395,7 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Fact]
-    public async Task StatusPoll_Unauthorized_NextCycleLogsInAgain()
+    public async Task StatusPoll_Unauthorized_LogsInAgainInCycleThenNextCycle()
     {
         await SeedAsync();
         await RunAsync();
@@ -1403,12 +1403,12 @@ public class IssuedInvoiceSendProcessorTests
 
         _time.Advance(TimeSpan.FromMinutes(1));
         await RunAsync();
-        Assert.Equal(1, _submitter.Logins);
+        Assert.Equal(2, _submitter.Logins);
 
         _submitter.OnGet = _ => Status(KSeFSentInvoice.Processing);
         _time.Advance(TimeSpan.FromMinutes(1));
         await RunAsync();
-        Assert.Equal(2, _submitter.Logins);
+        Assert.Equal(3, _submitter.Logins);
     }
 
     [Fact]
@@ -1499,6 +1499,53 @@ public class IssuedInvoiceSendProcessorTests
         }
 
         Assert.Equal([10, 20, 40, 80], delays);
+    }
+
+    [Fact]
+    public async Task TransientErrorOnSendAfterWriteAhead_BackoffDoubles()
+    {
+        var id = await SeedAsync();
+        _submitter.OnSend = () => throw new HttpRequestException("connection reset");
+        var delays = new List<double>();
+        for (var i = 0; i < 4; i++)
+        {
+            await RunAsync();
+            var invoice = await LoadAsync(id);
+            delays.Add((invoice.NextAttemptAt!.Value - _time.UtcNow).TotalSeconds);
+            _time.Advance(invoice.NextAttemptAt.Value - _time.UtcNow);
+        }
+
+        Assert.Equal([10, 20, 40, 80], delays);
+    }
+
+    [Fact]
+    public async Task CachedTokenRejectedMidCycle_LogsInOnceAgainAndContinues()
+    {
+        var id = await SeedAsync(Sent);
+        _submitter.OnGet = _ => Status(150);
+        await RunAsync();
+        _time.Advance((await LoadAsync(id)).NextAttemptAt!.Value - _time.UtcNow);
+        var gets = 0;
+        _submitter.OnGet = _ => ++gets == 1 ? throw new KsefApiException("unauthorized", HttpStatusCode.Unauthorized, null!, null!) : Status(150);
+
+        await RunAsync();
+
+        Assert.Equal((2, 2), (_submitter.Logins, gets));
+        var invoice = await LoadAsync(id);
+        Assert.Null(invoice.LastError);
+        Assert.True(invoice.NextAttemptAt > _time.UtcNow);
+    }
+
+    [Fact]
+    public async Task FreshTokenRejected_NoSecondLogin()
+    {
+        var id = await SeedAsync(Sent);
+        _submitter.OnGet = _ => throw new KsefApiException("unauthorized", HttpStatusCode.Unauthorized, null!, null!);
+
+        await RunAsync();
+
+        Assert.Equal(1, _submitter.Logins);
+        Assert.Equal(IssuedInvoiceSendProcessor.UnavailableMessage, (await LoadAsync(id)).LastError);
     }
 
     [Fact]

@@ -136,35 +136,10 @@ public sealed class IssuedInvoiceSendProcessor(
             return;
         }
 
-        string accessToken;
-        try
-        {
-            accessToken = tokens.Find(tenantId, environment, credential, Now().Add(TenantBudget + CloseCap))
-                          ?? await LoginAsync(tenant, environment, credential, ksef);
-        }
-        catch (KSeFAuthRejectedException e)
-        {
-            logger.LogWarning("KSeF rejected the {CredentialType} of tenant {TenantId}: {Code} {Reason}", credential.Type, tenantId, e.Code, e.Message);
-            await RejectSendableAsync(invoices, e.Code, AuthRejectedMessage(credential.Type, e), e.Message, ct);
+        var cachedToken = tokens.Find(tenantId, environment, credential, Now().Add(TenantBudget + CloseCap));
+        var accessToken = cachedToken ?? await AuthenticateAsync(tenant, environment, credential, invoices, ksef, ct);
+        if (accessToken is null)
             return;
-        }
-        catch (StoredCertificateUnreadableException e)
-        {
-            logger.LogWarning("Stored certificate of tenant {TenantId} cannot be read: {Error}", tenantId, e.Message);
-            await RejectSendableAsync(invoices, null, InvalidCertificateMessage, null, ct);
-            return;
-        }
-        catch (Exception e) when (IsTransient(e, ct))
-        {
-            await RetryAllAsync(invoices, e, ct);
-            return;
-        }
-        catch (KsefApiException e)
-        {
-            var (code, description, details) = Describe(e);
-            await RejectSendableAsync(invoices, code, description, details, ct);
-            return;
-        }
 
         KSeFOnlineSession? session = null;
         Func<Task<KSeFOnlineSession>> openSession = async () => session ??= await submitter.OpenSessionAsync(accessToken, ksef);
@@ -176,6 +151,19 @@ public sealed class IssuedInvoiceSendProcessor(
                 try
                 {
                     await ProcessInvoiceAsync(invoice, accessToken, openSession, ksef, ct);
+                }
+                catch (KsefApiException e) when (e.StatusCode == HttpStatusCode.Unauthorized && cachedToken is not null && !ksef.IsCancellationRequested)
+                {
+                    logger.LogInformation("Cached KSeF token of tenant {TenantId} rejected, logging in again", tenantId);
+                    tokens.Forget(tenantId);
+                    cachedToken = null;
+                    if (session is not null)
+                        await CloseQuietlyAsync(session);
+                    session = null;
+                    accessToken = await AuthenticateAsync(tenant, environment, credential, invoices.Skip(index).ToList(), ksef, ct);
+                    if (accessToken is null)
+                        return;
+                    index--;
                 }
                 catch (Exception e) when (IsTransient(e, ct))
                 {
@@ -206,6 +194,38 @@ public sealed class IssuedInvoiceSendProcessor(
         {
             if (session is not null)
                 await CloseQuietlyAsync(session);
+        }
+    }
+
+    /// <summary>Logs in and caches the token; on failure reschedules or rejects the given invoices and returns null.</summary>
+    private async Task<string?> AuthenticateAsync(Tenant tenant, string environment, KSeFCredential credential, List<IssuedInvoice> invoices, CancellationToken ksef, CancellationToken ct)
+    {
+        try
+        {
+            return await LoginAsync(tenant, environment, credential, ksef);
+        }
+        catch (KSeFAuthRejectedException e)
+        {
+            logger.LogWarning("KSeF rejected the {CredentialType} of tenant {TenantId}: {Code} {Reason}", credential.Type, tenant.Id, e.Code, e.Message);
+            await RejectSendableAsync(invoices, e.Code, AuthRejectedMessage(credential.Type, e), e.Message, ct);
+            return null;
+        }
+        catch (StoredCertificateUnreadableException e)
+        {
+            logger.LogWarning("Stored certificate of tenant {TenantId} cannot be read: {Error}", tenant.Id, e.Message);
+            await RejectSendableAsync(invoices, null, InvalidCertificateMessage, null, ct);
+            return null;
+        }
+        catch (Exception e) when (IsTransient(e, ct))
+        {
+            await RetryAllAsync(invoices, e, ct);
+            return null;
+        }
+        catch (KsefApiException e)
+        {
+            var (code, description, details) = Describe(e);
+            await RejectSendableAsync(invoices, code, description, details, ct);
+            return null;
         }
     }
 
@@ -534,7 +554,8 @@ public sealed class IssuedInvoiceSendProcessor(
             else
             {
                 var now = Now();
-                invoice.ScheduleRetry(UnavailableMessage, now.Add(Backoff(invoice.LastError, invoice.NextAttemptAt - invoice.UpdatedAt, UnavailableMessage)), now);
+                var (lastError, delay) = schedule.GetValueOrDefault(invoice.Id, (invoice.LastError, invoice.NextAttemptAt - invoice.UpdatedAt));
+                invoice.ScheduleRetry(UnavailableMessage, now.Add(Backoff(lastError, delay, UnavailableMessage)), now);
             }
             await db.SaveChangesAsync(ct);
         }
