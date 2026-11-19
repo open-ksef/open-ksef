@@ -98,7 +98,9 @@ describe('Onboarding', () => {
   ])('shows the API 409 text as is: %s', async (error) => {
     vi.mocked(createTenant).mockRejectedValue(await normalizeError(new Response(JSON.stringify({ error }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
     await toStep2()
-    expect(vi.mocked(toast.error).mock.calls[0][0]).toBe(error)
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(error)
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(by('onboarding-claim')).not.toBeNull()
   })
 
   it('offers Przejmij firmę after a 409 and a claim opens the company', async () => {

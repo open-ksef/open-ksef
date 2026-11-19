@@ -58,9 +58,10 @@ export function OnboardingPage(): ReactElement {
       setStep(2)
     },
     onError: (err) => {
-      const taken = err instanceof ApiError && err.status === 409
-      setConflict(taken)
-      toast.error(taken ? err.message : `Błąd tworzenia firmy: ${err.message}`)
+      if (err instanceof ApiError && err.status === 409) {
+        setValidationError(err.message)
+        setConflict(true)
+      } else toast.error(`Błąd tworzenia firmy: ${err.message}`)
     },
   })
 
