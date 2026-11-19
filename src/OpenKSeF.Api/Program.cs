@@ -316,6 +316,9 @@ using (var scope = app.Services.CreateScope())
         return 1;
     }
     EmailService.WarnIfPlaintextAuth(scope.ServiceProvider.GetRequiredService<IOptions<EmailOptions>>().Value, startupLogger);
+    if (app.Configuration.GetValue<bool>("Auth:AcceptAccountAudience"))
+        startupLogger.LogWarning(
+            "Auth:AcceptAccountAudience is true: the API accepts access tokens without the openksef-api audience. It is a recovery setting; remove Auth__AcceptAccountAudience once both Keycloak clients put openksef-api in the token audience. See docs/admin-setup.md#token-audience-upgrade.");
 }
 
 var systemConfig = app.Services.GetRequiredService<ISystemConfigService>();
