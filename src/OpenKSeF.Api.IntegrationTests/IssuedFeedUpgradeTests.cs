@@ -89,7 +89,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
 
     private static KSeFInvoiceHeader Sale(
         string number,
-        string? buyerNip = "5261040828",
+        string? buyerNip = "3333333333",
         string buyerIdType = "Nip",
         string? buyerForeignId = null,
         string vendorName = "Moja firma",
@@ -98,7 +98,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
         BuyerIdType: buyerIdType, BuyerForeignId: buyerForeignId);
 
     private static KSeFInvoiceHeader Bought(string number) => new(
-        number, "FV 1/2026", "5261040828", "Dostawca", TenantNip, "Moja firma", 100m, 23m, 123m, "PLN", Issued, Issued, "Vat",
+        number, "FV 1/2026", "3333333333", "Dostawca", TenantNip, "Moja firma", 100m, 23m, 123m, "PLN", Issued, Issued, "Vat",
         BuyerIdType: "Nip");
 
     private async Task MigrateAndSeedExistingTenantAsync()
@@ -136,7 +136,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
     private Task InsertOldRowAsync(ApplicationDbContext db, Guid id, string number, bool isPaid, DateTime? paidAt, DateOnly? dueDate, string? account) =>
         db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "InvoiceHeaders" ("Id", "TenantId", "KSeFInvoiceNumber", "KSeFReferenceNumber", "InvoiceNumber", "VendorName", "VendorNip", "AmountNet", "AmountVat", "AmountGross", "IssueDate", "FirstSeenAt", "LastUpdatedAt", "IsPaid", "PaidAt", "DueDate", "VendorBankAccount")
-            VALUES ({id}, {_tenantId}, {number}, {number}, 'FV 1/2026', 'Dostawca', '5261040828', 100, 23, 123, {Issued}, {Issued}, {Issued}, {isPaid}, {paidAt}, {dueDate}, {account})
+            VALUES ({id}, {_tenantId}, {number}, {number}, 'FV 1/2026', 'Dostawca', '3333333333', 100, 23, 123, {Issued}, {Issued}, {Issued}, {isPaid}, {paidAt}, {dueDate}, {account})
             """);
 
     private sealed record RowSnapshot(Guid Id, string Number, bool IsPaid, DateTime? PaidAt, DateOnly? DueDate, string? VendorBankAccount, int LineCount, string VendorName, decimal AmountGross, DateTime LastUpdatedAt);
@@ -248,7 +248,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
             {
                 Id = secondTenantId,
                 UserId = "user-2",
-                Nip = "5261040828",
+                Nip = "3333333333",
                 CreatedAt = now,
                 UpdatedAt = now,
                 KSeFCredentials = [new KSeFCredential { Id = Guid.NewGuid(), TenantId = secondTenantId, EncryptedToken = "encrypted", CreatedAt = now, UpdatedAt = now }]

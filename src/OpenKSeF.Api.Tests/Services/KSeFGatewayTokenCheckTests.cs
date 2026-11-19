@@ -57,7 +57,7 @@ public class KSeFGatewayTokenCheckTests
     [Theory]
     [InlineData(AuthenticationKsefTokenStatus.Revoked, Nip)]
     [InlineData(AuthenticationKsefTokenStatus.Pending, Nip)]
-    [InlineData(AuthenticationKsefTokenStatus.Active, "5261040828")]
+    [InlineData(AuthenticationKsefTokenStatus.Active, "3333333333")]
     public async Task InactiveOrOtherContext_Null_ClosesSession(AuthenticationKsefTokenStatus status, string context)
     {
         Meta(status, context, KsefTokenPermissionType.CredentialsManage);

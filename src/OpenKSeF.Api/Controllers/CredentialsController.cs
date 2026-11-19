@@ -171,7 +171,7 @@ public class CredentialsController : ControllerBase
             {
                 await _db.SaveChangesAsync();
                 _logger.LogInformation("KSeF credential created for tenant {TenantId} (type: {Type})", tenantId, request.Type);
-                return Ok(new { message = "Credential saved." });
+                return Ok(new { message = "Zapisano dane logowania do KSeF." });
             }
             catch (DbUpdateException e) when (IssuedInvoiceService.IsUniqueViolation(e))
             {
@@ -188,7 +188,7 @@ public class CredentialsController : ControllerBase
         await TenantAudit.AddAsync(_db, tenantId, _currentUser.UserId, AuditEvent.CredentialSet, request.Type.ToString());
         await _db.SaveChangesAsync();
         _logger.LogInformation("KSeF credential updated for tenant {TenantId} (type: {Type})", tenantId, request.Type);
-        return Ok(new { message = "Credential saved." });
+        return Ok(new { message = "Zapisano dane logowania do KSeF." });
     }
 
     [HttpDelete]
@@ -337,7 +337,7 @@ public class CredentialsController : ControllerBase
         TenantSyncOutcome.TenantNotFound => NotFound(),
         TenantSyncOutcome.StoreFailed or TenantSyncOutcome.MissingCredential or TenantSyncOutcome.Failed or TenantSyncOutcome.Busy =>
             StatusCode(ErrorStatus(result.Outcome), new { error = result.ErrorMessage }),
-        _ => StatusCode(StatusCodes.Status500InternalServerError, new { error = "Unknown sync outcome." })
+        _ => StatusCode(StatusCodes.Status500InternalServerError, new { error = "Nieznany wynik synchronizacji." })
     };
 
     private static TenantManualSyncResponse ToResponse(TenantSyncResult result) => new(

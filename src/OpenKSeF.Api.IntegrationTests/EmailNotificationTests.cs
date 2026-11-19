@@ -319,7 +319,11 @@ public sealed class EmailNotificationTests : IAsyncLifetime
         if (expectedSent == invoices.Count)
             Assert.Empty(skipped);
         else
-            Assert.Contains($"skipped for {invoices.Count - expectedSent} stored invoices", Assert.Single(skipped).Text);
+        {
+            var warning = Assert.Single(skipped);
+            Assert.Equal(LogLevel.Warning, warning.Level);
+            Assert.Contains($"skipped for {invoices.Count - expectedSent} stored invoices", warning.Text);
+        }
         await using (var check = NewContext())
         {
             var stored = await check.InvoiceHeaders.Where(i => i.TenantId == _tenantA).ToListAsync();
@@ -364,7 +368,7 @@ public sealed class EmailNotificationTests : IAsyncLifetime
 
         Assert.Equal(5, push.Sent.Count);
         Assert.Equal(5, (await Mailpit.MessagesAsync(_mailpit)).Count);
-        Assert.Contains("skipped for 3 stored invoices", Assert.Single(log, e => e.Category == nameof(InvoiceService) && e.Text.Contains("notifications skipped")).Text);
+        Assert.Contains("skipped for 3 stored invoices", Assert.Single(log, e => e.Category == nameof(InvoiceService) && e.Level == LogLevel.Warning && e.Text.Contains("notifications skipped")).Text);
 
         _received = c => c.SubjectNip == NipA && c.PageOffset < 2 ? Page(c.PageOffset == 0 ? page1 : page2) : Page([]);
         await using (var db = NewContext())

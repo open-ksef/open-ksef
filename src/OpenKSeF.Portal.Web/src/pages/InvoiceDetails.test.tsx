@@ -486,8 +486,8 @@ describe('InvoiceDetailsPage', () => {
 
   describe('buyer id', () => {
     it.each([
-      ['Nip', '5260250274', null, 'NIP nabywcy', '5260250274'],
-      [null, '5260250274', null, 'NIP nabywcy', '5260250274'],
+      ['Nip', '4444444444', null, 'NIP nabywcy', '4444444444'],
+      [null, '4444444444', null, 'NIP nabywcy', '4444444444'],
       ['VatUe', null, 'DE123456789', 'VAT UE', 'DE123456789'],
       ['Other', null, 'GB-998877', 'Nr podatkowy', 'GB-998877'],
     ])('type %s is labelled by its type', async (buyerIdType, buyerNip, buyerForeignId, label, value) => {

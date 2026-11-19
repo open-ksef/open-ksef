@@ -222,7 +222,7 @@ describe('issuing endpoints', () => {
       cashAccounting: false,
       numberingPattern: 'FV/{nr}/{RRRR}',
     })
-    await lookupNip('5260250274')
+    await lookupNip('4444444444')
 
     expect(apiClientMock.get.mock.calls).toEqual([
       ['/tenants/t-1/issued-invoices', { query: { page: 1, pageSize: 20, status: 'Draft' } }],
@@ -231,7 +231,7 @@ describe('issuing endpoints', () => {
       ['/tenants/t-1/issued-invoices/i-1/xml'],
       ['/tenants/t-1/issued-invoices/i-1/upo'],
       ['/tenants/t-1/seller-profile'],
-      ['/nip-lookup/5260250274'],
+      ['/nip-lookup/4444444444'],
     ])
     expect(apiClientMock.post.mock.calls).toEqual([
       ['/tenants/t-1/issued-invoices', draft],
@@ -250,8 +250,10 @@ describe('issuing endpoints', () => {
     expect(apiClientMock.delete).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1', { query: { version: 7 } })
     expect(apiClientMock.post).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1/issue', undefined, { query: { version: 7 } })
 
-    await issued.issueIssuedInvoice('t-1', 'i-1', 7, true)
-    expect(apiClientMock.post).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1/issue', undefined, { query: { version: 7, confirmPastIssueDate: true } })
+    await issued.issueIssuedInvoice('t-1', 'i-1', 7, 4, true)
+    expect(apiClientMock.post).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1/issue', undefined, {
+      query: { version: 7, sellerVersion: 4, confirmPastIssueDate: true },
+    })
   })
 })
 
@@ -331,7 +333,7 @@ describe('manual sync endpoints', () => {
 
   it('maps a failed run with errorStatus 409 to ApiError 409', async () => {
     const { forceCredentialSync } = await import('./credentials')
-    apiClientMock.post.mockResolvedValueOnce(status('failed', { errorStatus: 409, error: 'No credential configured for this tenant.' }))
+    apiClientMock.post.mockResolvedValueOnce(status('failed', { errorStatus: 409, error: 'Brak tokenu lub certyfikatu KSeF dla tej firmy. Dodaj go w ustawieniach firmy.' }))
 
     await expect(forceCredentialSync('tenant-1')).rejects.toMatchObject({ status: 409 })
   })

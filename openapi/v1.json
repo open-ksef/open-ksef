@@ -948,6 +948,10 @@
           "seller": {
             "$ref": "#/components/schemas/IssuedInvoiceSellerResponse"
           },
+          "sellerVersion": {
+            "format": "int64",
+            "type": "integer"
+          },
           "splitPayment": {
             "type": "boolean"
           },
@@ -979,7 +983,7 @@
             "type": "array"
           },
           "version": {
-            "format": "int32",
+            "format": "int64",
             "type": "integer"
           },
           "warnings": {
@@ -6496,7 +6500,7 @@
             "in": "query",
             "name": "version",
             "schema": {
-              "format": "int32",
+              "format": "int64",
               "type": "integer"
             }
           }
@@ -6641,7 +6645,7 @@
             "in": "query",
             "name": "version",
             "schema": {
-              "format": "int32",
+              "format": "int64",
               "type": "integer"
             }
           }
@@ -6886,7 +6890,7 @@
             "in": "query",
             "name": "version",
             "schema": {
-              "format": "int32",
+              "format": "int64",
               "type": "integer"
             }
           },
@@ -6896,6 +6900,14 @@
             "schema": {
               "default": false,
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sellerVersion",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
             }
           }
         ],

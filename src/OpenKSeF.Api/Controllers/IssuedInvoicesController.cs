@@ -177,10 +177,10 @@ public class IssuedInvoicesController(
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public Task<IActionResult> Issue(Guid tenantId, Guid id, [FromQuery] uint? version, CancellationToken ct, [FromQuery] bool confirmPastIssueDate = false) =>
+    public Task<IActionResult> Issue(Guid tenantId, Guid id, [FromQuery] uint? version, CancellationToken ct, [FromQuery] bool confirmPastIssueDate = false, [FromQuery] uint? sellerVersion = null) =>
         GuardedAsync(StatusCodes.Status422UnprocessableEntity, async () =>
         {
-            if (await issuedInvoices.IssueAsync(tenantId, id, version, confirmPastIssueDate, ct) is not { } result)
+            if (await issuedInvoices.IssueAsync(tenantId, id, version, confirmPastIssueDate, sellerVersion, ct) is not { } result)
                 return NotFound();
 
             var response = ToResponse(result.View);
@@ -249,7 +249,7 @@ public class IssuedInvoicesController(
         }
         catch (InvoiceStateException e)
         {
-            return Conflict(new { message = e.Message });
+            return e.Code is null ? Conflict(new { message = e.Message }) : Conflict(new { message = e.Message, code = e.Code });
         }
     }
 
@@ -317,6 +317,7 @@ public class IssuedInvoicesController(
             invoice.IssuedAt,
             invoice.ExchangeRate,
             invoice.ExchangeRateDate,
-            view.Version);
+            view.Version,
+            view.SellerVersion);
     }
 }

@@ -13,10 +13,10 @@ namespace OpenKSeF.Api.Tests.Services;
 
 public class WhiteListClientTests
 {
-    private const string Nip = "5261040828";
+    private const string Nip = "3333333333";
 
     private const string FoundJson = """
-        {"result":{"subject":{"name":"GŁÓWNY URZĄD STATYSTYCZNY","nip":"5261040828","statusVat":"Czynny",
+        {"result":{"subject":{"name":"GŁÓWNY URZĄD STATYSTYCZNY","nip":"3333333333","statusVat":"Czynny",
         "residenceAddress":"ALEJA NIEPODLEGŁOŚCI 208, 00-925 WARSZAWA","workingAddress":null,
         "accountNumbers":["79101010100024791398000000","31101010100024791391200000"]},"requestId":"x"}}
         """;
@@ -64,7 +64,7 @@ public class WhiteListClientTests
         Assert.Equal("00-925 WARSZAWA", result.AddressLine2);
         Assert.Equal("Czynny", result.VatStatus);
         Assert.Equal(2, result.BankAccounts.Count);
-        Assert.Equal("https://wl-api.mf.gov.pl/api/search/nip/5261040828?date=2026-10-31", Assert.Single(handler.Requests).ToString());
+        Assert.Equal("https://wl-api.mf.gov.pl/api/search/nip/3333333333?date=2026-10-31", Assert.Single(handler.Requests).ToString());
     }
 
     [Fact]
@@ -147,8 +147,8 @@ public class WhiteListClientTests
     [Fact]
     public async Task Controller_Found_Returns200_NotFound_Returns404_Down_Returns503()
     {
-        var found = await new NipLookupController(Create(_ => Json(HttpStatusCode.OK, FoundJson)).Client).Get("526-104-08-28", CancellationToken.None);
-        Assert.Equal("5261040828", Assert.IsType<NipLookupResponse>(Assert.IsType<OkObjectResult>(found).Value).Nip);
+        var found = await new NipLookupController(Create(_ => Json(HttpStatusCode.OK, FoundJson)).Client).Get("333-333-33-33", CancellationToken.None);
+        Assert.Equal("3333333333", Assert.IsType<NipLookupResponse>(Assert.IsType<OkObjectResult>(found).Value).Nip);
 
         var missing = await new NipLookupController(Create(_ => Json(HttpStatusCode.OK, """{"result":{"subject":null}}""")).Client).Get(Nip, CancellationToken.None);
         Assert.IsType<NotFoundObjectResult>(missing);

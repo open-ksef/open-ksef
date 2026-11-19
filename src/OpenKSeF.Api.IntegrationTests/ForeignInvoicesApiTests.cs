@@ -371,7 +371,7 @@ public class ForeignInvoicesApiTests : IDisposable
         var tenantId = await CreateTenantAsync();
         await CreateAsync(tenantId, ForeignDraft("GB", "GB-TEST-1", exchangeRate: 5.5m));
         await CreateAsync(tenantId, new IssuedInvoiceDraftRequest(
-            new IssuedInvoiceBuyerModel("Company", "5261040828", "Nabywca", "ul. Krótka 2", null),
+            new IssuedInvoiceBuyerModel("Company", "3333333333", "Nabywca", "ul. Krótka 2", null),
             DateOnly.Parse(IssueDay), DateOnly.Parse(IssueDay), DateOnly.Parse(IssueDay).AddDays(14),
             "Transfer", false, null, [new IssuedInvoiceLineRequest("Usługa", "szt.", 1, 100m, "23")]));
 
@@ -390,7 +390,7 @@ public class ForeignInvoicesApiTests : IDisposable
         Assert.Equal("GB", listRow.BuyerCountryCode);
         Assert.Equal("Other", listRow.BuyerIdType);
         Assert.Equal("GB-TEST-1", listRow.BuyerForeignId);
-        Assert.Equal("PLN", list.Items.Single(i => i.BuyerNip == "5261040828").Currency);
+        Assert.Equal("PLN", list.Items.Single(i => i.BuyerNip == "3333333333").Currency);
 
         var found = (await _client.GetFromJsonAsync<PagedResult<IssuedInvoiceListItemResponse>>($"{Base(tenantId)}?q=gb-test"))!;
         Assert.Equal("GBP", Assert.Single(found.Items).Currency);

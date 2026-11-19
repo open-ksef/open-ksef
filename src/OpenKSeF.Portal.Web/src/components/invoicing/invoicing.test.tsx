@@ -86,12 +86,12 @@ describe('issuing components', () => {
   it('NipLookupField shows the loading state and blocks a second lookup', async () => {
     let finish: (value: NipLookupResponse) => void = () => {}
     vi.mocked(lookupNip).mockReturnValue(new Promise((resolve) => (finish = resolve)))
-    await render(<NipLookupField id="nip" value="5260250274" onChange={() => {}} onFound={() => {}} />)
+    await render(<NipLookupField id="nip" value="4444444444" onChange={() => {}} onFound={() => {}} />)
     const button = container.querySelector('button')!
     await act(async () => button.click())
     expect(button.getAttribute('aria-busy')).toBe('true')
     expect(button.disabled).toBe(true)
-    await act(async () => finish({ nip: '5260250274', name: 'F', addressLine1: null, addressLine2: null, vatStatus: 'Zwolniony', bankAccounts: [] }))
+    await act(async () => finish({ nip: '4444444444', name: 'F', addressLine1: null, addressLine2: null, vatStatus: 'Zwolniony', bankAccounts: [] }))
     expect(button.disabled).toBe(false)
     expect(container.textContent).toContain('Zwolniony')
   })
@@ -101,9 +101,9 @@ describe('issuing components', () => {
     [true, 'Firma z listy'],
   ])('BuyerSection lookup over typed data asks first, confirmed %s', async (confirmed, expected) => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(confirmed)
-    vi.mocked(lookupNip).mockResolvedValue({ nip: '5260250274', name: 'Firma z listy', addressLine1: 'ul. A', addressLine2: '00-001 B', vatStatus: 'Czynny', bankAccounts: [] })
+    vi.mocked(lookupNip).mockResolvedValue({ nip: '4444444444', name: 'Firma z listy', addressLine1: 'ul. A', addressLine2: '00-001 B', vatStatus: 'Czynny', bankAccounts: [] })
     function Harness(): ReactElement {
-      const [buyer, setBuyer] = useState<BuyerFormValue>({ ...emptyDraft().buyer, kind: 'Company', nip: '5260250274', name: 'Wpisana nazwa', addressLine1: '', addressLine2: '' })
+      const [buyer, setBuyer] = useState<BuyerFormValue>({ ...emptyDraft().buyer, kind: 'Company', nip: '4444444444', name: 'Wpisana nazwa', addressLine1: '', addressLine2: '' })
       return <BuyerSection value={buyer} onChange={setBuyer} />
     }
     await render(<Harness />)
@@ -116,9 +116,9 @@ describe('issuing components', () => {
 
   it('BuyerSection fills empty fields without asking', async () => {
     const confirm = vi.spyOn(window, 'confirm')
-    vi.mocked(lookupNip).mockResolvedValue({ nip: '5260250274', name: 'Firma z listy', addressLine1: null, addressLine2: null, vatStatus: 'Czynny', bankAccounts: [] })
+    vi.mocked(lookupNip).mockResolvedValue({ nip: '4444444444', name: 'Firma z listy', addressLine1: null, addressLine2: null, vatStatus: 'Czynny', bankAccounts: [] })
     function Harness(): ReactElement {
-      const [buyer, setBuyer] = useState<BuyerFormValue>({ ...emptyDraft().buyer, kind: 'Company', nip: '5260250274', name: '', addressLine1: '', addressLine2: '' })
+      const [buyer, setBuyer] = useState<BuyerFormValue>({ ...emptyDraft().buyer, kind: 'Company', nip: '4444444444', name: '', addressLine1: '', addressLine2: '' })
       return <BuyerSection value={buyer} onChange={setBuyer} />
     }
     await render(<Harness />)
@@ -137,16 +137,16 @@ describe('issuing components', () => {
   it('NipLookupField passes the result on success', async () => {
     const onFound = vi.fn()
     vi.mocked(lookupNip).mockResolvedValue({
-      nip: '5260250274',
+      nip: '4444444444',
       name: 'Firma',
       addressLine1: 'ul. Prosta 1',
       addressLine2: '00-001 Warszawa',
       vatStatus: 'Czynny',
       bankAccounts: [],
     })
-    await render(<NipLookupField id="nip" value="5260250274" onChange={() => {}} onFound={onFound} />)
+    await render(<NipLookupField id="nip" value="4444444444" onChange={() => {}} onFound={onFound} />)
     await act(async () => container.querySelector('button')!.click())
-    expect(lookupNip).toHaveBeenCalledWith('5260250274')
+    expect(lookupNip).toHaveBeenCalledWith('4444444444')
     expect(onFound).toHaveBeenCalledWith(expect.objectContaining({ name: 'Firma' }))
     expect(container.textContent).toContain('Czynny podatnik VAT')
   })
@@ -157,7 +157,7 @@ describe('issuing components', () => {
   ])('NipLookupField keeps manual entry on %i', async (status, message) => {
     const onFound = vi.fn()
     vi.mocked(lookupNip).mockRejectedValue(new ApiError('x', status))
-    await render(<NipLookupField id="nip" value="5260250274" onChange={() => {}} onFound={onFound} />)
+    await render(<NipLookupField id="nip" value="4444444444" onChange={() => {}} onFound={onFound} />)
     await act(async () => container.querySelector('button')!.click())
     expect(onFound).not.toHaveBeenCalled()
     expect(container.textContent).toContain(message)

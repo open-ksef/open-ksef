@@ -58,7 +58,7 @@ const profile: SellerProfileResponse = {
   numberingPattern: 'FV/{nr}/{MM}/{RRRR}',
   nextNumber: 1,
   nextNumberPeriod: '2026-11',
-  nip: '5260250274',
+  nip: '4444444444',
   isComplete: true,
   nextNumberPreview: 'FV/1/11/2026',
   ksefEnvironment: 'test',
@@ -88,7 +88,7 @@ const invoice = (patch: Partial<IssuedInvoiceResponse> = {}): IssuedInvoiceRespo
   id: 'i-1',
   status: 'Draft',
   number: null,
-  seller: { nip: '5260250274', name: 'Sprzedawca', addressLine1: 'a', addressLine2: 'b', bankAccount: null, cashAccounting: false, iban: 'GB82WEST12345698765432', swift: 'TESTGB2L', bankName: 'Bank Próbny' },
+  seller: { nip: '4444444444', name: 'Sprzedawca', addressLine1: 'a', addressLine2: 'b', bankAccount: null, cashAccounting: false, iban: 'GB82WEST12345698765432', swift: 'TESTGB2L', bankName: 'Bank Próbny' },
   buyer: { kind: 'Foreign', nip: null, name: 'Example Ltd', addressLine1: '1 Sample Street', addressLine2: 'London', countryCode: 'GB', idType: 'Other', foreignId: 'GB-123' },
   issueDate: '2026-11-03',
   saleDate: '2026-11-03',
@@ -108,6 +108,7 @@ const invoice = (patch: Partial<IssuedInvoiceResponse> = {}): IssuedInvoiceRespo
   updatedAt: '2026-11-03T10:00:00Z',
   issuedAt: null,
   version: 5,
+  sellerVersion: 3,
   exchangeRate: 5.1,
   exchangeRateDate: '2026-11-02',
   ...patch,
@@ -115,7 +116,7 @@ const invoice = (patch: Partial<IssuedInvoiceResponse> = {}): IssuedInvoiceRespo
 
 const printXml = `<?xml version="1.0" encoding="UTF-8"?>
 <Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/">
-  <Podmiot1><DaneIdentyfikacyjne><NIP>5260250274</NIP><Nazwa>Sprzedawca</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>PL</KodKraju><AdresL1>a</AdresL1></Adres></Podmiot1>
+  <Podmiot1><DaneIdentyfikacyjne><NIP>4444444444</NIP><Nazwa>Sprzedawca</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>PL</KodKraju><AdresL1>a</AdresL1></Adres></Podmiot1>
   <Podmiot2><DaneIdentyfikacyjne><BrakID>1</BrakID><Nazwa>Example Ltd</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>GB</KodKraju><AdresL1>b</AdresL1></Adres></Podmiot2>
   <Fa><KodWaluty>GBP</KodWaluty><P_1>2026-11-03</P_1><P_2>FV/7/11/2026</P_2><P_15>100.00</P_15><Adnotacje><P_18>1</P_18></Adnotacje>
     <FaWiersz><NrWierszaFa>1</NrWierszaFa><P_7>Usługa</P_7><P_8A>szt.</P_8A><P_8B>1</P_8B><P_9A>100.00</P_9A><P_11>100.00</P_11><P_12>np I</P_12></FaWiersz></Fa>
@@ -165,7 +166,7 @@ describe('foreign invoices in the portal', () => {
     root = createRoot(container)
     vi.clearAllMocks()
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '4444444444', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     vi.mocked(getSellerProfile).mockResolvedValue(profile)
     vi.mocked(getExchangeRateProposal).mockImplementation(async (_tenant, query) => ({ currency: query.currency, rate: 5.1234, tableDate: '2026-11-02' }))
@@ -660,7 +661,7 @@ describe('foreign invoices in the portal', () => {
     it('AC10: a domestic accepted invoice keeps one Pobierz PDF', async () => {
       vi.mocked(getIssuedInvoice).mockResolvedValue(
         accepted({
-          buyer: { kind: 'Company', nip: '5260250274', name: 'Nabywca', addressLine1: 'a', addressLine2: 'b' },
+          buyer: { kind: 'Company', nip: '4444444444', name: 'Nabywca', addressLine1: 'a', addressLine2: 'b' },
           currency: 'PLN',
           exchangeRate: null,
           exchangeRateDate: null,

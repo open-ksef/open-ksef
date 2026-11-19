@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 
 import { buildPrintDocument, formatPrintNumber, splitItemName } from './bilingualPrint'
 
-const URL = 'https://qr-test.ksef.mf.gov.pl/invoice/5260250274/03-11-2026/abc'
-const KSEF = '5260250274-20261103-ABC-01'
+const URL = 'https://qr-test.ksef.mf.gov.pl/invoice/4444444444/03-11-2026/abc'
+const KSEF = '4444444444-20261103-ABC-01'
 
 interface InvoiceOptions {
   sellerPrefix?: string
@@ -36,7 +36,7 @@ const xmlFor = ({
   amount = '2350.50',
 }: InvoiceOptions = {}): string => `<?xml version="1.0" encoding="UTF-8"?>
 <Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/">
-  <Podmiot1>${sellerPrefix}<DaneIdentyfikacyjne><NIP>5260250274</NIP><Nazwa>Sprzedawca Żółty</Nazwa></DaneIdentyfikacyjne>
+  <Podmiot1>${sellerPrefix}<DaneIdentyfikacyjne><NIP>4444444444</NIP><Nazwa>Sprzedawca Żółty</Nazwa></DaneIdentyfikacyjne>
     <Adres><KodKraju>PL</KodKraju><AdresL1>ul. Prosta 1</AdresL1><AdresL2>00-001 Warszawa</AdresL2></Adres></Podmiot1>
   <Podmiot2><DaneIdentyfikacyjne>${buyerId}<Nazwa>Example Ltd</Nazwa></DaneIdentyfikacyjne>
     <Adres><KodKraju>${country}</KodKraju><AdresL1>1 Sample Street</AdresL1><AdresL2>London</AdresL2></Adres></Podmiot2>
@@ -150,7 +150,7 @@ describe('buildPrintDocument', () => {
   it('AC5: BrakID prints no tax number, EU prints KodUE + NrVatUE and PL + NIP', () => {
     expect(has(texts(xmlFor()), 'Tax number')).toBe(false)
     expect(has(texts(xmlFor()), 'EU VAT number')).toBe(false)
-    expect(has(texts(xmlFor()), '5260250274')).toBe(true)
+    expect(has(texts(xmlFor()), '4444444444')).toBe(true)
 
     const eu = texts(
       xmlFor({
@@ -163,7 +163,7 @@ describe('buildPrintDocument', () => {
     )
     expect(has(eu, 'EU VAT number')).toBe(true)
     expect(has(eu, 'DE123456789')).toBe(true)
-    expect(has(eu, 'PL5260250274')).toBe(true)
+    expect(has(eu, 'PL4444444444')).toBe(true)
 
     const third = texts(xmlFor({ buyerId: '<KodKraju>GB</KodKraju><NrID>GB-123</NrID>' }))
     expect(has(third, 'Tax number')).toBe(true)

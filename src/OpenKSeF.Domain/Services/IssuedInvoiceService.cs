@@ -19,6 +19,8 @@ public class IssuedInvoiceService(
     TimeProvider timeProvider) : IIssuedInvoiceService
 {
     private const string ConcurrentChangeMessage = "Faktura została równocześnie zmieniona, odśwież stronę";
+    public const string SellerChangedCode = "INV-SELLER-CHANGED";
+    public const string SellerChangedMessage = "Dane sprzedawcy zostały zmienione po otwarciu potwierdzenia. Sprawdź je i potwierdź wystawienie ponownie.";
 
     private const int MaxLines = 1000;
     private const int MaxTextLength = 512;
@@ -248,7 +250,7 @@ public class IssuedInvoiceService(
         return true;
     }
 
-    public async Task<(IssuedInvoiceView View, bool Issued)?> IssueAsync(Guid tenantId, Guid id, uint? expectedVersion = null, bool confirmPastIssueDate = false, CancellationToken ct = default)
+    public async Task<(IssuedInvoiceView View, bool Issued)?> IssueAsync(Guid tenantId, Guid id, uint? expectedVersion = null, bool confirmPastIssueDate = false, uint? expectedSellerVersion = null, CancellationToken ct = default)
     {
         var invoice = await LoadAsync(tenantId, id, ct);
         if (invoice is null)
@@ -258,6 +260,8 @@ public class IssuedInvoiceService(
         EnsureVersion(invoice, expectedVersion);
 
         var profile = await db.SellerProfiles.SingleOrDefaultAsync(p => p.TenantId == tenantId, ct) ?? new SellerProfile(tenantId);
+        if (expectedSellerVersion is { } sellerVersion && sellerVersion != SellerVersionOf(profile))
+            throw new InvoiceStateException(SellerChangedMessage, SellerChangedCode);
         var sellerNip = await db.Tenants.Where(t => t.Id == tenantId).Select(t => t.Nip).SingleOrDefaultAsync(ct);
         if (sellerNip is null)
             return null;
@@ -477,6 +481,9 @@ public class IssuedInvoiceService(
 
     private uint VersionOf(IssuedInvoice invoice) => db.Entry(invoice).Property<uint>("Version").CurrentValue;
 
+    private uint SellerVersionOf(SellerProfile profile) =>
+        db.Entry(profile).State == EntityState.Detached ? 0 : db.Entry(profile).Property<uint>("Version").CurrentValue;
+
     private void EnsureVersion(IssuedInvoice invoice, uint? expected)
     {
         if (expected is { } version && version != VersionOf(invoice))
@@ -506,11 +513,15 @@ public class IssuedInvoiceService(
         }
 
         var nip = await db.Tenants.Where(t => t.Id == invoice.TenantId).Select(t => t.Nip).SingleAsync(ct);
-        var profile = await db.SellerProfiles.AsNoTracking().SingleOrDefaultAsync(p => p.TenantId == invoice.TenantId, ct);
+        var row = await db.SellerProfiles.AsNoTracking()
+            .Where(p => p.TenantId == invoice.TenantId)
+            .Select(p => new { Profile = p, Version = EF.Property<uint>(p, "Version") })
+            .SingleOrDefaultAsync(ct);
+        var profile = row?.Profile;
         var account = profile?.PaymentAccountFor(invoice.BuyerKind);
         var seller = new IssuedInvoiceSeller(nip, profile?.LegalName, profile?.AddressLine1, profile?.AddressLine2, account?.BankAccount, profile?.CashAccounting ?? false,
             account?.Iban, account?.Swift, account?.BankName);
-        return new IssuedInvoiceView(invoice, seller, environment.Current, IssueChecks.Warnings(invoice), VersionOf(invoice));
+        return new IssuedInvoiceView(invoice, seller, environment.Current, IssueChecks.Warnings(invoice), VersionOf(invoice), row?.Version ?? 0);
     }
 
     private DateOnly Today() => IssuedInvoice.PolandDate(timeProvider.GetUtcNow());

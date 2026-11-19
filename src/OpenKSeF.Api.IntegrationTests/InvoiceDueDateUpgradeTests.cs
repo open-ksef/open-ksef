@@ -59,7 +59,7 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
         {
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO "InvoiceHeaders" ("Id", "TenantId", "KSeFInvoiceNumber", "KSeFReferenceNumber", "VendorName", "VendorNip", "AmountNet", "AmountVat", "AmountGross", "IssueDate", "FirstSeenAt", "LastUpdatedAt", "IsPaid", "PaidAt", "VendorBankAccount")
-                VALUES ({Guid.NewGuid()}, {_tenantId}, {number}, {number}, 'Dostawca', '5261040828', 100, 23, 123, {Issued}, {now}, {now}, {isPaid}, {paidAt}, {Account})
+                VALUES ({Guid.NewGuid()}, {_tenantId}, {number}, {number}, 'Dostawca', '3333333333', 100, 23, 123, {Issued}, {now}, {now}, {isPaid}, {paidAt}, {Account})
                 """);
         }
     }
@@ -78,7 +78,7 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
         $"""<Faktura xmlns="{Fa3}"><Fa><Platnosc><TerminPlatnosci><Termin>{date}</Termin></TerminPlatnosci><RachunekBankowy><NrRB>{Account}</NrRB></RachunekBankowy></Platnosc><FaWiersz><NrWierszaFa>1</NrWierszaFa><P_7>Towar</P_7><P_11>100</P_11><P_12>23</P_12></FaWiersz></Fa></Faktura>""");
 
     private static KSeFInvoiceHeader Header(string number) => new(
-        number, "FV 1/2026", "5261040828", "Dostawca", null, null, 100m, 23m, 123m, "PLN", Issued, Issued, "Vat");
+        number, "FV 1/2026", "3333333333", "Dostawca", null, null, 100m, 23m, 123m, "PLN", Issued, Issued, "Vat");
 
     [Fact]
     public async Task FullResync_FillsDatesOfPaidAndUnpaidRows_KeepsPaidMarks_ReportsFailedDownload()

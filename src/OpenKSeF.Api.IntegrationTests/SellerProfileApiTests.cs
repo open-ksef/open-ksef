@@ -181,7 +181,7 @@ public class SellerProfileApiTests : IDisposable
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            db.Tenants.Add(new Tenant { Id = otherTenantId, UserId = "someone-else", Nip = "5261040828", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            db.Tenants.Add(new Tenant { Id = otherTenantId, UserId = "someone-else", Nip = "3333333333", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
             await db.SaveChangesAsync();
         }
 
@@ -293,9 +293,9 @@ public class SellerProfileApiTests : IDisposable
     {
         var profile = await db.SellerProfiles.SingleAsync(p => p.TenantId == tenantId);
         var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, new DateOnly(2026, 11, 1), DateTime.UtcNow);
-        invoice.SetBuyer(BuyerKind.Company, "5261040828", "Nabywca", "ul. Krótka 2", null);
+        invoice.SetBuyer(BuyerKind.Company, "3333333333", "Nabywca", "ul. Krótka 2", null);
         invoice.ReplaceLines([("Usługa", "szt.", 1m, 100m, VatRate.Rate23)]);
-        invoice.Issue(profile, "5261040828", number, DateTime.UtcNow);
+        invoice.Issue(profile, "3333333333", number, DateTime.UtcNow);
         db.IssuedInvoices.Add(invoice);
         await db.SaveChangesAsync();
     }

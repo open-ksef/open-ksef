@@ -43,7 +43,7 @@ const profile: SellerProfileResponse = {
   numberingPattern: 'FV/{nr}/{MM}/{RRRR}',
   nextNumber: 1,
   nextNumberPeriod: '2026-11',
-  nip: '5260250274',
+  nip: '4444444444',
   isComplete: true,
   nextNumberPreview: 'FV/1/11/2026',
   ksefEnvironment: 'test',
@@ -79,7 +79,7 @@ describe('issuing pages', () => {
     root = createRoot(container)
     vi.clearAllMocks()
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '4444444444', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     vi.mocked(getSellerProfile).mockResolvedValue(profile)
   })
@@ -145,7 +145,7 @@ describe('issuing pages', () => {
 
   it('a member without issuing.submit can draft but not send to KSeF', async () => {
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...employeeAccess, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '4444444444', displayName: 'A', notificationEmail: null, ...employeeAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     await render('/issued/new?tenantId=t-1')
     await waitFor(() => Boolean(container.querySelector('#line-0-unitNetPrice')))
@@ -233,7 +233,7 @@ describe('issuing pages', () => {
       status: 'Draft',
       currency: 'PLN',
       number: null,
-      buyer: { kind: 'Company', nip: '5260250274', name: 'Nabywca', addressLine1: 'a', addressLine2: 'b' },
+      buyer: { kind: 'Company', nip: '4444444444', name: 'Nabywca', addressLine1: 'a', addressLine2: 'b' },
       issueDate: '2026-11-01',
       saleDate: '2026-10-29',
       dueDate: '2026-11-15',
@@ -333,7 +333,7 @@ describe('issuing pages', () => {
         status: 'Draft',
         currency: 'PLN',
         number: null,
-        buyer: { kind: 'Company', nip: '5260250274', name: buyerName, addressLine1: 'a', addressLine2: 'b' },
+        buyer: { kind: 'Company', nip: '4444444444', name: buyerName, addressLine1: 'a', addressLine2: 'b' },
         issueDate: '2026-11-01',
         saleDate: '2026-11-01',
         dueDate: '2026-11-15',
@@ -341,7 +341,7 @@ describe('issuing pages', () => {
         splitPayment: false,
         exemptionBasis: null,
         lines: [{ lineNo: 1, name: 'Usługa', unit: 'szt.', quantity: 1, unitNetPrice: 100, vatRate: '23', netAmount: 100, vatAmount: 23 }],
-        seller: { nip: '5260250274', name: 'Sprzedawca', addressLine1: 'a', addressLine2: 'b', bankAccount: null, cashAccounting: false },
+        seller: { nip: '4444444444', name: 'Sprzedawca', addressLine1: 'a', addressLine2: 'b', bankAccount: null, cashAccounting: false },
         ksef: { environment },
         warnings: [],
         updatedAt: '2026-11-01T10:00:00Z',
@@ -493,7 +493,7 @@ describe('issuing pages', () => {
 
     it('a create that lands after the form was replaced under the same key does not put the new form on the created invoice', async () => {
       vi.mocked(listTenants).mockResolvedValue([
-        { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
+        { id: 't-1', nip: '4444444444', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
         { id: 't-2', nip: '1234563218', displayName: 'B', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
       ])
       let answer: (saved: IssuedInvoiceResponse) => void = () => undefined
@@ -536,8 +536,8 @@ describe('issuing pages', () => {
   it('list shows issued invoices and drafts', async () => {
     vi.mocked(listIssuedFeed).mockResolvedValue({
       items: [
-        { source: 'OpenKSeF', buyerIdType: null, buyerForeignId: null, id: 'i-1', status: 'Draft', number: null, buyerName: 'Nabywca', buyerNip: '5260250274', issueDate: '2026-11-01', dueDate: '2026-11-15', totalNet: 100, totalGross: 123, currency: 'PLN', ksefNumber: null, needsAttention: false },
-        { source: 'OpenKSeF', buyerIdType: null, buyerForeignId: null, id: 'i-2', status: 'Accepted', number: 'FV/1/11/2026', buyerName: 'Inny', buyerNip: null, issueDate: '2026-11-02', dueDate: '2026-11-16', totalNet: 12327.64, totalGross: 15162, currency: 'PLN', ksefNumber: '5260250274-20261102-ABC', needsAttention: true },
+        { source: 'OpenKSeF', buyerIdType: null, buyerForeignId: null, id: 'i-1', status: 'Draft', number: null, buyerName: 'Nabywca', buyerNip: '4444444444', issueDate: '2026-11-01', dueDate: '2026-11-15', totalNet: 100, totalGross: 123, currency: 'PLN', ksefNumber: null, needsAttention: false },
+        { source: 'OpenKSeF', buyerIdType: null, buyerForeignId: null, id: 'i-2', status: 'Accepted', number: 'FV/1/11/2026', buyerName: 'Inny', buyerNip: null, issueDate: '2026-11-02', dueDate: '2026-11-16', totalNet: 12327.64, totalGross: 15162, currency: 'PLN', ksefNumber: '4444444444-20261102-ABC', needsAttention: true },
       ],
       page: 1,
       pageSize: 20,
@@ -645,7 +645,7 @@ describe('issuing pages', () => {
 
     beforeEach(() => {
       vi.mocked(listTenants).mockResolvedValue([
-        { id: 't-1', nip: '5260250274', displayName: 'Firma A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
+        { id: 't-1', nip: '4444444444', displayName: 'Firma A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
         { id: 't-2', nip: '7740001454', displayName: 'Firma B', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
       ])
       vi.mocked(getSellerProfile).mockImplementation(async (id) => seller(id === 't-1' ? 'Sprzedawca A' : 'Sprzedawca B'))

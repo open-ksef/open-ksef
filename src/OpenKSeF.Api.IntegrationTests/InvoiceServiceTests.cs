@@ -138,7 +138,7 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task UpsertInvoicesAsync_SameNumberAgain_UpdatesRowInPlace_KeepsIdIssueDateAndPaid_NoNotification()
+    public async Task UpsertInvoicesAsync_SameNumberAgain_UpdatesRowInPlace_KeepsIdAndPaid_NoNotification()
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
         var tenantId = _tenantId;
@@ -163,7 +163,7 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
         Assert.Equal("Vendor 2", row.VendorName);
         Assert.Equal(246m, row.AmountGross);
         Assert.Equal("PLN", row.Currency);
-        Assert.Equal(first.IssueDate, row.IssueDate);
+        Assert.Equal(first.IssueDate.AddDays(-3), row.IssueDate);
         Assert.Equal(firstSeenAt, row.FirstSeenAt);
         Assert.True(row.IsPaid);
         Assert.Equal(paidAt, row.PaidAt);

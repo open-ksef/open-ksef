@@ -83,7 +83,7 @@ export async function readFieldError(error: unknown, field: string): Promise<str
 }
 
 export async function readErrorCode(error: unknown): Promise<string | null> {
-  if (!(error instanceof ApiError) || error.status !== 400 || !(error.originalError instanceof Response)) {
+  if (!(error instanceof ApiError) || (error.status !== 400 && error.status !== 409) || !(error.originalError instanceof Response)) {
     return null
   }
 

@@ -10,7 +10,7 @@ import {
   updateIssuedInvoice,
 } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
-import { ApiError, readValidationEnvelope } from '@/api/errors'
+import { ApiError, readErrorCode, readValidationEnvelope } from '@/api/errors'
 import type { IssuedInvoiceResponse, IssuedInvoiceStatus, SellerProfileResponse, ValidationIssue } from '@/api/types'
 import { can } from '@/company/CompanyContext'
 import { useCompany } from '@/company/useCompany'
@@ -198,6 +198,9 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
     }
 
     setErrors([])
+    if ((await readErrorCode(failed)) === 'INV-SELLER-CHANGED') {
+      void queryClient.invalidateQueries({ queryKey: ['seller-profile', tenantId] })
+    }
     let fresh: IssuedInvoiceResponse
     try {
       fresh = await getIssuedInvoice(tenantId, target.id)
@@ -222,7 +225,9 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
 
   const issue = useMutation({
     mutationFn: ({ target, confirmPastIssueDate }: { target: IssuedInvoiceResponse; confirmPastIssueDate?: boolean }) =>
-      confirmPastIssueDate ? issueIssuedInvoice(tenantId, target.id, target.version, true) : issueIssuedInvoice(tenantId, target.id, target.version),
+      confirmPastIssueDate
+        ? issueIssuedInvoice(tenantId, target.id, target.version, target.sellerVersion, true)
+        : issueIssuedInvoice(tenantId, target.id, target.version, target.sellerVersion),
     onSuccess: (issued) => {
       queryClient.setQueryData(['issued-invoice', tenantId, issued.id], issued)
       void queryClient.invalidateQueries({ queryKey: ['seller-profile', tenantId] })

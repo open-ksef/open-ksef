@@ -14,7 +14,7 @@ describe('computeTotals matches TotalsVectors.json', () => {
 
 describe('isValidNip', () => {
   it('accepts a correct checksum and rejects a wrong one', () => {
-    expect(isValidNip('5260250274')).toBe(true)
+    expect(isValidNip('4444444444')).toBe(true)
     expect(isValidNip('1234567890')).toBe(false)
     expect(isValidNip('526025027')).toBe(false)
   })
@@ -24,7 +24,7 @@ describe('isValidNip', () => {
   })
 
   it('gives one message for length and one for checksum', () => {
-    expect(nipError('5260250274')).toBeNull()
+    expect(nipError('4444444444')).toBeNull()
     expect(nipError('526025027')).toBe('NIP musi zawierać dokładnie 10 cyfr')
     expect(nipError('1234567890')).toBe('Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną.')
   })

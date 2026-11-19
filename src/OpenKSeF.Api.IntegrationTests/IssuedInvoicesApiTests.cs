@@ -12,6 +12,7 @@ using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Invoicing;
 using OpenKSeF.Domain.Models;
+using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync.Issuing;
 
 namespace OpenKSeF.Api.IntegrationTests;
@@ -19,7 +20,7 @@ namespace OpenKSeF.Api.IntegrationTests;
 [Collection(TestcontainersCollection.Name)]
 public class IssuedInvoicesApiTests : IDisposable
 {
-    private const string BuyerNip = "5261040828";
+    private const string BuyerNip = "3333333333";
     private const int HeapXminFrozen = 0x0300;
     private static readonly DateOnly Today = new(2026, 12, 20);
 
@@ -166,7 +167,7 @@ public class IssuedInvoicesApiTests : IDisposable
         var invoiceId = Guid.NewGuid();
         await WithDbAsync(db =>
         {
-            db.Tenants.Add(new Tenant { Id = tenantId, UserId = $"someone-else-{tenantId}", Nip = "5261040828", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            db.Tenants.Add(new Tenant { Id = tenantId, UserId = $"someone-else-{tenantId}", Nip = "3333333333", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
             var invoice = IssuedInvoice.Draft(invoiceId, tenantId, new DateOnly(2026, 11, 3), DateTime.UtcNow);
             invoice.SetBuyer(BuyerKind.Company, BuyerNip, "Cudzy nabywca", "ul. Obca 1", null);
             db.IssuedInvoices.Add(invoice);
@@ -219,6 +220,37 @@ public class IssuedInvoicesApiTests : IDisposable
 
         Assert.Equal(1, page!.TotalCount);
         Assert.Equal("Nabywca sp. z o.o.", page.Items.Single().BuyerName);
+    }
+
+    [Fact]
+    public async Task Issue_SellerProfileChangedAfterConfirmationOpened_409WithCode_NothingIssued()
+    {
+        var tenantId = await CreateTenantAsync();
+        var draft = await CreateDraftAsync(tenantId);
+        Assert.NotEqual(0u, draft.SellerVersion);
+        await SetPatternAsync(tenantId, "FV/{nr}/{RRRR}");
+
+        var response = await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true&sellerVersion={draft.SellerVersion}", null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal($$"""{"message":"{{IssuedInvoiceService.SellerChangedMessage}}","code":"{{IssuedInvoiceService.SellerChangedCode}}"}""", body);
+        var stored = await LoadAsync(draft.Id);
+        Assert.Equal((IssuedInvoiceStatus.Draft, null), (stored.Status, stored.Number));
+    }
+
+    [Fact]
+    public async Task Issue_SellerProfileUnchanged_AfterAnotherIssue_Issued()
+    {
+        var tenantId = await CreateTenantAsync();
+        var first = await CreateDraftAsync(tenantId);
+        var second = await CreateDraftAsync(tenantId);
+        await IssueAsync(tenantId, first.Id);
+
+        var response = await _client.PostAsync($"{Base(tenantId)}/{second.Id}/issue?confirmPastIssueDate=true&sellerVersion={second.SellerVersion}", null);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal("FV/2/11/2026", (await response.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!.Number);
     }
 
     [Fact]
@@ -1197,7 +1229,8 @@ public class IssuedInvoicesApiTests : IDisposable
             case JsonObject obj:
                 foreach (var key in obj.Select(p => p.Key).ToList())
                 {
-                    if (key is "id" or "createdAt" or "updatedAt" or "issuedAt" or "acceptedAt" or "version" && obj[key] is not null)
+                    if (key is "id" or "createdAt" or "updatedAt" or "issuedAt" or "acceptedAt" or "version" && obj[key] is not null
+                        || key == "sellerVersion" && obj[key]!.GetValue<uint>() != 0)
                         obj[key] = $"<{key}>";
                     else if (key == "seller")
                         obj[key]!["nip"] = "<nip>";
