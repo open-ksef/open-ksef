@@ -344,6 +344,30 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Fact]
+    public async Task BudgetRunsOutDuringSuccessfulSend_FirstFinished_SecondUntouched()
+    {
+        var ids = new[] { await SeedAsync(), await SeedAsync(addTenant: false) };
+        var before = new[] { await LoadAsync(ids[0]), await LoadAsync(ids[1]) };
+        _submitter.OnSend = () =>
+        {
+            _time.Advance(IssuedInvoiceSendProcessor.TenantBudget);
+            return Task.FromResult("el-1");
+        };
+
+        await RunAsync();
+
+        Assert.Equal(1, _submitter.Sends);
+        var after = new[] { await LoadAsync(ids[0]), await LoadAsync(ids[1]) };
+        var sent = Assert.Single(after, i => i.KsefElementRef == "el-1");
+        Assert.Null(sent.LastError);
+        var untried = Assert.Single(after, i => i.Id != sent.Id);
+        var untriedBefore = before.Single(i => i.Id == untried.Id);
+        Assert.Equal(
+            (untriedBefore.Status, untriedBefore.AttemptCount, untriedBefore.LastError, untriedBefore.NextAttemptAt, untriedBefore.UpdatedAt),
+            (untried.Status, untried.AttemptCount, untried.LastError, untried.NextAttemptAt, untried.UpdatedAt));
+    }
+
+    [Fact]
     public async Task BudgetRunsOut_SessionClosed_UntriedInvoiceKeepsStatusAttemptsAndSchedule()
     {
         var ids = new[] { await SeedAsync(), await SeedAsync(addTenant: false) };
