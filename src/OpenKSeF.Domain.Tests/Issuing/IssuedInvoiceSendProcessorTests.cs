@@ -55,7 +55,7 @@ public class IssuedInvoiceSendProcessorTests
                         : new KSeFCredential { Id = Guid.NewGuid(), TenantId = tenantId, Type = CredentialType.Certificate, EncryptedCertificateData = withSecret ? _encryption.Encrypt("pfx") : null, CertificateFingerprint = "f" }
                 ]
             });
-        var invoice = Fa3InvoiceWriterTests.Issued(i => i.AddLine("Usługa", null, 1, 100m, VatRate.Rate23), tenantId: tenantId);
+        var invoice = Fa3InvoiceWriterTests.Issued(i => i.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]), tenantId: tenantId);
         invoice.AttachSentXml(Xml, Convert.ToHexString(SHA256.HashData(Xml)), environment, null);
         arrange?.Invoke(invoice);
         db.IssuedInvoices.Add(invoice);

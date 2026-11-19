@@ -248,7 +248,7 @@ public class IssuedInvoiceService(
         return true;
     }
 
-    public async Task<(IssuedInvoiceView View, bool Issued)?> IssueAsync(Guid tenantId, Guid id, uint? expectedVersion = null, CancellationToken ct = default)
+    public async Task<(IssuedInvoiceView View, bool Issued)?> IssueAsync(Guid tenantId, Guid id, uint? expectedVersion = null, bool confirmPastIssueDate = false, CancellationToken ct = default)
     {
         var invoice = await LoadAsync(tenantId, id, ct);
         if (invoice is null)
@@ -262,9 +262,8 @@ public class IssuedInvoiceService(
         if (sellerNip is null)
             return null;
 
-        var errors = IssueChecks.Errors(invoice, profile, Today());
-        if (errors.Count > 0)
-            throw new InvoiceValidationException(errors);
+        if (!confirmPastIssueDate && IssueChecks.PastIssueDate(invoice, Today()) is { } pastIssueDate)
+            throw new InvoiceValidationException([pastIssueDate]);
 
         await EnsureProposedRateIsCurrentAsync(invoice, ct);
 

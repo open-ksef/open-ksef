@@ -177,10 +177,10 @@ public class IssuedInvoicesController(
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public Task<IActionResult> Issue(Guid tenantId, Guid id, [FromQuery] uint? version, CancellationToken ct) =>
+    public Task<IActionResult> Issue(Guid tenantId, Guid id, [FromQuery] uint? version, CancellationToken ct, [FromQuery] bool confirmPastIssueDate = false) =>
         GuardedAsync(StatusCodes.Status422UnprocessableEntity, async () =>
         {
-            if (await issuedInvoices.IssueAsync(tenantId, id, version, ct) is not { } result)
+            if (await issuedInvoices.IssueAsync(tenantId, id, version, confirmPastIssueDate, ct) is not { } result)
                 return NotFound();
 
             var response = ToResponse(result.View);

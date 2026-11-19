@@ -71,7 +71,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
     {
         var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, DateOnly.FromDateTime(Now), dueAt);
         invoice.SetBuyer(BuyerKind.Company, "5261040828", "Nabywca", "ul. Długa 2", "00-002 Warszawa");
-        invoice.AddLine("Usługa", null, 1, 100m, VatRate.Rate23);
+        invoice.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
         var profile = new SellerProfile(tenantId);
         profile.Update("Sprzedawca", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, InvoiceNumbering.DefaultPattern);
         invoice.Issue(profile, "5260250274", number, dueAt);

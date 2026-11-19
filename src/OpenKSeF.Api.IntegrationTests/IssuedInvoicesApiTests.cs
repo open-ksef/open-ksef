@@ -86,7 +86,7 @@ public class IssuedInvoicesApiTests : IDisposable
 
     private async Task<IssuedInvoiceResponse> IssueAsync(Guid tenantId, Guid id, HttpStatusCode expected = HttpStatusCode.Accepted)
     {
-        var response = await _client.PostAsync($"{Base(tenantId)}/{id}/issue", null);
+        var response = await _client.PostAsync($"{Base(tenantId)}/{id}/issue?confirmPastIssueDate=true", null);
         Assert.Equal(expected, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!;
     }
@@ -193,7 +193,7 @@ public class IssuedInvoicesApiTests : IDisposable
             Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync(item)).StatusCode);
             Assert.Equal(HttpStatusCode.NotFound, (await _client.PutAsJsonAsync(item, Draft())).StatusCode);
             Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync(item)).StatusCode);
-            Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync($"{item}/issue", null)).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync($"{item}/issue?confirmPastIssueDate=true", null)).StatusCode);
             Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync($"{item}/copy", null)).StatusCode);
             Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"{item}/xml")).StatusCode);
             Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"{item}/upo")).StatusCode);
@@ -370,7 +370,7 @@ public class IssuedInvoicesApiTests : IDisposable
         var draft = await CreateDraftAsync(tenantId, new IssuedInvoiceDraftRequest(
             new IssuedInvoiceBuyerModel("Company", "1234567890", null, null, null), null, null, null, "Transfer", false, null, null));
 
-        var envelope = await ReadEnvelopeAsync(await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null), HttpStatusCode.UnprocessableEntity);
+        var envelope = await ReadEnvelopeAsync(await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null), HttpStatusCode.UnprocessableEntity);
 
         foreach (var code in new[] { "INV-VAL-002", "INV-VAL-010", "INV-VAL-011", "INV-VAL-012", "INV-VAL-013", "INV-VAL-015", "INV-VAL-016" })
             Assert.Contains(envelope.Errors, e => e.Code == code);
@@ -388,7 +388,7 @@ public class IssuedInvoicesApiTests : IDisposable
         var tenantId = await CreateTenantAsync(nip: TestNip.New("012"));
         var draft = await CreateDraftAsync(tenantId);
 
-        var envelope = await ReadEnvelopeAsync(await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null), HttpStatusCode.UnprocessableEntity);
+        var envelope = await ReadEnvelopeAsync(await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null), HttpStatusCode.UnprocessableEntity);
 
         Assert.Contains(envelope.Errors, e => e.Code == "INV-XSD" && e.Field == null);
         var stored = await LoadAsync(draft.Id);
@@ -559,7 +559,7 @@ public class IssuedInvoicesApiTests : IDisposable
         });
         var before = await LoadAsync(id);
 
-        var response = await _client.PostAsync($"{Base(tenantId)}/{id}/issue", null);
+        var response = await _client.PostAsync($"{Base(tenantId)}/{id}/issue?confirmPastIssueDate=true", null);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ValidationEnvelope>())!.Errors.Single();
@@ -588,7 +588,7 @@ public class IssuedInvoicesApiTests : IDisposable
         for (var i = 0; i < 8; i++)
             drafts.Add(await CreateDraftAsync(tenantId));
 
-        var responses = await Task.WhenAll(drafts.Select(d => _client.PostAsync($"{Base(tenantId)}/{d.Id}/issue", null)));
+        var responses = await Task.WhenAll(drafts.Select(d => _client.PostAsync($"{Base(tenantId)}/{d.Id}/issue?confirmPastIssueDate=true", null)));
 
         Assert.All(responses, r => Assert.Equal(HttpStatusCode.Accepted, r.StatusCode));
         var numbers = await WithDbAsync(db => db.IssuedInvoices.Where(i => i.TenantId == tenantId).Select(i => i.Number!).ToListAsync());
@@ -601,7 +601,7 @@ public class IssuedInvoicesApiTests : IDisposable
         var tenantId = await CreateTenantAsync();
         var draft = await CreateDraftAsync(tenantId);
 
-        var responses = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null)));
+        var responses = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null)));
 
         Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Accepted);
         Assert.Equal(4, responses.Count(r => r.StatusCode == HttpStatusCode.OK));
@@ -643,7 +643,7 @@ public class IssuedInvoicesApiTests : IDisposable
         Assert.Equal(firstNumber, first.Number);
 
         var nextYear = await CreateDraftAsync(tenantId, Draft(issueDate: "2026-11-03"));
-        var collision = await _client.PostAsync($"{Base(tenantId)}/{nextYear.Id}/issue", null);
+        var collision = await _client.PostAsync($"{Base(tenantId)}/{nextYear.Id}/issue?confirmPastIssueDate=true", null);
         Assert.Equal(HttpStatusCode.Conflict, collision.StatusCode);
         Assert.Contains($"Numer {firstNumber} jest już użyty", (await collision.Content.ReadFromJsonAsync<JsonObject>())!["message"]!.GetValue<string>());
         Assert.Equal(IssuedInvoiceStatus.Draft, (await LoadAsync(nextYear.Id)).Status);
@@ -664,7 +664,7 @@ public class IssuedInvoicesApiTests : IDisposable
         var future = Today.AddDays(1).ToString("yyyy-MM-dd");
         var draft = await CreateDraftAsync(tenantId, Draft(issueDate: future));
 
-        var response = await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null);
+        var response = await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var error = Assert.Single((await response.Content.ReadFromJsonAsync<ValidationEnvelope>())!.Errors);
@@ -680,6 +680,28 @@ public class IssuedInvoicesApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Issue_IssueDateOlderThan30Days_Returns422UntilConfirmed()
+    {
+        var tenantId = await CreateTenantAsync();
+        var old = await CreateDraftAsync(tenantId, Draft(issueDate: Today.AddDays(-31).ToString("yyyy-MM-dd")));
+
+        var response = await _client.PostAsync($"{Base(tenantId)}/{old.Id}/issue", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = Assert.Single((await response.Content.ReadFromJsonAsync<ValidationEnvelope>())!.Errors);
+        Assert.Equal(("INV-W-PAST-DATE", "issueDate"), (error.Code, error.Field));
+        Assert.Contains("art. 106nda", error.Message);
+        Assert.Null((await LoadAsync(old.Id)).Number);
+        Assert.False(await WithDbAsync(db => db.InvoiceNumberCounters.AnyAsync(c => c.TenantId == tenantId)));
+
+        var confirmed = await _client.PostAsync($"{Base(tenantId)}/{old.Id}/issue?confirmPastIssueDate=true", null);
+        Assert.Equal(HttpStatusCode.Accepted, confirmed.StatusCode);
+
+        var boundary = await CreateDraftAsync(tenantId, Draft(issueDate: Today.AddDays(-30).ToString("yyyy-MM-dd")));
+        await IssueAsync(tenantId, boundary.Id);
+    }
+
+    [Fact]
     public async Task Issue_NumberAlreadyUsed_Returns409Friendly_AndStaysDraft()
     {
         var tenantId = await CreateTenantAsync();
@@ -692,7 +714,7 @@ public class IssuedInvoicesApiTests : IDisposable
         });
         var second = await CreateDraftAsync(tenantId);
 
-        var response = await _client.PostAsync($"{Base(tenantId)}/{second.Id}/issue", null);
+        var response = await _client.PostAsync($"{Base(tenantId)}/{second.Id}/issue?confirmPastIssueDate=true", null);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Contains("jest już użyty", (await response.Content.ReadFromJsonAsync<JsonObject>())!["message"]!.GetValue<string>());
@@ -854,7 +876,7 @@ public class IssuedInvoicesApiTests : IDisposable
         var invalid = await _client.PostAsJsonAsync(Base(tenantId), new IssuedInvoiceDraftRequest(
             null, null, null, null, null, false, null, null));
         var emptyId = JsonNode.Parse(await invalid.Content.ReadAsStringAsync())!["id"]!.GetValue<Guid>();
-        var envelope = await _client.PostAsync($"{Base(tenantId)}/{emptyId}/issue", null);
+        var envelope = await _client.PostAsync($"{Base(tenantId)}/{emptyId}/issue?confirmPastIssueDate=true", null);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, envelope.StatusCode);
         AssertMatchesFixture("validation-envelope.json", JsonNode.Parse(await envelope.Content.ReadAsStringAsync())!);
 
@@ -1110,14 +1132,14 @@ public class IssuedInvoicesApiTests : IDisposable
         var url = $"{Base(tenantId)}/{draft.Id}";
         var saved = await (await _client.PutAsJsonAsync(url, Draft(buyerName: "Zmieniony"))).Content.ReadFromJsonAsync<IssuedInvoiceResponse>();
 
-        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"{url}/issue?version={draft.Version}", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"{url}/issue?confirmPastIssueDate=true&version={draft.Version}", null)).StatusCode);
 
         var stored = await LoadAsync(draft.Id);
         Assert.Equal(IssuedInvoiceStatus.Draft, stored.Status);
         Assert.Null(stored.Number);
         Assert.Equal(0, await WithDbAsync(d => d.InvoiceNumberCounters.CountAsync(c => c.TenantId == tenantId)));
 
-        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{url}/issue?version={saved!.Version}", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{url}/issue?confirmPastIssueDate=true&version={saved!.Version}", null)).StatusCode);
     }
 
     [Fact]
@@ -1128,7 +1150,7 @@ public class IssuedInvoicesApiTests : IDisposable
         var issued = await IssueAsync(tenantId, draft.Id);
         Assert.NotEqual(draft.Version, issued.Version);
 
-        var retry = await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?version={draft.Version}", null);
+        var retry = await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true&version={draft.Version}", null);
 
         Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
         Assert.Equal(issued.Number, (await retry.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!.Number);
@@ -1332,7 +1354,7 @@ public class IssuedInvoicesApiTests : IDisposable
         await using var transaction = await db.Database.BeginTransactionAsync();
         await db.Database.ExecuteSqlAsync($"""SELECT 1 FROM "Tenants" WHERE "Id" = {tenantId} FOR UPDATE""");
 
-        var issue = _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null);
+        var issue = _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null);
         await WaitForLockWaitAsync("FOR KEY SHARE");
         await db.Database.ExecuteSqlAsync($"""DELETE FROM "IssuedInvoices" WHERE "TenantId" = {tenantId}""");
         await db.Database.ExecuteSqlAsync($"""DELETE FROM "Tenants" WHERE "Id" = {tenantId}""");
@@ -1350,7 +1372,7 @@ public class IssuedInvoicesApiTests : IDisposable
             var tenantId = await CreateTenantAsync();
             var draft = await CreateDraftAsync(tenantId);
 
-            var issue = _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null);
+            var issue = _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null);
             await Task.Delay(round % 4 * 5);
             var delete = _client.DeleteAsync($"/api/tenants/{tenantId}");
             await Task.WhenAll(issue, delete);
