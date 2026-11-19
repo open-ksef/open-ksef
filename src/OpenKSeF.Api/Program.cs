@@ -135,6 +135,8 @@ builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<UserProfileService>();
 builder.Services.AddScoped<TenantMembershipService>();
 builder.Services.AddScoped<TenantInviteService>();
+builder.Services.AddScoped<TenantClaimService>();
+builder.Services.AddSingleton<TenantClaimLimiter>();
 
 builder.Services.AddMemoryCache();
 

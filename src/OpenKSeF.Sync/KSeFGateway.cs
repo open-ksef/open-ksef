@@ -1,9 +1,11 @@
 using System.Net;
 using System.Net.Http.Headers;
+using KSeF.Client.Api.Services;
 using KSeF.Client.Core.Exceptions;
 using KSeF.Client.Core.Interfaces;
 using KSeF.Client.Core.Interfaces.Clients;
 using KSeF.Client.Core.Interfaces.Services;
+using KSeF.Client.Core.Models.Authorization;
 using KSeF.Client.Core.Models.Invoices;
 using KSeF.Client.DI;
 using Microsoft.Extensions.Logging;
@@ -120,6 +122,62 @@ public sealed class KSeFGateway : IKSeFGateway
 
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
+
+    /// <remarks>The reference number is the first segment of the token string (`ref|nip-NIP|[exp-DATE|]secret` as seen on KSeF TEST tokens, not in ksef-docs); another shape fails closed. The session is revoked right after the read, never cached.</remarks>
+    public async Task<KSeFTokenGrant?> CheckTokenAsync(string nip, string token, CancellationToken ct = default)
+    {
+        if (token.Split('|') is not [var referenceNumber, _, _, ..] || referenceNumber.Length == 0)
+            return NotProven(nip, "noref");
+
+        var auth = new RejectionAwareAuthClient(_client);
+        AuthenticationOperationStatusResponse login;
+        try
+        {
+            login = await new AuthCoordinator(auth).AuthKsefTokenAsync(
+                AuthenticationTokenContextIdentifierType.Nip, nip, token, _cryptography, EncryptionMethodEnum.Rsa, cancellationToken: ct);
+        }
+        catch (Exception e) when (e is KSeFAuthRejectedException || IsClientError(e))
+        {
+            return NotProven(nip, "rejected");
+        }
+
+        try
+        {
+            var meta = await _client.GetKsefTokenAsync(referenceNumber, login.AccessToken.Token, ct);
+            if (meta.Status != AuthenticationKsefTokenStatus.Active)
+                return NotProven(nip, "inactive");
+            if (meta.ContextIdentifier is not { Type: AuthenticationTokenContextIdentifierType.Nip } context || context.Value != nip)
+                return NotProven(nip, "context");
+
+            var permissions = (meta.RequestedPermissions ?? []).Select(p => p.ToString()).ToList();
+            _logger.LogInformation("KSeF token check for NIP {Nip}: ok, permissions {Permissions}", nip, string.Join(',', permissions));
+            return new KSeFTokenGrant(permissions, auth.ReferenceNumber ?? string.Empty);
+        }
+        catch (KsefApiException e) when (IsClientError(e))
+        {
+            return NotProven(nip, $"metadata HTTP {(int?)e.StatusCode}");
+        }
+        finally
+        {
+            try
+            {
+                await _client.RevokeCurrentSessionAsync(login.AccessToken.Token, CancellationToken.None);
+            }
+            catch (Exception)
+            {
+                _logger.LogWarning("KSeF token check for NIP {Nip}: closing the session failed", nip);
+            }
+        }
+    }
+
+    private KSeFTokenGrant? NotProven(string nip, string reason)
+    {
+        _logger.LogInformation("KSeF token check for NIP {Nip}: {Reason}", nip, reason);
+        return null;
+    }
+
+    private static bool IsClientError(Exception e) =>
+        e is KsefApiException { StatusCode: >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError } and not KsefRateLimitException;
 
     private static KSeFInvoiceHeader MapInvoice(InvoiceSummary inv)
     {

@@ -21,13 +21,15 @@ public class TenantsController : ControllerBase
     private readonly ICurrentUserService _currentUser;
     private readonly IIssuedInvoiceService _issuedInvoices;
     private readonly TenantMembershipService _members;
+    private readonly TenantClaimService _claims;
 
-    public TenantsController(ApplicationDbContext db, ICurrentUserService currentUser, IIssuedInvoiceService issuedInvoices, TenantMembershipService members)
+    public TenantsController(ApplicationDbContext db, ICurrentUserService currentUser, IIssuedInvoiceService issuedInvoices, TenantMembershipService members, TenantClaimService claims)
     {
         _db = db;
         _currentUser = currentUser;
         _issuedInvoices = issuedInvoices;
         _members = members;
+        _claims = claims;
     }
 
     [HttpGet]
@@ -63,18 +65,13 @@ public class TenantsController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateTenantRequest request)
     {
         if (!NipValidator.HasValidChecksum(request.Nip))
-            return BadRequest(new { error = "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną." });
+            return BadRequest(new { error = TenantNipGuard.InvalidNipMessage });
 
         var normalizedNip = NipValidator.Normalize(request.Nip);
         await using var transaction = await _db.Database.BeginTransactionAsync();
         await TenantNipGuard.LockAsync(_db, normalizedNip);
-        var existing = await _db.Tenants
-            .Where(t => t.Nip == normalizedNip && _db.TenantMembers.Any(m => m.TenantId == t.Id && m.UserId == _currentUser.UserId))
-            .OrderBy(t => t.DisplayName).ThenBy(t => t.Id)
-            .Select(t => t.DisplayName)
-            .ToListAsync();
-        if (existing.Count > 0)
-            return Conflict(new { error = $"Masz już dostęp do firmy z tym NIP-em: {(string.IsNullOrWhiteSpace(existing[0]) ? $"NIP {normalizedNip}" : existing[0])}." });
+        if (await TenantNipGuard.MemberCompanyNameAsync(_db, normalizedNip, _currentUser.UserId) is { } existing)
+            return Conflict(new { error = TenantNipGuard.AlreadyMemberMessage(existing) });
         if (await TenantNipGuard.ActiveTenantExistsAsync(_db, normalizedNip))
             return Conflict(new { error = TenantNipGuard.TakenMessage });
 
@@ -99,6 +96,25 @@ public class TenantsController : ControllerBase
         await transaction.CommitAsync();
 
         return CreatedAtAction(nameof(Get), new { tenantId = tenant.Id }, TenantResponse.From(tenant, owner));
+    }
+
+    [HttpPost("claim")]
+    [ProducesResponseType(typeof(TenantResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> Claim([FromBody] ClaimTenantRequest request, CancellationToken ct)
+    {
+        var result = await _claims.ClaimAsync(_currentUser.UserId, request.Nip!, request.Token!, ct);
+        return result.Outcome switch
+        {
+            TenantClaimService.Outcome.Claimed => Ok(result.Tenant),
+            TenantClaimService.Outcome.Invalid => BadRequest(new { error = result.Error }),
+            TenantClaimService.Outcome.Limited => StatusCode(StatusCodes.Status429TooManyRequests, new { error = result.Error }),
+            TenantClaimService.Outcome.Unavailable => StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = result.Error }),
+            _ => Conflict(new { error = result.Error }),
+        };
     }
 
     [HttpPut("{tenantId:guid}")]

@@ -62,6 +62,11 @@ export interface CreateTenantRequest {
   notificationEmail?: string | null
 }
 
+export interface ClaimTenantRequest {
+  nip: string
+  token: string
+}
+
 export interface UpdateTenantRequest {
   displayName?: string | null
   notificationEmail?: string | null

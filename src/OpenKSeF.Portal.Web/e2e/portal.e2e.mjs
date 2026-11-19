@@ -4,7 +4,8 @@
 //      DATA_USER / DATA_PASSWORD (password-only user with invoices: enrolled in 2FA by the run, restored to password-only after),
 //      BROWSER_CHANNEL (chrome | msedge, default chrome), SHOT_DIR (screenshots, off by default: dev data may be real),
 //      LOGOUT_WATCH_MS (quiet window after a data-page logout, default 120000: no token requests allowed)
-import { createHmac, randomBytes } from 'node:crypto'
+import assert from 'node:assert/strict'
+import { createHmac, randomBytes, randomInt } from 'node:crypto'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -30,6 +31,21 @@ let browser
 let adminToken
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+const nipCheck = (body) => [6, 5, 7, 2, 3, 4, 5, 6, 7].reduce((sum, w, i) => sum + w * Number(body[i]), 0) % 11
+
+// Prefix 000 is no tax office code, so a leftover from a killed run never blocks the next one (one active company per NIP).
+function fakeNip() {
+  for (;;) {
+    const body = `000${String(randomInt(1_000_000)).padStart(6, '0')}`
+    const check = nipCheck(body)
+    if (check < 10) return `${body}${check}`
+  }
+}
+
+assert.equal(nipCheck('526025027'), 4)
+assert.equal(nipCheck('000000001'), 7)
+assert.match(fakeNip(), /^000\d{7}$/)
 
 async function admin(method, url, body) {
   const auth = await fetch(`${KC}/realms/master/protocol/openid-connect/token`, {
@@ -221,7 +237,7 @@ async function main() {
   await check('a11y Onboarding', () => axe(page, 'onboarding'), page)
 
   await check('onboarding with a fake NIP and no token lands on Start', async () => {
-    await page.fill('[data-testid="onboarding-nip"]', '1111111111')
+    await page.fill('[data-testid="onboarding-nip"]', fakeNip())
     await page.click('[data-testid="onboarding-next"]')
     await page.click('[data-testid="onboarding-skip-token"]')
     await inPortal(page, '/')

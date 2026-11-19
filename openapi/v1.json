@@ -68,6 +68,20 @@
         },
         "type": "object"
       },
+      "ClaimTenantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "nip": {
+            "nullable": true,
+            "type": "string"
+          },
+          "token": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "CreateInviteRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2741,6 +2755,117 @@
               }
             },
             "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Tenants"
+        ]
+      }
+    },
+    "/api/Tenants/claim": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimTenantRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimTenantRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimTenantRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "description": "Service Unavailable"
           }
         },
         "tags": [

@@ -14,10 +14,12 @@ using KSeF.Client.Core.Interfaces.Services;
 using KSeF.Client.Core.Models.ApiResponses;
 using KSeF.Client.Core.Models.Authorization;
 using KSeF.Client.Core.Models.Certificates;
+using KSeF.Client.Core.Models.Permissions.Person;
 using KSeF.Client.DI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
@@ -155,6 +157,117 @@ public class KSeFTestSendTests(ITestOutputHelper output)
         }
     }
 
+    [KSeFTestFact]
+    public async Task ClaimCheck_TokenOfOtherNip_IsRejectedByKSeF()
+    {
+        await using var ksef = await TestKSeF.StartAsync();
+
+        var timer = Stopwatch.StartNew();
+        Assert.Null(await ksef.Gateway(new OutputLogger(output)).CheckTokenAsync(ksef.BuyerNip, ksef.Token));
+        output.WriteLine($"T-801 assumption 1: NIP_2 token in NIP_1 context -> CheckTokenAsync null in {timer.Elapsed.TotalSeconds:F1}s");
+
+        var rejected = await Assert.ThrowsAsync<KSeFAuthRejectedException>(() => ksef.Submitter.LoginAsync(ksef.BuyerNip, ksef.TokenCredential(ksef.Token)));
+        output.WriteLine($"T-801 assumption 1: raw auth rejected code={rejected.Code} reason={rejected.Message}");
+    }
+
+    [KSeFTestFact]
+    public async Task ClaimCheck_OwnCredentialsManageToken_ReturnsItsPermissionSet()
+    {
+        await using var ksef = await TestKSeF.StartAsync();
+        var access = await ksef.SealLoginAsync();
+        var generated = await ksef.GenerateActiveTokenAsync(access, KsefTokenPermissionType.CredentialsManage);
+        try
+        {
+            output.WriteLine($"T-801 assumption 2: generated token segments=[{string.Join(",", generated.Token.Split('|').SkipLast(1).Select(s => $"{s.Length}:{s[..Math.Min(4, s.Length)]}"))},secret:{generated.Token.Split('|')[^1].Length}] refAndNipFirst={generated.Token.StartsWith($"{generated.ReferenceNumber}|nip-{ksef.SellerNip}|")}");
+
+            var grant = await ksef.Gateway(new OutputLogger(output)).CheckTokenAsync(ksef.SellerNip, generated.Token);
+            output.WriteLine($"T-801 assumption 2: CheckTokenAsync permissions=[{string.Join(',', grant?.Permissions ?? [])}] authRef={grant?.AuthReferenceNumber}");
+            Assert.NotNull(grant);
+            Assert.Equal(["CredentialsManage"], grant.Permissions);
+            Assert.NotEmpty(grant.AuthReferenceNumber);
+
+            var team = await ksef.Gateway(new OutputLogger(output)).CheckTokenAsync(ksef.SellerNip, ksef.Token);
+            output.WriteLine($"T-801: KSEF_TEST_TOKEN_2 permissions=[{string.Join(',', team?.Permissions ?? [])}]");
+        }
+        finally
+        {
+            await ksef.Client.RevokeKsefTokenAsync(generated.ReferenceNumber, access);
+        }
+    }
+
+    [KSeFTestFact]
+    public async Task ClaimCheck_SplicedReference_NotProven()
+    {
+        await using var ksef = await TestKSeF.StartAsync();
+        var access = await ksef.SealLoginAsync();
+        var cm = await ksef.GenerateActiveTokenAsync(access, KsefTokenPermissionType.CredentialsManage);
+        try
+        {
+            var cr = await ksef.GenerateActiveTokenAsync(access, KsefTokenPermissionType.CredentialsRead);
+            try
+            {
+                var spliced = cm.ReferenceNumber + cr.Token[cr.Token.IndexOf('|')..];
+                var grant = await ksef.Gateway(new OutputLogger(output)).CheckTokenAsync(ksef.SellerNip, spliced);
+                output.WriteLine($"T-801 splice: CM reference + CredentialsRead secret -> {(grant is null ? "null" : $"grant [{string.Join(',', grant.Permissions)}]")}");
+                Assert.Null(grant);
+            }
+            finally
+            {
+                await ksef.Client.RevokeKsefTokenAsync(cr.ReferenceNumber, access);
+            }
+        }
+        finally
+        {
+            await ksef.Client.RevokeKsefTokenAsync(cm.ReferenceNumber, access);
+        }
+    }
+
+    [KSeFTestFact]
+    public async Task ClaimCheck_ReadOnlyToken_HasNoCredentialsManage_PersonalGrantsAreNotTheTokenSet()
+    {
+        await using var ksef = await TestKSeF.StartAsync();
+
+        var grant = await ksef.Gateway(new OutputLogger(output)).CheckTokenAsync(ksef.BuyerNip, ksef.ReadOnlyToken);
+        output.WriteLine($"T-801 below threshold: READONLY permissions=[{string.Join(',', grant?.Permissions ?? [])}]");
+        Assert.NotNull(grant);
+        Assert.DoesNotContain("CredentialsManage", grant.Permissions);
+
+        var login = await ksef.Auth.AuthKsefTokenAsync(AuthenticationTokenContextIdentifierType.Nip, ksef.BuyerNip, ksef.ReadOnlyToken, ksef.Cryptography, EncryptionMethodEnum.Rsa);
+        try
+        {
+            var personal = await ksef.Client.SearchGrantedPersonalPermissionsAsync(new PersonalPermissionsQueryRequest(), login.AccessToken.Token);
+            output.WriteLine($"T-801 personal/grants in READONLY session: owner=[{string.Join(',', personal.OwnerPermissions ?? [])}] grants={personal.Permissions?.Count} scopes=[{string.Join(',', personal.Permissions?.Select(p => p.PermissionScope) ?? [])}]");
+        }
+        finally
+        {
+            await ksef.Client.RevokeCurrentSessionAsync(login.AccessToken.Token);
+        }
+    }
+
+    [KSeFTestFact]
+    public async Task ClaimCheck_CorruptedToken_NotProvenQuickly()
+    {
+        await using var ksef = await TestKSeF.StartAsync();
+        var corrupted = ksef.Token[..^4] + new string(ksef.Token[^4..].Reverse().Select(c => c == '0' ? '1' : '0').ToArray());
+
+        var timer = Stopwatch.StartNew();
+        Assert.Null(await ksef.Gateway(new OutputLogger(output)).CheckTokenAsync(ksef.SellerNip, corrupted));
+        output.WriteLine($"T-801 corrupted token: null in {timer.Elapsed.TotalSeconds:F1}s");
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(30));
+    }
+
+    [KSeFTestFact]
+    public async Task ClaimCheck_RevokedSession_RefreshTokenStopsWorking()
+    {
+        await using var ksef = await TestKSeF.StartAsync();
+        var login = await ksef.Auth.AuthKsefTokenAsync(AuthenticationTokenContextIdentifierType.Nip, ksef.SellerNip, ksef.Token, ksef.Cryptography, EncryptionMethodEnum.Rsa);
+
+        await ksef.Client.RevokeCurrentSessionAsync(login.AccessToken.Token);
+
+        var refused = await Assert.ThrowsAsync<KsefApiException>(() => ksef.Client.RefreshAccessTokenAsync(login.RefreshToken.Token));
+        output.WriteLine($"T-801 session closed: refresh after revoke -> HTTP {(int?)refused.StatusCode}");
+    }
+
     private static void AssertAcceptedWithUpo(IssuedInvoice current)
     {
         Assert.Equal(IssuedInvoiceStatus.Accepted, current.Status);
@@ -170,8 +283,11 @@ public class KSeFTestSendTests(ITestOutputHelper output)
 
         public string SellerNip => env["KSEF_TEST_NIP_2"];
         public string Token => env["KSEF_TEST_TOKEN_2"];
-        private IKSeFClient Client => provider.GetRequiredService<IKSeFClient>();
-        private ICryptographyService Cryptography => provider.GetRequiredService<ICryptographyService>();
+        public string BuyerNip => env["KSEF_TEST_NIP"];
+        public string ReadOnlyToken => env["KSEF_TEST_TOKEN_READONLY"];
+        public IKSeFClient Client => provider.GetRequiredService<IKSeFClient>();
+        public IAuthCoordinator Auth => provider.GetRequiredService<IAuthCoordinator>();
+        public ICryptographyService Cryptography => provider.GetRequiredService<ICryptographyService>();
         public KSeFInvoiceSubmitter Submitter => new(Client, Cryptography, _encryption, Gateway());
 
         public static async Task<TestKSeF> StartAsync()
@@ -190,11 +306,34 @@ public class KSeFTestSendTests(ITestOutputHelper output)
             return new TestKSeF(provider, env);
         }
 
-        public KSeFGateway Gateway() =>
-            new(Client, provider.GetRequiredService<IAuthCoordinator>(), Cryptography, _encryption, provider.GetRequiredService<IHttpClientFactory>(), provider.GetRequiredService<KSeFClientOptions>(), NullLogger<KSeFGateway>.Instance);
+        public KSeFGateway Gateway(ILogger<KSeFGateway>? logger = null) =>
+            new(Client, provider.GetRequiredService<IAuthCoordinator>(), Cryptography, _encryption, provider.GetRequiredService<IHttpClientFactory>(), provider.GetRequiredService<KSeFClientOptions>(), logger ?? NullLogger<KSeFGateway>.Instance);
 
         public KSeFCredential TokenCredential(string token) =>
             new() { Id = Guid.NewGuid(), Type = CredentialType.Token, EncryptedToken = _encryption.Encrypt(token) };
+
+        public async Task<KsefTokenResponse> GenerateActiveTokenAsync(string access, KsefTokenPermissionType permission)
+        {
+            var generated = await Client.GenerateKsefTokenAsync(new KsefTokenRequest
+            {
+                Permissions = [permission],
+                Description = $"OpenKSeF T-801 {permission} {DateTime.UtcNow:yyMMddHHmmss}"
+            }, access);
+            var deadline = DateTime.UtcNow.AddMinutes(2);
+            AuthenticationKsefToken meta;
+            do
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                meta = await Client.GetKsefTokenAsync(generated.ReferenceNumber, access);
+            }
+            while (meta.Status == AuthenticationKsefTokenStatus.Pending && DateTime.UtcNow < deadline);
+            if (meta.Status != AuthenticationKsefTokenStatus.Active)
+            {
+                await Client.RevokeKsefTokenAsync(generated.ReferenceNumber, access);
+                Assert.Fail($"token {permission} stayed {meta.Status}");
+            }
+            return generated;
+        }
 
         /// <summary>
         /// KSeF TEST accepts a self-signed seal for the NIP; that login enrolls a real KSeF Authentication certificate,
@@ -251,7 +390,7 @@ public class KSeFTestSendTests(ITestOutputHelper output)
             await Client.RevokeCertificateAsync(
                 RevokeCertificateRequestBuilder.Create().WithRevocationReason(CertificateRevocationReason.Superseded).Build(), serialNumber, await SealLoginAsync());
 
-        private async Task<string> SealLoginAsync()
+        public async Task<string> SealLoginAsync()
         {
             using var seal = SelfSignedCertificateForSealBuilder.Create()
                 .WithOrganizationName("OpenKSeF T-652").WithOrganizationIdentifier($"VATPL-{SellerNip}").WithCommonName("OpenKSeF T-652").Build();
@@ -335,6 +474,14 @@ public class KSeFTestSendTests(ITestOutputHelper output)
 
     private static string EnvFile([CallerFilePath] string path = "") =>
         Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, "..", "..", "..", ".env.test"));
+
+    private sealed class OutputLogger(ITestOutputHelper output) : ILogger<KSeFGateway>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            output.WriteLine($"gateway {logLevel}: {formatter(state, exception)}");
+    }
 
     private sealed class KSeFTestFactAttribute : FactAttribute
     {

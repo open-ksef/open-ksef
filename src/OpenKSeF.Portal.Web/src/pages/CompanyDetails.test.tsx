@@ -7,7 +7,7 @@ import { RouterProvider, createMemoryRouter, useLocation } from 'react-router-do
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
-import { createTenant, deleteTenant, listMembers, listTenants, updateTenant } from '@/api/endpoints/tenants'
+import { claimTenant, createTenant, deleteTenant, listMembers, listTenants, updateTenant } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
 import { CompanyCard } from '@/company/CompanyCard'
 import { CompanyProvider } from '@/company/CompanyProvider'
@@ -18,6 +18,7 @@ import { employeeAccess, ownerAccess } from '@/test/tenant'
 vi.mock('@/api/endpoints/tenants', () => ({
   listTenants: vi.fn(),
   createTenant: vi.fn(),
+  claimTenant: vi.fn(),
   updateTenant: vi.fn(),
   deleteTenant: vi.fn(),
   listMembers: vi.fn(),
@@ -173,7 +174,7 @@ describe('Firma, Dane firmy', () => {
 
   it.each([
     'Masz już dostęp do firmy z tym NIP-em: Firma C2.',
-    'Firma z tym NIP-em jest już dodana na tym serwerze OpenKSeF. Poproś osobę, która nią zarządza, o zaproszenie do firmy. Jeśli nie wiesz, kto to jest, napisz do administratora serwera.',
+    'Firma z tym NIP-em jest już dodana na tym serwerze OpenKSeF. Poproś osobę, która nią zarządza, o zaproszenie do firmy. Jeśli nie wiesz, kto to jest, napisz do administratora serwera. Jeśli masz token KSeF z uprawnieniem Zarządzanie uprawnieniami dla tego NIP-u, możesz przejąć firmę w portalu OpenKSeF (Przejmij firmę).',
   ])('shows the API 409 text in the add dialog: %s', async (error) => {
     vi.mocked(createTenant).mockRejectedValue(await normalizeError(new Response(JSON.stringify({ error }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
     await render()
@@ -186,6 +187,30 @@ describe('Firma, Dane firmy', () => {
     await settle()
     expect(container.querySelector('[role="dialog"] [role="alert"]')?.textContent).toBe(error)
     expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('offers Przejmij firmę after a 409 and opens the claimed company', async () => {
+    vi.mocked(createTenant).mockRejectedValue(await normalizeError(new Response(JSON.stringify({ error: 'zajęta' }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
+    vi.mocked(claimTenant).mockResolvedValue(company('c', 'Firma C', '3333333333'))
+    await render()
+    await act(async () => by('company-card')?.click())
+    await settle()
+    await act(async () => by('company-add')?.click())
+    await settle()
+    expect(by('tenant-form-claim')).toBeNull()
+    await type('tenant-form-nip', '3333333333')
+    await act(async () => by('tenant-form-submit')?.click())
+    await settle()
+    await act(async () => by('tenant-form-claim')?.click())
+    await settle()
+    expect((by('claim-nip') as HTMLInputElement).value).toBe('3333333333')
+    await type('claim-token', 'ref|nip-3333333333|secret')
+    await act(async () => by('claim-submit')?.click())
+    await settle()
+    await act(async () => by('claim-submit')?.click())
+    await settle()
+    expect(claimTenant).toHaveBeenCalledExactlyOnceWith({ nip: '3333333333', token: 'ref|nip-3333333333|secret' })
+    expect(by('location')?.textContent).toBe('/?tenantId=c')
   })
 
   it('states how many other members lose access in the delete dialog', async () => {

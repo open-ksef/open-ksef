@@ -1,6 +1,7 @@
 import { apiClient } from '../client'
 import type {
   AcceptInviteResponse,
+  ClaimTenantRequest,
   CreateInviteRequest,
   CreateInviteResponse,
   CreateTenantRequest,
@@ -20,6 +21,10 @@ export function listTenants(): Promise<TenantResponse[]> {
 
 export function createTenant(request: CreateTenantRequest): Promise<TenantResponse> {
   return apiClient.post<TenantResponse>('/tenants', request)
+}
+
+export function claimTenant(request: ClaimTenantRequest): Promise<TenantResponse> {
+  return apiClient.post<TenantResponse>('/tenants/claim', request)
 }
 
 export function updateTenant(id: string, request: UpdateTenantRequest): Promise<TenantResponse> {

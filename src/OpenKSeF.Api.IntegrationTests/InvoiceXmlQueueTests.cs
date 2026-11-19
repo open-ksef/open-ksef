@@ -33,7 +33,8 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
     private readonly IKSeFGateway _gateway = Substitute.For<IKSeFGateway>();
     private readonly INotificationService _notifications = Substitute.For<INotificationService>();
-    private readonly KSeFRequestLimits _blocks = new(TimeProvider.System);
+    private readonly AutoAdvancingTime _time = new();
+    private readonly KSeFRequestLimits _blocks;
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly List<string> _calls = [];
     private readonly List<string> _downloads = [];
@@ -41,6 +42,8 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     private Func<KSeFQueryCriteria, KSeFInvoiceQueryResult> _received = _ => Page([]);
     private Func<KSeFQueryCriteria, KSeFInvoiceQueryResult> _issued = c => Page([], c.DateTo);
     private Func<string, byte[]> _xml = _ => Xml("2026-11-20");
+
+    public InvoiceXmlQueueTests() => _blocks = new KSeFRequestLimits(_time);
 
     public async Task InitializeAsync()
     {
@@ -82,7 +85,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         new KSeFInvoiceXmlParser(NullLogger<KSeFInvoiceXmlParser>.Instance),
         Options.Create(new TenantSyncOptions { XmlDownloadSpacing = spacing ?? TimeSpan.Zero, XmlDownloadsPerCycle = budget, KSeFRequestSpacing = requestSpacing ?? TimeSpan.Zero, KSeFMetadataSpacing = metadataSpacing ?? TimeSpan.Zero }),
         _blocks,
-        TimeProvider.System,
+        _time,
         NullLogger<TenantSyncService>.Instance);
 
     private async Task MigrateAsync()
@@ -336,11 +339,12 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         await InsertAsync("C");
         await MigrateAsync();
 
-        var started = System.Diagnostics.Stopwatch.StartNew();
+        var started = _time.GetUtcNow();
         await WorkerCycleAsync(TimeSpan.FromMilliseconds(300));
 
         Assert.Equal(3, _downloads.Count);
-        Assert.True(started.Elapsed >= TimeSpan.FromMilliseconds(590), started.Elapsed.ToString());
+        var elapsed = _time.GetUtcNow() - started;
+        Assert.True(elapsed >= TimeSpan.FromMilliseconds(600), elapsed.ToString());
     }
 
     [Fact]
@@ -353,11 +357,12 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         await InsertAsync("C");
         await MigrateAsync();
 
-        var started = System.Diagnostics.Stopwatch.StartNew();
+        var started = _time.GetUtcNow();
         await ManualSyncAsync(requestSpacing: spacing);
 
         Assert.Equal(3, _downloads.Count);
-        Assert.True(started.Elapsed >= TimeSpan.FromMilliseconds(290), started.Elapsed.ToString());
+        var elapsed = _time.GetUtcNow() - started;
+        Assert.True(elapsed >= TimeSpan.FromMilliseconds(300), elapsed.ToString());
     }
 
     [Fact]
@@ -1012,21 +1017,21 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         await InsertAsync("OLD", daysAgo: 800);
         await InsertAsync("U-1");
         await MigrateAsync();
-        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var start = _time.GetUtcNow();
         var at = new List<TimeSpan>();
         _received = _ =>
         {
-            at.Add(clock.Elapsed);
+            at.Add(_time.GetUtcNow() - start);
             return Page([]);
         };
         _issued = c =>
         {
-            at.Add(clock.Elapsed);
+            at.Add(_time.GetUtcNow() - start);
             return Page([], c.DateTo);
         };
         _xml = _ =>
         {
-            at.Add(clock.Elapsed);
+            at.Add(_time.GetUtcNow() - start);
             return Xml("2026-11-20");
         };
 
@@ -1035,18 +1040,18 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
         Assert.True(at.Count >= 12, at.Count.ToString());
         Assert.Equal(2, _downloads.Count);
-        Assert.All(at.Zip(at.Skip(1), (a, b) => b - a), gap => Assert.True(gap >= spacing - TimeSpan.FromMilliseconds(16), gap.ToString()));
+        Assert.All(at.Zip(at.Skip(1), (a, b) => b - a), gap => Assert.True(gap >= spacing, gap.ToString()));
     }
 
     [Fact]
     public async Task MetadataPerSecond429_IsRetriedAfterRetryAfter_RunSucceeds_NoDuplicateRow()
     {
         await MigrateAsync();
-        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var start = _time.GetUtcNow();
         var at = new List<TimeSpan>();
         _received = _ =>
         {
-            at.Add(clock.Elapsed);
+            at.Add(_time.GetUtcNow() - start);
             return at.Count == 1 ? throw RateLimited(1) : Page([Bought("KSEF-R1")]);
         };
 
@@ -1055,7 +1060,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
         Assert.Equal(1, result.NewInvoices);
-        Assert.True(at[1] - at[0] >= TimeSpan.FromMilliseconds(950), (at[1] - at[0]).ToString());
+        Assert.True(at[1] - at[0] >= TimeSpan.FromSeconds(1), (at[1] - at[0]).ToString());
         Assert.Equal(TenantSyncOutcome.Success, again.Outcome);
         Assert.Equal(new DateOnly(2026, 11, 20), (await RowAsync("KSEF-R1")).DueDate);
     }
@@ -1066,16 +1071,16 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         Assert.True(TimeSpan.FromMinutes(1) / new TenantSyncOptions().KSeFMetadataSpacing <= 16);
         await MigrateAsync();
         var spacing = TimeSpan.FromMilliseconds(400);
-        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var start = _time.GetUtcNow();
         var at = new List<TimeSpan>();
         _received = _ =>
         {
-            at.Add(clock.Elapsed);
+            at.Add(_time.GetUtcNow() - start);
             return Page([]);
         };
         _issued = c =>
         {
-            at.Add(clock.Elapsed);
+            at.Add(_time.GetUtcNow() - start);
             return Page([], c.DateTo);
         };
 
@@ -1083,7 +1088,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         Assert.Equal(TenantSyncOutcome.Success, result.Outcome);
         Assert.True(at.Count >= 3, at.Count.ToString());
-        Assert.All(at.Zip(at.Skip(1), (a, b) => b - a), gap => Assert.True(gap >= spacing - TimeSpan.FromMilliseconds(16), gap.ToString()));
+        Assert.All(at.Zip(at.Skip(1), (a, b) => b - a), gap => Assert.True(gap >= spacing, gap.ToString()));
     }
 
     [Fact]
@@ -1115,13 +1120,14 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
             throw RateLimited(3600);
         };
 
-        var started = System.Diagnostics.Stopwatch.StartNew();
+        var started = _time.GetUtcNow();
         var result = await ManualSyncAsync();
 
         Assert.Equal(TenantSyncOutcome.Failed, result.Outcome);
         Assert.Equal(429, result.ErrorStatusCode);
         Assert.Equal(1, queries);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), started.Elapsed.ToString());
+        var elapsed = _time.GetUtcNow() - started;
+        Assert.True(elapsed < TimeSpan.FromSeconds(30), elapsed.ToString());
     }
 
     [Fact]
@@ -1234,5 +1240,43 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         var data = new TransferDetailsService().BuildTransferData(row, Nip);
         Assert.False(data.QrAvailable);
         Assert.Equal("Sprzedawca oznaczył fakturę jako zapłaconą.", data.QrMessage);
+    }
+
+    /// <summary>Virtual clock for the pacing tests: a timer moves the clock forward by its due time and fires at once, so waits are exact and take no real time.</summary>
+    private sealed class AutoAdvancingTime : TimeProvider
+    {
+        private long _ticks = DateTimeOffset.UtcNow.UtcTicks;
+
+        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
+            new Timer(this, callback, state, dueTime);
+
+        private sealed class Timer : ITimer
+        {
+            private readonly AutoAdvancingTime _owner;
+            private readonly TimerCallback _callback;
+            private readonly object? _state;
+
+            public Timer(AutoAdvancingTime owner, TimerCallback callback, object? state, TimeSpan dueTime)
+            {
+                (_owner, _callback, _state) = (owner, callback, state);
+                Change(dueTime, Timeout.InfiniteTimeSpan);
+            }
+
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                if (dueTime == Timeout.InfiniteTimeSpan)
+                    return true;
+
+                Interlocked.Add(ref _owner._ticks, Math.Max(0, dueTime.Ticks));
+                ThreadPool.QueueUserWorkItem(_ => _callback(_state));
+                return true;
+            }
+
+            public void Dispose() { }
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 }

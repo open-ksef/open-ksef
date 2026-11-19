@@ -29,6 +29,22 @@ public class AppSettingsLoggingTests
             sink.Events.Select(e => e.MessageTemplate.Text));
     }
 
+    [Fact]
+    public void ShippedAppSettings_DropHttpClientRequestUris()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"))
+            .Build();
+        var sink = new CapturingSink();
+        using var serilog = new LoggerConfiguration().ReadFrom.Configuration(configuration).WriteTo.Sink(sink).CreateLogger();
+        using var factory = new SerilogLoggerFactory(serilog);
+
+        factory.CreateLogger("System.Net.Http.HttpClient.Default.LogicalHandler").LogInformation("Start processing HTTP request GET https://api.ksef.mf.gov.pl/v2/tokens/REF");
+        factory.CreateLogger("System.Net.Http.HttpClient.Default.LogicalHandler").LogWarning("kept");
+
+        Assert.Equal(["kept"], sink.Events.Select(e => e.MessageTemplate.Text));
+    }
+
     private sealed class CapturingSink : ILogEventSink
     {
         public List<LogEvent> Events { get; } = [];

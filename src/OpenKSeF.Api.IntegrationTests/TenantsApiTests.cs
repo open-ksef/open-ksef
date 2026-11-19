@@ -137,7 +137,7 @@ public class TenantsApiTests : IDisposable
         var response = await other.PostAsJsonAsync("/api/tenants", new { nip, displayName = "Firma B" });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal("""{"error":"Firma z tym NIP-em jest już dodana na tym serwerze OpenKSeF. Poproś osobę, która nią zarządza, o zaproszenie do firmy. Jeśli nie wiesz, kto to jest, napisz do administratora serwera."}""", await response.Content.ReadAsStringAsync());
+        Assert.Equal("""{"error":"Firma z tym NIP-em jest już dodana na tym serwerze OpenKSeF. Poproś osobę, która nią zarządza, o zaproszenie do firmy. Jeśli nie wiesz, kto to jest, napisz do administratora serwera. Jeśli masz token KSeF z uprawnieniem Zarządzanie uprawnieniami dla tego NIP-u, możesz przejąć firmę w portalu OpenKSeF (Przejmij firmę)."}""", await response.Content.ReadAsStringAsync());
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Equal(1, await db.Tenants.CountAsync(t => t.Nip == nip));

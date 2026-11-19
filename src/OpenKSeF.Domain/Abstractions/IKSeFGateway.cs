@@ -10,9 +10,14 @@ public interface IKSeFGateway
     Task<KSeFInvoiceQueryResult> QueryInvoicesAsync(KSeFSession session, KSeFQueryCriteria criteria, CancellationToken ct = default);
 
     Task<byte[]> DownloadInvoiceAsync(KSeFSession session, string ksefNumber, CancellationToken ct = default);
+
+    /// <summary>Logs in with a token from outside the store and reads that token's own KSeF metadata; null when KSeF does not confirm it for the NIP. Throws when KSeF is unavailable.</summary>
+    Task<KSeFTokenGrant?> CheckTokenAsync(string nip, string token, CancellationToken ct = default);
 }
 
 public record KSeFSession(string Token, DateTime ExpiresAtUtc);
+
+public record KSeFTokenGrant(IReadOnlyList<string> Permissions, string AuthReferenceNumber);
 
 public record KSeFQueryCriteria(
     string SubjectNip,
