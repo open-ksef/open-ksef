@@ -3,6 +3,17 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
+
+fail() { echo "FAIL: $*"; exit 1; }
+
+mapping=$(tr -d '\r\n' < "$repo/src/nuget.config" | grep -o '<packageSourceMapping>.*</packageSourceMapping>') \
+  || fail "src/nuget.config has no packageSourceMapping block"
+if grep -Eq '<packageSource key="[^"]*">[[:space:]]*</packageSource>|<packageSource key="[^"]*"[[:space:]]*/>' <<<"$mapping"; then
+  fail "src/nuget.config has a packageSource element with no package pattern"
+fi
+grep -Eq '<packageSource key="nuget.org">[[:space:]]*<package pattern="\*"' <<<"$mapping" \
+  || fail "src/nuget.config does not map nuget.org to pattern *, so public packages cannot restore"
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cd "$work"
@@ -47,8 +58,6 @@ restore() {
   rm -rf app/obj app/bin
   NUGET_PACKAGES="$PWD/global-$1" dotnet restore app/app.csproj --configfile app/nuget.config 2>&1
 }
-
-fail() { echo "FAIL: $*"; exit 1; }
 
 config empty | sed '/<packageSourceMapping>/,/<\/packageSourceMapping>/d' > app/nuget.config
 out=$(restore control) || fail "control: restore without mapping should reach the public feed: $out"
