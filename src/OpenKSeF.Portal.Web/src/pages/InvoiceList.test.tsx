@@ -647,7 +647,7 @@ describe('InvoiceListPage', () => {
       expect(byTestId('invoice-fetch-note')?.textContent).toBe('')
     })
 
-    const serverText = 'No credential configured for this tenant.'
+    const serverText = 'Brak tokenu lub certyfikatu KSeF dla tej firmy. Dodaj go w ustawieniach firmy.'
 
     it('on a 409 says in Polish that the token is missing and links to it, without the server text', async () => {
       vi.mocked(forceCredentialSync).mockRejectedValue(

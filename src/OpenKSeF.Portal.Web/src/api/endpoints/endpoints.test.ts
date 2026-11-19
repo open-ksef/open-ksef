@@ -331,7 +331,7 @@ describe('manual sync endpoints', () => {
 
   it('maps a failed run with errorStatus 409 to ApiError 409', async () => {
     const { forceCredentialSync } = await import('./credentials')
-    apiClientMock.post.mockResolvedValueOnce(status('failed', { errorStatus: 409, error: 'No credential configured for this tenant.' }))
+    apiClientMock.post.mockResolvedValueOnce(status('failed', { errorStatus: 409, error: 'Brak tokenu lub certyfikatu KSeF dla tej firmy. Dodaj go w ustawieniach firmy.' }))
 
     await expect(forceCredentialSync('tenant-1')).rejects.toMatchObject({ status: 409 })
   })

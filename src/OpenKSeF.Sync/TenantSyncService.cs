@@ -24,7 +24,7 @@ public sealed class TenantSyncService : ITenantSyncService
     private const int TenantLockKeyspace = 1263748422;
     private static readonly TimeSpan LockPollInterval = TimeSpan.FromSeconds(2);
 
-    public const string MissingCredentialMessage = "No credential configured for this tenant.";
+    public const string MissingCredentialMessage = "Brak tokenu lub certyfikatu KSeF dla tej firmy. Dodaj go w ustawieniach firmy.";
     public const string BusyMessage = "Synchronizacja tej firmy już trwa. Spróbuj ponownie za kilka minut.";
 
     private readonly ApplicationDbContext _db;
