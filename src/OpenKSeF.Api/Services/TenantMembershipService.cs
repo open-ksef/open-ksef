@@ -92,7 +92,7 @@ public class TenantMembershipService(ApplicationDbContext db)
         return (members.SingleOrDefault(m => m.UserId == actorUserId), members.SingleOrDefault(m => m.UserId == targetUserId));
     }
 
-    private static bool SameAddress(string? a, string? b) =>
+    internal static bool SameAddress(string? a, string? b) =>
         !string.IsNullOrWhiteSpace(a) && string.Equals(a.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private async Task<bool> IsLastOwnerAsync(TenantMember target) =>

@@ -87,3 +87,10 @@ public record InviteLinkResponse(string Link, DateTime ExpiresAt, bool EmailSent
 public record AcceptInviteRequest([param: Required] [param: MaxLength(100)] string? Token);
 
 public record AcceptInviteResponse(Guid TenantId, string DisplayName, string Role);
+
+public record ClaimTenantRequest(
+    [param: Required] [param: MaxLength(16)] string? Nip,
+    [param: Required] [param: MaxLength(256)] string? Token)
+{
+    public override string ToString() => $"ClaimTenantRequest {{ Nip = {Nip} }}";
+}

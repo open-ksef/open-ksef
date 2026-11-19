@@ -53,6 +53,9 @@ public class EmailService : IEmailService
     public Task<bool> SendAccessGrantedEmailAsync(string toEmail, Guid tenantId, string company, string nip, TenantRole role, string granterName, string portalUrl) =>
         SendAsync(() => BuildAccessGrantedMessage(toEmail, company, nip, role, granterName, portalUrl), tenantId, null);
 
+    public Task<bool> SendOwnershipClaimedEmailAsync(string toEmail, Guid tenantId, string company, string nip, string newOwnerName) =>
+        SendAsync(() => BuildOwnershipClaimedMessage(toEmail, company, nip, newOwnerName), tenantId, null);
+
     private async Task<bool> SendAsync(Func<MimeMessage> build, Guid tenantId, Guid? invoiceId)
     {
         if (!_options.Enabled)
@@ -161,6 +164,12 @@ public class EmailService : IEmailService
             "Firma jest już na Twojej liście w portalu i w aplikacji mobilnej.",
             ("Otwórz portal", portalUrl),
             "Jeśli to pomyłka, możesz opuścić firmę w portalu.",
+            "Wiadomość wysłana automatycznie przez OpenKSeF.");
+
+    internal MimeMessage BuildOwnershipClaimedMessage(string toEmail, string company, string nip, string newOwnerName) =>
+        BuildMessage(toEmail, $"Firma {company} ma nowego właściciela",
+            "Dzień dobry,",
+            $"Firma {company} (NIP {nip}) ma nowego właściciela: {newOwnerName}. Potwierdził dostęp do KSeF dla tego NIP-u tokenem KSeF. Twój dostęp do firmy w OpenKSeF został usunięty. Jeśli to pomyłka, napisz do administratora serwera.",
             "Wiadomość wysłana automatycznie przez OpenKSeF.");
 
     private MimeMessage BuildMessage(string toEmail, string subject, params object[] paragraphs)

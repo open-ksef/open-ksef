@@ -6,7 +6,6 @@ using KSeF.Client.Core.Exceptions;
 using KSeF.Client.Core.Interfaces.Clients;
 using KSeF.Client.Core.Interfaces.Services;
 using KSeF.Client.Core.Models;
-using KSeF.Client.Core.Models.Authorization;
 using KSeF.Client.Core.Models.Invoices;
 using KSeF.Client.Core.Models.Sessions;
 using OpenKSeF.Domain.Abstractions;
@@ -137,30 +136,4 @@ public sealed class KSeFInvoiceSubmitter(IKSeFClient client, ICryptographyServic
 
     private static string? Extension(SessionInvoice invoice, string key) =>
         invoice.Status?.Extensions is { } extensions && extensions.TryGetValue(key, out var value) ? value : null;
-
-    /// <summary>AuthCoordinator polls 60 s for status 200 and hides a rejection in a TimeoutException; this stops the poll on the real status.</summary>
-    private sealed class RejectionAwareAuthClient(IAuthorizationClient inner) : IAuthorizationClient
-    {
-        public async Task<AuthStatus> GetAuthStatusAsync(string authOperationReferenceNumber, string authenticationToken, CancellationToken cancellationToken = default)
-        {
-            var status = await inner.GetAuthStatusAsync(authOperationReferenceNumber, authenticationToken, cancellationToken);
-            ThrowIfAuthRejected(status.Status);
-            return status;
-        }
-
-        public Task<AuthenticationChallengeResponse> GetAuthChallengeAsync(CancellationToken cancellationToken = default) =>
-            inner.GetAuthChallengeAsync(cancellationToken);
-
-        public Task<SignatureResponse> SubmitXadesAuthRequestAsync(string signedXML, bool verifyCertificateChain = false, bool enforceXadesCompliance = false, CancellationToken cancellationToken = default) =>
-            inner.SubmitXadesAuthRequestAsync(signedXML, verifyCertificateChain, enforceXadesCompliance, cancellationToken);
-
-        public Task<SignatureResponse> SubmitKsefTokenAuthRequestAsync(AuthenticationKsefTokenRequest requestPayload, CancellationToken cancellationToken = default) =>
-            inner.SubmitKsefTokenAuthRequestAsync(requestPayload, cancellationToken);
-
-        public Task<AuthenticationOperationStatusResponse> GetAccessTokenAsync(string authenticationToken, CancellationToken cancellationToken = default) =>
-            inner.GetAccessTokenAsync(authenticationToken, cancellationToken);
-
-        public Task<RefreshTokenResponse> RefreshAccessTokenAsync(string refreshToken, CancellationToken cancellationToken = default) =>
-            inner.RefreshAccessTokenAsync(refreshToken, cancellationToken);
-    }
 }

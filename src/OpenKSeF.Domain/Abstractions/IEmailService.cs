@@ -12,4 +12,5 @@ public interface IEmailService
     /// <returns>False when e-mail is disabled (Email:Enabled), so nothing was sent.</returns>
     Task<bool> SendInviteEmailAsync(string toEmail, Guid tenantId, string company, string nip, TenantRole role, string inviterName, string link, DateTime expiresAtUtc);
     Task<bool> SendAccessGrantedEmailAsync(string toEmail, Guid tenantId, string company, string nip, TenantRole role, string granterName, string portalUrl);
+    Task<bool> SendOwnershipClaimedEmailAsync(string toEmail, Guid tenantId, string company, string nip, string newOwnerName);
 }

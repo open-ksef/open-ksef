@@ -92,6 +92,19 @@ public class EmailServiceTests
     }
 
     [Fact]
+    public void BuildOwnershipClaimedMessage_UsesReqText_HtmlEncoded()
+    {
+        var message = CreateService(new EmailOptions()).BuildOwnershipClaimedMessage("a1@example.invalid", "Biuro & <Syn>", "1111111111", "Bogna Nowak");
+
+        Assert.Equal("Firma Biuro & <Syn> ma nowego właściciela", message.Subject);
+        Assert.Equal(string.Join("\n\n",
+            "Dzień dobry,",
+            "Firma Biuro & <Syn> (NIP 1111111111) ma nowego właściciela: Bogna Nowak. Potwierdził dostęp do KSeF dla tego NIP-u tokenem KSeF. Twój dostęp do firmy w OpenKSeF został usunięty. Jeśli to pomyłka, napisz do administratora serwera.",
+            "Wiadomość wysłana automatycznie przez OpenKSeF."), message.TextBody.ReplaceLineEndings("\n"));
+        Assert.Contains("<p>Firma Biuro &amp; &lt;Syn&gt; (NIP 1111111111) ma nowego właściciela: Bogna Nowak.", message.HtmlBody);
+    }
+
+    [Fact]
     public void BuildIssuedInvoiceStuckMessage_UsesPushTexts_NumberEncoded()
     {
         var message = CreateService(new EmailOptions()).BuildIssuedInvoiceStuckMessage("owner@example.invalid", "FV/<1>/2026");
