@@ -60,6 +60,12 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
         profile.SetBankDetails(input.BankSwift, input.BankName, input.ForeignBankAccount, input.ForeignBankSwift, input.ForeignBankName);
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var tenantLocked = await db.Database
+            .SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "Tenants" WHERE "Id" = {tenantId} FOR KEY SHARE""")
+            .ToListAsync(ct);
+        if (tenantLocked.Count == 0)
+            return (null, []);
+
         if (input.NextNumber is { } next)
         {
             // Lock the counter row before reading used numbers: an issue in flight holds it until its number is committed.
