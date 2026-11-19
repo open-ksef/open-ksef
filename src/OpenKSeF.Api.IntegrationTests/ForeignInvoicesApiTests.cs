@@ -91,7 +91,7 @@ public class ForeignInvoicesApiTests : IDisposable
 
     private async Task<ValidationEnvelope> IssueRejectedAsync(Guid tenantId, Guid id)
     {
-        var response = await _client.PostAsync($"{Base(tenantId)}/{id}/issue", null);
+        var response = await _client.PostAsync($"{Base(tenantId)}/{id}/issue?confirmPastIssueDate=true", null);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<ValidationEnvelope>())!;
     }
@@ -126,7 +126,7 @@ public class ForeignInvoicesApiTests : IDisposable
         Assert.DoesNotContain(draft.Warnings, w => w.Code == "INV-W-MPP");
         Assert.True(draft.TotalGross > 15000m);
 
-        var issue = await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null);
+        var issue = await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null);
         Assert.Equal(HttpStatusCode.Accepted, issue.StatusCode);
         var issued = (await issue.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!;
         Assert.Null(issued.Ksef.KsefNumber);
@@ -156,7 +156,7 @@ public class ForeignInvoicesApiTests : IDisposable
         Assert.Equal("VatUe", fixedDraft.Buyer.IdType);
         Assert.Equal("123456789", fixedDraft.Buyer.ForeignId);
 
-        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null)).StatusCode);
         var xml = await SentXmlAsync(draft.Id);
         Assert.Contains("<PrefiksPodatnika>PL</PrefiksPodatnika>", xml);
         Assert.Contains("<KodUE>DE</KodUE>", xml);
@@ -173,7 +173,7 @@ public class ForeignInvoicesApiTests : IDisposable
 
         Assert.Null(draft.Buyer.Nip);
         Assert.Equal("Other", draft.Buyer.IdType);
-        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null)).StatusCode);
         var xml = await SentXmlAsync(draft.Id);
         Assert.Contains("<NrID>GB-LONG-TAX-ID-000000000000111</NrID>", xml);
         Assert.DoesNotContain("<BrakID>", xml);
@@ -239,7 +239,7 @@ public class ForeignInvoicesApiTests : IDisposable
         Assert.Null(await NumberAsync(draft.Id));
 
         await UpdateAsync(tenantId, draft.Id, ForeignDraft(exchangeRate: monday.Rate, exchangeRateDate: monday.TableDate, issueDate: "2026-11-10"));
-        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null)).StatusCode);
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public class ForeignInvoicesApiTests : IDisposable
         var draft = await CreateAsync(tenantId, ForeignDraft());
         _factory.ExchangeRates.Quote = null;
 
-        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null)).StatusCode);
     }
 
     [Fact]
@@ -272,7 +272,7 @@ public class ForeignInvoicesApiTests : IDisposable
         _factory.ExchangeRates.Quote = Thursday;
         var draft = await CreateAsync(tenantId, ForeignDraft(exchangeRate: 5.5m));
 
-        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null)).StatusCode);
         Assert.Empty(_factory.ExchangeRates.Calls);
     }
 
@@ -427,7 +427,7 @@ public class ForeignInvoicesApiTests : IDisposable
         Assert.Equal("West Test Bank", profile.ForeignBankName);
 
         var draft = await CreateAsync(tenantId, ForeignDraft(exchangeRate: 5.5m));
-        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{draft.Id}/issue?confirmPastIssueDate=true", null)).StatusCode);
         var xml = await SentXmlAsync(draft.Id);
         Assert.Contains("<NrRB>GB82WEST12345698765432</NrRB>", xml);
         Assert.Contains("<SWIFT>TESTGB2L</SWIFT>", xml);

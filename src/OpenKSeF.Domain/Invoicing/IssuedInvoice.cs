@@ -207,13 +207,6 @@ public sealed class IssuedInvoice
         ExemptionBasisText = kind is null ? null : Clean(text);
     }
 
-    public void AddLine(string? name, string? unit, decimal quantity, decimal unitNetPrice, VatRate vatRate)
-    {
-        EnsureEditable();
-        _lines.Add(new IssuedInvoiceLine(Id, _lines.Count + 1, name, unit, quantity, unitNetPrice, vatRate));
-        RecalculateTotals();
-    }
-
     public void ReplaceLines(IEnumerable<(string? Name, string? Unit, decimal Quantity, decimal UnitNetPrice, VatRate VatRate)> lines)
     {
         EnsureEditable();
@@ -347,6 +340,7 @@ public sealed class IssuedInvoice
         KsefStatusCode = statusCode;
         KsefStatusDescription = statusDescription;
         KsefStatusDetails = statusDetails;
+        LastError = null;
         NextAttemptAt = null;
         EscalatedAt = null;
         Status = IssuedInvoiceStatus.Rejected;

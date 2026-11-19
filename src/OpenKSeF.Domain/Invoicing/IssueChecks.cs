@@ -8,8 +8,17 @@ public static class IssueChecks
     public const decimal SplitPaymentWarningThreshold = 15000m;
     public const string NumberPeriodCode = "INV-VAL-022";
     public const string NumberTakenCode = "INV-VAL-023";
+    public const string PastIssueDateCode = "INV-W-PAST-DATE";
+    public const int PastIssueDateDays = 30;
 
     private static readonly Regex VatUeNumber = new(@"^[0-9A-Z+*]{1,12}$", RegexOptions.CultureInvariant);
+
+    public static InvoiceCheck? PastIssueDate(IssuedInvoice invoice, DateOnly today) =>
+        invoice.IssueDate < today.AddDays(-PastIssueDateDays)
+            ? new(PastIssueDateCode, "issueDate",
+                $"Data wystawienia {invoice.IssueDate:yyyy-MM-dd} jest starsza niż {PastIssueDateDays} dni. Sprawdź rok i miesiąc. " +
+                "Faktura wysłana do KSeF po dacie wystawienia jest fakturą offline (art. 106nda ustawy o VAT). Potwierdź, aby wystawić ją z tą datą.")
+            : null;
 
     public static IReadOnlyList<InvoiceCheck> Errors(IssuedInvoice invoice, SellerProfile? profile, DateOnly today)
     {

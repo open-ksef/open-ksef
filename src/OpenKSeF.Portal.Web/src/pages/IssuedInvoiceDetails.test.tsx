@@ -255,6 +255,14 @@ describe('issue and detail pages', () => {
     await waitFor(() => vi.mocked(issueIssuedInvoice).mock.calls.length === 1)
   })
 
+  it('Rejected opened for edit is titled as a correction, not a draft', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Rejected', number: 'FV/7/10/2026' }))
+    await render('/issued/i-1/edit?tenantId=t-1')
+    await waitFor(() => Boolean(container.querySelector('#draft-title')))
+    expect(container.querySelector('#draft-title')?.textContent).toBe('Popraw fakturę FV/7/10/2026')
+    expect(container.textContent).not.toContain('Szkic faktury')
+  })
+
   it('Rejected resend on test issues without a dialog', async () => {
     const rejected = invoice({ status: 'Rejected', number: 'FV/7/10/2026' })
     vi.mocked(getIssuedInvoice).mockResolvedValue(rejected)
@@ -489,6 +497,86 @@ describe('issue and detail pages', () => {
 
     expect(container.querySelector('#issue-date-error')?.textContent).toContain('późniejsza niż dzisiejsza')
     expect(container.querySelector('#issue-date')?.getAttribute('aria-invalid')).toBe('true')
+  })
+
+  describe('issue date older than 30 days', () => {
+    const message = 'Data wystawienia jest starsza niż 30 dni (art. 106nda). Potwierdź wystawienie.'
+    const pastDate = async () =>
+      normalizeError(
+        new Response(JSON.stringify({ errors: [{ code: 'INV-W-PAST-DATE', field: 'issueDate', message }], warnings: [] }), {
+          status: 422,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+    beforeEach(() => {
+      vi.mocked(getSellerProfile).mockResolvedValue({ ...profile, ksefEnvironment: 'test' })
+      vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+      vi.mocked(updateIssuedInvoice).mockResolvedValue(invoice({ number: null }))
+    })
+
+    it('shows the server message and Potwierdź retries with confirmPastIssueDate', async () => {
+      vi.mocked(issueIssuedInvoice).mockRejectedValueOnce(await pastDate())
+      vi.mocked(issueIssuedInvoice).mockImplementationOnce(async () => {
+        vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Sending' }))
+        return invoice({ status: 'Sending' })
+      })
+      await render('/issued/i-1/edit?tenantId=t-1')
+
+      await clickIssue()
+      await waitFor(() => Boolean(dialogEl()))
+      expect(dialogEl()?.textContent).toContain(message)
+      expect(vi.mocked(issueIssuedInvoice).mock.calls).toEqual([['t-1', 'i-1', 5]])
+
+      await act(async () => buttonByText(dialogEl()!, 'Potwierdź')!.click())
+      await waitFor(() => container.textContent?.includes('czekamy na przyjęcie') ?? false)
+      expect(vi.mocked(issueIssuedInvoice).mock.calls[1]).toEqual(['t-1', 'i-1', 5, true])
+    })
+
+    it('a second 422 after Potwierdź shows its errors inline without another confirm', async () => {
+      const body = { errors: [{ code: 'INV-VAL-015', field: 'buyer.name', message: 'Uzupełnij nazwę nabywcy' }], warnings: [] }
+      vi.mocked(issueIssuedInvoice).mockRejectedValueOnce(await pastDate())
+      vi.mocked(issueIssuedInvoice).mockRejectedValueOnce(
+        await normalizeError(new Response(JSON.stringify(body), { status: 422, headers: { 'Content-Type': 'application/json' } })),
+      )
+      await render('/issued/i-1/edit?tenantId=t-1')
+
+      await clickIssue()
+      await waitFor(() => Boolean(dialogEl()))
+      await act(async () => buttonByText(dialogEl()!, 'Potwierdź')!.click())
+      await waitFor(() => container.querySelector('#buyer-name-error') !== null)
+
+      expect(dialogEl()).toBeNull()
+      expect(issueIssuedInvoice).toHaveBeenCalledTimes(2)
+    })
+
+    it('INV-W-PAST-DATE again after Potwierdź does not reopen the dialog', async () => {
+      vi.mocked(issueIssuedInvoice).mockRejectedValue(await pastDate())
+      await render('/issued/i-1/edit?tenantId=t-1')
+
+      await clickIssue()
+      await waitFor(() => Boolean(dialogEl()))
+      await act(async () => buttonByText(dialogEl()!, 'Potwierdź')!.click())
+      await waitFor(() => vi.mocked(issueIssuedInvoice).mock.calls.length === 2)
+      await act(flush)
+
+      expect(dialogEl()).toBeNull()
+      expect(issueIssuedInvoice).toHaveBeenCalledTimes(2)
+    })
+
+    it('Anuluj closes the dialog without issuing again', async () => {
+      vi.mocked(issueIssuedInvoice).mockRejectedValue(await pastDate())
+      await render('/issued/i-1/edit?tenantId=t-1')
+
+      await clickIssue()
+      await waitFor(() => Boolean(dialogEl()))
+      await act(async () => buttonByText(dialogEl()!, 'Anuluj')!.click())
+
+      expect(dialogEl()).toBeNull()
+      expect(issueIssuedInvoice).toHaveBeenCalledTimes(1)
+      expect(container.querySelector('#issue-date-error')).toBeNull()
+      expect(buttonByText(container, 'Wystaw i wyślij do KSeF')).toBeDefined()
+    })
   })
 
   it('Accepted shows the KSeF number and downloads, no edit', async () => {

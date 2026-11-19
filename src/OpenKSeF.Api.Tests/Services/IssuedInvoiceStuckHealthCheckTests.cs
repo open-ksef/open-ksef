@@ -47,7 +47,7 @@ public class IssuedInvoiceStuckHealthCheckTests : IDisposable
         var issuedAt = _now.AddDays(-2);
         var invoice = IssuedInvoice.Draft(Guid.NewGuid(), Guid.NewGuid(), DateOnly.FromDateTime(issuedAt), issuedAt);
         invoice.SetBuyer(BuyerKind.Company, "1111111111", "Nabywca sp. z o.o.", "ul. Długa 2", "00-002 Warszawa");
-        invoice.AddLine("Usługa", null, 1, 100m, VatRate.Rate23);
+        invoice.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
         invoice.SetPayment(PaymentMethod.Cash, false);
         var profile = new SellerProfile(invoice.TenantId);
         profile.Update("Sprzedawca sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", null, false, InvoiceNumbering.DefaultPattern);

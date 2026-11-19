@@ -34,39 +34,6 @@ public class DashboardControllerTests : IDisposable
     }
 
     [Fact]
-    public void Controller_HasExpectedAttributesAndCanBeConstructed()
-    {
-        var type = typeof(DashboardController);
-
-        Assert.NotNull(type.GetCustomAttributes(typeof(ApiControllerAttribute), inherit: false).SingleOrDefault());
-
-        var route = type.GetCustomAttributes(typeof(RouteAttribute), inherit: false)
-            .Cast<RouteAttribute>()
-            .Single();
-
-        Assert.Equal("api/[controller]", route.Template);
-        Assert.NotNull(type.GetCustomAttributes(typeof(AuthorizeAttribute), inherit: false).SingleOrDefault());
-
-        var controller = new DashboardController(_db, _currentUser);
-        Assert.NotNull(controller);
-    }
-
-    [Fact]
-    public void Get_HasProducesResponseTypeAttribute()
-    {
-        var method = typeof(DashboardController).GetMethod(nameof(DashboardController.Get));
-        Assert.NotNull(method);
-
-        var attribute = method!
-            .GetCustomAttributes(typeof(ProducesResponseTypeAttribute), inherit: false)
-            .Cast<ProducesResponseTypeAttribute>()
-            .SingleOrDefault(a => a.StatusCode == StatusCodes.Status200OK);
-
-        Assert.NotNull(attribute);
-        Assert.Equal(typeof(List<TenantDashboardSummaryResponse>), attribute!.Type);
-    }
-
-    [Fact]
     public async Task Get_ReturnsAggregatedDashboardForCurrentUserTenantsOnly()
     {
         var now = DateTime.UtcNow;

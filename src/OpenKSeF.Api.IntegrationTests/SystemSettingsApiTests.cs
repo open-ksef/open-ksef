@@ -195,6 +195,7 @@ public class SystemSettingsApiTests : IAsyncLifetime
             builder.ConfigureTestServices(services => services.AddSingleton<ILoggerFactory>(new LoggerFactory([log])));
         });
         using var client = factory.CreateClient();
+        Assert.Equal(accountOnly == HttpStatusCode.OK ? 1 : 0, log.Entries.Count(e => e.Contains("Auth:AcceptAccountAudience is true")));
         foreach (var clientId in new[] { "openksef-portal-web", "openksef-mobile" })
         {
             var apiToken = await _fixture.GetAccessTokenAsync(clientId: clientId);

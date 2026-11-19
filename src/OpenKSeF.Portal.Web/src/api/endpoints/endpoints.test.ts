@@ -249,6 +249,9 @@ describe('issuing endpoints', () => {
     expect(apiClientMock.put).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1', draft, { query: { version: 7 } })
     expect(apiClientMock.delete).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1', { query: { version: 7 } })
     expect(apiClientMock.post).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1/issue', undefined, { query: { version: 7 } })
+
+    await issued.issueIssuedInvoice('t-1', 'i-1', 7, true)
+    expect(apiClientMock.post).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1/issue', undefined, { query: { version: 7, confirmPastIssueDate: true } })
   })
 })
 

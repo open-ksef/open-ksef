@@ -402,7 +402,7 @@ public class KSeFTestSendTests(ITestOutputHelper output)
 
         public IssuedInvoice NewInvoice(string number, string lineName, byte[]? xml = null, string? buyerNip = null)
         {
-            var invoice = Fa3InvoiceWriterTests.Issued(i => i.AddLine(lineName, null, 1, 100m, VatRate.Rate23),
+            var invoice = Fa3InvoiceWriterTests.Issued(i => i.ReplaceLines([(lineName, null, 1, 100m, VatRate.Rate23)]),
                 sellerNip: SellerNip, buyerNip: buyerNip ?? env["KSEF_TEST_NIP"], number: number, tenantId: Guid.NewGuid(), now: DateTime.UtcNow);
             if (xml is not null)
             {

@@ -80,7 +80,7 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
         new XElement(Ns + "P_15", Money(invoice.TotalGross)),
         Adnotacje(invoice),
         new XElement(Ns + "RodzajFaktury", "VAT"),
-        invoice.Lines.Select(l => Line(l, invoice.Currency == IssuedInvoice.DefaultCurrency ? null : invoice.ExchangeRate)),
+        invoice.Lines.OrderBy(l => l.LineNo).Select(l => Line(l, invoice.Currency == IssuedInvoice.DefaultCurrency ? null : invoice.ExchangeRate)),
         Platnosc(invoice));
 
     private static IEnumerable<XElement> Buckets(IssuedInvoice invoice)
@@ -136,7 +136,7 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
             PaymentMethod.Card => 2,
             _ => 6
         }),
-        (invoice.SellerIban ?? invoice.SellerBankAccount) is not { } account ? null : new XElement(Ns + "RachunekBankowy",
+        invoice.PaymentMethod != PaymentMethod.Transfer || (invoice.SellerIban ?? invoice.SellerBankAccount) is not { } account ? null : new XElement(Ns + "RachunekBankowy",
             new XElement(Ns + "NrRB", account),
             invoice.SellerBankSwift is null ? null : new XElement(Ns + "SWIFT", invoice.SellerBankSwift),
             invoice.SellerBankName is null ? null : new XElement(Ns + "NazwaBanku", invoice.SellerBankName)));

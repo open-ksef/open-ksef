@@ -52,7 +52,7 @@ public class Fa3InvoiceWriterTests
     [Fact]
     public void B2B23_HeaderPartiesTotalsAndPayment()
     {
-        var root = WriteValid(Issued(i => i.AddLine("Usługa programistyczna", "godz.", 10, 150m, VatRate.Rate23)));
+        var root = WriteValid(Issued(i => i.ReplaceLines([("Usługa programistyczna", "godz.", 10, 150m, VatRate.Rate23)])));
 
         Assert.Equal(Ns, root.Name.Namespace);
         var form = root.Element(Ns + "Naglowek")!.Element(Ns + "KodFormularza")!;
@@ -90,7 +90,7 @@ public class Fa3InvoiceWriterTests
     [Fact]
     public void B2B23_AdnotacjeDefaults()
     {
-        var root = WriteValid(Issued(i => i.AddLine("Usługa", null, 1, 100m, VatRate.Rate23)));
+        var root = WriteValid(Issued(i => i.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)])));
 
         Assert.Equal("2", Adnotacja(root, "P_16"));
         Assert.Equal("2", Adnotacja(root, "P_17"));
@@ -107,7 +107,7 @@ public class Fa3InvoiceWriterTests
     {
         var root = WriteValid(Issued(i =>
         {
-            i.AddLine("Usługa", null, 1, 20000m, VatRate.Rate23);
+            i.ReplaceLines([("Usługa", null, 1, 20000m, VatRate.Rate23)]);
             i.SetPayment(PaymentMethod.Transfer, splitPayment: true);
         }, cashAccounting: true));
 
@@ -120,9 +120,11 @@ public class Fa3InvoiceWriterTests
     {
         var root = WriteValid(Issued(i =>
         {
-            i.AddLine("A", null, 2, 100.01m, VatRate.Rate23);
-            i.AddLine("B", null, 3, 33.33m, VatRate.Rate8);
-            i.AddLine("C", null, 1, 19.99m, VatRate.Rate5);
+            i.ReplaceLines([
+                ("A", null, 2, 100.01m, VatRate.Rate23),
+                ("B", null, 3, 33.33m, VatRate.Rate8),
+                ("C", null, 1, 19.99m, VatRate.Rate5)
+            ]);
         }));
 
         Assert.Equal("200.02", Fa(root, "P_13_1"));
@@ -138,7 +140,7 @@ public class Fa3InvoiceWriterTests
     [Fact]
     public void ZeroDomestic_P13_6_1WithoutVat()
     {
-        var root = WriteValid(Issued(i => i.AddLine("Towar", null, 1, 500m, VatRate.ZeroDomestic)));
+        var root = WriteValid(Issued(i => i.ReplaceLines([("Towar", null, 1, 500m, VatRate.ZeroDomestic)])));
 
         Assert.Equal("500.00", Fa(root, "P_13_6_1"));
         Assert.Equal("500.00", Fa(root, "P_15"));
@@ -150,7 +152,7 @@ public class Fa3InvoiceWriterTests
     {
         var root = WriteValid(Issued(i =>
         {
-            i.AddLine("Szkolenie", null, 1, 800m, VatRate.Exempt);
+            i.ReplaceLines([("Szkolenie", null, 1, 800m, VatRate.Exempt)]);
             i.SetExemptionBasis(ExemptionBasisKind.Act, "art. 113 ust. 1 ustawy o VAT");
         }));
 
@@ -167,7 +169,7 @@ public class Fa3InvoiceWriterTests
         var root = WriteValid(Issued(i =>
         {
             i.SetBuyer(BuyerKind.Person, null, "Jan Kowalski", "ul. Krótka 3", "00-003 Warszawa");
-            i.AddLine("Usługa", null, 1, 100m, VatRate.Rate23);
+            i.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
             i.SetPayment(PaymentMethod.Cash, false);
         }, bankAccount: null));
 
@@ -186,11 +188,40 @@ public class Fa3InvoiceWriterTests
     {
         var root = WriteValid(Issued(i =>
         {
-            i.AddLine("Usługa", null, 1, 100m, VatRate.Rate23);
+            i.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
             i.SetPayment(PaymentMethod.Card, false);
         }));
 
-        Assert.Equal("2", root.Element(Ns + "Fa")!.Element(Ns + "Platnosc")!.Element(Ns + "FormaPlatnosci")!.Value);
+        var payment = root.Element(Ns + "Fa")!.Element(Ns + "Platnosc")!;
+        Assert.Equal("2", payment.Element(Ns + "FormaPlatnosci")!.Value);
+        Assert.Null(payment.Element(Ns + "RachunekBankowy"));
+    }
+
+    [Fact]
+    public void Cash_WithSellerAccount_HasNoBankAccount()
+    {
+        var root = WriteValid(Issued(i =>
+        {
+            i.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
+            i.SetPayment(PaymentMethod.Cash, false);
+        }));
+
+        Assert.Null(root.Element(Ns + "Fa")!.Element(Ns + "Platnosc")!.Element(Ns + "RachunekBankowy"));
+    }
+
+    [Fact]
+    public void Lines_LoadedOutOfOrder_AreWrittenByLineNo()
+    {
+        var invoice = Issued(i => i.ReplaceLines([
+            ("A", null, 1, 10m, VatRate.Rate23),
+            ("B", null, 1, 20m, VatRate.Rate23),
+            ("C", null, 1, 30m, VatRate.Rate23)
+        ]));
+        ((List<IssuedInvoiceLine>)typeof(IssuedInvoice).GetField("_lines", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(invoice)!).Reverse();
+
+        var root = WriteValid(invoice);
+
+        Assert.Equal(["1", "2", "3"], root.Element(Ns + "Fa")!.Elements(Ns + "FaWiersz").Select(l => l.Element(Ns + "NrWierszaFa")!.Value));
     }
 
     [Fact]
@@ -198,7 +229,7 @@ public class Fa3InvoiceWriterTests
     {
         var root = WriteValid(Issued(i =>
         {
-            i.AddLine("Usługa", null, 1, 100m, VatRate.Rate23);
+            i.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
             i.SetDates(Day, Day.AddDays(-5), Day.AddDays(14));
         }));
 
@@ -208,7 +239,7 @@ public class Fa3InvoiceWriterTests
     [Fact]
     public void Bytes_AreUtf8WithoutBom()
     {
-        var xml = Writer.Write(Issued(i => i.AddLine("Zażółć gęślą jaźń", null, 1, 100m, VatRate.Rate23)), Now).Xml;
+        var xml = Writer.Write(Issued(i => i.ReplaceLines([("Zażółć gęślą jaźń", null, 1, 100m, VatRate.Rate23)])), Now).Xml;
 
         Assert.NotEqual(0xEF, xml[0]);
         Assert.Contains("Zażółć gęślą jaźń", System.Text.Encoding.UTF8.GetString(xml));
@@ -217,7 +248,7 @@ public class Fa3InvoiceWriterTests
     [Fact]
     public void SchemaViolation_ReturnsErrors()
     {
-        var result = Writer.Write(Issued(i => i.AddLine("Usługa", null, 1, 100m, VatRate.Rate23), sellerNip: "12345"), Now);
+        var result = Writer.Write(Issued(i => i.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]), sellerNip: "12345"), Now);
 
         Assert.False(result.IsValid);
         Assert.Contains(result.SchemaErrors, e => e.Contains("NIP"));
@@ -230,11 +261,13 @@ public class Fa3InvoiceWriterTests
 
     private static IssuedInvoice CompanyInvoice(Action<SellerProfile>? configureProfile = null) => Issued(i =>
     {
-        i.AddLine("Usługa", "godz.", 10, 150m, VatRate.Rate23);
-        i.AddLine("Towar", null, 1.5m, 33.33m, VatRate.Rate8);
-        i.AddLine("Książka", null, 2, 19.99m, VatRate.Rate5);
-        i.AddLine("Eksport krajowy", null, 1, 500m, VatRate.ZeroDomestic);
-        i.AddLine("Szkolenie", null, 1, 800m, VatRate.Exempt);
+        i.ReplaceLines([
+            ("Usługa", "godz.", 10, 150m, VatRate.Rate23),
+            ("Towar", null, 1.5m, 33.33m, VatRate.Rate8),
+            ("Książka", null, 2, 19.99m, VatRate.Rate5),
+            ("Eksport krajowy", null, 1, 500m, VatRate.ZeroDomestic),
+            ("Szkolenie", null, 1, 800m, VatRate.Exempt)
+        ]);
         i.SetExemptionBasis(ExemptionBasisKind.Act, "art. 113 ust. 1 ustawy o VAT");
         i.SetDates(Day, Day.AddDays(-5), Day.AddDays(14));
         i.SetPayment(PaymentMethod.Transfer, splitPayment: true);
@@ -243,7 +276,7 @@ public class Fa3InvoiceWriterTests
     private static IssuedInvoice PersonInvoice() => Issued(i =>
     {
         i.SetBuyer(BuyerKind.Person, null, "Jan Kowalski", "ul. Krótka 3", null);
-        i.AddLine("Usługa", null, 1, 100m, VatRate.Rate23);
+        i.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
         i.SetPayment(PaymentMethod.Cash, false);
     }, bankAccount: null);
 
@@ -276,7 +309,7 @@ public class Fa3InvoiceWriterTests
         i.SetBuyer(BuyerKind.Foreign, null, "Example Buyer Ltd", "1 Test Street", "Testville");
         i.SetForeignBuyer(country, foreignId);
         i.SetCurrency(currency, exchangeRate, null);
-        i.AddLine("Consulting / Konsultacje", "h", 10, 50m, rate);
+        i.ReplaceLines([("Consulting / Konsultacje", "h", 10, 50m, rate)]);
     }, configureProfile: configureProfile);
 
     private static XElement Buyer(XElement root) => root.Element(Ns + "Podmiot2")!;
@@ -361,7 +394,7 @@ public class Fa3InvoiceWriterTests
         {
             i.SetBuyer(BuyerKind.Foreign, null, "Example Buyer Ltd", "1 Test Street", null);
             i.SetForeignBuyer("GB", null);
-            i.AddLine("Consulting", "h", 1, 100m, VatRate.NotTaxable);
+            i.ReplaceLines([("Consulting", "h", 1, 100m, VatRate.NotTaxable)]);
         }, cashAccounting: true);
 
         Assert.Equal("2", Adnotacja(WriteValid(invoice), "P_16"));
@@ -404,7 +437,7 @@ public class Fa3InvoiceWriterTests
         {
             i.SetBuyer(BuyerKind.Foreign, null, "Example Buyer Ltd", "1 Test Street", null);
             i.SetForeignBuyer("GB", null);
-            i.AddLine("Consulting", "h", 1, 50000m, VatRate.NotTaxable);
+            i.ReplaceLines([("Consulting", "h", 1, 50000m, VatRate.NotTaxable)]);
             i.SetPayment(PaymentMethod.Transfer, splitPayment: true);
         });
 

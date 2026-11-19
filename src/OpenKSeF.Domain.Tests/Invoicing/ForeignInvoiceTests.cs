@@ -14,7 +14,7 @@ public class ForeignInvoiceTests
         invoice.SetBuyer(BuyerKind.Foreign, null, "Example Buyer Ltd", "1 Test Street", null);
         invoice.SetForeignBuyer(country, foreignId);
         invoice.SetCurrency(currency, rate, null);
-        invoice.AddLine("Consulting", "h", 1, 100m, line);
+        invoice.ReplaceLines([("Consulting", "h", 1, 100m, line)]);
         return invoice;
     }
 
@@ -125,7 +125,7 @@ public class ForeignInvoiceTests
         {
             var invoice = IssuedInvoice.Draft(Guid.NewGuid(), Guid.NewGuid(), Today, Now);
             invoice.SetBuyer(kind, nip, "Nabywca", "ul. Długa 2", null);
-            invoice.AddLine("Usługa", null, 1, 100m, rate);
+            invoice.ReplaceLines([("Usługa", null, 1, 100m, rate)]);
 
             AssertSingleError(invoice, "INV-VAL-060", "lines[0].vatRate");
         }
@@ -137,7 +137,7 @@ public class ForeignInvoiceTests
         var invoice = IssuedInvoice.Draft(Guid.NewGuid(), Guid.NewGuid(), Today, Now);
         invoice.SetBuyer(BuyerKind.Company, "5261040828", "Nabywca", "ul. Długa 2", null);
         invoice.SetCurrency("GBP", 5.2m, null);
-        invoice.AddLine("Usługa", null, 1, 100m, VatRate.Rate23);
+        invoice.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
 
         AssertSingleError(invoice, "INV-VAL-091", "currency");
     }
@@ -166,7 +166,7 @@ public class ForeignInvoiceTests
     {
         var invoice = IssuedInvoice.Draft(Guid.NewGuid(), Guid.NewGuid(), Today, Now);
         invoice.SetBuyer(BuyerKind.Company, "5261040828", "Nabywca", "ul. Długa 2", null);
-        invoice.AddLine("Usługa", null, 1, 20000m, VatRate.Rate23);
+        invoice.ReplaceLines([("Usługa", null, 1, 20000m, VatRate.Rate23)]);
 
         Assert.Contains(IssueChecks.Warnings(invoice), w => w.Code == "INV-W-MPP");
     }

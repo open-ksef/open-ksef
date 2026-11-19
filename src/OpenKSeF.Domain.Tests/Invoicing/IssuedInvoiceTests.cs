@@ -20,7 +20,7 @@ public class IssuedInvoiceTests
     private static IssuedInvoice ValidDraft()
     {
         var invoice = NewDraft();
-        invoice.AddLine("Usługa", null, 1, 100m, VatRate.Rate23);
+        invoice.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
         return invoice;
     }
 
@@ -48,10 +48,10 @@ public class IssuedInvoiceTests
     }
 
     [Fact]
-    public void AddLine_CalculatesNetAndDisplayVat_DefaultUnit()
+    public void ReplaceLines_CalculatesNetAndDisplayVat_DefaultUnit()
     {
         var invoice = NewDraft();
-        invoice.AddLine(" Usługa ", null, 3, 19.99m, VatRate.Rate8);
+        invoice.ReplaceLines([(" Usługa ", null, 3, 19.99m, VatRate.Rate8)]);
 
         var line = Assert.Single(invoice.Lines);
         Assert.Equal(1, line.LineNo);
@@ -65,8 +65,7 @@ public class IssuedInvoiceTests
     public void Totals_ThreeTimes033At23_UsesPerRateRounding()
     {
         var invoice = NewDraft();
-        for (var i = 0; i < 3; i++)
-            invoice.AddLine("x", null, 1, 0.33m, VatRate.Rate23);
+        invoice.ReplaceLines([("x", null, 1, 0.33m, VatRate.Rate23), ("x", null, 1, 0.33m, VatRate.Rate23), ("x", null, 1, 0.33m, VatRate.Rate23)]);
 
         Assert.Equal(0.99m, invoice.TotalNet);
         Assert.Equal(0.23m, invoice.TotalVat);
@@ -161,7 +160,7 @@ public class IssuedInvoiceTests
         var invoice = ValidDraft();
         invoice.Issue(CompleteProfile(), "1234563218", "FV/1/11/2026", Now);
 
-        Assert.Throws<InvoiceStateException>(() => invoice.AddLine("x", null, 1, 1m, VatRate.Rate23));
+        Assert.Throws<InvoiceStateException>(() => invoice.ReplaceLines([("x", null, 1, 1m, VatRate.Rate23)]));
         Assert.Throws<InvoiceStateException>(() => invoice.ReplaceLines([]));
         Assert.Throws<InvoiceStateException>(() => invoice.SetBuyer(BuyerKind.Person, null, "a", "b", null));
         Assert.Throws<InvoiceStateException>(() => invoice.SetDates(Today, Today, Today));
@@ -266,7 +265,7 @@ public class IssuedInvoiceTests
     public void ChecksForIssue_ExemptLineNeedsOneBasis(ExemptionBasisKind? kind, string? text, bool blocked)
     {
         var invoice = NewDraft();
-        invoice.AddLine("Szkolenie", null, 1, 100m, VatRate.Exempt);
+        invoice.ReplaceLines([("Szkolenie", null, 1, 100m, VatRate.Exempt)]);
         invoice.SetExemptionBasis(kind, text);
 
         Assert.Equal(blocked, ErrorCodes(invoice, CompleteProfile()).Contains("INV-VAL-061"));
@@ -285,10 +284,23 @@ public class IssuedInvoiceTests
     public void Warnings_SplitPaymentAboveThreshold(decimal gross, bool splitPayment, bool warned)
     {
         var invoice = NewDraft();
-        invoice.AddLine("x", null, 1, gross, VatRate.ZeroDomestic);
+        invoice.ReplaceLines([("x", null, 1, gross, VatRate.ZeroDomestic)]);
         invoice.SetPayment(PaymentMethod.Transfer, splitPayment);
 
         Assert.Equal(warned, IssueChecks.Warnings(invoice).Any(w => w.Code == "INV-W-MPP"));
+    }
+
+    [Fact]
+    public void MarkRejected_ClearsRetryError()
+    {
+        var invoice = ValidDraft();
+        invoice.Issue(CompleteProfile(), "1234563218", "FV/7/11/2026", Now);
+        invoice.MarkSendStarted("S-1", Now);
+        invoice.ScheduleRetry("KSeF nie odpowiada, ponowimy wysyłkę", Now.AddSeconds(20), Now);
+
+        invoice.MarkRejected(450, "Błąd weryfikacji semantyki", "details", Now);
+
+        Assert.Null(invoice.LastError);
     }
 
     [Fact]
@@ -301,7 +313,7 @@ public class IssuedInvoiceTests
         invoice.MarkRejected(450, "Błąd weryfikacji semantyki", "details", Now);
         Assert.Equal(IssuedInvoiceStatus.Rejected, invoice.Status);
 
-        invoice.AddLine("Poprawka", null, 1, 1m, VatRate.Rate23);
+        invoice.ReplaceLines([("Poprawka", null, 1, 1m, VatRate.Rate23)]);
         invoice.Issue(CompleteProfile(), "1234563218", "FV/99/11/2026", Now);
 
         Assert.Equal("FV/7/11/2026", invoice.Number);

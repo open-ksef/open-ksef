@@ -277,13 +277,13 @@ public class SystemSetupControllerTests
     [Fact]
     public async Task Apply_ValidToken_IsConsumedOnce()
     {
+        var sessions = new SetupSessionService();
+        var token = sessions.CreateSession("admin", "secret");
         _systemConfig.IsInitialized.Returns(false);
-        _sessionService.RedeemSession("valid-session")
-            .Returns(("admin", "secret", DateTimeOffset.UtcNow.AddMinutes(10)), (ValueTuple<string, string, DateTimeOffset>?)null);
         _setupService.AuthenticateAdminAsync("admin", "secret").Returns(((string?)"kc-token", false));
         _setupService.ApplySetupAsync(Arg.Any<SetupApplyRequest>(), "kc-token", "admin", Arg.Any<CancellationToken>())
             .Returns(new SetupApplyResponse(true, null));
-        var controller = CreateController();
+        var controller = new SystemSetupController(_systemConfig, _setupService, sessions, _limiter, _configuration, _logger);
         var request = new SetupApplyRequest
         {
             ExternalBaseUrl = "http://localhost:8080",
@@ -292,13 +292,8 @@ public class SystemSetupControllerTests
             AdminPassword = "Test1234!",
         };
 
-        var firstResult = await controller.Apply("valid-session", request, CancellationToken.None);
-
-        Assert.IsType<OkObjectResult>(firstResult);
-
-        // Session has been redeemed — second call returns null
-        var secondAttemptCredentials = _sessionService.RedeemSession("valid-session");
-        Assert.Null(secondAttemptCredentials);
+        Assert.IsType<OkObjectResult>(await controller.Apply(token, request, CancellationToken.None));
+        Assert.IsType<BadRequestObjectResult>(await controller.Apply(token, request, CancellationToken.None));
     }
 
     [Fact]
@@ -367,6 +362,25 @@ public class SystemSetupControllerTests
 
         Assert.Equal(SystemSetupService.KeycloakInvalidCredentialsMessage, Assert.IsType<SetupApplyResponse>(result.Value).Error);
         Assert.Null(sessions.RedeemSession(token));
+    }
+
+    [Fact]
+    public void RedeemSession_SecondCall_ReturnsNull()
+    {
+        var sessions = new SetupSessionService();
+        var token = sessions.CreateSession("admin", "secret");
+
+        Assert.Equal("admin", sessions.RedeemSession(token)?.Username);
+        Assert.Null(sessions.RedeemSession(token));
+    }
+
+    [Fact]
+    public void RedeemSession_Expired_ReturnsNull()
+    {
+        var sessions = new SetupSessionService();
+        sessions.RestoreSession("expired", ("admin", "secret", DateTimeOffset.UtcNow.AddSeconds(-1)));
+
+        Assert.Null(sessions.RedeemSession("expired"));
     }
 
     [Fact]

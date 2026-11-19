@@ -132,6 +132,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   const [warnings, setWarnings] = useState<ValidationIssue[]>(invoice?.warnings ?? [])
   const [failure, setFailure] = useState<string | null>(null)
   const [confirmFor, setConfirmFor] = useState<IssuedInvoiceResponse | null>(null)
+  const [pastDate, setPastDate] = useState<{ target: IssuedInvoiceResponse; message: string } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const issueOpener = useRef<HTMLButtonElement | null>(null)
   const mounted = useRef(true)
@@ -183,9 +184,16 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
     setFailure(envelope ? null : failureText(failed, fallback))
   }
 
-  async function recoverIssue(target: IssuedInvoiceResponse, failed: unknown): Promise<void> {
+  async function recoverIssue(target: IssuedInvoiceResponse, failed: unknown, pastDateConfirmed = false): Promise<void> {
     setConfirmFor(null)
-    if (await readValidationEnvelope(failed)) {
+    setPastDate(null)
+    const envelope = await readValidationEnvelope(failed)
+    const pastDateError = !pastDateConfirmed && envelope?.errors.length === 1 && envelope.errors[0].code === 'INV-W-PAST-DATE' ? envelope.errors[0] : null
+    if (pastDateError) {
+      setPastDate({ target, message: pastDateError.message })
+      return
+    }
+    if (envelope) {
       return showFailure(failed, 'Nie udało się wysłać faktury do KSeF')
     }
 
@@ -213,20 +221,21 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   })
 
   const issue = useMutation({
-    mutationFn: (target: IssuedInvoiceResponse) => issueIssuedInvoice(tenantId, target.id, target.version),
+    mutationFn: ({ target, confirmPastIssueDate }: { target: IssuedInvoiceResponse; confirmPastIssueDate?: boolean }) =>
+      confirmPastIssueDate ? issueIssuedInvoice(tenantId, target.id, target.version, true) : issueIssuedInvoice(tenantId, target.id, target.version),
     onSuccess: (issued) => {
       queryClient.setQueryData(['issued-invoice', tenantId, issued.id], issued)
       void queryClient.invalidateQueries({ queryKey: ['seller-profile', tenantId] })
       navigate(`/issued/${encodeURIComponent(issued.id)}?tenantId=${encodeURIComponent(tenantId)}`)
     },
-    onError: (issueError, target) => recoverIssue(target, issueError),
+    onError: (issueError, { target, confirmPastIssueDate }) => recoverIssue(target, issueError, confirmPastIssueDate),
   })
 
   const prepareIssue = useMutation({
     mutationFn: () => saveDraft(),
     onSuccess: (saved) => {
       if (saved.ksef.environment === 'test' || saved.ksef.environment === 'demo') {
-        issue.mutate(saved)
+        issue.mutate({ target: saved })
       } else {
         setConfirmFor(saved)
       }
@@ -445,7 +454,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
         cancelLabel="Wróć do edycji"
         pendingLabel="Wysyłanie…"
         isPending={issue.isPending}
-        onConfirm={() => confirmFor && issue.mutate(confirmFor)}
+        onConfirm={() => confirmFor && issue.mutate({ target: confirmFor })}
         onCancel={() => {
           setConfirmFor(null)
           issueOpener.current?.focus()
@@ -490,6 +499,21 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
         ) : null}
         <p className="inv-help">Korekt nie wystawisz jeszcze w OpenKSeF — użyj Aplikacji Podatnika KSeF.</p>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={pastDate !== null}
+        title="Wystawić fakturę z datą w przeszłości?"
+        message={pastDate?.message ?? ''}
+        confirmLabel="Potwierdź"
+        cancelLabel="Anuluj"
+        pendingLabel="Wysyłanie…"
+        isPending={issue.isPending}
+        onConfirm={() => pastDate && issue.mutate({ target: pastDate.target, confirmPastIssueDate: true })}
+        onCancel={() => {
+          setPastDate(null)
+          issueOpener.current?.focus()
+        }}
+      />
     </form>
   )
 }

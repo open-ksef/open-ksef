@@ -59,23 +59,38 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
         profile.Update(input.LegalName, input.AddressLine1, input.AddressLine2, bankAccount, input.CashAccounting, pattern);
         profile.SetBankDetails(input.BankSwift, input.BankName, input.ForeignBankAccount, input.ForeignBankSwift, input.ForeignBankName);
 
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var tenantLocked = await db.Database
+            .SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "Tenants" WHERE "Id" = {tenantId} FOR KEY SHARE""")
+            .ToListAsync(ct);
+        if (tenantLocked.Count == 0)
+            return (null, []);
+
         if (input.NextNumber is { } next)
         {
+            // Lock the counter row before reading used numbers: an issue in flight holds it until its number is committed.
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO "InvoiceNumberCounters" ("TenantId", "Period", "Next") VALUES ({tenantId}, {period}, 1)
+                ON CONFLICT ("TenantId", "Period") DO NOTHING
+                """, ct);
+            await db.Database.SqlQuery<int>($"""
+                SELECT "Next" AS "Value" FROM "InvoiceNumberCounters" WHERE "TenantId" = {tenantId} AND "Period" = {period} FOR UPDATE
+                """).ToListAsync(ct);
+
             var highestUsed = await HighestUsedNumberAsync(tenantId, pattern, period, ct);
             if (next <= highestUsed)
                 throw new InvoiceValidationException([new("SP-VAL-006", "nextNumber",
                     $"Numer {next} jest już użyty. Ostatni numer w tym okresie to {highestUsed}, podaj co najmniej {highestUsed + 1}.")]);
 
-            var counter = await db.InvoiceNumberCounters.SingleOrDefaultAsync(c => c.TenantId == tenantId && c.Period == period, ct);
-            if (counter is null)
-                db.InvoiceNumberCounters.Add(new InvoiceNumberCounter { TenantId = tenantId, Period = period, Next = next });
-            else
-                counter.Next = next;
+            await db.Database.ExecuteSqlAsync($"""
+                UPDATE "InvoiceNumberCounters" SET "Next" = {next} WHERE "TenantId" = {tenantId} AND "Period" = {period}
+                """, ct);
         }
 
         try
         {
             await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
         }
         catch (DbUpdateException e) when (e is DbUpdateConcurrencyException || IssuedInvoiceService.IsUniqueViolation(e))
         {

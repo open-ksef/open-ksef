@@ -88,8 +88,7 @@ public sealed class InvoiceIssuingMigrationTests : IAsyncLifetime
             Assert.Equal((255m, 11.50m, 266.50m), (invoice.TotalNet, invoice.TotalVat, invoice.TotalGross));
             Assert.Equal("61109010140000071219812874", (await db.SellerProfiles.SingleAsync()).BankAccount);
 
-            invoice.ReplaceLines([("Nowa", null, 1, 10m, VatRate.Rate8)]);
-            invoice.AddLine("Druga", null, 1, 10m, VatRate.Rate8);
+            invoice.ReplaceLines([("Nowa", null, 1, 10m, VatRate.Rate8), ("Druga", null, 1, 10m, VatRate.Rate8)]);
             await db.SaveChangesAsync();
         }
 
