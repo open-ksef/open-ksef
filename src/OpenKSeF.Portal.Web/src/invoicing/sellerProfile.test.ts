@@ -18,7 +18,7 @@ const profile: SellerProfileResponse = {
   numberingPattern: 'FV/{nr}/{MM}/{RRRR}',
   nextNumber: 57,
   nextNumberPeriod: '2026-11',
-  nip: '5260250274',
+  nip: '4444444444',
   isComplete: true,
   nextNumberPreview: 'FV/57/11/2026',
   ksefEnvironment: 'test',

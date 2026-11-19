@@ -18,7 +18,7 @@ public class QrCodeServiceTests
 
         var segments = payload.Split('|');
         Assert.Equal(9, segments.Length);
-        Assert.Equal("5261040828", segments[0]);
+        Assert.Equal("3333333333", segments[0]);
         Assert.Equal("PL", segments[1]);
     }
 
@@ -255,7 +255,7 @@ public class QrCodeServiceTests
         {
             RecipientName = name,
             RecipientAccount = account,
-            RecipientNip = "5261040828",
+            RecipientNip = "3333333333",
             Amount = amount,
             Currency = "PLN",
             Title = title

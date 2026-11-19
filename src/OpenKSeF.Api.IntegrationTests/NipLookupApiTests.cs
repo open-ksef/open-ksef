@@ -12,7 +12,7 @@ public class NipLookupApiTests(TestcontainersFixture fixture)
         using var factory = new OpenKSeFWebApplicationFactory(fixture);
         using var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/api/nip-lookup/5261040828");
+        var response = await client.GetAsync("/api/nip-lookup/3333333333");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

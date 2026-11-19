@@ -5,7 +5,7 @@ namespace OpenKSeF.Domain.Tests.Invoicing;
 
 public class IssuedInvoiceTests
 {
-    private const string ValidBuyerNip = "5261040828";
+    private const string ValidBuyerNip = "3333333333";
     private const string ValidNrb = "61109010140000071219812874";
     private static readonly DateOnly Today = new(2026, 11, 3);
     private static readonly DateTime Now = new(2026, 11, 3, 10, 0, 0, DateTimeKind.Utc);

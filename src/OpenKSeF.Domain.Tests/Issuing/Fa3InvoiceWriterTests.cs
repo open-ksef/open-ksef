@@ -6,8 +6,8 @@ namespace OpenKSeF.Domain.Tests.Issuing;
 
 public class Fa3InvoiceWriterTests
 {
-    private const string SellerNip = "5260250274";
-    private const string BuyerNip = "5261040828";
+    private const string SellerNip = "4444444444";
+    private const string BuyerNip = "3333333333";
     private const string Nrb = "61109010140000071219812874";
     private static readonly XNamespace Ns = Fa3InvoiceWriter.Namespace;
     private static readonly DateOnly Day = new(2026, 11, 3);
@@ -494,7 +494,7 @@ public class Fa3InvoiceWriterTests
           </Naglowek>
           <Podmiot1>
             <DaneIdentyfikacyjne>
-              <NIP>5260250274</NIP>
+              <NIP>4444444444</NIP>
               <Nazwa>Sprzedawca sp. z o.o.</Nazwa>
             </DaneIdentyfikacyjne>
             <Adres>
@@ -505,7 +505,7 @@ public class Fa3InvoiceWriterTests
           </Podmiot1>
           <Podmiot2>
             <DaneIdentyfikacyjne>
-              <NIP>5261040828</NIP>
+              <NIP>3333333333</NIP>
               <Nazwa>Nabywca sp. z o.o.</Nazwa>
             </DaneIdentyfikacyjne>
             <Adres>
@@ -617,7 +617,7 @@ public class Fa3InvoiceWriterTests
           </Naglowek>
           <Podmiot1>
             <DaneIdentyfikacyjne>
-              <NIP>5260250274</NIP>
+              <NIP>4444444444</NIP>
               <Nazwa>Sprzedawca sp. z o.o.</Nazwa>
             </DaneIdentyfikacyjne>
             <Adres>

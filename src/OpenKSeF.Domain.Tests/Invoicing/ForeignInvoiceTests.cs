@@ -52,24 +52,24 @@ public class ForeignInvoiceTests
     public void PolishNip_IsBlockedOnNip()
     {
         var invoice = Draft();
-        invoice.SetBuyer(BuyerKind.Foreign, "5261040828", "Example Buyer Ltd", "1 Test Street", null);
+        invoice.SetBuyer(BuyerKind.Foreign, "3333333333", "Example Buyer Ltd", "1 Test Street", null);
 
         AssertSingleError(invoice, "INV-VAL-031", "buyer.nip");
     }
 
     [Theory]
-    [InlineData("GB", "PL5261040828")]
-    [InlineData("GB", "pl 526-104-08-28")]
+    [InlineData("GB", "PL3333333333")]
+    [InlineData("GB", "pl 333-333-33-33")]
     public void PolishNipInForeignId_IsBlockedOnForeignId(string country, string id) =>
         AssertSingleError(Draft(country, id), "INV-VAL-031", "buyer.foreignId");
 
     [Fact]
     public void PolishNipAsEuVatNumber_IsBlockedOnForeignId() =>
-        AssertSingleError(Draft("DE", "PL5261040828", "EUR", 4.2m, VatRate.NotTaxableArt100), "INV-VAL-031", "buyer.foreignId");
+        AssertSingleError(Draft("DE", "PL3333333333", "EUR", 4.2m, VatRate.NotTaxableArt100), "INV-VAL-031", "buyer.foreignId");
 
     [Theory]
-    [InlineData("GB", "5261040828", VatRate.NotTaxable)]
-    [InlineData("BE", "5261040828", VatRate.NotTaxableArt100)]
+    [InlineData("GB", "3333333333", VatRate.NotTaxable)]
+    [InlineData("BE", "3333333333", VatRate.NotTaxableArt100)]
     public void BareTenDigitsWithNipChecksum_OnlyWarns(string country, string id, VatRate rate)
     {
         var invoice = Draft(country, id, "EUR", 4.2m, rate);
@@ -117,7 +117,7 @@ public class ForeignInvoiceTests
         AssertSingleError(Draft("XI", "123456789", "GBP", 5.2m, VatRate.NotTaxableArt100), "INV-VAL-064", "lines[0].vatRate");
 
     [Theory]
-    [InlineData(BuyerKind.Company, "5261040828")]
+    [InlineData(BuyerKind.Company, "3333333333")]
     [InlineData(BuyerKind.Person, null)]
     public void NpOnDomesticKinds_IsBlockedOnLineRate(BuyerKind kind, string? nip)
     {
@@ -135,7 +135,7 @@ public class ForeignInvoiceTests
     public void ForeignCurrencyOnDomesticKind_IsBlockedOnCurrency()
     {
         var invoice = IssuedInvoice.Draft(Guid.NewGuid(), Guid.NewGuid(), Today, Now);
-        invoice.SetBuyer(BuyerKind.Company, "5261040828", "Nabywca", "ul. Długa 2", null);
+        invoice.SetBuyer(BuyerKind.Company, "3333333333", "Nabywca", "ul. Długa 2", null);
         invoice.SetCurrency("GBP", 5.2m, null);
         invoice.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
 
@@ -165,7 +165,7 @@ public class ForeignInvoiceTests
     public void DomesticAboveThreshold_KeepsSplitPaymentWarning()
     {
         var invoice = IssuedInvoice.Draft(Guid.NewGuid(), Guid.NewGuid(), Today, Now);
-        invoice.SetBuyer(BuyerKind.Company, "5261040828", "Nabywca", "ul. Długa 2", null);
+        invoice.SetBuyer(BuyerKind.Company, "3333333333", "Nabywca", "ul. Długa 2", null);
         invoice.ReplaceLines([("Usługa", null, 1, 20000m, VatRate.Rate23)]);
 
         Assert.Contains(IssueChecks.Warnings(invoice), w => w.Code == "INV-W-MPP");
@@ -234,7 +234,7 @@ public class ForeignInvoiceTests
     {
         var invoice = Draft("GB", "GB-TEST-1");
 
-        invoice.SetBuyer(BuyerKind.Company, "5261040828", "Nabywca", "ul. Długa 2", null);
+        invoice.SetBuyer(BuyerKind.Company, "3333333333", "Nabywca", "ul. Długa 2", null);
 
         Assert.Null(invoice.BuyerCountryCode);
         Assert.Null(invoice.BuyerIdType);
@@ -288,7 +288,7 @@ public class ForeignInvoiceTests
         var withMain = Profile();
         withMain.SetBankDetails("TESTPLPW", "Bank Testowy S.A.", null, null, null);
         var invoice = Draft();
-        invoice.Issue(withMain, "5260250274", "FV/1", Now);
+        invoice.Issue(withMain, "4444444444", "FV/1", Now);
         Assert.Equal(ValidNrb, invoice.SellerBankAccount);
         Assert.Equal("PL" + ValidNrb, invoice.SellerIban);
         Assert.Equal("TESTPLPW", invoice.SellerBankSwift);
@@ -296,7 +296,7 @@ public class ForeignInvoiceTests
         var withForeign = Profile();
         withForeign.SetBankDetails("TESTPLPW", "Bank Testowy S.A.", "gb82 west 1234 5698 7654 32", "TESTGB2L", "West Test Bank");
         invoice = Draft();
-        invoice.Issue(withForeign, "5260250274", "FV/2", Now);
+        invoice.Issue(withForeign, "4444444444", "FV/2", Now);
         Assert.Null(invoice.SellerBankAccount);
         Assert.Equal("GB82WEST12345698765432", invoice.SellerIban);
         Assert.Equal("TESTGB2L", invoice.SellerBankSwift);

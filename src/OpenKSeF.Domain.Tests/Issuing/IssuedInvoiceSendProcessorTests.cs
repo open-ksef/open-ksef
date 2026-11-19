@@ -47,7 +47,7 @@ public class IssuedInvoiceSendProcessorTests
             {
                 Id = tenantId,
                 UserId = "u1",
-                Nip = "5260250274",
+                Nip = "4444444444",
                 KSeFCredentials =
                 [
                     credentialType == CredentialType.Token
@@ -143,14 +143,14 @@ public class IssuedInvoiceSendProcessorTests
     public async Task SendingWithElementRef_Accepted_StoresKsefNumberAndUpo()
     {
         var id = await SeedAsync(i => { i.MarkSendStarted("sess-1", DateTime.UtcNow); i.RecordElementRef("el-1", DateTime.UtcNow); });
-        _submitter.OnGet = _ => Status(200, "5260250274-20261103-ABCDEF-01");
+        _submitter.OnGet = _ => Status(200, "4444444444-20261103-ABCDEF-01");
         _submitter.OnUpo = () => Encoding.UTF8.GetBytes("<UPO/>");
 
         await RunAsync();
 
         var invoice = await LoadAsync(id);
         Assert.Equal(IssuedInvoiceStatus.Accepted, invoice.Status);
-        Assert.Equal("5260250274-20261103-ABCDEF-01", invoice.KsefNumber);
+        Assert.Equal("4444444444-20261103-ABCDEF-01", invoice.KsefNumber);
         Assert.NotNull(invoice.AcceptedAt);
         Assert.Equal("<UPO/>", Encoding.UTF8.GetString(invoice.UpoXml!));
         Assert.Null(invoice.NextAttemptAt);
@@ -1012,7 +1012,7 @@ public class IssuedInvoiceSendProcessorTests
     [Fact]
     public async Task Duplicate440_Rejected_StoresOriginalKsefNumber_ExposedAsDuplicateNumber()
     {
-        const string original = "5260250274-20261103-ABCDEF123456-AB";
+        const string original = "4444444444-20261103-ABCDEF123456-AB";
         var id = await SeedAsync(Sent);
         _submitter.OnGet = _ => Duplicate(original);
 
@@ -1026,7 +1026,7 @@ public class IssuedInvoiceSendProcessorTests
     [Fact]
     public async Task Duplicate440_NumberAlreadyInDetails_NotRepeated()
     {
-        const string original = "5260250274-20261103-ABCDEF123456-AB";
+        const string original = "4444444444-20261103-ABCDEF123456-AB";
         var id = await SeedAsync(Sent);
         _submitter.OnGet = _ => Status(KSeFSentInvoice.Duplicate, details: $"Duplikat faktury o numerze KSeF: {original}") with { OriginalKsefNumber = original };
 
@@ -1087,7 +1087,7 @@ public class IssuedInvoiceSendProcessorTests
         var submitter = new KSeFInvoiceSubmitter(DispatchProxy.Create<IKSeFClient, UnauthorizedClient>(), null!, _encryption, null!);
         var credential = new KSeFCredential { Type = CredentialType.Token, EncryptedToken = _encryption.Encrypt("token") };
 
-        var error = await Assert.ThrowsAsync<KsefApiException>(() => submitter.LoginAsync("5260250274", credential));
+        var error = await Assert.ThrowsAsync<KsefApiException>(() => submitter.LoginAsync("4444444444", credential));
 
         Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
     }

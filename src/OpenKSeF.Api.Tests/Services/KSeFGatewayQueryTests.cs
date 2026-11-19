@@ -88,10 +88,10 @@ public class KSeFGatewayQueryTests
     [Fact]
     public async Task NipBuyer_GoesToBuyerNip()
     {
-        var result = await Gateway(Response(Summary(BuyerIdentifierType.Nip, "5261040828"))).QueryInvoicesAsync(Session, Criteria(InvoiceDirection.Issued));
+        var result = await Gateway(Response(Summary(BuyerIdentifierType.Nip, "3333333333"))).QueryInvoicesAsync(Session, Criteria(InvoiceDirection.Issued));
 
         var header = result.Invoices.Single();
-        Assert.Equal("5261040828", header.BuyerNip);
+        Assert.Equal("3333333333", header.BuyerNip);
         Assert.Equal("Nip", header.BuyerIdType);
         Assert.Null(header.BuyerForeignId);
     }
@@ -110,7 +110,7 @@ public class KSeFGatewayQueryTests
     [Fact]
     public async Task Names_AreCutTo512()
     {
-        var result = await Gateway(Response(Summary(BuyerIdentifierType.Nip, "5261040828", new string('b', 600), new string('s', 600))))
+        var result = await Gateway(Response(Summary(BuyerIdentifierType.Nip, "3333333333", new string('b', 600), new string('s', 600))))
             .QueryInvoicesAsync(Session, Criteria(InvoiceDirection.Issued));
 
         var header = result.Invoices.Single();
@@ -121,7 +121,7 @@ public class KSeFGatewayQueryTests
     [Fact]
     public async Task IssueDate_KeepsCalendarDate_WhenOffsetIsNotUtc()
     {
-        var summary = Summary(BuyerIdentifierType.Nip, "5261040828");
+        var summary = Summary(BuyerIdentifierType.Nip, "3333333333");
         summary.IssueDate = new DateTimeOffset(2026, 11, 3, 0, 0, 0, TimeSpan.FromHours(1));
 
         var result = await Gateway(Response(summary)).QueryInvoicesAsync(Session, Criteria(InvoiceDirection.Received));
@@ -135,7 +135,7 @@ public class KSeFGatewayQueryTests
     public async Task Continuation_IsHwm_WhenNotTruncated()
     {
         var hwm = new DateTimeOffset(To.AddMinutes(-2));
-        var response = Response(Summary(BuyerIdentifierType.Nip, "5261040828"));
+        var response = Response(Summary(BuyerIdentifierType.Nip, "3333333333"));
         response.PermanentStorageHwmDate = hwm;
 
         var result = await Gateway(response).QueryInvoicesAsync(Session, Criteria(InvoiceDirection.Issued));
@@ -147,8 +147,8 @@ public class KSeFGatewayQueryTests
     [Fact]
     public async Task LastRowAt_IsPermanentStorageDateOfTheLastRow()
     {
-        var first = Summary(BuyerIdentifierType.Nip, "5261040828");
-        var last = Summary(BuyerIdentifierType.Nip, "5261040828");
+        var first = Summary(BuyerIdentifierType.Nip, "3333333333");
+        var last = Summary(BuyerIdentifierType.Nip, "3333333333");
         last.PermanentStorageDate = To.AddHours(-1);
         last.InvoicingDate = To.AddHours(-2);
 
@@ -163,7 +163,7 @@ public class KSeFGatewayQueryTests
     [Fact]
     public async Task Continuation_IsLastRow_WhenTruncated()
     {
-        var response = Response(Summary(BuyerIdentifierType.Nip, "5261040828"));
+        var response = Response(Summary(BuyerIdentifierType.Nip, "3333333333"));
         response.PermanentStorageHwmDate = new DateTimeOffset(To);
         response.IsTruncated = true;
 

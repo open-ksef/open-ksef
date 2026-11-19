@@ -51,7 +51,7 @@ const profile: SellerProfileResponse = {
   numberingPattern: 'FV/{nr}/{MM}/{RRRR}',
   nextNumber: 1,
   nextNumberPeriod: '2026-11',
-  nip: '5260250274',
+  nip: '4444444444',
   isComplete: true,
   nextNumberPreview: 'FV/1/11/2026',
   ksefEnvironment: 'production',
@@ -76,8 +76,8 @@ const invoice = (patch: Partial<IssuedInvoiceResponse>): IssuedInvoiceResponse =
   id: 'i-1',
   status: 'Draft',
   number: 'FV/1/11/2026',
-  seller: { nip: '5260250274', name: 'Sprzedawca', addressLine1: 'a', addressLine2: 'b', bankAccount: null, cashAccounting: false },
-  buyer: { kind: 'Company', nip: '5260250274', name: 'Nabywca', addressLine1: 'a', addressLine2: 'b' },
+  seller: { nip: '4444444444', name: 'Sprzedawca', addressLine1: 'a', addressLine2: 'b', bankAccount: null, cashAccounting: false },
+  buyer: { kind: 'Company', nip: '4444444444', name: 'Nabywca', addressLine1: 'a', addressLine2: 'b' },
   issueDate: '2026-11-03',
   saleDate: '2026-11-03',
   dueDate: '2026-11-17',
@@ -135,7 +135,7 @@ describe('issue and detail pages', () => {
     root = createRoot(container)
     vi.clearAllMocks()
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '4444444444', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     vi.mocked(getSellerProfile).mockResolvedValue(profile)
   })
@@ -581,13 +581,13 @@ describe('issue and detail pages', () => {
 
   it('Accepted shows the KSeF number and downloads, no edit', async () => {
     vi.mocked(getIssuedInvoice).mockResolvedValue(
-      invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: '5260250274-20261103-ABC', acceptedAt: '2026-11-03T10:05:00Z', hasUpo: true } }),
+      invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: '4444444444-20261103-ABC', acceptedAt: '2026-11-03T10:05:00Z', hasUpo: true } }),
     )
     vi.mocked(getIssuedInvoiceXml).mockResolvedValue('<Faktura/>')
     const createObjectURL = vi.fn(() => 'blob:x')
     Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() })
     await render('/issued/i-1?tenantId=t-1')
-    await waitFor(() => container.textContent?.includes('5260250274-20261103-ABC') ?? false)
+    await waitFor(() => container.textContent?.includes('4444444444-20261103-ABC') ?? false)
 
     expect(buttonByText(container, 'Pobierz UPO')).toBeDefined()
     expect(container.textContent).not.toContain('Popraw i wyślij ponownie')
@@ -683,7 +683,7 @@ describe('issue and detail pages', () => {
   })
 
   it('Accepted reads as immutable with PDF, XML, UPO and KOD I in reach', async () => {
-    const verificationUrl = 'https://qr-test.ksef.mf.gov.pl/invoice/5260250274/03-11-2026/abc'
+    const verificationUrl = 'https://qr-test.ksef.mf.gov.pl/invoice/4444444444/03-11-2026/abc'
     vi.mocked(getIssuedInvoice).mockResolvedValue(
       invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: 'K-1', verificationUrl, hasUpo: true, acceptedAt: '2026-11-03T10:05:00Z' } }),
     )
@@ -843,7 +843,7 @@ describe('issue and detail pages', () => {
   const guidance = 'Sprawdź tę fakturę w KSeF. Jeśli to ta sama sprzedaż, nie wystawiaj jej ponownie.'
 
   it('Rejected with 440 shows the KSeF number and guidance next to the only copy action', async () => {
-    vi.mocked(getIssuedInvoice).mockResolvedValue(rejected440('5260250274-20261103-ABC'))
+    vi.mocked(getIssuedInvoice).mockResolvedValue(rejected440('4444444444-20261103-ABC'))
     await render('/issued/i-1?tenantId=t-1')
     await waitFor(() => container.textContent?.includes('jest już zajęty w KSeF') ?? false)
 
@@ -851,7 +851,7 @@ describe('issue and detail pages', () => {
     const alert = panel.querySelector('[role="alert"]')?.textContent
     expect(alert).toContain(numberTakenMessage)
     expect(alert).not.toContain('inny dokument')
-    expect(panel.querySelector('dd.mono')?.textContent).toBe('5260250274-20261103-ABC')
+    expect(panel.querySelector('dd.mono')?.textContent).toBe('4444444444-20261103-ABC')
     expect(panel.textContent).toContain(guidance)
     expect(buttonByText(panel, 'Kopiuj jako nową')).toBeDefined()
     expect([...container.querySelectorAll('button')].filter((b) => b.textContent?.includes('Kopiuj jako nową'))).toHaveLength(1)
@@ -1011,7 +1011,7 @@ describe('issue and detail pages', () => {
   })
 
   it('Pobierz PDF renders the stored XML with the KSeF number and KOD I', async () => {
-    const verificationUrl = 'https://qr-test.ksef.mf.gov.pl/invoice/5260250274/03-11-2026/abc'
+    const verificationUrl = 'https://qr-test.ksef.mf.gov.pl/invoice/4444444444/03-11-2026/abc'
     vi.mocked(getIssuedInvoice).mockResolvedValue(
       invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: 'K-1', verificationUrl } }),
     )

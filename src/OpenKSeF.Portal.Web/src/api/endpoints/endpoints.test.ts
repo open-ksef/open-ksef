@@ -222,7 +222,7 @@ describe('issuing endpoints', () => {
       cashAccounting: false,
       numberingPattern: 'FV/{nr}/{RRRR}',
     })
-    await lookupNip('5260250274')
+    await lookupNip('4444444444')
 
     expect(apiClientMock.get.mock.calls).toEqual([
       ['/tenants/t-1/issued-invoices', { query: { page: 1, pageSize: 20, status: 'Draft' } }],
@@ -231,7 +231,7 @@ describe('issuing endpoints', () => {
       ['/tenants/t-1/issued-invoices/i-1/xml'],
       ['/tenants/t-1/issued-invoices/i-1/upo'],
       ['/tenants/t-1/seller-profile'],
-      ['/nip-lookup/5260250274'],
+      ['/nip-lookup/4444444444'],
     ])
     expect(apiClientMock.post.mock.calls).toEqual([
       ['/tenants/t-1/issued-invoices', draft],

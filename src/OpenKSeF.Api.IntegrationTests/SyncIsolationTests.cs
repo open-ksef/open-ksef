@@ -20,7 +20,7 @@ public sealed class SyncIsolationTests : IAsyncLifetime
 {
     private const string PreviousMigration = "20261104210010_AddInvoiceXmlFetchedMarker";
     private const string NipA = "1234563218";
-    private const string NipB = "5261040828";
+    private const string NipB = "3333333333";
     private const string Fa3 = "http://crd.gov.pl/wzor/2025/06/25/13775/";
 
     private static readonly DateTime LastSync = DateTime.UtcNow.AddHours(-4);

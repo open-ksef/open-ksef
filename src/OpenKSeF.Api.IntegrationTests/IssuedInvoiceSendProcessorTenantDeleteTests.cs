@@ -70,11 +70,11 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
     private async Task<Guid> SeedInvoiceAsync(Guid tenantId, string number, DateTime dueAt, Action<IssuedInvoice>? arrange = null)
     {
         var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, DateOnly.FromDateTime(Now), dueAt);
-        invoice.SetBuyer(BuyerKind.Company, "5261040828", "Nabywca", "ul. Długa 2", "00-002 Warszawa");
+        invoice.SetBuyer(BuyerKind.Company, "3333333333", "Nabywca", "ul. Długa 2", "00-002 Warszawa");
         invoice.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
         var profile = new SellerProfile(tenantId);
         profile.Update("Sprzedawca", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, InvoiceNumbering.DefaultPattern);
-        invoice.Issue(profile, "5260250274", number, dueAt);
+        invoice.Issue(profile, "4444444444", number, dueAt);
         var xml = Encoding.UTF8.GetBytes(number);
         invoice.AttachSentXml(xml, Convert.ToHexString(SHA256.HashData(xml)), "test", null);
         arrange?.Invoke(invoice);
@@ -127,7 +127,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
         var doomedTenant = await SeedTenantAsync("1234563218");
         var first = await SeedInvoiceAsync(doomedTenant, "FV/1", Now.AddMinutes(-5));
         var second = await SeedInvoiceAsync(doomedTenant, "FV/2", Now.AddMinutes(-4));
-        var otherTenant = await SeedTenantAsync("5261040828");
+        var otherTenant = await SeedTenantAsync("3333333333");
         var other = await SeedInvoiceAsync(otherTenant, "FV/3", Now.AddMinutes(-1));
 
         _submitter.BeforeNextOpen = async () =>
@@ -162,7 +162,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
         var doomedTenant = await SeedTenantAsync("1234563218");
         var doomedDueAt = Now.AddMinutes(-5);
         var doomed = await SeedInvoiceAsync(doomedTenant, "FV/1", doomedDueAt, i => AwaitingUpo(i, "el-doomed", doomedDueAt));
-        var otherTenant = await SeedTenantAsync("5261040828");
+        var otherTenant = await SeedTenantAsync("3333333333");
         var otherDueAt = Now.AddMinutes(-1);
         var other = await SeedInvoiceAsync(otherTenant, "FV/2", otherDueAt, i => AwaitingUpo(i, "el-other", otherDueAt));
 
@@ -186,7 +186,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
 
     private async Task<Guid> SeedHeldOn440Async(string number)
     {
-        var tenant = await SeedTenantAsync("5260250274");
+        var tenant = await SeedTenantAsync("4444444444");
         var xml = Fa(number);
         var id = await SeedInvoiceAsync(tenant, number, Now, invoice =>
         {
@@ -196,7 +196,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
             invoice.RecordElementRef("el-2", Now);
         });
         _submitter.OnGet = _ => new KSeFSentInvoice("el-2", null, KSeFSentInvoice.Duplicate, "Duplikat faktury", ["Duplikat faktury"], null, Now,
-            OriginalKsefNumber: "5260250274-20261103-0100A0B0C0D0-E1", OriginalSessionRef: "sess-orig");
+            OriginalKsefNumber: "4444444444-20261103-0100A0B0C0D0-E1", OriginalSessionRef: "sess-orig");
         _submitter.OnList = _ => throw new KsefApiException("forbidden", HttpStatusCode.Forbidden, null!, null!);
         return id;
     }
@@ -222,7 +222,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
 
         var invoice = await LoadAsync(id);
         Assert.Equal(IssuedInvoiceStatus.Accepted, invoice.Status);
-        Assert.Equal("5260250274-20261103-0100A0B0C0D0-E1", invoice.KsefNumber);
+        Assert.Equal("4444444444-20261103-0100A0B0C0D0-E1", invoice.KsefNumber);
         Assert.Null(invoice.NextAttemptAt);
         Assert.Null(invoice.KsefElementRef);
         Assert.Equal("sess-orig", invoice.KsefSessionRef);
@@ -243,7 +243,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
         Assert.Equal(IssuedInvoiceStatus.Rejected, invoice.Status);
         Assert.Equal(KSeFSentInvoice.Duplicate, invoice.KsefStatusCode);
         Assert.Equal(IssuedInvoiceSendProcessor.NumberTakenMessage, invoice.KsefStatusDescription);
-        Assert.Contains("Numer KSeF: 5260250274-20261103-0100A0B0C0D0-E1", invoice.KsefStatusDetails);
+        Assert.Contains("Numer KSeF: 4444444444-20261103-0100A0B0C0D0-E1", invoice.KsefStatusDetails);
         Assert.Null(invoice.KsefNumber);
     }
 

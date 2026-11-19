@@ -144,7 +144,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         var directionText = direction.ToString();
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "InvoiceHeaders" ("Id", "TenantId", "KSeFInvoiceNumber", "KSeFReferenceNumber", "VendorName", "VendorNip", "AmountNet", "AmountVat", "AmountGross", "IssueDate", "FirstSeenAt", "LastUpdatedAt", "IsPaid", "PaidAt", "DueDate", "VendorBankAccount", "Direction")
-            VALUES ({id}, {tenantId ?? _tenantId}, {number}, {number}, 'Dostawca', '5261040828', 100, 23, 123, {issued}, {issued}, {issued}, {isPaid}, {paidAt}, {dueDate}, {account}, {directionText})
+            VALUES ({id}, {tenantId ?? _tenantId}, {number}, {number}, 'Dostawca', '3333333333', 100, 23, 123, {issued}, {issued}, {issued}, {isPaid}, {paidAt}, {dueDate}, {account}, {directionText})
             """);
         if (hasLine)
         {
@@ -159,11 +159,11 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         new(invoices, continuationAt, truncated);
 
     private static KSeFInvoiceHeader Bought(string number) => new(
-        number, "FV 1/2026", "5261040828", "Dostawca", Nip, "Moja firma", 100m, 23m, 123m, "PLN", DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, "Vat",
+        number, "FV 1/2026", "3333333333", "Dostawca", Nip, "Moja firma", 100m, 23m, 123m, "PLN", DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, "Vat",
         BuyerIdType: "Nip");
 
     private static KSeFInvoiceHeader Sale(string number) => new(
-        number, "FV 7/2026", Nip, "Moja firma", "5261040828", "Nabywca", 200m, 46m, 246m, "PLN", DateTime.UtcNow.AddDays(-5), DateTime.UtcNow, "Vat",
+        number, "FV 7/2026", Nip, "Moja firma", "3333333333", "Nabywca", 200m, 46m, 246m, "PLN", DateTime.UtcNow.AddDays(-5), DateTime.UtcNow, "Vat",
         BuyerIdType: "Nip");
 
     private static byte[] Xml(string? dueDate)
@@ -259,7 +259,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     {
         var secondTenant = Guid.NewGuid();
         await using (var db = NewContext())
-            await AddTenantAsync(db, secondTenant, "user-2", "5261040828");
+            await AddTenantAsync(db, secondTenant, "user-2", "3333333333");
         await InsertAsync("UNDATED");
         await InsertAsync("UNDATED-2", tenantId: secondTenant);
         await MigrateAsync();
@@ -278,7 +278,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         var firstDownload = _calls.IndexOf("download");
         Assert.True(firstDownload >= 0);
         Assert.DoesNotContain(_calls.Skip(firstDownload), c => c.StartsWith("query", StringComparison.Ordinal));
-        Assert.Equal(new HashSet<string> { Nip, "5261040828" }, issuedSubjects);
+        Assert.Equal(new HashSet<string> { Nip, "3333333333" }, issuedSubjects);
         await _notifications.Received(1).NotifyNewInvoiceAsync(Arg.Any<NewInvoiceDetectedEvent>());
     }
 
@@ -316,7 +316,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     {
         var secondTenant = Guid.NewGuid();
         await using (var db = NewContext())
-            await AddTenantAsync(db, secondTenant, "user-2", "5261040828");
+            await AddTenantAsync(db, secondTenant, "user-2", "3333333333");
         for (var n = 0; n < 61; n++)
         {
             await InsertAsync($"A-{n:00}");
@@ -1180,7 +1180,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         var okTenant = Guid.NewGuid();
         await using (var db = NewContext())
         {
-            await AddTenantAsync(db, timeoutTenant, "user-2", "5261040828");
+            await AddTenantAsync(db, timeoutTenant, "user-2", "3333333333");
             await AddTenantAsync(db, okTenant, "user-3", "7740001454");
         }
 
@@ -1188,7 +1188,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         _received = c => c.SubjectNip switch
         {
             Nip => Page([Bought("KSEF-TOO-LONG") with { VendorName = new string('x', 600) }]),
-            "5261040828" => throw new TaskCanceledException("HTTP timeout"),
+            "3333333333" => throw new TaskCanceledException("HTTP timeout"),
             _ => Page([Bought("KSEF-OK")])
         };
 

@@ -30,7 +30,7 @@ public sealed class InvoiceIssuingMigrationTests : IAsyncLifetime
         var headerId = Guid.NewGuid();
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "InvoiceHeaders" ("Id", "TenantId", "KSeFInvoiceNumber", "KSeFReferenceNumber", "VendorName", "VendorNip", "AmountNet", "AmountVat", "AmountGross", "IssueDate", "FirstSeenAt", "LastUpdatedAt", "IsPaid")
-            VALUES ({headerId}, {tenant.Id}, '5261040828-20261001-0100A0B0C0D0-E1', 'ref-1', 'Dostawca', '5261040828', 100, 23, 123, {Now}, {Now}, {Now}, false)
+            VALUES ({headerId}, {tenant.Id}, '3333333333-20261001-0100A0B0C0D0-E1', 'ref-1', 'Dostawca', '3333333333', 100, 23, 123, {Now}, {Now}, {Now}, false)
             """);
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "InvoiceLines" ("Id", "InvoiceHeaderId", "LineNumber", "Name", "VatRate", "AmountNet")
@@ -41,7 +41,7 @@ public sealed class InvoiceIssuingMigrationTests : IAsyncLifetime
 
     private static async Task AssertSyncedDataIntactAsync(ApplicationDbContext db)
     {
-        Assert.Equal("5261040828-20261001-0100A0B0C0D0-E1", await db.Database.SqlQueryRaw<string>("""SELECT "KSeFInvoiceNumber" AS "Value" FROM "InvoiceHeaders" """).SingleAsync());
+        Assert.Equal("3333333333-20261001-0100A0B0C0D0-E1", await db.Database.SqlQueryRaw<string>("""SELECT "KSeFInvoiceNumber" AS "Value" FROM "InvoiceHeaders" """).SingleAsync());
         Assert.Equal(123m, await db.Database.SqlQueryRaw<decimal>("""SELECT "AmountGross" AS "Value" FROM "InvoiceHeaders" """).SingleAsync());
         Assert.Equal("Towar 23 100.00", await db.Database.SqlQueryRaw<string>("""SELECT concat_ws(' ', "Name", "VatRate", "AmountNet") AS "Value" FROM "InvoiceLines" """).SingleAsync());
         Assert.Equal(1, await db.Tenants.CountAsync());
@@ -50,7 +50,7 @@ public sealed class InvoiceIssuingMigrationTests : IAsyncLifetime
     private static IssuedInvoice NewInvoice(Guid tenantId)
     {
         var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, new DateOnly(2026, 11, 3), Now);
-        invoice.SetBuyer(BuyerKind.Company, "5261040828", "Nabywca", "ul. Długa 2", "00-002 Warszawa");
+        invoice.SetBuyer(BuyerKind.Company, "3333333333", "Nabywca", "ul. Długa 2", "00-002 Warszawa");
         invoice.ReplaceLines([("Usługa", null, 1.5m, 33.33m, VatRate.Rate23), ("Szkolenie", "h", 2, 100m, VatRate.Exempt), ("Eksport", null, 1, 5m, VatRate.ZeroDomestic)]);
         invoice.SetExemptionBasis(ExemptionBasisKind.Act, "art. 43 ust. 1 pkt 29 ustawy o VAT");
         return invoice;

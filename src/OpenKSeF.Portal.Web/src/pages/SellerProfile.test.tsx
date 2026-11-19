@@ -31,7 +31,7 @@ const empty: SellerProfileResponse = {
   numberingPattern: 'FV/{nr}/{MM}/{RRRR}',
   nextNumber: 1,
   nextNumberPeriod: '2026-11',
-  nip: '5260250274',
+  nip: '4444444444',
   isComplete: false,
   nextNumberPreview: 'FV/1/11/2026',
   ksefEnvironment: 'test',
@@ -74,7 +74,7 @@ describe('SellerProfilePage', () => {
     root = createRoot(container)
     vi.clearAllMocks()
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '4444444444', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     vi.mocked(getSellerProfile).mockResolvedValue(empty)
   })
@@ -106,7 +106,7 @@ describe('SellerProfilePage', () => {
 
   it('edits either company after choosing it in the company card', async () => {
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '4444444444', displayName: 'A', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
       { id: 't-2', nip: '7740001454', displayName: 'B', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     vi.mocked(getSellerProfile).mockImplementation(async (id) => ({
@@ -137,7 +137,7 @@ describe('SellerProfilePage', () => {
   ])('NIP lookup over typed data asks first, confirmed %s', async (confirmed, expected) => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(confirmed)
     vi.mocked(getSellerProfile).mockResolvedValue({ ...empty, legalName: 'Wpisana nazwa' })
-    vi.mocked(lookupNip).mockResolvedValue({ nip: '5260250274', name: 'Z białej listy', addressLine1: null, addressLine2: null, vatStatus: 'Czynny', bankAccounts: [] })
+    vi.mocked(lookupNip).mockResolvedValue({ nip: '4444444444', name: 'Z białej listy', addressLine1: null, addressLine2: null, vatStatus: 'Czynny', bankAccounts: [] })
     await render('/company/invoice-data?tenantId=t-1')
     await waitFor(() => input(container, 'legal-name').value === 'Wpisana nazwa')
 
@@ -149,7 +149,7 @@ describe('SellerProfilePage', () => {
 
   it('a member without tenant.edit sees the data read-only and cannot save', async () => {
     vi.mocked(listTenants).mockResolvedValue([
-      { id: 't-1', nip: '5260250274', displayName: 'A', notificationEmail: null, ...employeeAccess, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 't-1', nip: '4444444444', displayName: 'A', notificationEmail: null, ...employeeAccess, createdAt: '2026-01-01T00:00:00Z' },
     ])
     await render('/company/invoice-data?tenantId=t-1')
 
@@ -167,7 +167,7 @@ describe('SellerProfilePage', () => {
 
   it('Pobierz z NIP fills the fields and offers white-list accounts grouped', async () => {
     vi.mocked(lookupNip).mockResolvedValue({
-      nip: '5260250274',
+      nip: '4444444444',
       name: 'Firma Testowa sp. z o.o.',
       addressLine1: 'ul. Prosta 1',
       addressLine2: '00-001 Warszawa',

@@ -20,7 +20,7 @@ namespace OpenKSeF.Api.IntegrationTests;
 [Collection(TestcontainersCollection.Name)]
 public class IssuedInvoicesApiTests : IDisposable
 {
-    private const string BuyerNip = "5261040828";
+    private const string BuyerNip = "3333333333";
     private const int HeapXminFrozen = 0x0300;
     private static readonly DateOnly Today = new(2026, 12, 20);
 
@@ -167,7 +167,7 @@ public class IssuedInvoicesApiTests : IDisposable
         var invoiceId = Guid.NewGuid();
         await WithDbAsync(db =>
         {
-            db.Tenants.Add(new Tenant { Id = tenantId, UserId = $"someone-else-{tenantId}", Nip = "5261040828", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            db.Tenants.Add(new Tenant { Id = tenantId, UserId = $"someone-else-{tenantId}", Nip = "3333333333", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
             var invoice = IssuedInvoice.Draft(invoiceId, tenantId, new DateOnly(2026, 11, 3), DateTime.UtcNow);
             invoice.SetBuyer(BuyerKind.Company, BuyerNip, "Cudzy nabywca", "ul. Obca 1", null);
             db.IssuedInvoices.Add(invoice);

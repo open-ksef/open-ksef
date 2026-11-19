@@ -5,8 +5,8 @@ namespace OpenKSeF.Domain.Tests.Services;
 public class NipValidatorTests
 {
     [Theory]
-    [InlineData("5261040828")]
-    [InlineData("526-104-08-28")]
+    [InlineData("3333333333")]
+    [InlineData("333-333-33-33")]
     [InlineData("1234567890")]
     public void Should_ReturnTrue_When_NipIsValid(string nip)
     {
@@ -35,8 +35,8 @@ public class NipValidatorTests
     }
 
     [Theory]
-    [InlineData("526-104-08-28", "5261040828")]
-    [InlineData("5261040828", "5261040828")]
+    [InlineData("333-333-33-33", "3333333333")]
+    [InlineData("3333333333", "3333333333")]
     [InlineData("123-456-78-90", "1234567890")]
     public void Should_StripDashes_When_Normalizing(string input, string expected)
     {
@@ -44,8 +44,8 @@ public class NipValidatorTests
     }
 
     [Theory]
-    [InlineData("5261040828", true)]
-    [InlineData("526-104-08-28", true)]
+    [InlineData("3333333333", true)]
+    [InlineData("333-333-33-33", true)]
     [InlineData("1234563218", true)]
     [InlineData("1234567890", false)]
     [InlineData("5261040829", false)]

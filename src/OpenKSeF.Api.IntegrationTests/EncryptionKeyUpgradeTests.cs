@@ -130,7 +130,7 @@ public sealed class EncryptionKeyUpgradeTests : IAsyncLifetime
     {
         var tenantId = Guid.NewGuid();
         await using var db = NewContext();
-        db.Tenants.Add(new Tenant { Id = tenantId, UserId = "user-1", Nip = "5260250274", CreatedAt = Now, UpdatedAt = Now });
+        db.Tenants.Add(new Tenant { Id = tenantId, UserId = "user-1", Nip = "4444444444", CreatedAt = Now, UpdatedAt = Now });
         await db.SaveChangesAsync();
         return tenantId;
     }
