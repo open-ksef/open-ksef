@@ -82,6 +82,184 @@
         },
         "type": "object"
       },
+      "CorrectedInvoiceRefResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "invoiceType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "issueDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "ksefNumber": {
+            "nullable": true,
+            "type": "string"
+          },
+          "number": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CorrectionCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CorrectionDraftRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "buyer": {
+            "$ref": "#/components/schemas/IssuedInvoiceBuyerModel"
+          },
+          "correctionReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "correctionType": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "dueDate": {
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "issueDate": {
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/CorrectionLineRequest"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "paymentMethod": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CorrectionLineRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "baseLineNo": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "quantity": {
+            "format": "double",
+            "type": "number"
+          },
+          "unit": {
+            "nullable": true,
+            "type": "string"
+          },
+          "unitNetPrice": {
+            "format": "double",
+            "type": "number"
+          },
+          "vatRate": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CorrectionListItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "invoiceType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "issueDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "number": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "totalGross": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "CorrectionRowResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "baseLineNo": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "isBefore": {
+            "type": "boolean"
+          },
+          "name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "netAmount": {
+            "format": "double",
+            "type": "number"
+          },
+          "quantity": {
+            "format": "double",
+            "type": "number"
+          },
+          "rowNo": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "unit": {
+            "nullable": true,
+            "type": "string"
+          },
+          "unitNetPrice": {
+            "format": "double",
+            "type": "number"
+          },
+          "vatRate": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "CreateInviteRequest": {
         "additionalProperties": false,
         "properties": {
@@ -174,6 +352,44 @@
           "Certificate"
         ],
         "type": "string"
+      },
+      "CurrentStateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "buyer": {
+            "$ref": "#/components/schemas/IssuedInvoiceBuyerModel"
+          },
+          "isZero": {
+            "type": "boolean"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/IssuedInvoiceLineResponse"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "totalGross": {
+            "format": "double",
+            "type": "number"
+          },
+          "totalNet": {
+            "format": "double",
+            "type": "number"
+          },
+          "totalVat": {
+            "format": "double",
+            "type": "number"
+          },
+          "vatSummary": {
+            "items": {
+              "$ref": "#/components/schemas/VatSummaryResponse"
+            },
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "type": "object"
       },
       "DeviceTokenResponse": {
         "additionalProperties": false,
@@ -502,6 +718,10 @@
             "format": "uuid",
             "type": "string"
           },
+          "invoiceType": {
+            "nullable": true,
+            "type": "string"
+          },
           "issueDate": {
             "format": "date",
             "type": "string"
@@ -749,6 +969,11 @@
       "IssuedInvoiceLineResponse": {
         "additionalProperties": false,
         "properties": {
+          "baseLineNo": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
           "lineNo": {
             "format": "int32",
             "type": "integer"
@@ -817,6 +1042,10 @@
           },
           "id": {
             "format": "uuid",
+            "type": "string"
+          },
+          "invoiceType": {
+            "nullable": true,
             "type": "string"
           },
           "issueDate": {
@@ -888,6 +1117,35 @@
           "buyer": {
             "$ref": "#/components/schemas/IssuedInvoiceBuyerModel"
           },
+          "buyerBefore": {
+            "$ref": "#/components/schemas/IssuedInvoiceBuyerModel"
+          },
+          "correctedInvoice": {
+            "$ref": "#/components/schemas/CorrectedInvoiceRefResponse"
+          },
+          "correctionReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "correctionRows": {
+            "items": {
+              "$ref": "#/components/schemas/CorrectionRowResponse"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "correctionType": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "corrections": {
+            "items": {
+              "$ref": "#/components/schemas/CorrectionListItemResponse"
+            },
+            "nullable": true,
+            "type": "array"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -895,6 +1153,9 @@
           "currency": {
             "nullable": true,
             "type": "string"
+          },
+          "currentState": {
+            "$ref": "#/components/schemas/CurrentStateResponse"
           },
           "dueDate": {
             "format": "date",
@@ -917,6 +1178,10 @@
             "format": "uuid",
             "type": "string"
           },
+          "invoiceType": {
+            "nullable": true,
+            "type": "string"
+          },
           "issueDate": {
             "format": "date",
             "type": "string"
@@ -937,6 +1202,11 @@
             "type": "array"
           },
           "number": {
+            "nullable": true,
+            "type": "string"
+          },
+          "openCorrectionId": {
+            "format": "uuid",
             "nullable": true,
             "type": "string"
           },
@@ -1203,6 +1473,19 @@
           "cashAccounting": {
             "type": "boolean"
           },
+          "correctionNextNumber": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "correctionNextNumberPeriod": {
+            "nullable": true,
+            "type": "string"
+          },
+          "correctionNumberingPattern": {
+            "nullable": true,
+            "type": "string"
+          },
           "foreignBankAccount": {
             "nullable": true,
             "type": "string"
@@ -1260,6 +1543,22 @@
           },
           "cashAccounting": {
             "type": "boolean"
+          },
+          "correctionNextNumber": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "correctionNextNumberPeriod": {
+            "nullable": true,
+            "type": "string"
+          },
+          "correctionNextNumberPreview": {
+            "nullable": true,
+            "type": "string"
+          },
+          "correctionNumberingPattern": {
+            "nullable": true,
+            "type": "string"
           },
           "foreignBankAccount": {
             "nullable": true,
@@ -6799,6 +7098,13 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "invoiceType",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6821,6 +7127,270 @@
               }
             },
             "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "IssuedInvoices"
+        ]
+      }
+    },
+    "/api/tenants/{tenantId}/issued-invoices/{id}/correction": {
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionDraftRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionDraftRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationEnvelope"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationEnvelope"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "IssuedInvoices"
+        ]
+      }
+    },
+    "/api/tenants/{tenantId}/issued-invoices/{id}/corrections": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionCreateRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionCreateRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationEnvelope"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationEnvelope"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
           },
           "404": {
             "content": {
@@ -6911,6 +7481,13 @@
             "schema": {
               "format": "int64",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "invoiceType",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -7014,6 +7591,95 @@
               }
             },
             "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "IssuedInvoices"
+        ]
+      }
+    },
+    "/api/tenants/{tenantId}/issued-invoices/{id}/reissue": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
           }
         },
         "tags": [

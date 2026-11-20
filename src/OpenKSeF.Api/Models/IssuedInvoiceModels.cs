@@ -53,7 +53,8 @@ public record IssuedInvoiceLineResponse(
     decimal UnitNetPrice,
     string VatRate,
     decimal NetAmount,
-    decimal VatAmount);
+    decimal VatAmount,
+    int? BaseLineNo = null);
 
 public record VatSummaryResponse(string VatRate, decimal Net, decimal Vat);
 
@@ -97,7 +98,59 @@ public record IssuedInvoiceResponse(
     decimal? ExchangeRate = null,
     DateOnly? ExchangeRateDate = null,
     uint Version = 0,
-    uint SellerVersion = 0);
+    uint SellerVersion = 0,
+    string InvoiceType = "VAT",
+    CorrectedInvoiceRefResponse? CorrectedInvoice = null,
+    string? CorrectionReason = null,
+    int? CorrectionType = null,
+    IReadOnlyList<CorrectionRowResponse>? CorrectionRows = null,
+    IssuedInvoiceBuyerModel? BuyerBefore = null,
+    CurrentStateResponse? CurrentState = null,
+    IReadOnlyList<CorrectionListItemResponse>? Corrections = null,
+    Guid? OpenCorrectionId = null);
+
+public record CorrectedInvoiceRefResponse(Guid Id, string? Number, string? KsefNumber, DateOnly IssueDate, string InvoiceType);
+
+public record CorrectionRowResponse(
+    int RowNo,
+    bool IsBefore,
+    int? BaseLineNo,
+    string Name,
+    string Unit,
+    decimal Quantity,
+    decimal UnitNetPrice,
+    string VatRate,
+    decimal NetAmount);
+
+public record CurrentStateResponse(
+    IReadOnlyList<IssuedInvoiceLineResponse> Lines,
+    IReadOnlyList<VatSummaryResponse> VatSummary,
+    decimal TotalNet,
+    decimal TotalVat,
+    decimal TotalGross,
+    IssuedInvoiceBuyerModel Buyer,
+    bool IsZero);
+
+public record CorrectionListItemResponse(Guid Id, string? Number, string InvoiceType, string Status, DateOnly IssueDate, decimal TotalGross);
+
+public record CorrectionCreateRequest(string? Mode = null);
+
+public record CorrectionLineRequest(
+    int? BaseLineNo,
+    string? Name,
+    string? Unit,
+    decimal Quantity,
+    decimal UnitNetPrice,
+    string? VatRate);
+
+public record CorrectionDraftRequest(
+    DateOnly? IssueDate = null,
+    DateOnly? DueDate = null,
+    string? PaymentMethod = null,
+    string? CorrectionReason = null,
+    int? CorrectionType = null,
+    IssuedInvoiceBuyerModel? Buyer = null,
+    IReadOnlyList<CorrectionLineRequest>? Lines = null);
 
 public record ExchangeRateProposalResponse(string Currency, decimal? Rate, DateOnly? TableDate);
 
@@ -116,7 +169,8 @@ public record IssuedInvoiceListItemResponse(
     bool NeedsAttention,
     string? BuyerCountryCode = null,
     string? BuyerIdType = null,
-    string? BuyerForeignId = null);
+    string? BuyerForeignId = null,
+    string InvoiceType = "VAT");
 
 public record IssuedFeedItemResponse(
     Guid Id,
@@ -134,7 +188,8 @@ public record IssuedFeedItemResponse(
     decimal TotalGross,
     string Currency,
     string? KsefNumber,
-    bool NeedsAttention);
+    bool NeedsAttention,
+    string InvoiceType = "VAT");
 
 public class IssuedFeedPageResponse : PagedResult<IssuedFeedItemResponse>
 {

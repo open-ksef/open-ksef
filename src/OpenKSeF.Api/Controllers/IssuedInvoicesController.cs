@@ -177,7 +177,7 @@ public class IssuedInvoicesController(
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public Task<IActionResult> Issue(Guid tenantId, Guid id, [FromQuery] uint? version, CancellationToken ct, [FromQuery] bool confirmPastIssueDate = false, [FromQuery] uint? sellerVersion = null) =>
+    public Task<IActionResult> Issue(Guid tenantId, Guid id, [FromQuery] uint? version, CancellationToken ct, [FromQuery] bool confirmPastIssueDate = false, [FromQuery] uint? sellerVersion = null, [FromQuery] string? invoiceType = null) =>
         GuardedAsync(StatusCodes.Status422UnprocessableEntity, async () =>
         {
             if (await issuedInvoices.IssueAsync(tenantId, id, version, confirmPastIssueDate, sellerVersion, ct) is not { } result)
@@ -192,9 +192,35 @@ public class IssuedInvoicesController(
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public Task<IActionResult> Copy(Guid tenantId, Guid id, CancellationToken ct) =>
+    public Task<IActionResult> Copy(Guid tenantId, Guid id, CancellationToken ct, [FromQuery] string? invoiceType = null) =>
         GuardedAsync(StatusCodes.Status400BadRequest, async () =>
             await issuedInvoices.CopyAsync(tenantId, id, ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());
+
+    [HttpPost("{id:guid}/corrections")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> CreateCorrection(Guid tenantId, Guid id, CorrectionCreateRequest? request, CancellationToken ct) =>
+        Task.FromResult<IActionResult>(StatusCode(StatusCodes.Status501NotImplemented));
+
+    [HttpPut("{id:guid}/correction")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> UpdateCorrection(Guid tenantId, Guid id, CorrectionDraftRequest request, [FromQuery] uint? version, CancellationToken ct) =>
+        Task.FromResult<IActionResult>(StatusCode(StatusCodes.Status501NotImplemented));
+
+    [HttpPost("{id:guid}/reissue")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> Reissue(Guid tenantId, Guid id, CancellationToken ct) =>
+        Task.FromResult<IActionResult>(StatusCode(StatusCodes.Status501NotImplemented));
 
     [HttpGet("{id:guid}/xml")]
     [TenantAccess(TenantPermissions.InvoicesRead)]

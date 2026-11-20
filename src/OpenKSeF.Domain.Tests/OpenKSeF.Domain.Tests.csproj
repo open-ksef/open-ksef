@@ -31,6 +31,7 @@
   <ItemGroup>
     <None Include="Invoicing/TotalsVectors.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Issuing/Golden/*.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Invoicing/CorrectionVectors.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
