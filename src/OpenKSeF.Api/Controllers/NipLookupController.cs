@@ -37,6 +37,11 @@ public class NipLookupController(WhiteListClient whiteList) : ControllerBase
         {
             return BadRequest(Envelope("NIP-INVALID", "Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną."));
         }
+        catch (WhiteListQuotaExceededException)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                Envelope("NIP-LOOKUP-QUOTA", "Dzienny limit wyszukiwań w wykazie MF wyczerpany. Wpisz dane ręcznie."));
+        }
         catch (WhiteListUnavailableException)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable,
