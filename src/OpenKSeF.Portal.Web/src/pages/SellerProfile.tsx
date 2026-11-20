@@ -167,6 +167,12 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
     unchangedCorrectionNumbering && profile.correctionNextNumberPreview
       ? profile.correctionNextNumberPreview
       : previewNumber(form.correctionNumberingPattern, Number(form.correctionNextNumber) || 1, new Date())
+  const advancePreview =
+    form.advanceNumberingPattern === profile.advanceNumberingPattern &&
+    form.advanceNextNumber === String(profile.advanceNextNumber) &&
+    profile.advanceNextNumberPreview
+      ? profile.advanceNextNumberPreview
+      : previewNumber(form.advanceNumberingPattern, Number(form.advanceNextNumber) || 1, new Date())
 
   return (
     <form onSubmit={onSubmit} noValidate className="inv-stack" aria-label="Dane do faktur">
@@ -323,6 +329,27 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
             </div>
             <p className="inv-help" role="status">
               Następna korekta otrzyma numer <span className="mono">{correctionPreview}</span>. Korekty mają własną numerację, faktur nie przesuwają.
+            </p>
+            <div className="inv-grid">
+              <TextField
+                id="advance-numbering-pattern"
+                label="Wzorzec numeru faktury zaliczkowej"
+                value={form.advanceNumberingPattern}
+                error={errors.advanceNumberingPattern}
+                mono
+                onChange={(advanceNumberingPattern) => set({ advanceNumberingPattern })}
+              />
+              <TextField
+                id="advance-next-number"
+                label="Następny numer zaliczki"
+                value={form.advanceNextNumber}
+                error={errors.advanceNextNumber ?? errors.advanceNextNumberPeriod}
+                numeric
+                onChange={(advanceNextNumber) => set({ advanceNextNumber: digitsOnly(advanceNextNumber) })}
+              />
+            </div>
+            <p className="inv-help" role="status">
+              Następna faktura zaliczkowa otrzyma numer <span className="mono">{advancePreview}</span>. Faktura rozliczająca dostaje numer z serii faktur.
             </p>
           </section>
         </div>

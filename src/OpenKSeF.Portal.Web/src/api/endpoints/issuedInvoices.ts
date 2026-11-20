@@ -1,8 +1,10 @@
 import { apiClient } from '../client'
 import type {
+  AdvanceDraftRequest,
   CorrectionDraftRequest,
   CorrectionMode,
   ExchangeRateProposalResponse,
+  FinalDraftRequest,
   IssuedFeedItemResponse,
   IssuedInvoiceDraftRequest,
   IssuedInvoiceListItemResponse,
@@ -84,6 +86,22 @@ export function createCorrection(tenantId: string, id: string, mode: CorrectionM
 
 export function updateCorrection(tenantId: string, id: string, request: CorrectionDraftRequest, version?: number): Promise<IssuedInvoiceResponse> {
   return apiClient.put<IssuedInvoiceResponse>(`${item(tenantId, id)}/correction`, request, { query: { version } })
+}
+
+export function createAdvance(tenantId: string, fromAdvanceId?: string): Promise<IssuedInvoiceResponse> {
+  return apiClient.post<IssuedInvoiceResponse>(fromAdvanceId ? `${item(tenantId, fromAdvanceId)}/advances` : `${base(tenantId)}/advances`, {})
+}
+
+export function updateAdvance(tenantId: string, id: string, request: AdvanceDraftRequest, version?: number): Promise<IssuedInvoiceResponse> {
+  return apiClient.put<IssuedInvoiceResponse>(`${item(tenantId, id)}/advance`, request, { query: { version } })
+}
+
+export function createFinal(tenantId: string, advanceId: string): Promise<IssuedInvoiceResponse> {
+  return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, advanceId)}/final`)
+}
+
+export function updateFinal(tenantId: string, id: string, request: FinalDraftRequest, version?: number): Promise<IssuedInvoiceResponse> {
+  return apiClient.put<IssuedInvoiceResponse>(`${item(tenantId, id)}/final`, request, { query: { version } })
 }
 
 export function reissueInvoice(tenantId: string, id: string): Promise<IssuedInvoiceResponse> {

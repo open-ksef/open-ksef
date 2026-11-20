@@ -84,4 +84,22 @@ describe('seller profile form', () => {
       'correctionNumberingPattern',
     ])
   })
+
+  it('keeps the ZAL series apart: default pattern, own next number, distinct from FV and KOR', () => {
+    const form = fromProfile(profile)
+    expect(form.advanceNumberingPattern).toBe('ZAL/{nr}/{MM}/{RRRR}')
+    expect(toSellerProfileRequest(form, profile, today)).not.toHaveProperty('advanceNextNumber')
+    expect(toSellerProfileRequest({ ...form, advanceNextNumber: '3' }, profile, today)).toMatchObject({
+      advanceNumberingPattern: 'ZAL/{nr}/{MM}/{RRRR}',
+      advanceNextNumber: 3,
+      advanceNextNumberPeriod: '2026-11',
+    })
+    expect(validateSellerProfile({ ...form, advanceNumberingPattern: 'KOR/{nr}/{MM}/{RRRR}' }).advanceNumberingPattern).toBe(
+      'Wzorzec zaliczek musi różnić się od wzorców faktur i korekt',
+    )
+    expect(Object.keys(validateSellerProfile({ ...form, advanceNumberingPattern: 'ZAL', advanceNextNumber: '0' })).sort()).toEqual([
+      'advanceNextNumber',
+      'advanceNumberingPattern',
+    ])
+  })
 })

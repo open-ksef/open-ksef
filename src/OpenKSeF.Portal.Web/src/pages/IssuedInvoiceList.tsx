@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactElement } from 'react'
-import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
-import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
+import { createAdvance, listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import type { IssuedFeedItemResponse, IssuedInvoiceStatus } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
@@ -10,6 +10,7 @@ import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
 import { AddToken } from '@/components/CompanyStateCard'
 import { EmptyState } from '@/components/EmptyState'
+import { ErrorBanner } from '@/components/ErrorBanner'
 import { Icon } from '@/components/Icon'
 import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
 import '@/components/invoicing/invoicing.css'
@@ -18,6 +19,7 @@ import { Table, type TableColumn } from '@/components/Table'
 import { useCredentials } from '@/hooks/useCredentials'
 import { selectWordAt, useRowOpen } from '@/hooks/useRowOpen'
 import { useTenants } from '@/hooks/useTenants'
+import { LIST_KIND_LABELS } from '@/invoicing/advance'
 import { isCorrection } from '@/invoicing/correction'
 import { formatDate, formatMoney, formatSignedMoney } from '@/invoicing/format'
 
@@ -124,6 +126,12 @@ export function IssuedInvoiceListPage(): ReactElement {
       : `/issued/${encodeURIComponent(row.id)}?${tenantQuery}`
   const onRowClick = useRowOpen(detailsPath, { listSearch: location.search, fromIssued: true })
 
+  const navigate = useNavigate()
+  const newAdvance = useMutation({
+    mutationFn: () => createAdvance(tenantId),
+    onSuccess: (draft) => navigate(`/issued/${encodeURIComponent(draft.id)}/chain?${tenantQuery}`),
+  })
+
   const columns: TableColumn<IssuedFeedItemResponse>[] = [
     {
       key: 'buyerName',
@@ -131,7 +139,7 @@ export function IssuedInvoiceListPage(): ReactElement {
       render: (row) => {
         const number = row.number ?? (row.status === 'Draft' ? '— (szkic)' : '—')
         const external = row.source === 'External' ? `, Spoza OpenKSeF: ${EXTERNAL_HINT}` : ''
-        const kind = isCorrection(row) ? 'Korekta · ' : ''
+        const kind = row.invoiceType && LIST_KIND_LABELS[row.invoiceType] ? `${LIST_KIND_LABELS[row.invoiceType]} · ` : ''
         return (
           <>
             <Link
@@ -203,7 +211,11 @@ export function IssuedInvoiceListPage(): ReactElement {
         <Link to={`/issued/new?${tenantQuery}`} className="ui-button ui-button--primary ui-button--md">
           <Icon name="plus" /> Nowa faktura
         </Link>
+        <button type="button" className="ui-button ui-button--outline ui-button--md" disabled={newAdvance.isPending} onClick={() => newAdvance.mutate()}>
+          <Icon name="plus" /> {newAdvance.isPending ? 'Tworzenie…' : 'Nowa zaliczka'}
+        </button>
       </header>
+      {newAdvance.error ? <ErrorBanner message={newAdvance.error instanceof Error ? newAdvance.error.message : 'Nie udało się utworzyć faktury zaliczkowej'} /> : null}
 
       {pastLastPage ? <Navigate to={{ search: lastPageSearch(searchParams, totalPages) }} replace /> : null}
 

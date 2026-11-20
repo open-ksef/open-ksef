@@ -250,4 +250,42 @@ describe('buildPrintDocument', () => {
     expect(has(items, 'Exchange rate: 1 GBP = 5.1234 PLN')).toBe(true)
     expect(JSON.stringify(document)).toContain(`"qr":"${URL}"`)
   })
+
+  const chainXml = (fa: string): string => `<?xml version="1.0" encoding="UTF-8"?>
+<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/">
+  <Podmiot1><DaneIdentyfikacyjne><NIP>4444444444</NIP><Nazwa>Sprzedawca</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>PL</KodKraju><AdresL1>ul. Prosta 1</AdresL1></Adres></Podmiot1>
+  <Podmiot2><DaneIdentyfikacyjne><BrakID>1</BrakID><Nazwa>Example Ltd</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>GB</KodKraju><AdresL1>1 Sample Street</AdresL1></Adres></Podmiot2>
+  <Fa><KodWaluty>GBP</KodWaluty>${fa}</Fa>
+</Faktura>`
+
+  it('GBP np I advance invoice prints the order, order value, amount received, payment date and KOD I', () => {
+    const xml = chainXml(`<P_1>2026-11-06</P_1><P_2>ZAL/1/11/2026</P_2><P_6>2026-11-06</P_6><P_13_8>400.00</P_13_8><P_15>400.00</P_15><KursWalutyZ>5.1234</KursWalutyZ>
+    <Adnotacje><P_16>2</P_16><P_18>1</P_18></Adnotacje><RodzajFaktury>ZAL</RodzajFaktury>
+    <Platnosc><Zaplacono>1</Zaplacono><DataZaplaty>2026-11-06</DataZaplaty><FormaPlatnosci>6</FormaPlatnosci></Platnosc>
+    <Zamowienie><WartoscZamowienia>1000.00</WartoscZamowienia><ZamowienieWiersz><NrWierszaZam>1</NrWierszaZam><P_7Z>Consulting</P_7Z><P_8AZ>szt.</P_8AZ><P_8BZ>1</P_8BZ><P_9AZ>1000.00</P_9AZ><P_11NettoZ>1000.00</P_11NettoZ><P_11VatZ>0.00</P_11VatZ><P_12Z>np I</P_12Z></ZamowienieWiersz></Zamowienie>`)
+    const document = buildPrintDocument(xml, KSEF, URL, 'EN-PL')
+    const items = flatten(document)
+    expect(items[0].text).toBe('Advance invoice no. ZAL/1/11/2026')
+    expect(items[1].text).toBe('Faktura zaliczkowa nr ZAL/1/11/2026')
+    for (const value of ['Order', 'Consulting', 'Order value', '1,000.00 GBP', 'Advance received', 'Payment received on', '2026-11-06', 'Advance by rate', 'Exchange rate: 1 GBP = 5.1234 PLN']) {
+      expect(has(items, value)).toBe(true)
+    }
+    expect(items.filter((item) => item.text === '400.00 GBP').length).toBeGreaterThanOrEqual(2)
+    expect(has(items, 'Due date')).toBe(false)
+    expect(JSON.stringify(document)).toContain(`"qr":"${URL}"`)
+  })
+
+  it('GBP np I final invoice prints full lines, advances deducted, balance and the advance KSeF numbers', () => {
+    const xml = chainXml(`<P_1>2026-11-20</P_1><P_2>FV/9/11/2026</P_2><P_13_8>600.00</P_13_8><P_15>600.00</P_15>
+    <Adnotacje><P_16>2</P_16><P_18>1</P_18></Adnotacje><RodzajFaktury>ROZ</RodzajFaktury>
+    <FakturaZaliczkowa><NrKSeFFaZaliczkowej>4444444444-20261106-AAA-01</NrKSeFFaZaliczkowej></FakturaZaliczkowa>
+    <FaWiersz><NrWierszaFa>1</NrWierszaFa><P_7>Consulting</P_7><P_8A>szt.</P_8A><P_8B>1</P_8B><P_9A>1000.00</P_9A><P_11>1000.00</P_11><P_12>np I</P_12><KursWaluty>5.2000</KursWaluty></FaWiersz>
+    <Platnosc><TerminPlatnosci><Termin>2026-12-04</Termin></TerminPlatnosci><FormaPlatnosci>6</FormaPlatnosci></Platnosc>`)
+    const items = flatten(buildPrintDocument(xml, KSEF, URL, 'PL-EN'))
+    expect(items[0].text).toBe('Faktura rozliczająca nr FV/9/11/2026')
+    expect(items[1].text).toBe('Final invoice no. FV/9/11/2026')
+    for (const value of ['Faktury zaliczkowe', '4444444444-20261106-AAA-01', 'Wartość brutto', '1 000,00 GBP', 'Zaliczki odliczone', '400,00 GBP', 'Pozostało do zapłaty', '600,00 GBP', 'Do zapłaty w stawkach po odjęciu zaliczek']) {
+      expect(has(items, value)).toBe(true)
+    }
+  })
 })
