@@ -31,13 +31,13 @@ export interface InvoiceTotals {
 
 const QTY_SCALE = 1_000_000n
 
-function toScaled(value: number, decimals: number): bigint {
+export function toScaled(value: number, decimals: number): bigint {
   const [whole, fraction = ''] = Math.abs(value).toFixed(decimals).split('.')
   const scaled = BigInt(whole + fraction)
   return value < 0 ? -scaled : scaled
 }
 
-function divideHalfAwayFromZero(numerator: bigint, denominator: bigint): bigint {
+export function divideHalfAwayFromZero(numerator: bigint, denominator: bigint): bigint {
   const negative = numerator < 0n
   const abs = negative ? -numerator : numerator
   const quotient = (abs * 2n + denominator) / (denominator * 2n)

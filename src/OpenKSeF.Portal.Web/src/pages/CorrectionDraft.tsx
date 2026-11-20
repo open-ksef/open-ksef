@@ -37,10 +37,11 @@ import {
   type CorrectionFormValue,
   type CorrectionLineFormValue,
 } from '@/invoicing/correction'
+import { advanceDelta, KIND_LABELS } from '@/invoicing/advance'
 import { countryName } from '@/invoicing/foreign'
-import { toFieldErrors } from '@/invoicing/form'
-import { formatDate, formatDecimal, formatSignedMoney } from '@/invoicing/format'
-import { FOREIGN_VAT_RATES } from '@/invoicing/totals'
+import { parseDecimal, toFieldErrors } from '@/invoicing/form'
+import { formatDate, formatDecimal, formatMoney, formatSignedMoney } from '@/invoicing/format'
+import { computeTotals, FOREIGN_VAT_RATES } from '@/invoicing/totals'
 
 const methods: { method: PaymentMethod; label: string }[] = [
   { method: 'Transfer', label: 'Przelew' },
@@ -111,7 +112,9 @@ function CorrectionForm({ tenantId, profile, invoice, original }: CorrectionForm
   const { company, setSwitchGuard } = useCompany()
   const canSubmit = can(company, 'issuing.submit')
   const [form, setForm] = useState<CorrectionFormValue>(() => fromCorrection(invoice))
-  const baseline = useRef(JSON.stringify(form))
+  const advanceKind = invoice.invoiceType === 'KOR_ZAL'
+  const [amount, setAmount] = useState(() => String(invoice.advanceAmount ?? '').replace('.', ','))
+  const baseline = useRef(JSON.stringify([form, amount]))
   const version = useRef(invoice.version)
   const [errors, setErrors] = useState<ValidationIssue[]>([])
   const [warnings, setWarnings] = useState<ValidationIssue[]>(invoice.warnings)
@@ -123,7 +126,23 @@ function CorrectionForm({ tenantId, profile, invoice, original }: CorrectionForm
   const state = stateOf(original)
   const buyer = invoice.buyer
   const isForeign = buyer.kind === 'Foreign'
-  const correction = computeCorrection(state.lines, afterLines(form))
+  const lineCorrection = computeCorrection(state.lines, afterLines(form))
+  const currentAmount = invoice.amountBefore ?? original.advanceAmount ?? 0
+  const afterAmount = parseDecimal(amount)
+  const stateNet = computeTotals(state.lines).lineNet
+  const delta = advanceDelta(state.lines, afterLines(form), currentAmount, afterAmount)
+  const correction = advanceKind
+    ? {
+        ...delta,
+        deltas: delta.rows,
+        rows:
+          lineCorrection.rows.length || afterAmount === currentAmount
+            ? lineCorrection.rows
+            : state.lines.flatMap((line, index) =>
+                [true, false].map((isBefore) => ({ ...line, rowNo: index * 2 + (isBefore ? 1 : 2), isBefore, baseLineNo: line.lineNo, netAmount: stateNet[index] })),
+              ),
+      }
+    : lineCorrection
   const removed = state.lines.filter((line) => !form.lines.some((after) => after.baseLineNo === line.lineNo))
   const fieldErrors = toFieldErrors(errors)
   const tenantQuery = `tenantId=${encodeURIComponent(tenantId)}`
@@ -138,8 +157,9 @@ function CorrectionForm({ tenantId, profile, invoice, original }: CorrectionForm
   }
 
   async function saveDraft(): Promise<IssuedInvoiceResponse> {
-    const snapshot = JSON.stringify(form)
-    const saved = await updateCorrection(tenantId, invoice.id, toCorrectionRequest(form, buyer), version.current)
+    const snapshot = JSON.stringify([form, amount])
+    const request = toCorrectionRequest(form, buyer)
+    const saved = await updateCorrection(tenantId, invoice.id, advanceKind ? { ...request, advanceAmount: afterAmount } : request, version.current)
     version.current = saved.version
     baseline.current = snapshot
     setErrors([])
@@ -204,7 +224,7 @@ function CorrectionForm({ tenantId, profile, invoice, original }: CorrectionForm
 
   useEffect(() => {
     setSwitchGuard({
-      dirty: JSON.stringify(form) !== baseline.current,
+      dirty: JSON.stringify([form, amount]) !== baseline.current,
       busy,
       environment: profile.ksefEnvironment,
       save: () => save.mutateAsync(),
@@ -221,7 +241,7 @@ function CorrectionForm({ tenantId, profile, invoice, original }: CorrectionForm
     profile.correctionNextNumberPeriod && form.issueDate.startsWith(profile.correctionNextNumberPeriod) ? profile.correctionNextNumberPreview : null
   const total = correction.totalGross
   const totalLabel = total > 0 ? 'Nabywca dopłaca' : total < 0 ? 'Do zwrotu nabywcy' : 'Kwota bez zmian'
-  const title = invoice.status === 'Rejected' ? `Popraw korektę ${invoice.number ?? ''}`.trim() : 'Faktura korygująca'
+  const title = invoice.status === 'Rejected' ? `Popraw korektę ${invoice.number ?? ''}`.trim() : KIND_LABELS[invoice.invoiceType ?? 'KOR']
   const reasonError = fieldErrors.correctionReason
 
   return (
@@ -368,7 +388,35 @@ function CorrectionForm({ tenantId, profile, invoice, original }: CorrectionForm
           ) : null}
         </section>
 
+        {advanceKind ? (
+          <section className="inv-card" aria-labelledby="advance-amount-title">
+            <h2 id="advance-amount-title">Kwota zaliczki</h2>
+            <div className="ui-form-group">
+              <label htmlFor="advance-amount">Otrzymana kwota po korekcie ({invoice.currency})</label>
+              <input
+                id="advance-amount"
+                type="text"
+                inputMode="decimal"
+                className="num"
+                aria-invalid={fieldErrors.advanceAmount ? 'true' : 'false'}
+                aria-describedby={fieldErrors.advanceAmount ? 'advance-amount-error advance-before' : 'advance-before'}
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+              />
+              {fieldErrors.advanceAmount ? (
+                <span className="inv-field-error" id="advance-amount-error">
+                  {fieldErrors.advanceAmount}
+                </span>
+              ) : null}
+              <span className="inv-help" id="advance-before" data-testid="advance-before">
+                Przed korektą: {formatMoney(currentAmount, invoice.currency)}. Zwrot całej zaliczki: wpisz 0.
+              </span>
+            </div>
+          </section>
+        ) : null}
+
         <LinesTable
+          title={advanceKind ? 'Zamówienie po korekcie' : undefined}
           lines={form.lines}
           currency={invoice.currency}
           rates={isForeign ? FOREIGN_VAT_RATES : undefined}

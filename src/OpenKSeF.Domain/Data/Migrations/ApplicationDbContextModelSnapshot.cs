@@ -621,6 +621,10 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<DateTime?>("AcceptedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal?>("AdvanceAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<int>("AttemptCount")
                         .HasColumnType("integer");
 
@@ -752,6 +756,9 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasMaxLength(7)
                         .HasColumnType("character varying(7)");
 
+                    b.Property<Guid?>("OrderChainId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -854,6 +861,8 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .IsUnique()
                         .HasFilter("\"Number\" IS NOT NULL");
 
+                    b.HasIndex("TenantId", "OrderChainId");
+
                     b.ToTable("IssuedInvoices");
                 });
 
@@ -942,6 +951,13 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<string>("AddressLine2")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
+
+                    b.Property<string>("AdvanceNumberingPattern")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasDefaultValue("ZAL/{nr}/{MM}/{RRRR}");
 
                     b.Property<string>("BankAccount")
                         .HasMaxLength(26)

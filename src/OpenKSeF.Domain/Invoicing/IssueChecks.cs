@@ -15,6 +15,11 @@ public static class IssueChecks
     public const string CorrectionReasonCode = "INV-VAL-084";
     public const string CorrectionIssueDateCode = "INV-VAL-085";
     public const string BaseLineCode = "INV-VAL-086";
+    public const string AdvanceAmountCode = "INV-VAL-095";
+    public const string PaymentDateCode = "INV-VAL-096";
+    public const string AdvancesExceedCode = "INV-VAL-097";
+    public const string ChainLockedCode = "INV-VAL-098";
+    public const string LateAdvanceCode = "INV-W-ZAL-LATE";
 
     private static readonly Regex VatUeNumber = new(@"^[0-9A-Z+*]{1,12}$", RegexOptions.CultureInvariant);
 
@@ -86,6 +91,8 @@ public static class IssueChecks
             warnings.Add(new("INV-W-MPP", "splitPayment", "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)"));
         if (invoice.BuyerKind == BuyerKind.Foreign && NipValidator.HasValidChecksum(ForeignIdLettersAndDigits(invoice)))
             warnings.Add(new("INV-W-FOREIGN-NIP", "buyer.foreignId", "Numer nabywcy wygląda jak polski NIP. Nabywca z polskim NIP to firma, nie firma zagraniczna"));
+        if (invoice.InvoiceType == IssuedInvoiceType.Zal && invoice.IssueDate > new DateOnly(invoice.SaleDate.Year, invoice.SaleDate.Month, 15).AddMonths(1))
+            warnings.Add(new(LateAdvanceCode, "issueDate", "Fakturę zaliczkową wystawia się do 15. dnia miesiąca po miesiącu otrzymania zapłaty (art. 106i ust. 2)."));
 
         return warnings;
     }
@@ -112,6 +119,30 @@ public static class IssueChecks
                 errors.Add(new("INV-VAL-061", "exemptionBasis", "Podaj podstawę zwolnienia z VAT"));
     }
 
+    /// <summary>REQ-0028 checks of a ZAL or ROZ that need no other document of the chain. The remaining-value check is the service's (ChainAmountError).</summary>
+    public static IEnumerable<InvoiceCheck> ChainErrors(IssuedInvoice invoice, IReadOnlyList<VatSummary>? deducted, int advances = 0)
+    {
+        if (invoice.InvoiceType == IssuedInvoiceType.Zal)
+        {
+            if (invoice.AdvanceAmount is not > 0)
+                yield return new(AdvanceAmountCode, "advanceAmount", "Podaj otrzymaną kwotę zaliczki większą od zera");
+            if (invoice.SaleDate > invoice.IssueDate)
+                yield return new(PaymentDateCode, "paymentDate", "Data otrzymania zapłaty nie może być późniejsza niż data wystawienia faktury zaliczkowej");
+        }
+
+        if (invoice.InvoiceType == IssuedInvoiceType.Roz && Advances.Exceeds(invoice.Buckets(null, deducted), advances))
+            yield return new(AdvancesExceedCode, "lines", Advances.ExceedsMessage);
+    }
+
+    /// <summary>The amount of a ZAL or KOR_ZAL may not exceed the order value minus the other advances of the chain.</summary>
+    public static InvoiceCheck? ChainAmountError(IssuedInvoice invoice, decimal otherAdvances)
+    {
+        var remaining = Advances.OrderValue(invoice.Lines) - otherAdvances;
+        return invoice.AdvanceAmount > remaining || invoice.AdvanceAmount < 0
+            ? new(AdvanceAmountCode, "advanceAmount", $"Kwota zaliczki przekracza pozostałą wartość zamówienia ({remaining:0.00} {invoice.Currency})")
+            : null;
+    }
+
     /// <summary>REQ-0027 checks of a KOR draft against its original and the state it corrects. Seller data is the snapshot of the original.</summary>
     public static IReadOnlyList<InvoiceCheck> CorrectionErrors(IssuedInvoice correction, IssuedInvoice original, IssuedInvoice state, DateOnly today)
     {
@@ -132,7 +163,7 @@ public static class IssueChecks
             errors.Add(new("INV-VAL-021", "dueDate", "Termin płatności jest wcześniejszy niż data wystawienia"));
         if (correction.IsNumberTakenInKsef)
             errors.Add(new(NumberTakenCode, "number", $"Numer {correction.Number} jest już w KSeF, więc nie można go wysłać ponownie."));
-        if (linesResolve && Corrections.Rows(state.Lines, correction.Lines).Count == 0 && !Corrections.BuyerDataDiffers(correction, state))
+        if (linesResolve && Corrections.Rows(state.Lines, correction.Lines).Count == 0 && !Corrections.BuyerDataDiffers(correction, state) && correction.AdvanceAmount == state.AdvanceAmount)
             errors.Add(new(NoChangeCode, null, "Korekta nie zawiera zmian. Zmień pozycje albo dane nabywcy."));
 
         AddLineErrors(correction, errors);

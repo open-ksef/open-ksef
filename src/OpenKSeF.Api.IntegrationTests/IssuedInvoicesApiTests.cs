@@ -1237,7 +1237,7 @@ public class IssuedInvoicesApiTests : IDisposable
             case JsonObject obj:
                 foreach (var key in obj.Select(p => p.Key).ToList())
                 {
-                    if (key is "id" or "createdAt" or "updatedAt" or "issuedAt" or "acceptedAt" or "version" or "openCorrectionId" && obj[key] is not null
+                    if (key is "id" or "createdAt" or "updatedAt" or "issuedAt" or "acceptedAt" or "version" or "openCorrectionId" or "orderChainId" or "openDocumentId" && obj[key] is not null
                         || key == "sellerVersion" && obj[key]!.GetValue<uint>() != 0)
                         obj[key] = $"<{key}>";
                     else if (key == "seller")

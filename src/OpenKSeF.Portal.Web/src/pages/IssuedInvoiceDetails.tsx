@@ -5,7 +5,9 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import {
   copyIssuedInvoice,
+  createAdvance,
   createCorrection,
+  createFinal,
   deleteIssuedInvoice,
   getIssuedInvoice,
   getIssuedInvoiceUpo,
@@ -19,11 +21,13 @@ import { ErrorBanner } from '@/components/ErrorBanner'
 import { Icon } from '@/components/Icon'
 import { Skeleton } from '@/components/Skeleton'
 import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
+import { ChainCard } from '@/components/invoicing/ChainCard'
 import { CorrectionRows } from '@/components/invoicing/CorrectionRows'
 import { KsefStatusPanel } from '@/components/invoicing/KsefStatusPanel'
 import { VatSummary } from '@/components/invoicing/VatSummary'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
+import { isChainDraft, KIND_LABELS } from '@/invoicing/advance'
 import { renderBilingualPdf, type PrintVariant } from '@/invoicing/bilingualPrint'
 import { CORRECTION_TYPES, isCorrection } from '@/invoicing/correction'
 import { countryName } from '@/invoicing/foreign'
@@ -76,10 +80,17 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
   const accepted = invoice.status === 'Accepted'
   const isForeign = invoice.buyer.kind === 'Foreign'
   const correction = isCorrection(invoice)
+  const kind = invoice.invoiceType ?? 'VAT'
+  const advance = kind === 'ZAL'
+  const noPayment = advance || ((correction || kind === 'ROZ') && invoice.totalGross <= 0)
+  const chain = invoice.chain
+  const chainOpen = Boolean(chain?.openDocumentId)
+  const canAdvanceAgain = accepted && advance && !chain?.final && (chain?.remaining ?? 1) > 0
+  const canFinal = accepted && advance && !chain?.final
   const correctable = accepted && !correction && !invoice.currentState?.isZero
   const openCorrection = invoice.corrections?.find((item) => item.id === invoice.openCorrectionId)
   const [wrongNipOpen, setWrongNipOpen] = useState(false)
-  const editHref = `/issued/${encodeURIComponent(invoice.id)}/${correction ? 'correct' : 'edit'}?${tenantQuery}`
+  const editHref = `/issued/${encodeURIComponent(invoice.id)}/${correction ? 'correct' : isChainDraft(invoice) ? 'chain' : 'edit'}?${tenantQuery}`
   const itemHref = (id: string): string => `/issued/${encodeURIComponent(id)}?${tenantQuery}`
 
   function showFailure(error: unknown, fallback: string): void {
@@ -118,6 +129,17 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
       setWrongNipOpen(false)
       showFailure(error, 'Nie udało się utworzyć korekty')
     },
+  })
+
+  const chainStep = useMutation({
+    mutationFn: (step: 'advance' | 'final') => (step === 'advance' ? createAdvance(tenantId, invoice.id) : createFinal(tenantId, invoice.id)),
+    onMutate: () => setFailure(null),
+    onSuccess: (draft) => {
+      void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
+      void queryClient.invalidateQueries({ queryKey: ['issued-invoice', tenantId, invoice.id] })
+      navigate(`/issued/${encodeURIComponent(draft.id)}/chain?${tenantQuery}`)
+    },
+    onError: (error) => showFailure(error, 'Nie udało się utworzyć dokumentu zamówienia'),
   })
 
   const reissue = useMutation({
@@ -214,7 +236,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
       </Link>
       <header className="page-header invoice-details-head">
         <h1>
-          {correction ? <span className="inv-caption">Faktura korygująca </span> : null}
+          {kind !== 'VAT' ? <span className="inv-caption">{KIND_LABELS[kind]} </span> : null}
           {invoice.number ?? 'Szkic'}
         </h1>
         <KsefStatusBadge status={invoice.status} />
@@ -227,7 +249,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
         invoice={invoice}
         tenantId={tenantId}
         editHref={editHref}
-        copyAction={correction ? null : copyButton}
+        copyAction={kind === 'VAT' ? copyButton : null}
         downloads={downloads}
         deleteAction={
           <button type="button" className="ui-button ui-button--danger-outline ui-button--md" onClick={() => setDeleteOpen(true)}>
@@ -235,6 +257,46 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
           </button>
         }
       />
+
+      {chain ? (
+        <ChainCard chain={chain} currency={invoice.currency} currentId={invoice.id} itemHref={itemHref}>
+          {chainOpen && chain.openDocumentId !== invoice.id && (canAdvanceAgain || canFinal) ? (
+            <div className="inv-alert inv-alert--info" role="status" data-testid="chain-open">
+              Zamówienie ma otwarty dokument. Dokończ go albo usuń szkic. <Link to={itemHref(chain.openDocumentId ?? '')}>Otwórz dokument</Link>
+            </div>
+          ) : null}
+          {canAdvanceAgain || canFinal ? (
+            <div className="status-panel__row">
+              {canAdvanceAgain ? (
+                <button type="button" className="ui-button ui-button--primary ui-button--md" disabled={chainStep.isPending || chainOpen} onClick={() => chainStep.mutate('advance')}>
+                  <Icon name="plus" /> Kolejna zaliczka
+                </button>
+              ) : null}
+              {canFinal ? (
+                <button type="button" className="ui-button ui-button--outline ui-button--md" disabled={chainStep.isPending || chainOpen} onClick={() => chainStep.mutate('final')}>
+                  Wystaw fakturę rozliczającą
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </ChainCard>
+      ) : null}
+
+      {invoice.advanceInvoices?.length ? (
+        <section className="card" aria-labelledby="advances-title" data-testid="advance-invoices">
+          <h2 id="advances-title">Rozliczone faktury zaliczkowe</h2>
+          <ul className="inv-kor-list">
+            {invoice.advanceInvoices.map((item) => (
+              <li key={item.id}>
+                <Link to={itemHref(item.id)} className="mono">
+                  {item.number ?? '—'}
+                </Link>
+                {item.ksefNumber ? <span className="mono"> · {item.ksefNumber}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {correction && invoice.correctedInvoice ? (
         <section className="card" aria-labelledby="corrected-title" data-testid="corrected-invoice">
@@ -259,6 +321,12 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
               <>
                 <dt>Typ korekty</dt>
                 <dd>{CORRECTION_TYPES.find((type) => type.value === invoice.correctionType)?.label}</dd>
+              </>
+            ) : null}
+            {invoice.amountBefore != null ? (
+              <>
+                <dt>{kind === 'KOR_ROZ' ? 'Do zapłaty przed korektą' : 'Zaliczka przed korektą'}</dt>
+                <dd data-testid="amount-before">{formatMoney(invoice.amountBefore, invoice.currency)}</dd>
               </>
             ) : null}
             {invoice.buyerBefore ? (
@@ -391,33 +459,45 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
             ) : null}
             <dt>Data wystawienia</dt>
             <dd>{formatDate(invoice.issueDate)}</dd>
-            <dt>Data sprzedaży</dt>
+            <dt>{advance ? 'Data otrzymania zapłaty' : 'Data sprzedaży'}</dt>
             <dd>{formatDate(invoice.saleDate)}</dd>
-            <dt>Termin płatności</dt>
-            <dd>{formatDate(invoice.dueDate)}</dd>
-            <dt>Płatność</dt>
-            <dd>
-              {paymentLabels[invoice.paymentMethod]}
-              {invoice.splitPayment ? ', mechanizm podzielonej płatności' : ''}
-            </dd>
-            {invoice.paymentMethod === 'Transfer' ? (
+            {advance ? (
               <>
-                <dt>Rachunek</dt>
-                <dd className="mono">{invoice.seller.iban ? formatIban(invoice.seller.iban) : formatNrb(invoice.seller.bankAccount)}</dd>
-                {invoice.seller.swift ? (
+                <dt>Zapłacono</dt>
+                <dd data-testid="advance-paid">
+                  {formatMoney(invoice.advanceAmount ?? invoice.totalGross, invoice.currency)}, {paymentLabels[invoice.paymentMethod].toLowerCase()}
+                </dd>
+              </>
+            ) : null}
+            {noPayment ? null : (
+              <>
+                <dt>Termin płatności</dt>
+                <dd>{formatDate(invoice.dueDate)}</dd>
+                <dt>Płatność</dt>
+                <dd>
+                  {paymentLabels[invoice.paymentMethod]}
+                  {invoice.splitPayment ? ', mechanizm podzielonej płatności' : ''}
+                </dd>
+                {invoice.paymentMethod === 'Transfer' ? (
                   <>
-                    <dt>SWIFT</dt>
-                    <dd className="mono">{invoice.seller.swift}</dd>
-                  </>
-                ) : null}
-                {invoice.seller.bankName ? (
-                  <>
-                    <dt>Bank</dt>
-                    <dd>{invoice.seller.bankName}</dd>
+                    <dt>Rachunek</dt>
+                    <dd className="mono">{invoice.seller.iban ? formatIban(invoice.seller.iban) : formatNrb(invoice.seller.bankAccount)}</dd>
+                    {invoice.seller.swift ? (
+                      <>
+                        <dt>SWIFT</dt>
+                        <dd className="mono">{invoice.seller.swift}</dd>
+                      </>
+                    ) : null}
+                    {invoice.seller.bankName ? (
+                      <>
+                        <dt>Bank</dt>
+                        <dd>{invoice.seller.bankName}</dd>
+                      </>
+                    ) : null}
                   </>
                 ) : null}
               </>
-            ) : null}
+            )}
             {invoice.exchangeRate ? (
               <>
                 <dt>Kurs</dt>
@@ -439,8 +519,10 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
             </section>
           ) : (
             <section className="card" aria-labelledby="lines-title">
-              <h2 id="lines-title">Pozycje</h2>
+              <h2 id="lines-title">{advance ? 'Zamówienie' : 'Pozycje'}</h2>
               <Lines lines={invoice.lines} currency={invoice.currency} />
+              {kind === 'ROZ' ? <p className="inv-help">Pozycje z pełnymi wartościami. Podsumowanie pokazuje kwoty po odjęciu zaliczek.</p> : null}
+              {advance ? <p className="inv-help">Podsumowanie pokazuje zaliczkę rozbitą na stawki.</p> : null}
               {invoice.exemptionBasis ? <p className="inv-help">Podstawa zwolnienia: {invoice.exemptionBasis.text}</p> : null}
             </section>
           )}

@@ -1,5 +1,7 @@
+import type { VatRateCode } from '@/api/types'
 import { amountInWords } from './amountWords'
 import { countryName } from './foreign'
+import { computeTotals } from './totals'
 
 export type PrintVariant = 'EN-PL' | 'PL-EN'
 
@@ -48,6 +50,16 @@ const LABELS = {
   vat: { pl: 'Kwota VAT', en: 'VAT amount' },
   totalDifference: { pl: 'Różnica razem', en: 'Total difference' },
   refund: { pl: 'Do zwrotu', en: 'To be refunded' },
+  order: { pl: 'Zamówienie', en: 'Order' },
+  orderValue: { pl: 'Wartość zamówienia', en: 'Order value' },
+  advanceByRate: { pl: 'Zaliczka w stawkach', en: 'Advance by rate' },
+  advanceReceived: { pl: 'Otrzymana zaliczka', en: 'Advance received' },
+  paymentDate: { pl: 'Data otrzymania zapłaty', en: 'Payment received on' },
+  advanceInvoices: { pl: 'Faktury zaliczkowe', en: 'Advance invoices' },
+  balanceByRate: { pl: 'Do zapłaty w stawkach po odjęciu zaliczek', en: 'Balance by rate after advances' },
+  grossTotal: { pl: 'Wartość brutto', en: 'Gross total' },
+  advancesDeducted: { pl: 'Zaliczki odliczone', en: 'Advances deducted' },
+  amountBefore: { pl: 'Kwota przed korektą', en: 'Amount before correction' },
 } satisfies Record<string, Bilingual>
 
 const PAYMENT_METHODS: Record<string, Bilingual> = {
@@ -71,6 +83,26 @@ const BUCKETS: [string, string][] = [
   ['10', 'oo'],
   ['11', 'marża'],
 ]
+
+const TITLES: Record<string, Bilingual> = {
+  VAT: { pl: 'Faktura', en: 'Invoice' },
+  KOR: { pl: 'Faktura korygująca', en: 'Corrective invoice' },
+  ZAL: { pl: 'Faktura zaliczkowa', en: 'Advance invoice' },
+  ROZ: { pl: 'Faktura rozliczająca', en: 'Final invoice' },
+  KOR_ZAL: { pl: 'Korekta faktury zaliczkowej', en: 'Corrective advance invoice' },
+  KOR_ROZ: { pl: 'Korekta faktury rozliczającej', en: 'Corrective final invoice' },
+}
+
+const ORDER_FIELDS: Record<string, string> = {
+  NrWierszaFa: 'NrWierszaZam',
+  P_7: 'P_7Z',
+  P_8A: 'P_8AZ',
+  P_8B: 'P_8BZ',
+  P_9A: 'P_9AZ',
+  P_11: 'P_11NettoZ',
+  P_12: 'P_12Z',
+  StanPrzed: 'StanPrzedZ',
+}
 
 const UNITS: Record<string, string> = { 'szt.': 'pcs', 'godz.': 'hours', 'usł.': 'service' }
 
@@ -165,22 +197,28 @@ export function buildPrintDocument(xml: string, ksefNumber: string, verification
   const annotations = child(fa, 'Adnotacje')
   const payment = child(fa, 'Platnosc')
   const account = child(payment, 'RachunekBankowy')
-  const lines = [...(fa?.children ?? [])].filter((element) => element.localName === 'FaWiersz')
+  const kind = text(fa, 'RodzajFaktury') ?? 'VAT'
+  const order = child(fa, 'Zamowienie')
+  const fromOrder = Boolean(order) && ![...(fa?.children ?? [])].some((element) => element.localName === 'FaWiersz')
+  const lines = [...((fromOrder ? order : fa)?.children ?? [])].filter((element) => element.localName === (fromOrder ? 'ZamowienieWiersz' : 'FaWiersz'))
+  const cell = (line: Element | undefined, name: string): string | null => text(line, fromOrder ? ORDER_FIELDS[name] : name)
+  const advanceNumbers = [...(fa?.getElementsByTagNameNS('*', 'NrKSeFFaZaliczkowej') ?? [])].map((element) => element.textContent?.trim() ?? '')
 
   const currency = text(fa, 'KodWaluty') ?? ''
   const issueDate = text(fa, 'P_1') ?? ''
   const number = text(fa, 'P_2') ?? ''
   const total = text(fa, 'P_15') ?? '0.00'
   const paid = text(payment, 'Zaplacono') === '1'
-  const corrective = text(fa, 'RodzajFaktury')?.startsWith('KOR') ?? false
+  const corrective = kind.startsWith('KOR')
+  const isAdvance = kind === 'ZAL'
+  const isFinal = kind === 'ROZ'
   const corrected = child(fa, 'DaneFaKorygowanej')
   const refund = total.startsWith('-')
   const amount = total.replace('-', '')
   const money = (digits: string): string =>
     digits.startsWith('-') ? `-${formatPrintNumber(digits.slice(1), main)} ${currency}` : `${formatPrintNumber(digits, main)} ${currency}`
-  const title: Bilingual = corrective
-    ? { pl: `Faktura korygująca nr ${number}`, en: `Corrective invoice no. ${number}` }
-    : { pl: `Faktura nr ${number}`, en: `Invoice no. ${number}` }
+  const heading = TITLES[kind] ?? TITLES.VAT
+  const title: Bilingual = { pl: `${heading.pl} nr ${number}`, en: `${heading.en} no. ${number}` }
 
   const sellerIdValue = `${text(seller, 'PrefiksPodatnika') ?? ''}${text(child(seller, 'DaneIdentyfikacyjne'), 'NIP') ?? ''}`
   const sellerIdRows = sellerIdValue ? [row(LABELS.sellerTaxId, sellerIdValue, main)] : []
@@ -194,19 +232,20 @@ export function buildPrintDocument(xml: string, ksefNumber: string, verification
 
   const itemRows: DocNode[][] = lines.map((line) => [
     corrective
-      ? { stack: [text(line, 'NrWierszaFa') ?? '', stacked(text(line, 'StanPrzed') === '1' ? LABELS.before : LABELS.after, main)] }
-      : (text(line, 'NrWierszaFa') ?? ''),
-    itemName(text(line, 'P_7') ?? '', main),
-    { text: formatPrintNumber(text(line, 'P_8B') ?? '', main), alignment: 'right' },
-    unitCell(text(line, 'P_8A') ?? '', main),
-    { text: formatPrintNumber(text(line, 'P_9A') ?? '', main), alignment: 'right' },
-    { text: formatPrintNumber(text(line, 'P_11') ?? '', main), alignment: 'right' },
-    text(line, 'P_12') ?? '',
+      ? { stack: [cell(line, 'NrWierszaFa') ?? '', stacked(cell(line, 'StanPrzed') === '1' ? LABELS.before : LABELS.after, main)] }
+      : (cell(line, 'NrWierszaFa') ?? ''),
+    itemName(cell(line, 'P_7') ?? '', main),
+    { text: formatPrintNumber(cell(line, 'P_8B') ?? '', main), alignment: 'right' },
+    unitCell(cell(line, 'P_8A') ?? '', main),
+    { text: formatPrintNumber(cell(line, 'P_9A') ?? '', main), alignment: 'right' },
+    { text: formatPrintNumber(cell(line, 'P_11') ?? '', main), alignment: 'right' },
+    cell(line, 'P_12') ?? '',
   ])
-  const hasNp = lines.some((line) => text(line, 'P_12')?.startsWith('np'))
-  const rate = text(lines[0], 'KursWaluty')
+  const hasNp = lines.some((line) => cell(line, 'P_12')?.startsWith('np'))
+  const rate = text(lines[0], 'KursWaluty') ?? text(fa, 'KursWalutyZ')
   const words = amountInWords(amount, currency)
-  const differenceRows: DocNode[][] = corrective
+  const bucketTitle = corrective ? LABELS.differences : isAdvance ? LABELS.advanceByRate : LABELS.balanceByRate
+  const differenceRows: DocNode[][] = corrective || isAdvance || isFinal
     ? BUCKETS.filter(([bucket]) => text(fa, `P_13_${bucket}`) !== null).map(([bucket, label]) => [
         label,
         { text: money(text(fa, `P_13_${bucket}`) ?? ''), alignment: 'right' },
@@ -219,14 +258,38 @@ export function buildPrintDocument(xml: string, ksefNumber: string, verification
         row(LABELS.correctedIssueDate, text(corrected, 'DataWystFaKorygowanej') ?? '', main),
         row(LABELS.correctedKsefNumber, text(corrected, 'NrKSeFFaKorygowanej') ?? '', main),
         row(LABELS.correctionReason, text(fa, 'PrzyczynaKorekty') ?? '', main),
+        ...(text(fa, 'P_15ZK') ? [row(LABELS.amountBefore, money(text(fa, 'P_15ZK') ?? ''), main)] : []),
       ]
-    : []
+    : advanceNumbers.length
+      ? [row(LABELS.advanceInvoices, { stack: advanceNumbers }, main)]
+      : []
+  const grossTotal = isFinal
+    ? computeTotals(
+        lines.map((line) => ({
+          quantity: Number(cell(line, 'P_8B') ?? 0),
+          unitNetPrice: Number(cell(line, 'P_9A') ?? 0),
+          vatRate: (cell(line, 'P_12') ?? '') as VatRateCode,
+        })),
+      ).totalGross.toFixed(2)
+    : '0.00'
   const totalRows: DocNode[][] = corrective
     ? [
         row(LABELS.totalDifference, { text: money(total), bold: true, alignment: 'right' }, main),
         row(refund ? LABELS.refund : LABELS.balance, { text: money(amount), bold: true, alignment: 'right' }, main),
       ]
-    : [
+    : isAdvance
+      ? [
+          row(LABELS.orderValue, { text: money(text(order, 'WartoscZamowienia') ?? ''), alignment: 'right' }, main),
+          row(LABELS.advanceReceived, { text: money(total), bold: true, alignment: 'right' }, main),
+          row(LABELS.paymentDate, { text: text(payment, 'DataZaplaty') ?? '', alignment: 'right' }, main),
+        ]
+      : isFinal
+        ? [
+            row(LABELS.grossTotal, { text: money(grossTotal), alignment: 'right' }, main),
+            row(LABELS.advancesDeducted, { text: money((Number(grossTotal) - Number(total)).toFixed(2)), alignment: 'right' }, main),
+            row(LABELS.balance, { text: money(total), bold: true, alignment: 'right' }, main),
+          ]
+        : [
         row(LABELS.total, { text: money(total), bold: true, alignment: 'right' }, main),
         row(LABELS.paid, { text: money(paid ? total : '0.00'), alignment: 'right' }, main),
         row(LABELS.balance, { text: money(paid ? '0.00' : total), bold: true, alignment: 'right' }, main),
@@ -277,7 +340,7 @@ export function buildPrintDocument(xml: string, ksefNumber: string, verification
           {
             width: 210,
             ...(details(
-              [row(LABELS.issueDate, issueDate, main), ...(corrective ? [] : [row(LABELS.saleDate, text(fa, 'P_6') ?? issueDate, main)])],
+              [row(LABELS.issueDate, issueDate, main), ...(corrective || isAdvance ? [] : [row(LABELS.saleDate, text(fa, 'P_6') ?? issueDate, main)])],
               110,
             ) as object),
           },
@@ -290,7 +353,7 @@ export function buildPrintDocument(xml: string, ksefNumber: string, verification
         margin: [0, 0, 0, 14],
       },
       correctionRows.length ? { ...(details(correctionRows, 150) as object), margin: [0, 0, 0, 14] } : null,
-      { ...(stacked(LABELS.items, main) as object), margin: [0, 0, 0, 4] },
+      { ...(stacked(fromOrder ? LABELS.order : LABELS.items, main) as object), margin: [0, 0, 0, 4] },
       {
         table: {
           headerRows: 1,
@@ -309,7 +372,7 @@ export function buildPrintDocument(xml: string, ksefNumber: string, verification
             table: {
               headerRows: 1,
               widths: ['*', 90, 90],
-              body: [[LABELS.differences, LABELS.net, LABELS.vat].map((label) => stacked(label, main)), ...differenceRows],
+              body: [[bucketTitle, LABELS.net, LABELS.vat].map((label) => stacked(label, main)), ...differenceRows],
             },
             layout: 'lightHorizontalLines',
             margin: [0, 12, 0, 0],

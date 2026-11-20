@@ -33,7 +33,11 @@ public enum ExemptionBasisKind
 public enum IssuedInvoiceType
 {
     Vat,
-    Kor
+    Kor,
+    Zal,
+    Roz,
+    KorZal,
+    KorRoz
 }
 
 public enum CorrectionMode
@@ -48,10 +52,15 @@ public static class IssuedInvoiceTypes
 {
     public const string FvSeries = "FV";
     public const string KorSeries = "KOR";
+    public const string ZalSeries = "ZAL";
 
     public static string Code(this IssuedInvoiceType type) => type switch
     {
         IssuedInvoiceType.Kor => "KOR",
+        IssuedInvoiceType.Zal => "ZAL",
+        IssuedInvoiceType.Roz => "ROZ",
+        IssuedInvoiceType.KorZal => "KOR_ZAL",
+        IssuedInvoiceType.KorRoz => "KOR_ROZ",
         _ => "VAT"
     };
 
@@ -59,11 +68,42 @@ public static class IssuedInvoiceTypes
     {
         "VAT" => IssuedInvoiceType.Vat,
         "KOR" => IssuedInvoiceType.Kor,
+        "ZAL" => IssuedInvoiceType.Zal,
+        "ROZ" => IssuedInvoiceType.Roz,
+        "KOR_ZAL" => IssuedInvoiceType.KorZal,
+        "KOR_ROZ" => IssuedInvoiceType.KorRoz,
         _ => throw new FormatException($"Unknown invoice type '{code}'.")
     };
 
-    public static string Series(this IssuedInvoiceType type) => type == IssuedInvoiceType.Kor ? KorSeries : FvSeries;
+    public static bool IsCorrection(this IssuedInvoiceType type) => type is IssuedInvoiceType.Kor or IssuedInvoiceType.KorZal or IssuedInvoiceType.KorRoz;
 
-    public static string Pattern(this SellerProfile profile, IssuedInvoiceType type) =>
-        type == IssuedInvoiceType.Kor ? profile.CorrectionNumberingPattern : profile.NumberingPattern;
+    public static bool IsAdvance(this IssuedInvoiceType type) => type is IssuedInvoiceType.Zal or IssuedInvoiceType.KorZal;
+
+    public static IssuedInvoiceType CorrectionOf(this IssuedInvoiceType type) => type switch
+    {
+        IssuedInvoiceType.Zal => IssuedInvoiceType.KorZal,
+        IssuedInvoiceType.Roz => IssuedInvoiceType.KorRoz,
+        _ => IssuedInvoiceType.Kor
+    };
+
+    public static string Series(this IssuedInvoiceType type) => type switch
+    {
+        _ when type.IsCorrection() => KorSeries,
+        IssuedInvoiceType.Zal => ZalSeries,
+        _ => FvSeries
+    };
+
+    public static IssuedInvoiceType[] TypesOf(string series) => series switch
+    {
+        KorSeries => [IssuedInvoiceType.Kor, IssuedInvoiceType.KorZal, IssuedInvoiceType.KorRoz],
+        ZalSeries => [IssuedInvoiceType.Zal],
+        _ => [IssuedInvoiceType.Vat, IssuedInvoiceType.Roz]
+    };
+
+    public static string Pattern(this SellerProfile profile, IssuedInvoiceType type) => type.Series() switch
+    {
+        KorSeries => profile.CorrectionNumberingPattern,
+        ZalSeries => profile.AdvanceNumberingPattern,
+        _ => profile.NumberingPattern
+    };
 }

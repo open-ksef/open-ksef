@@ -15,9 +15,10 @@ interface LinesTableProps {
   onChange: (lines: InvoiceLineFormValue[]) => void
   fieldErrors?: Record<string, string>
   children?: ReactNode
+  title?: string
 }
 
-export function LinesTable({ lines, currency, rates, newLineRate, onChange, fieldErrors = {}, children }: LinesTableProps): ReactElement {
+export function LinesTable({ lines, currency, rates, newLineRate, onChange, fieldErrors = {}, children, title = 'Pozycje' }: LinesTableProps): ReactElement {
   const { lineNet } = computeTotals(
     lines.map((line) => ({ quantity: parseDecimal(line.quantity), unitNetPrice: parseDecimal(line.unitNetPrice), vatRate: line.vatRate })),
   )
@@ -55,7 +56,7 @@ export function LinesTable({ lines, currency, rates, newLineRate, onChange, fiel
 
   return (
     <section className="inv-card" aria-labelledby="lines-title">
-      <h2 id="lines-title">Pozycje</h2>
+      <h2 id="lines-title">{title}</h2>
       <div className="inv-lines-head" aria-hidden="true">
         <span className="inv-line__name">Nazwa</span>
         <span className="inv-line__unit">J.m.</span>

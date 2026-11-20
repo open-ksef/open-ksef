@@ -109,5 +109,10 @@
       "totalGross": -123.00
     }
   ],
-  "openCorrectionId": null
+  "openCorrectionId": null,
+  "orderChainId": null,
+  "advanceAmount": null,
+  "amountBefore": null,
+  "advanceInvoices": null,
+  "chain": null
 }

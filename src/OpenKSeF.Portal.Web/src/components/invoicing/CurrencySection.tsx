@@ -14,6 +14,7 @@ interface CurrencySectionProps {
   issueDate: string
   saleDate: string
   fieldErrors?: Record<string, string>
+  lockCurrency?: boolean
   onUpdate: (update: (current: DraftFormValue) => DraftFormValue) => void
 }
 
@@ -25,6 +26,7 @@ export function CurrencySection({
   issueDate,
   saleDate,
   fieldErrors = {},
+  lockCurrency = false,
   onUpdate,
 }: CurrencySectionProps): ReactElement {
   const needsRate = currency !== 'PLN'
@@ -80,6 +82,7 @@ export function CurrencySection({
         <select
           id="invoice-currency"
           value={currency}
+          disabled={lockCurrency}
           aria-invalid={currencyError ? 'true' : 'false'}
           aria-describedby={currencyError ? 'invoice-currency-error' : undefined}
           onChange={(event) => {

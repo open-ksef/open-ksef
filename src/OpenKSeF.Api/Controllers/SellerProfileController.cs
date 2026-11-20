@@ -40,7 +40,8 @@ public class SellerProfileController(
                 request.LegalName, request.AddressLine1, request.AddressLine2, request.BankAccount, request.CashAccounting,
                 request.NumberingPattern, request.NextNumber, request.NextNumberPeriod,
                 request.BankSwift, request.BankName, request.ForeignBankAccount, request.ForeignBankSwift, request.ForeignBankName,
-                request.CorrectionNumberingPattern, request.CorrectionNextNumber, request.CorrectionNextNumberPeriod), ct);
+                request.CorrectionNumberingPattern, request.CorrectionNextNumber, request.CorrectionNextNumberPeriod,
+                request.AdvanceNumberingPattern, request.AdvanceNextNumber, request.AdvanceNextNumberPeriod), ct);
 
             if (errors.Count > 0)
                 return BadRequest(ToEnvelope(errors));
@@ -81,5 +82,9 @@ public class SellerProfileController(
         view.Profile.CorrectionNumberingPattern,
         view.CorrectionNextNumber,
         view.CorrectionNextNumberPeriod,
-        view.CorrectionNextNumberPreview);
+        view.CorrectionNextNumberPreview,
+        view.Profile.AdvanceNumberingPattern,
+        view.AdvanceNextNumber,
+        view.AdvanceNextNumberPeriod,
+        view.AdvanceNextNumberPreview);
 }

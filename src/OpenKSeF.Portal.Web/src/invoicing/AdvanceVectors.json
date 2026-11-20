@@ -1,0 +1,112 @@
+{
+  "split": [
+    {
+      "name": "first advance 369.00 of 1230.00",
+      "order": [{ "quantity": 1, "unitNetPrice": 1000.00, "vatRate": "23" }],
+      "amount": 369.00,
+      "orderValue": 1230.00,
+      "buckets": [{ "vatRate": "23", "net": 300.00, "vat": 69.00 }]
+    },
+    {
+      "name": "second advance 246.00 of 1230.00",
+      "order": [{ "quantity": 1, "unitNetPrice": 1000.00, "vatRate": "23" }],
+      "amount": 246.00,
+      "orderValue": 1230.00,
+      "buckets": [{ "vatRate": "23", "net": 200.00, "vat": 46.00 }]
+    },
+    {
+      "name": "115.50 over 23% and 8%",
+      "order": [
+        { "quantity": 1, "unitNetPrice": 100.00, "vatRate": "23" },
+        { "quantity": 1, "unitNetPrice": 100.00, "vatRate": "8" }
+      ],
+      "amount": 115.50,
+      "orderValue": 231.00,
+      "buckets": [
+        { "vatRate": "23", "net": 50.00, "vat": 11.50 },
+        { "vatRate": "8", "net": 50.00, "vat": 4.00 }
+      ]
+    },
+    {
+      "name": "remainder on the largest share",
+      "order": [
+        { "quantity": 1, "unitNetPrice": 100.00, "vatRate": "23" },
+        { "quantity": 1, "unitNetPrice": 100.00, "vatRate": "8" },
+        { "quantity": 1, "unitNetPrice": 100.00, "vatRate": "zw" }
+      ],
+      "amount": 77.77,
+      "orderValue": 331.00,
+      "buckets": [
+        { "vatRate": "23", "net": 23.49, "vat": 5.40 },
+        { "vatRate": "8", "net": 23.50, "vat": 1.88 },
+        { "vatRate": "zw", "net": 23.50, "vat": 0.00 }
+      ]
+    },
+    {
+      "name": "order value per rate, not per line",
+      "order": [
+        { "quantity": 1, "unitNetPrice": 33.33, "vatRate": "23" },
+        { "quantity": 1, "unitNetPrice": 33.33, "vatRate": "23" },
+        { "quantity": 1, "unitNetPrice": 33.33, "vatRate": "23" }
+      ],
+      "amount": 122.99,
+      "orderValue": 122.99,
+      "buckets": [{ "vatRate": "23", "net": 99.99, "vat": 23.00 }]
+    },
+    {
+      "name": "np I advance has no VAT",
+      "order": [{ "quantity": 2, "unitNetPrice": 250.00, "vatRate": "np I" }],
+      "amount": 200.00,
+      "orderValue": 500.00,
+      "buckets": [{ "vatRate": "np I", "net": 200.00, "vat": 0.00 }]
+    }
+  ],
+  "final": [
+    {
+      "name": "remaining 615.00 after 369.00 and 246.00",
+      "lines": [{ "quantity": 1, "unitNetPrice": 1000.00, "vatRate": "23" }],
+      "advances": [369.00, 246.00],
+      "buckets": [{ "vatRate": "23", "net": 500.00, "vat": 115.00 }],
+      "p15": 615.00,
+      "exceeds": false
+    },
+    {
+      "name": "zero ROZ after advances reach the order value",
+      "lines": [{ "quantity": 1, "unitNetPrice": 1000.00, "vatRate": "23" }],
+      "advances": [369.00, 861.00],
+      "buckets": [{ "vatRate": "23", "net": 0.00, "vat": 0.00 }],
+      "p15": 0.00,
+      "exceeds": false
+    },
+    {
+      "name": "three advances 410.00 leave a zero ROZ with grosz split",
+      "lines": [{ "quantity": 1, "unitNetPrice": 1000.00, "vatRate": "23" }],
+      "advances": [410.00, 410.00, 410.00],
+      "buckets": [{ "vatRate": "23", "net": 0.01, "vat": -0.01 }],
+      "p15": 0.00,
+      "exceeds": false
+    },
+    {
+      "name": "two rates 50+50+77 drift between buckets",
+      "lines": [
+        { "quantity": 1, "unitNetPrice": 100.00, "vatRate": "23" },
+        { "quantity": 1, "unitNetPrice": 50.00, "vatRate": "8" }
+      ],
+      "advances": [50.00, 50.00, 77.00],
+      "buckets": [
+        { "vatRate": "23", "net": 0.00, "vat": -0.01 },
+        { "vatRate": "8", "net": 0.01, "vat": 0.00 }
+      ],
+      "p15": 0.00,
+      "exceeds": false
+    },
+    {
+      "name": "advances exceed the final value",
+      "lines": [{ "quantity": 1, "unitNetPrice": 400.00, "vatRate": "23" }],
+      "advances": [369.00, 246.00],
+      "buckets": [{ "vatRate": "23", "net": -100.00, "vat": -23.00 }],
+      "p15": -123.00,
+      "exceeds": true
+    }
+  ]
+}

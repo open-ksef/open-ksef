@@ -1,0 +1,134 @@
+{
+  "id": "<id>",
+  "status": "Accepted",
+  "number": "FV/1/12/2026",
+  "seller": {
+    "nip": "<nip>",
+    "name": "OpenKSeF Test A sp. z o.o.",
+    "addressLine1": "ul. Prosta 1",
+    "addressLine2": "00-001 Warszawa",
+    "bankAccount": "93000000002026111700000815",
+    "cashAccounting": false,
+    "iban": null,
+    "swift": null,
+    "bankName": null
+  },
+  "buyer": {
+    "kind": "Company",
+    "nip": "3333333333",
+    "name": "Nabywca sp. z o.o.",
+    "addressLine1": "ul. Krótka 2",
+    "addressLine2": "00-002 Warszawa",
+    "countryCode": null,
+    "idType": null,
+    "foreignId": null
+  },
+  "issueDate": "2026-12-20",
+  "saleDate": "2026-12-20",
+  "dueDate": "2027-01-03",
+  "paymentMethod": "Transfer",
+  "splitPayment": false,
+  "exemptionBasis": null,
+  "lines": [
+    {
+      "lineNo": 1,
+      "name": "Projekt strony",
+      "unit": "szt.",
+      "quantity": 1.000000,
+      "unitNetPrice": 1000.00,
+      "vatRate": "23",
+      "netAmount": 1000.00,
+      "vatAmount": 230.00,
+      "baseLineNo": null
+    }
+  ],
+  "vatSummary": [
+    {
+      "vatRate": "23",
+      "net": 500.00,
+      "vat": 115.00
+    }
+  ],
+  "totalNet": 500.00,
+  "totalVat": 115.00,
+  "totalGross": 615.00,
+  "currency": "PLN",
+  "ksef": {
+    "environment": "test",
+    "ksefNumber": "5213456789-20261220-ABCDEF123458-AD",
+    "acceptedAt": "<acceptedAt>",
+    "statusCode": 200,
+    "statusMessage": "Sukces",
+    "statusDetails": null,
+    "lastError": null,
+    "verificationUrl": "<verificationUrl>",
+    "hasUpo": false,
+    "duplicateKsefNumber": null,
+    "acceptedOn": null,
+    "upoUnavailable": true
+  },
+  "warnings": [],
+  "createdAt": "<createdAt>",
+  "updatedAt": "<updatedAt>",
+  "issuedAt": "<issuedAt>",
+  "exchangeRate": null,
+  "exchangeRateDate": null,
+  "version": "<version>",
+  "sellerVersion": 0,
+  "invoiceType": "ROZ",
+  "correctedInvoice": null,
+  "correctionReason": null,
+  "correctionType": null,
+  "correctionRows": null,
+  "buyerBefore": null,
+  "currentState": null,
+  "corrections": null,
+  "openCorrectionId": null,
+  "orderChainId": "162a4058-7dad-4eb6-916d-c509ad067d5b",
+  "advanceAmount": null,
+  "amountBefore": null,
+  "advanceInvoices": [
+    {
+      "id": "<id>",
+      "number": "ZAL/1/12/2026",
+      "ksefNumber": "5213456789-20261206-ABCDEF123456-AB"
+    },
+    {
+      "id": "<id>",
+      "number": "ZAL/2/12/2026",
+      "ksefNumber": "5213456789-20261210-ABCDEF123457-AC"
+    }
+  ],
+  "chain": {
+    "orderValue": 1230.00,
+    "advances": [
+      {
+        "id": "<id>",
+        "number": "ZAL/1/12/2026",
+        "invoiceType": "ZAL",
+        "status": "Accepted",
+        "issueDate": "2026-12-06",
+        "totalGross": 369.00
+      },
+      {
+        "id": "<id>",
+        "number": "ZAL/2/12/2026",
+        "invoiceType": "ZAL",
+        "status": "Accepted",
+        "issueDate": "2026-12-10",
+        "totalGross": 246.00
+      }
+    ],
+    "final": {
+      "id": "<id>",
+      "number": "FV/1/12/2026",
+      "invoiceType": "ROZ",
+      "status": "Accepted",
+      "issueDate": "2026-12-20",
+      "totalGross": 615.00
+    },
+    "corrections": [],
+    "remaining": 615.00,
+    "openDocumentId": null
+  }
+}

@@ -43,6 +43,7 @@ import {
   withBuyer,
   type DraftFormValue,
 } from '@/invoicing/form'
+import { isChainDraft } from '@/invoicing/advance'
 import { isCorrection } from '@/invoicing/correction'
 import { countryName, foreignAccountOf, foreignRateFor } from '@/invoicing/foreign'
 import { formatDate, formatDecimal, formatMoney } from '@/invoicing/format'
@@ -90,8 +91,11 @@ export function InvoiceDraftPage(): ReactElement {
         <Skeleton variant="card" lines={8} label={id ? 'Wczytywanie faktury…' : 'Wczytywanie…'} />
       ) : !id && !profileQuery.data.isComplete ? (
         <Navigate to={`/company/invoice-data?tenantId=${encodeURIComponent(tenantId)}&next=new`} replace />
-      ) : invoiceQuery.data && isCorrection(invoiceQuery.data) ? (
-        <Navigate to={`/issued/${encodeURIComponent(invoiceQuery.data.id)}/correct?tenantId=${encodeURIComponent(tenantId)}`} replace />
+      ) : invoiceQuery.data && (isCorrection(invoiceQuery.data) || isChainDraft(invoiceQuery.data)) ? (
+        <Navigate
+          to={`/issued/${encodeURIComponent(invoiceQuery.data.id)}/${isCorrection(invoiceQuery.data) ? 'correct' : 'chain'}?tenantId=${encodeURIComponent(tenantId)}`}
+          replace
+        />
       ) : invoiceQuery.data && (!EDITABLE.includes(invoiceQuery.data.status) || isReissueBlocked(invoiceQuery.data)) ? (
         <Navigate to={`/issued/${encodeURIComponent(invoiceQuery.data.id)}?tenantId=${encodeURIComponent(tenantId)}`} replace />
       ) : (

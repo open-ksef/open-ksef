@@ -180,6 +180,22 @@ describe('Wystawione faktury, niepełne pobieranie', () => {
     expect(rows[1]).not.toContain('Korekta')
   })
 
+  it('marks advance, final and KOR_ZAL rows by kind; a KOR_ZAL refund is signed', async () => {
+    const own = { ...invoice, source: 'OpenKSeF' }
+    await render(
+      feed([
+        { ...own, id: 'z', number: 'ZAL/1/11/2026', invoiceType: 'ZAL', totalGross: 369 },
+        { ...own, id: 'r', number: 'FV/2/11/2026', invoiceType: 'ROZ', totalGross: 615 },
+        { ...own, id: 'kz', number: 'KOR/2/11/2026', invoiceType: 'KOR_ZAL', totalNet: -100, totalGross: -123 },
+      ]),
+    )
+    const rows = [...container.querySelectorAll('[data-testid="issued-invoice-table"] tbody tr')].map((row) => row.textContent?.replace(/\s/g, ' '))
+    expect(rows[0]).toContain('Zaliczka · ZAL/1/11/2026')
+    expect(rows[1]).toContain('Rozliczenie · FV/2/11/2026')
+    expect(rows[2]).toContain('Korekta · KOR/2/11/2026')
+    expect(rows[2]).toContain('-123,00 PLN')
+  })
+
   it('stops at row 10 000 with the clamped page range and a narrowing hint', async () => {
     const items = Array.from({ length: 20 }, (_, i) => ({ ...invoice, id: `r${i}` }))
     await render({ items, page: 500, pageSize: 20, totalCount: 12_000, totalPages: 600 }, '/issued?tenantId=a&page=600')

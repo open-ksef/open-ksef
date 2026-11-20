@@ -254,6 +254,9 @@ export interface SellerProfileRequest {
   correctionNumberingPattern?: string | null
   correctionNextNumber?: number | null
   correctionNextNumberPeriod?: string | null
+  advanceNumberingPattern?: string | null
+  advanceNextNumber?: number | null
+  advanceNextNumberPeriod?: string | null
   bankSwift?: string | null
   bankName?: string | null
   foreignBankAccount?: string | null
@@ -283,6 +286,10 @@ export interface SellerProfileResponse {
   correctionNextNumber?: number
   correctionNextNumberPeriod?: string
   correctionNextNumberPreview?: string
+  advanceNumberingPattern?: string
+  advanceNextNumber?: number
+  advanceNextNumberPeriod?: string
+  advanceNextNumberPreview?: string
 }
 
 export interface NipLookupResponse {
@@ -368,6 +375,47 @@ export interface CorrectionDraftRequest {
   correctionType?: CorrectionType | 0 | null
   buyer?: IssuedInvoiceBuyer | null
   lines?: CorrectionLineRequest[] | null
+  advanceAmount?: number | null
+}
+
+export interface AdvanceDraftRequest {
+  buyer?: IssuedInvoiceBuyer | null
+  issueDate?: string | null
+  paymentDate?: string | null
+  advanceAmount?: number | null
+  paymentMethod?: PaymentMethod | null
+  currency?: string | null
+  exchangeRate?: number | null
+  exchangeRateDate?: string | null
+  exemptionBasis?: ExemptionBasis | null
+  lines?: IssuedInvoiceLineRequest[] | null
+}
+
+export interface FinalDraftRequest {
+  issueDate?: string | null
+  saleDate?: string | null
+  dueDate?: string | null
+  paymentMethod?: PaymentMethod | null
+  splitPayment?: boolean | null
+  exchangeRate?: number | null
+  exchangeRateDate?: string | null
+  exemptionBasis?: ExemptionBasis | null
+  lines?: IssuedInvoiceLineRequest[] | null
+}
+
+export interface AdvanceInvoiceRef {
+  id: string
+  number: string | null
+  ksefNumber: string | null
+}
+
+export interface OrderChain {
+  orderValue: number
+  advances: IssuedInvoiceCorrectionItem[]
+  final: IssuedInvoiceCorrectionItem | null
+  corrections: IssuedInvoiceCorrectionItem[]
+  remaining: number
+  openDocumentId: string | null
 }
 
 export interface IssuedInvoiceRef {
@@ -466,6 +514,11 @@ export interface IssuedInvoiceResponse {
   currentState?: IssuedInvoiceCurrentState | null
   corrections?: IssuedInvoiceCorrectionItem[] | null
   openCorrectionId?: string | null
+  orderChainId?: string | null
+  advanceAmount?: number | null
+  amountBefore?: number | null
+  advanceInvoices?: AdvanceInvoiceRef[] | null
+  chain?: OrderChain | null
 }
 
 export interface ExchangeRateProposalResponse {

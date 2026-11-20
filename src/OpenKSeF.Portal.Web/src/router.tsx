@@ -40,6 +40,7 @@ export const appRoutes: RouteObject[] = [
           { path: 'issued/new', lazy: () => loadRoute(() => import('@/pages/InvoiceDraft')).then((m) => ({ Component: m.InvoiceDraftPage })) },
           { path: 'issued/:id', lazy: () => loadRoute(() => import('@/pages/IssuedInvoiceDetails')).then((m) => ({ Component: m.IssuedInvoiceDetailsPage })) },
           { path: 'issued/:id/edit', lazy: () => loadRoute(() => import('@/pages/InvoiceDraft')).then((m) => ({ Component: m.InvoiceDraftPage })) },
+          { path: 'issued/:id/chain', lazy: () => loadRoute(() => import('@/pages/ChainDraft')).then((m) => ({ Component: m.ChainDraftPage })) },
           { path: 'issued/:id/correct', lazy: () => loadRoute(() => import('@/pages/CorrectionDraft')).then((m) => ({ Component: m.CorrectionDraftPage })) },
           {
             path: 'company',

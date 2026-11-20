@@ -83,5 +83,10 @@
   "buyerBefore": null,
   "currentState": null,
   "corrections": null,
-  "openCorrectionId": null
+  "openCorrectionId": null,
+  "orderChainId": null,
+  "advanceAmount": null,
+  "amountBefore": null,
+  "advanceInvoices": null,
+  "chain": null
 }

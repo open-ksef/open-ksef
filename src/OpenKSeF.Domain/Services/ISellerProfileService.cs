@@ -18,7 +18,10 @@ public record SellerProfileInput(
     string? ForeignBankName = null,
     string? CorrectionNumberingPattern = null,
     int? CorrectionNextNumber = null,
-    string? CorrectionNextNumberPeriod = null);
+    string? CorrectionNextNumberPeriod = null,
+    string? AdvanceNumberingPattern = null,
+    int? AdvanceNextNumber = null,
+    string? AdvanceNextNumberPeriod = null);
 
 public record SellerProfileView(
     SellerProfile Profile,
@@ -28,7 +31,10 @@ public record SellerProfileView(
     string NextNumberPreview,
     int CorrectionNextNumber,
     string CorrectionNextNumberPeriod,
-    string CorrectionNextNumberPreview);
+    string CorrectionNextNumberPreview,
+    int AdvanceNextNumber,
+    string AdvanceNextNumberPeriod,
+    string AdvanceNextNumberPreview);
 
 public interface ISellerProfileService
 {

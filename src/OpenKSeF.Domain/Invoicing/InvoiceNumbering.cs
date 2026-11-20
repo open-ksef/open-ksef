@@ -6,6 +6,7 @@ public static class InvoiceNumbering
 {
     public const string DefaultPattern = "FV/{nr}/{MM}/{RRRR}";
     public const string DefaultCorrectionPattern = "KOR/{nr}/{MM}/{RRRR}";
+    public const string DefaultAdvancePattern = "ZAL/{nr}/{MM}/{RRRR}";
     public const string NumberToken = "{nr}";
     public const string YearToken = "{RRRR}";
 

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/">
+  <Naglowek>
+    <KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza>
+    <WariantFormularza>3</WariantFormularza>
+    <DataWytworzeniaFa>2026-11-20T10:00:00Z</DataWytworzeniaFa>
+    <SystemInfo>OpenKSeF</SystemInfo>
+  </Naglowek>
+  <Podmiot1>
+    <DaneIdentyfikacyjne>
+      <NIP>4444444444</NIP>
+      <Nazwa>Sprzedawca sp. z o.o.</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>PL</KodKraju>
+      <AdresL1>ul. Prosta 1</AdresL1>
+      <AdresL2>00-001 Warszawa</AdresL2>
+    </Adres>
+  </Podmiot1>
+  <Podmiot2>
+    <DaneIdentyfikacyjne>
+      <KodKraju>GB</KodKraju>
+      <NrID>GB000000000</NrID>
+      <Nazwa>Fictitious Trading Ltd</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>GB</KodKraju>
+      <AdresL1>1 Example Street</AdresL1>
+      <AdresL2>London</AdresL2>
+    </Adres>
+    <JST>2</JST>
+    <GV>2</GV>
+  </Podmiot2>
+  <Fa>
+    <KodWaluty>GBP</KodWaluty>
+    <P_1>2026-11-06</P_1>
+    <P_2>ZAL/4/11/2026</P_2>
+    <P_13_8>2000.00</P_13_8>
+    <P_15>2000.00</P_15>
+    <KursWalutyZ>5.1234</KursWalutyZ>
+    <Adnotacje>
+      <P_16>2</P_16>
+      <P_17>2</P_17>
+      <P_18>1</P_18>
+      <P_18A>2</P_18A>
+      <Zwolnienie>
+        <P_19N>1</P_19N>
+      </Zwolnienie>
+      <NoweSrodkiTransportu>
+        <P_22N>1</P_22N>
+      </NoweSrodkiTransportu>
+      <P_23>2</P_23>
+      <PMarzy>
+        <P_PMarzyN>1</P_PMarzyN>
+      </PMarzy>
+    </Adnotacje>
+    <RodzajFaktury>ZAL</RodzajFaktury>
+    <Platnosc>
+      <Zaplacono>1</Zaplacono>
+      <DataZaplaty>2026-11-06</DataZaplaty>
+      <FormaPlatnosci>6</FormaPlatnosci>
+    </Platnosc>
+    <Zamowienie>
+      <WartoscZamowienia>5000.00</WartoscZamowienia>
+      <ZamowienieWiersz>
+        <NrWierszaZam>1</NrWierszaZam>
+        <P_7Z>Consulting</P_7Z>
+        <P_8AZ>szt.</P_8AZ>
+        <P_8BZ>1</P_8BZ>
+        <P_9AZ>5000.00</P_9AZ>
+        <P_11NettoZ>5000.00</P_11NettoZ>
+        <P_11VatZ>0.00</P_11VatZ>
+        <P_12Z>np I</P_12Z>
+      </ZamowienieWiersz>
+    </Zamowienie>
+  </Fa>
+</Faktura>

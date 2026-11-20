@@ -24,7 +24,8 @@ public class IssuingContractSerializationTests
               "numberingPattern": "FV/{nr}/{MM}/{RRRR}", "nextNumber": 57, "nextNumberPeriod": "2026-11",
               "nip": "1234567890", "isComplete": true, "nextNumberPreview": "FV/57/11/2026", "ksefEnvironment": "test",
               "bankSwift": null, "bankName": null, "foreignBankAccount": null, "foreignBankSwift": null, "foreignBankName": null,
-              "correctionNumberingPattern": "KOR/{nr}/{MM}/{RRRR}", "correctionNextNumber": 1, "correctionNextNumberPeriod": null, "correctionNextNumberPreview": null }
+              "correctionNumberingPattern": "KOR/{nr}/{MM}/{RRRR}", "correctionNextNumber": 1, "correctionNextNumberPeriod": null, "correctionNextNumberPreview": null,
+              "advanceNumberingPattern": "ZAL/{nr}/{MM}/{RRRR}", "advanceNextNumber": 1, "advanceNextNumberPeriod": null, "advanceNextNumberPreview": null }
             """);
     }
 
@@ -109,7 +110,8 @@ public class IssuingContractSerializationTests
               "warnings": [ { "code": "INV-W-MPP", "field": "splitPayment", "message": "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)" } ],
               "createdAt": "2026-11-03T10:00:00Z", "updatedAt": "2026-11-03T10:00:00Z", "issuedAt": null, "exchangeRate": null, "exchangeRateDate": null, "version": 3000000000, "sellerVersion": 4000000000,
               "invoiceType": "VAT", "correctedInvoice": null, "correctionReason": null, "correctionType": null, "correctionRows": null,
-              "buyerBefore": null, "currentState": null, "corrections": null, "openCorrectionId": null }
+              "buyerBefore": null, "currentState": null, "corrections": null, "openCorrectionId": null,
+              "orderChainId": null, "advanceAmount": null, "amountBefore": null, "advanceInvoices": null, "chain": null }
             """);
     }
 
