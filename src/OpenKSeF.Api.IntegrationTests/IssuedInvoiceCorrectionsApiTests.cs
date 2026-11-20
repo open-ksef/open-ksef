@@ -339,6 +339,22 @@ public class IssuedInvoiceCorrectionsApiTests : IDisposable
     }
 
     [Fact]
+    public async Task PortalIssue_WithVersionAndSellerVersionFromSaveResponse_Returns202()
+    {
+        var tenantId = await CreateTenantAsync();
+        var correction = await NewCorrectionAsync(tenantId, await AcceptedOriginalAsync(tenantId));
+        var put = await PutCorrectionAsync(tenantId, correction.Id, new CorrectionDraftRequest(
+            CorrectionReason: "Zwrot towaru",
+            Lines: [new CorrectionLineRequest(1, "Usługa", "szt.", 0, 100m, "23")]));
+        var saved = (await put.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!;
+
+        var issued = await _client.PostAsync(
+            $"{Base(tenantId)}/{saved.Id}/issue?version={saved.Version}&sellerVersion={saved.SellerVersion}&confirmPastIssueDate=true&invoiceType=KOR", null);
+
+        Assert.Equal(HttpStatusCode.Accepted, issued.StatusCode);
+    }
+
+    [Fact]
     public async Task CorrectionType_NullKeeps_ZeroClears()
     {
         var tenantId = await CreateTenantAsync();
