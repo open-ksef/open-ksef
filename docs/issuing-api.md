@@ -83,6 +83,25 @@ POST /api/tenants/{tenantId}/issued-invoices/{id}/reissue        -> 201 VAT draf
 - `CorrectionDraftRequest`: every field optional, null keeps the stored value. `buyer` name and address lines may change; `kind`, `nip`, `idType`, `foreignId` (and `countryCode` of a buyer with a foreign tax id) are echo-only, a different value returns 422 `INV-VAL-083`. `correctionType`: 1, 2 or 3; 0 clears it (not written to the XML); null keeps it. `lines` replace the after state; quantity 0 means removed.
 - Numbering: own series `correctionNumberingPattern` (default `KOR/{nr}/{MM}/{RRRR}`) with its own counter (`NumberSeriesCounters`, series `KOR`); `correctionNextNumber`/`correctionNextNumberPeriod` as for the FV series. The FV counter is not touched.
 
+### Advance and final invoices (REQ-0028, ADR-007)
+
+```
+POST /api/tenants/{tenantId}/issued-invoices/advances            AdvanceDraftRequest? -> 201 first ZAL (orderChainId = its id) | 422
+POST /api/tenants/{tenantId}/issued-invoices/{zalId}/advances    -> 201 next ZAL (buyer, currency, latest order copied) | 409 INV-CHAIN-SOURCE | INV-CHAIN-OPEN | INV-CHAIN-CLOSED
+PUT  /api/tenants/{tenantId}/issued-invoices/{id}/advance?version=   AdvanceDraftRequest -> 200 | 422 (INV-VAL-095 amount, -096 payment date, -098 buyer/currency) | 409
+POST /api/tenants/{tenantId}/issued-invoices/{zalId}/final       -> 201 ROZ draft, lines of the latest order | 409 INV-CHAIN-SOURCE | INV-CHAIN-OPEN | INV-ROZ-EXISTS
+PUT  /api/tenants/{tenantId}/issued-invoices/{id}/final?version=     FinalDraftRequest -> 200 | 422 (INV-VAL-097 advances exceed, -098) | 409
+POST /api/tenants/{tenantId}/issued-invoices/{id}/corrections    -> ZAL gives KOR_ZAL, ROZ gives KOR_ROZ; ZAL with an Accepted or open ROZ: 409 INV-KOR-USE-ROZ
+POST /api/tenants/{tenantId}/issued-invoices/{id}/issue?invoiceType=ZAL|ROZ|KOR_ZAL|KOR_ROZ
+```
+
+- A chain is every row with the same `orderChainId` (the first ZAL's id). One open document per chain (Draft, Sending, Rejected without 440), serialised by a row lock on the first ZAL.
+- ZAL: `lines` are the order (`Zamowienie`, no `FaWiersz`); `paymentDate` is stored as `saleDate` (`P_6` when it differs from the issue date) and `dueDate` equals the issue date. `advanceAmount` is `P_15`; `totalNet`/`totalVat`/`vatSummary` are the proportional split (art. 106f ust. 1 pkt 3, remainder on the largest share). Amount at most order value minus the other Accepted advances (current state after KOR_ZAL). Buyer and currency change only on the first ZAL; later documents may repeat them, a different value is 422 `INV-VAL-098`. The exchange rate is per ZAL: prefilled from NBP table A of the last working day before the payment date, editable. The ZAL that reaches the order value lists the earlier ZAL in `FakturaZaliczkowa` (`advanceInvoices`).
+- ROZ: full `lines`; `totalNet`/`totalVat`/`totalGross`/`vatSummary` are the remaining values per rate (full minus advances); `advanceInvoices` lists the deducted ZAL. Zero ROZ allowed, any negative bucket is 422 `INV-VAL-097`. Numbered in the FV series.
+- KOR_ZAL: `advanceAmount` on `PUT {id}/correction` is the amount after the correction; `amountBefore` is `P_15ZK`; `correctionRows` are the `Zamowienie` before/after rows. KOR_ROZ: the KOR engine on the ROZ, `amountBefore` = remaining before. Both in the KOR series.
+- `chain`: `orderValue` of the latest order, `advances`, `final`, `corrections`, `remaining` = order value minus Accepted advances (not reduced by the ROZ), `openDocumentId`.
+- Numbering: ZAL series `advanceNumberingPattern` (default `ZAL/{nr}/{MM}/{RRRR}`), counter series `ZAL`, `advanceNextNumber`/`advanceNextNumberPeriod`; must differ from the FV and KOR patterns (`SP-VAL-011`).
+
 ### Foreign buyers (REQ-0046)
 
 Buyer `kind` `Foreign` is a business outside Poland, for services only. Domain rules and field map: `production/kb/domain/foreign-sales.md`.

@@ -12,5 +12,6 @@
   "warnings": [ { "code": "INV-W-MPP", "field": "splitPayment", "message": "Sprawdź, czy faktura wymaga mechanizmu podzielonej płatności (załącznik nr 15)" } ],
   "createdAt": "<createdAt>", "updatedAt": "<updatedAt>", "issuedAt": null, "exchangeRate": null, "exchangeRateDate": null, "version": "<version>", "sellerVersion": "<sellerVersion>",
   "invoiceType": "VAT", "correctedInvoice": null, "correctionReason": null, "correctionType": null, "correctionRows": null,
-  "buyerBefore": null, "currentState": null, "corrections": null, "openCorrectionId": null
+  "buyerBefore": null, "currentState": null, "corrections": null, "openCorrectionId": null,
+  "orderChainId": null, "advanceAmount": null, "amountBefore": null, "advanceInvoices": null, "chain": null
 }

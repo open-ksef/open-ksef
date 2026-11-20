@@ -713,6 +713,7 @@ public class IssuedInvoiceService(
     private static IReadOnlyList<IssuedInvoice> AcceptedAdvances(IReadOnlyList<IssuedInvoice> chain) =>
         chain.Where(c => c.InvoiceType == IssuedInvoiceType.Zal && c.Status == IssuedInvoiceStatus.Accepted)
             .OrderBy(c => c.IssuedAt)
+            .ThenBy(c => c.IssueDate)
             .ThenBy(c => c.CreatedAt)
             .ToList();
 
@@ -763,9 +764,9 @@ public class IssuedInvoiceService(
         var paid = AcceptedAdvances(chain).Where(a => !(invoice.IsEditable && a.Id == invoice.Id)).Sum(a => CurrentAdvance(a, chain).AdvanceAmount ?? 0m);
         return new OrderChainView(
             orderValue,
-            chain.Where(c => c.InvoiceType == IssuedInvoiceType.Zal).OrderBy(c => c.CreatedAt).ToList(),
+            chain.Where(c => c.InvoiceType == IssuedInvoiceType.Zal).OrderBy(c => c.IssueDate).ThenBy(c => c.CreatedAt).ToList(),
             chain.Where(c => c.InvoiceType == IssuedInvoiceType.Roz).OrderByDescending(c => c.CreatedAt).FirstOrDefault(),
-            chain.Where(c => c.InvoiceType.IsCorrection()).OrderBy(c => c.CreatedAt).ToList(),
+            chain.Where(c => c.InvoiceType.IsCorrection()).OrderBy(c => c.IssueDate).ThenBy(c => c.CreatedAt).ToList(),
             orderValue - paid,
             chain.FirstOrDefault(c => c.IsOpen)?.Id);
     }

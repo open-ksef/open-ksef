@@ -29,9 +29,9 @@ public sealed class IssuedInvoiceCorrectionsUpgradeTests : IAsyncLifetime
 
     private static readonly (string Table, string NewColumns)[] Tables =
     [
-        ("IssuedInvoices", "- 'InvoiceType' - 'CorrectedInvoiceId' - 'CorrectionReason' - 'CorrectionType'"),
+        ("IssuedInvoices", "- 'InvoiceType' - 'CorrectedInvoiceId' - 'CorrectionReason' - 'CorrectionType' - 'OrderChainId' - 'AdvanceAmount'"),
         ("IssuedInvoiceLines", "- 'BaseLineNo'"),
-        ("SellerProfiles", "- 'CorrectionNumberingPattern'"),
+        ("SellerProfiles", "- 'CorrectionNumberingPattern' - 'AdvanceNumberingPattern'"),
         ("InvoiceNumberCounters", ""),
     ];
 
@@ -43,7 +43,7 @@ public sealed class IssuedInvoiceCorrectionsUpgradeTests : IAsyncLifetime
         return hashes;
     }
 
-    private static async Task SeedAsync(ApplicationDbContext db, Guid tenantId)
+    internal static async Task SeedAsync(ApplicationDbContext db, Guid tenantId)
     {
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "SellerProfiles" ("TenantId", "LegalName", "AddressLine1", "BankAccount", "CashAccounting", "NumberingPattern")

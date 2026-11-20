@@ -1,0 +1,161 @@
+{
+  "id": "<id>",
+  "status": "Accepted",
+  "number": "KOR/1/12/2026",
+  "seller": {
+    "nip": "<nip>",
+    "name": "OpenKSeF Test A sp. z o.o.",
+    "addressLine1": "ul. Prosta 1",
+    "addressLine2": "00-001 Warszawa",
+    "bankAccount": "93000000002026111700000815",
+    "cashAccounting": false,
+    "iban": null,
+    "swift": null,
+    "bankName": null
+  },
+  "buyer": {
+    "kind": "Company",
+    "nip": "3333333333",
+    "name": "Nabywca sp. z o.o.",
+    "addressLine1": "ul. Krótka 2",
+    "addressLine2": "00-002 Warszawa",
+    "countryCode": null,
+    "idType": null,
+    "foreignId": null
+  },
+  "issueDate": "2026-12-20",
+  "saleDate": "2026-12-20",
+  "dueDate": "2027-01-03",
+  "paymentMethod": "Transfer",
+  "splitPayment": false,
+  "exemptionBasis": null,
+  "lines": [
+    {
+      "lineNo": 1,
+      "name": "Projekt strony",
+      "unit": "szt.",
+      "quantity": 1.000000,
+      "unitNetPrice": 900.00,
+      "vatRate": "23",
+      "netAmount": 900.00,
+      "vatAmount": 207.00,
+      "baseLineNo": 1
+    }
+  ],
+  "vatSummary": [
+    {
+      "vatRate": "23",
+      "net": -100.00,
+      "vat": -23.00
+    }
+  ],
+  "totalNet": -100.00,
+  "totalVat": -23.00,
+  "totalGross": -123.00,
+  "currency": "PLN",
+  "ksef": {
+    "environment": "test",
+    "ksefNumber": "5213456789-20261220-ABCDEF123459-AE",
+    "acceptedAt": "<acceptedAt>",
+    "statusCode": 200,
+    "statusMessage": "Sukces",
+    "statusDetails": null,
+    "lastError": null,
+    "verificationUrl": "<verificationUrl>",
+    "hasUpo": false,
+    "duplicateKsefNumber": null,
+    "acceptedOn": null,
+    "upoUnavailable": true
+  },
+  "warnings": [],
+  "createdAt": "<createdAt>",
+  "updatedAt": "<updatedAt>",
+  "issuedAt": "<issuedAt>",
+  "exchangeRate": null,
+  "exchangeRateDate": null,
+  "version": "<version>",
+  "sellerVersion": 0,
+  "invoiceType": "KOR_ROZ",
+  "correctedInvoice": {
+    "id": "<id>",
+    "number": "FV/1/12/2026",
+    "ksefNumber": "5213456789-20261220-ABCDEF123458-AD",
+    "issueDate": "2026-12-20",
+    "invoiceType": "ROZ"
+  },
+  "correctionReason": "Rabat",
+  "correctionType": null,
+  "correctionRows": [
+    {
+      "rowNo": 1,
+      "isBefore": true,
+      "baseLineNo": 1,
+      "name": "Projekt strony",
+      "unit": "szt.",
+      "quantity": 1.000000,
+      "unitNetPrice": 1000.00,
+      "vatRate": "23",
+      "netAmount": 1000.00
+    },
+    {
+      "rowNo": 2,
+      "isBefore": false,
+      "baseLineNo": 1,
+      "name": "Projekt strony",
+      "unit": "szt.",
+      "quantity": 1.000000,
+      "unitNetPrice": 900.00,
+      "vatRate": "23",
+      "netAmount": 900.00
+    }
+  ],
+  "buyerBefore": null,
+  "currentState": null,
+  "corrections": null,
+  "openCorrectionId": null,
+  "orderChainId": "<orderChainId>",
+  "advanceAmount": null,
+  "amountBefore": 615.00,
+  "advanceInvoices": null,
+  "chain": {
+    "orderValue": 1230.00,
+    "advances": [
+      {
+        "id": "<id>",
+        "number": "ZAL/1/12/2026",
+        "invoiceType": "ZAL",
+        "status": "Accepted",
+        "issueDate": "2026-12-06",
+        "totalGross": 369.00
+      },
+      {
+        "id": "<id>",
+        "number": "ZAL/2/12/2026",
+        "invoiceType": "ZAL",
+        "status": "Accepted",
+        "issueDate": "2026-12-10",
+        "totalGross": 246.00
+      }
+    ],
+    "final": {
+      "id": "<id>",
+      "number": "FV/1/12/2026",
+      "invoiceType": "ROZ",
+      "status": "Accepted",
+      "issueDate": "2026-12-20",
+      "totalGross": 615.00
+    },
+    "corrections": [
+      {
+        "id": "<id>",
+        "number": "KOR/1/12/2026",
+        "invoiceType": "KOR_ROZ",
+        "status": "Accepted",
+        "issueDate": "2026-12-20",
+        "totalGross": -123.00
+      }
+    ],
+    "remaining": 615.00,
+    "openDocumentId": null
+  }
+}
