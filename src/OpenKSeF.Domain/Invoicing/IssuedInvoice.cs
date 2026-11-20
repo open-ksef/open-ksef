@@ -28,6 +28,8 @@ public sealed class IssuedInvoice
     public Guid? CorrectedInvoiceId { get; private set; }
     public string? CorrectionReason { get; private set; }
     public int? CorrectionType { get; private set; }
+    public Guid? OrderChainId { get; private set; }
+    public decimal? AdvanceAmount { get; private set; }
     public IssuedInvoiceStatus Status { get; private set; }
     public string? Number { get; private set; }
     public string? NumberPeriod { get; private set; }
@@ -123,6 +125,44 @@ public sealed class IssuedInvoice
         UpdatedAt = now
     };
 
+    /// <summary>First ZAL of a new order chain: the chain id is its own id.</summary>
+    public static IssuedInvoice Advance(Guid id, Guid tenantId, DateOnly today, DateTime now)
+    {
+        var advance = Draft(id, tenantId, today, now);
+        advance.InvoiceType = IssuedInvoiceType.Zal;
+        advance.OrderChainId = id;
+        advance.AdvanceAmount = 0m;
+        advance.DueDate = today;
+        return advance;
+    }
+
+    /// <summary>Next ZAL or the ROZ of a chain: buyer and currency of the first ZAL, lines of the latest order. The rate is proposed again.</summary>
+    public static IssuedInvoice ChainDocument(Guid id, IssuedInvoiceType type, IssuedInvoice first, IssuedInvoice order, DateOnly today, DateTime now)
+    {
+        var document = Draft(id, first.TenantId, today, now);
+        document.InvoiceType = type;
+        document.OrderChainId = first.OrderChainId;
+        document.BuyerKind = first.BuyerKind;
+        document.BuyerNip = first.BuyerNip;
+        document.BuyerName = first.BuyerName;
+        document.BuyerAddressLine1 = first.BuyerAddressLine1;
+        document.BuyerAddressLine2 = first.BuyerAddressLine2;
+        document.BuyerCountryCode = first.BuyerCountryCode;
+        document.BuyerIdType = first.BuyerIdType;
+        document.BuyerForeignId = first.BuyerForeignId;
+        document.Currency = first.Currency;
+        document.PaymentMethod = order.PaymentMethod;
+        document.ExemptionBasisKind = order.ExemptionBasisKind;
+        document.ExemptionBasisText = order.ExemptionBasisText;
+        if (type == IssuedInvoiceType.Zal)
+        {
+            document.AdvanceAmount = 0m;
+            document.DueDate = today;
+        }
+        document.ReplaceLines(order.Lines.OrderBy(l => l.LineNo).Select(l => ((string?)l.Name, (string?)l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)));
+        return document;
+    }
+
     /// <summary>KOR draft of the given current state: buyer, currency, rate, annotations and the seller snapshot of the original are copied and stay fixed.</summary>
     public static IssuedInvoice Correction(Guid id, IssuedInvoice original, IssuedInvoice state, CorrectionMode mode, DateOnly today, DateTime now)
     {
@@ -131,8 +171,10 @@ public sealed class IssuedInvoice
         {
             Id = id,
             TenantId = original.TenantId,
-            InvoiceType = IssuedInvoiceType.Kor,
+            InvoiceType = original.InvoiceType.CorrectionOf(),
             CorrectedInvoiceId = original.Id,
+            OrderChainId = original.OrderChainId,
+            AdvanceAmount = original.InvoiceType == IssuedInvoiceType.Zal ? (mode == CorrectionMode.Edit ? state.AdvanceAmount : 0m) : null,
             CorrectionReason = mode == CorrectionMode.WrongBuyerId ? Corrections.WrongBuyerIdReason : null,
             Status = IssuedInvoiceStatus.Draft,
             SellerNip = original.SellerNip,
@@ -165,10 +207,10 @@ public sealed class IssuedInvoice
             CreatedAt = now,
             UpdatedAt = now
         };
-        if (mode == CorrectionMode.Edit)
+        if (mode == CorrectionMode.Edit || correction.InvoiceType == IssuedInvoiceType.KorZal)
             correction.ReplaceCorrectionLines(state.Lines.OrderBy(l => l.LineNo).Select(l => ((int?)l.LineNo, (string?)l.Name, (string?)l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)), state);
         else
-            correction.RecalculateCorrectionTotals(state);
+            correction.RecalculateTotals(state);
         return correction;
     }
 
@@ -197,14 +239,30 @@ public sealed class IssuedInvoice
         _lines.Clear();
         foreach (var line in lines.Where(l => l.Quantity != 0))
             _lines.Add(new IssuedInvoiceLine(Id, _lines.Count + 1, line.Name, line.Unit, line.Quantity, line.UnitNetPrice, line.VatRate, line.BaseLineNo));
-        RecalculateCorrectionTotals(state);
+        RecalculateTotals(state);
     }
 
-    public void RecalculateCorrectionTotals(IssuedInvoice state)
+    public void SetAdvanceAmount(decimal amount)
     {
-        var deltas = Corrections.Deltas(state.Lines, _lines);
-        TotalNet = deltas.Sum(d => d.Net);
-        TotalVat = deltas.Sum(d => d.Vat);
+        EnsureEditable();
+        AdvanceAmount = amount;
+    }
+
+    /// <summary>P_13_x/P_14_x of this document: the state a correction corrects, and for a ROZ the advances it deducts.</summary>
+    public IReadOnlyList<VatSummary> Buckets(IssuedInvoice? state = null, IReadOnlyList<VatSummary>? deducted = null) => InvoiceType switch
+    {
+        IssuedInvoiceType.Kor or IssuedInvoiceType.KorRoz => Corrections.Deltas(state!.Lines, _lines),
+        IssuedInvoiceType.Zal => Advances.Split(_lines, AdvanceAmount ?? 0m),
+        IssuedInvoiceType.KorZal => Advances.Subtract(Advances.Split(_lines, AdvanceAmount ?? 0m), Advances.Split(state!.Lines, state.AdvanceAmount ?? 0m)),
+        IssuedInvoiceType.Roz => Advances.Subtract(VatSummary(), deducted ?? []),
+        _ => VatSummary()
+    };
+
+    public void RecalculateTotals(IssuedInvoice? state, IReadOnlyList<VatSummary>? deducted = null)
+    {
+        var buckets = Buckets(state, deducted);
+        TotalNet = buckets.Sum(d => d.Net);
+        TotalVat = buckets.Sum(d => d.Vat);
         TotalGross = TotalNet + TotalVat;
     }
 
@@ -281,7 +339,7 @@ public sealed class IssuedInvoice
 
         IssueDate = issueDate;
         SaleDate = saleDate;
-        DueDate = dueDate;
+        DueDate = InvoiceType == IssuedInvoiceType.Zal ? issueDate : dueDate;
     }
 
     public void SetPayment(PaymentMethod method, bool splitPayment)
@@ -321,19 +379,20 @@ public sealed class IssuedInvoice
         })
         .ToList();
 
-    /// <summary>A correction is issued with its original and the state it corrects; its totals are recomputed against that state.</summary>
-    public void Issue(SellerProfile profile, string sellerNip, string? number, DateTime now, IssuedInvoice? original = null, IssuedInvoice? state = null)
+    /// <summary>A correction is issued with its original and the state it corrects, a ROZ with the advances it deducts; totals are recomputed against them.</summary>
+    public void Issue(SellerProfile profile, string sellerNip, string? number, DateTime now, IssuedInvoice? original = null, IssuedInvoice? state = null, IReadOnlyList<VatSummary>? deducted = null)
     {
         EnsureEditable();
-        var isCorrection = InvoiceType == IssuedInvoiceType.Kor;
+        var isCorrection = InvoiceType.IsCorrection();
         if (isCorrection && (original is null || state is null))
             throw new InvoiceStateException("A correction is issued with its original and corrected state.");
-        if (isCorrection)
-            RecalculateCorrectionTotals(state!);
+        if (InvoiceType == IssuedInvoiceType.Roz && deducted is null)
+            throw new InvoiceStateException("A final invoice is issued with the advances it deducts.");
+        RecalculateTotals(state, deducted);
 
         var errors = isCorrection
             ? IssueChecks.CorrectionErrors(this, original!, state!, PolandDate(now))
-            : IssueChecks.Errors(this, profile, PolandDate(now));
+            : IssueChecks.Errors(this, profile, PolandDate(now)).Concat(IssueChecks.ChainErrors(this, deducted)).ToList();
         if (errors.Count > 0)
             throw new InvoiceValidationException(errors);
 
@@ -485,13 +544,7 @@ public sealed class IssuedInvoice
             throw new InvoiceStateException($"Invoice in status {Status} cannot do this; expected {string.Join(" or ", allowed)}.");
     }
 
-    private void RecalculateTotals()
-    {
-        var summary = VatSummary();
-        TotalNet = summary.Sum(s => s.Net);
-        TotalVat = summary.Sum(s => s.Vat);
-        TotalGross = TotalNet + TotalVat;
-    }
+    private void RecalculateTotals() => RecalculateTotals(null);
 
     private void EnsureEditable()
     {

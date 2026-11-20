@@ -224,7 +224,69 @@ public class IssuedInvoicesController(
                 request.CorrectionType,
                 request.Buyer is { } buyer ? new IssuedInvoiceBuyerInput(buyer.Kind, buyer.Nip, buyer.Name, buyer.AddressLine1, buyer.AddressLine2, buyer.CountryCode, buyer.ForeignId) : null,
                 request.Buyer?.IdType,
-                request.Lines?.Select(l => new IssuedInvoiceLineInput(l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate, l.BaseLineNo)).ToList()), version, ct) is { } view
+                request.Lines?.Select(l => new IssuedInvoiceLineInput(l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate, l.BaseLineNo)).ToList(),
+                request.AdvanceAmount), version, ct) is { } view
+                ? Ok(ToResponse(view))
+                : NotFound());
+
+    [HttpPost("advances")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public Task<IActionResult> CreateAdvance(Guid tenantId, AdvanceDraftRequest? request, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status422UnprocessableEntity, async () =>
+            await issuedInvoices.CreateAdvanceAsync(tenantId, request is null ? null : ToAdvanceInput(request), ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());
+
+    [HttpPost("{id:guid}/advances")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> NextAdvance(Guid tenantId, Guid id, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status422UnprocessableEntity, async () =>
+            await issuedInvoices.NextAdvanceAsync(tenantId, id, ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());
+
+    [HttpPut("{id:guid}/advance")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> UpdateAdvance(Guid tenantId, Guid id, AdvanceDraftRequest request, [FromQuery] uint? version, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status422UnprocessableEntity, async () =>
+            await issuedInvoices.UpdateAdvanceAsync(tenantId, id, ToAdvanceInput(request), version, ct) is { } view ? Ok(ToResponse(view)) : NotFound());
+
+    [HttpPost("{id:guid}/final")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> CreateFinal(Guid tenantId, Guid id, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status422UnprocessableEntity, async () =>
+            await issuedInvoices.CreateFinalAsync(tenantId, id, ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());
+
+    [HttpPut("{id:guid}/final")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> UpdateFinal(Guid tenantId, Guid id, FinalDraftRequest request, [FromQuery] uint? version, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status422UnprocessableEntity, async () =>
+            await issuedInvoices.UpdateFinalAsync(tenantId, id, new IssuedInvoiceFinalInput(
+                request.IssueDate,
+                request.SaleDate,
+                request.DueDate,
+                request.PaymentMethod,
+                request.SplitPayment,
+                request.ExchangeRate,
+                request.ExchangeRateDate,
+                request.ExemptionBasis?.Kind,
+                request.ExemptionBasis?.Text,
+                ToLines(request.Lines),
+                ToBuyer(request.Buyer),
+                request.Currency), version, ct) is { } view
                 ? Ok(ToResponse(view))
                 : NotFound());
 
@@ -300,8 +362,27 @@ public class IssuedInvoicesController(
     private static string WireStatus(IssuedInvoiceStatus status) =>
         status is IssuedInvoiceStatus.Queued or IssuedInvoiceStatus.Sending ? "Sending" : status.ToString();
 
+    private static IssuedInvoiceBuyerInput? ToBuyer(IssuedInvoiceBuyerModel? buyer) =>
+        buyer is null ? null : new IssuedInvoiceBuyerInput(buyer.Kind, buyer.Nip, buyer.Name, buyer.AddressLine1, buyer.AddressLine2, buyer.CountryCode, buyer.ForeignId);
+
+    private static List<IssuedInvoiceLineInput>? ToLines(IReadOnlyList<IssuedInvoiceLineRequest>? lines) =>
+        lines?.Select(l => new IssuedInvoiceLineInput(l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)).ToList();
+
+    private static IssuedInvoiceAdvanceInput ToAdvanceInput(AdvanceDraftRequest request) => new(
+        ToBuyer(request.Buyer),
+        request.IssueDate,
+        request.PaymentDate,
+        request.AdvanceAmount,
+        request.PaymentMethod,
+        request.Currency,
+        request.ExchangeRate,
+        request.ExchangeRateDate,
+        request.ExemptionBasis?.Kind,
+        request.ExemptionBasis?.Text,
+        ToLines(request.Lines));
+
     private static IssuedInvoiceDraftInput ToInput(IssuedInvoiceDraftRequest request) => new(
-        request.Buyer is { } buyer ? new IssuedInvoiceBuyerInput(buyer.Kind, buyer.Nip, buyer.Name, buyer.AddressLine1, buyer.AddressLine2, buyer.CountryCode, buyer.ForeignId) : null,
+        ToBuyer(request.Buyer),
         request.IssueDate,
         request.SaleDate,
         request.DueDate,
@@ -309,7 +390,7 @@ public class IssuedInvoicesController(
         request.SplitPayment,
         request.ExemptionBasis?.Kind,
         request.ExemptionBasis?.Text,
-        request.Lines?.Select(l => new IssuedInvoiceLineInput(l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)).ToList(),
+        ToLines(request.Lines),
         request.Currency,
         request.ExchangeRate,
         request.ExchangeRateDate);
@@ -344,7 +425,7 @@ public class IssuedInvoicesController(
             invoice.SplitPayment,
             invoice.ExemptionBasisKind is { } kind ? new ExemptionBasisModel(kind.ToString(), invoice.ExemptionBasisText) : null,
             invoice.Lines.OrderBy(l => l.LineNo).Select(LineResponse).ToList(),
-            SummaryResponse(state is null ? invoice.VatSummary() : Corrections.Deltas(state.Lines, invoice.Lines)),
+            SummaryResponse(invoice.Buckets(state, view.Deducted)),
             invoice.TotalNet,
             invoice.TotalVat,
             invoice.TotalGross,
@@ -376,7 +457,7 @@ public class IssuedInvoicesController(
             invoice.CorrectionType,
             state is null
                 ? null
-                : Corrections.Rows(state.Lines, invoice.Lines)
+                : (invoice.InvoiceType == IssuedInvoiceType.KorZal ? Advances.OrderRows(state, invoice) : Corrections.Rows(state.Lines, invoice.Lines))
                     .Select(r => new CorrectionRowResponse(r.RowNo, r.IsBefore, r.BaseLineNo, r.Name, r.Unit, r.Quantity, r.UnitNetPrice, r.VatRate.Code(), r.NetAmount))
                     .ToList(),
             state is not null && Corrections.BuyerDataDiffers(invoice, state) ? BuyerModel(state) : null,
@@ -393,8 +474,24 @@ public class IssuedInvoicesController(
             view.Corrections.Count == 0
                 ? null
                 : view.Corrections.OrderBy(c => c.CreatedAt)
-                    .Select(c => new CorrectionListItemResponse(c.Id, c.Number, c.InvoiceType.Code(), WireStatus(c.Status), c.IssueDate, c.TotalGross))
+                    .Select(ChainItem)
                     .ToList(),
-            view.Corrections.FirstOrDefault(c => c.IsOpen)?.Id);
+            view.Corrections.FirstOrDefault(c => c.IsOpen)?.Id,
+            invoice.OrderChainId,
+            invoice.AdvanceAmount,
+            view.AmountBefore,
+            view.AdvanceInvoices.Count == 0 ? null : view.AdvanceInvoices.Select(a => new AdvanceInvoiceRefResponse(a.Id, a.Number, a.KsefNumber)).ToList(),
+            view.Chain is not { } chain
+                ? null
+                : new OrderChainResponse(
+                    chain.OrderValue,
+                    chain.Advances.Select(ChainItem).ToList(),
+                    chain.Final is null ? null : ChainItem(chain.Final),
+                    chain.Corrections.Select(ChainItem).ToList(),
+                    chain.Remaining,
+                    chain.OpenDocumentId));
     }
+
+    private static CorrectionListItemResponse ChainItem(IssuedInvoice c) =>
+        new(c.Id, c.Number, c.InvoiceType.Code(), WireStatus(c.Status), c.IssueDate, c.TotalGross);
 }

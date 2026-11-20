@@ -25,6 +25,11 @@ public class IssuedInvoiceService(
     public const string CorrectionOpenCode = "INV-KOR-OPEN";
     public const string CorrectionSourceCode = "INV-KOR-SOURCE";
     public const string ReissueCode = "INV-KOR-REISSUE";
+    public const string ChainOpenCode = "INV-CHAIN-OPEN";
+    public const string ChainClosedCode = "INV-CHAIN-CLOSED";
+    public const string ChainSourceCode = "INV-CHAIN-SOURCE";
+    public const string FinalExistsCode = "INV-ROZ-EXISTS";
+    public const string UseFinalCorrectionCode = "INV-KOR-USE-ROZ";
 
     private const int MaxLines = 1000;
     private const int MaxTextLength = 512;
@@ -114,7 +119,8 @@ public class IssuedInvoiceService(
                 i.BuyerForeignId,
                 i.BuyerCountryCode,
                 i.IssueDate,
-                i.InvoiceType == IssuedInvoiceType.Kor && i.TotalGross <= 0 ? null : i.DueDate,
+                i.InvoiceType == IssuedInvoiceType.Zal || i.InvoiceType == IssuedInvoiceType.KorZal
+                    || (i.InvoiceType != IssuedInvoiceType.Vat && i.TotalGross <= 0) ? null : i.DueDate,
                 i.TotalNet,
                 i.TotalGross,
                 i.Currency,
@@ -277,7 +283,7 @@ public class IssuedInvoiceService(
         if (!confirmPastIssueDate && IssueChecks.PastIssueDate(invoice, Today()) is { } pastIssueDate)
             throw new InvoiceValidationException([pastIssueDate]);
 
-        if (invoice.InvoiceType == IssuedInvoiceType.Vat)
+        if (!invoice.InvoiceType.IsCorrection())
             await EnsureProposedRateIsCurrentAsync(invoice, ct);
 
         var now = Now();
@@ -291,12 +297,35 @@ public class IssuedInvoiceService(
 
         IssuedInvoice? original = null;
         IssuedInvoice? state = null;
-        if (invoice.InvoiceType == IssuedInvoiceType.Kor)
+        Fa3Refs? refs = null;
+        IReadOnlyList<IssuedInvoice> chain = [];
+        if (invoice.OrderChainId is { } chainId)
+        {
+            chain = await LockChainAsync(tenantId, chainId, ct);
+            if (!invoice.IsNumberTakenInKsef && chain.FirstOrDefault(c => c.IsOpen && c.Id != invoice.Id) is { } openInChain)
+                throw ChainOpen(openInChain);
+        }
+
+        if (invoice.InvoiceType.IsCorrection())
         {
             (original, var corrections) = await LockOriginalAsync(tenantId, invoice.CorrectedInvoiceId!.Value, ct);
             if (!invoice.IsNumberTakenInKsef && corrections.FirstOrDefault(c => c.IsOpen && c.Id != invoice.Id) is { } open)
                 throw OpenCorrection(open);
+            if (invoice.InvoiceType == IssuedInvoiceType.KorZal && HasFinal(chain))
+                throw UseFinalCorrection();
             state = Corrections.CurrentState(original, corrections);
+            refs = new Fa3Refs(original, state, AmountBefore(invoice, original, corrections));
+            if (invoice.InvoiceType == IssuedInvoiceType.KorZal && IssueChecks.ChainAmountError(invoice, OtherAdvances(chain, original.Id)) is { } amountError)
+                throw new InvoiceValidationException([amountError]);
+        }
+        else if (invoice.OrderChainId is not null)
+        {
+            if (chain.Any(c => c.InvoiceType == IssuedInvoiceType.Roz && c.Status == IssuedInvoiceStatus.Accepted))
+                throw new InvoiceStateException(invoice.InvoiceType == IssuedInvoiceType.Roz ? FinalExistsMessage : ChainClosedMessage,
+                    invoice.InvoiceType == IssuedInvoiceType.Roz ? FinalExistsCode : ChainClosedCode);
+            if (invoice.InvoiceType == IssuedInvoiceType.Zal && IssueChecks.ChainAmountError(invoice, OtherAdvances(chain, invoice.Id)) is { } amountError)
+                throw new InvoiceValidationException([amountError]);
+            refs = ChainRefs(invoice, chain).Refs;
         }
 
         var pattern = profile.Pattern(invoice.InvoiceType);
@@ -305,8 +334,8 @@ public class IssuedInvoiceService(
             await sellerProfiles.AllocateNumberAsync(tenantId, InvoiceNumbering.PeriodKey(pattern, invoice.IssueDate), invoice.InvoiceType.Series(), ct),
             invoice.IssueDate);
 
-        invoice.Issue(profile, sellerNip, number, now, original, state);
-        var written = writer.Write(invoice, now, original is null ? null : new Fa3Refs(original, state!));
+        invoice.Issue(profile, sellerNip, number, now, original, state, refs?.Deducted);
+        var written = writer.Write(invoice, now, refs);
         if (!written.IsValid)
             throw new InvoiceValidationException(written.SchemaErrors.Select(e => new InvoiceCheck("INV-XSD", null, $"Faktura nie spełnia schematu FA(3): {e}")).ToList());
 
@@ -331,9 +360,12 @@ public class IssuedInvoiceService(
         }
         catch (DbUpdateException e) when (IsUniqueViolation(e))
         {
-            throw new InvoiceStateException(invoice.InvoiceType == IssuedInvoiceType.Kor
-                ? $"Numer {number} jest już użyty. Ustaw wyższy następny numer korekt w danych do faktur."
-                : $"Numer {number} jest już użyty. Ustaw wyższy następny numer w danych do faktur.");
+            throw new InvoiceStateException(invoice.InvoiceType.Series() switch
+            {
+                IssuedInvoiceTypes.KorSeries => $"Numer {number} jest już użyty. Ustaw wyższy następny numer korekt w danych do faktur.",
+                IssuedInvoiceTypes.ZalSeries => $"Numer {number} jest już użyty. Ustaw wyższy następny numer faktur zaliczkowych w danych do faktur.",
+                _ => $"Numer {number} jest już użyty. Ustaw wyższy następny numer w danych do faktur."
+            });
         }
 
         return (await ViewAsync(invoice, ct), true);
@@ -371,11 +403,17 @@ public class IssuedInvoiceService(
         if (tenantLocked.Count == 0)
             return null;
 
+        var chainId = await db.IssuedInvoices.Where(i => i.TenantId == tenantId && i.Id == originalId).Select(i => i.OrderChainId).SingleAsync(ct);
+        var chain = chainId is { } id ? await LockChainAsync(tenantId, id, ct) : [];
         var (original, corrections) = await LockOriginalAsync(tenantId, originalId, ct);
-        if (original.InvoiceType != IssuedInvoiceType.Vat || original.Status != IssuedInvoiceStatus.Accepted || original.KsefNumber is null)
-            throw new InvoiceStateException("Korygować można tylko fakturę VAT przyjętą w KSeF. Korektę wystawiasz zawsze z faktury pierwotnej.", CorrectionSourceCode);
+        if (original.InvoiceType is not (IssuedInvoiceType.Vat or IssuedInvoiceType.Zal or IssuedInvoiceType.Roz) || original.Status != IssuedInvoiceStatus.Accepted || original.KsefNumber is null)
+            throw new InvoiceStateException("Korygować można tylko fakturę VAT, zaliczkową lub rozliczającą przyjętą w KSeF. Korektę wystawiasz zawsze z faktury pierwotnej.", CorrectionSourceCode);
+        if (original.InvoiceType == IssuedInvoiceType.Zal && HasFinal(chain))
+            throw UseFinalCorrection();
         if (corrections.FirstOrDefault(c => c.IsOpen) is { } open)
             throw OpenCorrection(open);
+        if (chain.FirstOrDefault(c => c.IsOpen) is { } openInChain)
+            throw ChainOpen(openInChain);
 
         var correction = IssuedInvoice.Correction(Guid.NewGuid(), original, Corrections.CurrentState(original, corrections), parsedMode, Today(), Now());
         db.IssuedInvoices.Add(correction);
@@ -389,7 +427,7 @@ public class IssuedInvoiceService(
         var correction = await LoadAsync(tenantId, id, ct);
         if (correction is null)
             return null;
-        if (correction.InvoiceType != IssuedInvoiceType.Kor)
+        if (!correction.InvoiceType.IsCorrection())
             throw new InvoiceStateException("Ten dokument nie jest fakturą korygującą.", KindMismatchCode);
         if (!correction.IsEditable)
             throw new InvoiceStateException("Faktury w tym statusie nie można zmieniać");
@@ -415,10 +453,15 @@ public class IssuedInvoiceService(
         }
 
         var lines = input.Lines is null ? null : ParseLines(input.Lines, errors);
+        if (input.AdvanceAmount is not null && correction.InvoiceType != IssuedInvoiceType.KorZal)
+            errors.Add(new(IssueChecks.AdvanceAmountCode, "advanceAmount", "Kwotę zaliczki koryguje się tylko w korekcie faktury zaliczkowej"));
+        CheckAmount(input.AdvanceAmount, errors);
         if (errors.Count > 0)
             throw new InvoiceValidationException(errors);
 
         var issueDate = input.IssueDate ?? correction.IssueDate;
+        if (input.AdvanceAmount is { } amount)
+            correction.SetAdvanceAmount(amount);
         correction.SetCorrection(input.CorrectionReason ?? correction.CorrectionReason, input.CorrectionType switch
         {
             null => correction.CorrectionType,
@@ -432,11 +475,14 @@ public class IssuedInvoiceService(
         if (lines is not null)
             correction.ReplaceCorrectionLines(lines, state);
         else
-            correction.RecalculateCorrectionTotals(state);
+            correction.RecalculateTotals(state);
 
         var draftErrors = IssueChecks.CorrectionErrors(correction, original, state, Today())
             .Where(e => e.Code is IssueChecks.CorrectionIssueDateCode or IssueChecks.BaseLineCode or "INV-VAL-060" or "INV-VAL-062" or "INV-VAL-063" or "INV-VAL-064")
             .ToList();
+        if (correction.InvoiceType == IssuedInvoiceType.KorZal
+            && IssueChecks.ChainAmountError(correction, OtherAdvances(await ChainOfAsync(tenantId, correction.OrderChainId!.Value, ct), original.Id)) is { } amountError)
+            draftErrors.Add(amountError);
         if (draftErrors.Count > 0)
             throw new InvoiceValidationException(draftErrors);
 
@@ -460,6 +506,304 @@ public class IssuedInvoiceService(
 
         var lastSale = chain.Last(d => d.Lines.Count > 0);
         return await AddCopyAsync(tenantId, original, lastSale, clearBuyerId: current.CorrectionReason == Corrections.WrongBuyerIdReason, ct);
+    }
+
+    public async Task<IssuedInvoiceView?> CreateAdvanceAsync(Guid tenantId, IssuedInvoiceAdvanceInput? input, CancellationToken ct = default)
+    {
+        if (!await db.Tenants.AnyAsync(t => t.Id == tenantId, ct))
+            return null;
+
+        var advance = IssuedInvoice.Advance(Guid.NewGuid(), tenantId, Today(), Now());
+        if (input is not null)
+            ApplyAdvance(advance, input, []);
+        await ProposeRateIfMissingAsync(advance, ct);
+        db.IssuedInvoices.Add(advance);
+        await db.SaveChangesAsync(ct);
+        return await ViewAsync(advance, ct);
+    }
+
+    public Task<IssuedInvoiceView?> NextAdvanceAsync(Guid tenantId, Guid advanceId, CancellationToken ct = default) =>
+        AddChainDocumentAsync(tenantId, advanceId, IssuedInvoiceType.Zal, ct);
+
+    public Task<IssuedInvoiceView?> CreateFinalAsync(Guid tenantId, Guid advanceId, CancellationToken ct = default) =>
+        AddChainDocumentAsync(tenantId, advanceId, IssuedInvoiceType.Roz, ct);
+
+    public async Task<IssuedInvoiceView?> UpdateAdvanceAsync(Guid tenantId, Guid id, IssuedInvoiceAdvanceInput input, uint? expectedVersion = null, CancellationToken ct = default)
+    {
+        var advance = await LoadAsync(tenantId, id, ct);
+        if (advance is null)
+            return null;
+        if (advance.InvoiceType != IssuedInvoiceType.Zal)
+            throw new InvoiceStateException("Ten dokument nie jest fakturą zaliczkową.", KindMismatchCode);
+        if (!advance.IsEditable)
+            throw new InvoiceStateException("Faktury w tym statusie nie można zmieniać");
+        EnsureVersion(advance, expectedVersion);
+
+        ApplyAdvance(advance, input, await ChainOfAsync(tenantId, advance.OrderChainId!.Value, ct));
+        await ProposeRateIfMissingAsync(advance, ct);
+        advance.Touch(Now());
+        await SaveOrConflictAsync(ct);
+        return await ViewAsync(advance, ct);
+    }
+
+    public async Task<IssuedInvoiceView?> UpdateFinalAsync(Guid tenantId, Guid id, IssuedInvoiceFinalInput input, uint? expectedVersion = null, CancellationToken ct = default)
+    {
+        var final = await LoadAsync(tenantId, id, ct);
+        if (final is null)
+            return null;
+        if (final.InvoiceType != IssuedInvoiceType.Roz)
+            throw new InvoiceStateException("Ten dokument nie jest fakturą rozliczającą.", KindMismatchCode);
+        if (!final.IsEditable)
+            throw new InvoiceStateException("Faktury w tym statusie nie można zmieniać");
+        EnsureVersion(final, expectedVersion);
+
+        var errors = new List<InvoiceCheck>();
+        var method = input.PaymentMethod is null
+            ? final.PaymentMethod
+            : ParseName(input.PaymentMethod, PaymentMethod.Transfer, "INV-VAL-071", "paymentMethod", "Forma płatności: Transfer, Cash lub Card", errors);
+        ExemptionBasisKind? exemption = input.ExemptionBasisKind is null
+            ? null
+            : ParseName(input.ExemptionBasisKind, default(ExemptionBasisKind), "INV-VAL-072", "exemptionBasis.kind", "Podstawa zwolnienia: Act, Directive lub Other", errors);
+        CheckLength(input.ExemptionBasisText, MaxShortTextLength, "exemptionBasis.text", errors);
+        CheckRate(input.ExchangeRate, errors);
+        errors.AddRange(ChainLockErrors(final, input.Buyer, input.Currency));
+        var lines = input.Lines is null ? null : ParseLines(input.Lines, errors);
+        if (errors.Count > 0)
+            throw new InvoiceValidationException(errors);
+
+        var issueDate = input.IssueDate ?? final.IssueDate;
+        final.SetDates(issueDate, input.SaleDate ?? final.SaleDate, input.DueDate ?? final.DueDate);
+        final.SetPayment(method, input.SplitPayment ?? final.SplitPayment);
+        final.SetCurrency(null, input.ExchangeRate, input.ExchangeRateDate);
+        final.SetExemptionBasis(exemption, input.ExemptionBasisText);
+        if (lines is not null)
+            final.ReplaceLines(lines.Select(l => (l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)));
+        var chain = await ChainOfAsync(tenantId, final.OrderChainId!.Value, ct);
+        var deducted = ChainRefs(final, chain).Refs?.Deducted ?? [];
+        final.RecalculateTotals(null, deducted);
+        if (IssueChecks.ChainErrors(final, deducted).ToList() is { Count: > 0 } chainErrors)
+            throw new InvoiceValidationException(chainErrors);
+
+        await ProposeRateIfMissingAsync(final, ct);
+        final.Touch(Now());
+        await SaveOrConflictAsync(ct);
+        return await ViewAsync(final, ct);
+    }
+
+    private async Task<IssuedInvoiceView?> AddChainDocumentAsync(Guid tenantId, Guid advanceId, IssuedInvoiceType type, CancellationToken ct)
+    {
+        var chainId = await db.IssuedInvoices.Where(i => i.TenantId == tenantId && i.Id == advanceId).Select(i => new { i.OrderChainId }).SingleOrDefaultAsync(ct);
+        if (chainId is null)
+            return null;
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var tenantLocked = await db.Database
+            .SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "Tenants" WHERE "Id" = {tenantId} FOR KEY SHARE""")
+            .ToListAsync(ct);
+        if (tenantLocked.Count == 0)
+            return null;
+
+        var chain = chainId.OrderChainId is { } id ? await LockChainAsync(tenantId, id, ct) : [];
+        var source = chain.SingleOrDefault(c => c.Id == advanceId);
+        if (source is not { InvoiceType: IssuedInvoiceType.Zal, Status: IssuedInvoiceStatus.Accepted })
+            throw new InvoiceStateException("Kolejną zaliczkę i fakturę rozliczającą wystawisz z faktury zaliczkowej przyjętej w KSeF.", ChainSourceCode);
+        if (chain.FirstOrDefault(c => c.InvoiceType == IssuedInvoiceType.Roz && (c.Status == IssuedInvoiceStatus.Accepted || c.IsOpen)) is not null)
+            throw type == IssuedInvoiceType.Roz
+                ? new InvoiceStateException(FinalExistsMessage, FinalExistsCode)
+                : new InvoiceStateException(ChainClosedMessage, ChainClosedCode);
+        if (chain.FirstOrDefault(c => c.IsOpen) is { } open)
+            throw ChainOpen(open);
+
+        var first = chain.Single(c => c.Id == source.OrderChainId);
+        var document = IssuedInvoice.ChainDocument(Guid.NewGuid(), type, first, LatestOrder(chain)!, Today(), Now());
+        if (type == IssuedInvoiceType.Roz)
+            document.RecalculateTotals(null, ChainRefs(document, chain).Refs?.Deducted);
+        await ProposeRateIfMissingAsync(document, ct);
+        db.IssuedInvoices.Add(document);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return await ViewAsync(document, ct);
+    }
+
+    private void ApplyAdvance(IssuedInvoice advance, IssuedInvoiceAdvanceInput input, IReadOnlyList<IssuedInvoice> chain)
+    {
+        var errors = new List<InvoiceCheck>();
+        var isFirst = advance.Id == advance.OrderChainId;
+        var method = input.PaymentMethod is null
+            ? advance.PaymentMethod
+            : ParseName(input.PaymentMethod, PaymentMethod.Transfer, "INV-VAL-071", "paymentMethod", "Forma płatności: Transfer, Cash lub Card", errors);
+        ExemptionBasisKind? exemption = input.ExemptionBasisKind is null
+            ? null
+            : ParseName(input.ExemptionBasisKind, default(ExemptionBasisKind), "INV-VAL-072", "exemptionBasis.kind", "Podstawa zwolnienia: Act, Directive lub Other", errors);
+        CheckLength(input.ExemptionBasisText, MaxShortTextLength, "exemptionBasis.text", errors);
+        CheckRate(input.ExchangeRate, errors);
+        CheckAmount(input.AdvanceAmount, errors);
+        var currency = input.Currency?.Trim().ToUpperInvariant();
+        if (isFirst)
+        {
+            var kind = ParseName(input.Buyer?.Kind, advance.BuyerKind, "INV-VAL-070", "buyer.kind", "Rodzaj nabywcy: Company, Person lub Foreign", errors);
+            CheckBuyer(input.Buyer, errors);
+            if (currency is not null && !IsLetters(currency, 3))
+                errors.Add(new("INV-VAL-090", "currency", "Waluta musi być trzyliterowym kodem ISO 4217"));
+            if (errors.Count == 0 && input.Buyer is { } buyer)
+            {
+                advance.SetBuyer(kind, buyer.Nip, buyer.Name, buyer.AddressLine1, buyer.AddressLine2);
+                advance.SetForeignBuyer(buyer.CountryCode, buyer.ForeignId);
+            }
+        }
+        else
+        {
+            errors.AddRange(ChainLockErrors(advance, input.Buyer, currency));
+        }
+
+        var lines = input.Lines is null ? null : ParseLines(input.Lines, errors);
+        if (errors.Count > 0)
+            throw new InvoiceValidationException(errors);
+
+        var issueDate = input.IssueDate ?? advance.IssueDate;
+        advance.SetCurrency(isFirst ? currency : null, input.ExchangeRate, input.ExchangeRateDate);
+        advance.SetDates(issueDate, input.PaymentDate ?? advance.SaleDate, issueDate);
+        advance.SetPayment(method, false);
+        advance.SetExemptionBasis(exemption, input.ExemptionBasisText);
+        if (input.AdvanceAmount is { } amount)
+            advance.SetAdvanceAmount(amount);
+        if (lines is not null)
+            advance.ReplaceLines(lines.Select(l => (l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)));
+        else
+            advance.RecalculateTotals(null);
+
+        var draftErrors = IssueChecks.ChainErrors(advance, null).Where(e => e.Code == IssueChecks.PaymentDateCode).ToList();
+        if (IssueChecks.ChainAmountError(advance, OtherAdvances(chain, advance.Id)) is { } amountError)
+            draftErrors.Add(amountError);
+        if (draftErrors.Count > 0)
+            throw new InvoiceValidationException(draftErrors);
+    }
+
+    /// <summary>Buyer and currency of a chain are fixed by its first ZAL: a request may repeat them but not change them.</summary>
+    private static IEnumerable<InvoiceCheck> ChainLockErrors(IssuedInvoice document, IssuedInvoiceBuyerInput? buyer, string? currency)
+    {
+        const string message = "Nabywcę i walutę ustala pierwsza faktura zaliczkowa zamówienia. Nie można ich zmienić w kolejnych dokumentach.";
+        static bool Differs(string? given, string? stored) => given is not null && (string.IsNullOrWhiteSpace(given) ? null : given.Trim()) != stored;
+        if (buyer is not null && (
+                (buyer.Kind is not null && buyer.Kind != document.BuyerKind.ToString())
+                || Differs(buyer.Nip?.Replace("-", ""), document.BuyerNip)
+                || Differs(buyer.Name, document.BuyerName)
+                || Differs(buyer.AddressLine1, document.BuyerAddressLine1)
+                || Differs(buyer.AddressLine2, document.BuyerAddressLine2)
+                || Differs(buyer.ForeignId, document.BuyerForeignId)
+                || (buyer.CountryCode is not null && document.BuyerKind == BuyerKind.Foreign
+                    && EuCountries.FromVatPrefix(buyer.CountryCode.Trim().ToUpperInvariant()) != document.BuyerCountryCode)))
+            yield return new(IssueChecks.ChainLockedCode, "buyer", message);
+        if (currency is not null && currency.Trim().ToUpperInvariant() != document.Currency)
+            yield return new(IssueChecks.ChainLockedCode, "currency", message);
+    }
+
+    /// <summary>Row lock on the chain's first ZAL serialises every document of the chain (ADR-007 §5). Call inside a transaction.</summary>
+    private async Task<IReadOnlyList<IssuedInvoice>> LockChainAsync(Guid tenantId, Guid chainId, CancellationToken ct)
+    {
+        await db.Database.ExecuteSqlAsync($"""SELECT 1 FROM "IssuedInvoices" WHERE "TenantId" = {tenantId} AND "Id" = {chainId} FOR UPDATE""", ct);
+        return await ChainOfAsync(tenantId, chainId, ct);
+    }
+
+    private async Task<IReadOnlyList<IssuedInvoice>> ChainOfAsync(Guid tenantId, Guid chainId, CancellationToken ct) =>
+        await db.IssuedInvoices.Include(i => i.Lines)
+            .Where(i => i.TenantId == tenantId && i.OrderChainId == chainId)
+            .ToListAsync(ct);
+
+    private static IReadOnlyList<IssuedInvoice> AcceptedAdvances(IReadOnlyList<IssuedInvoice> chain) =>
+        chain.Where(c => c.InvoiceType == IssuedInvoiceType.Zal && c.Status == IssuedInvoiceStatus.Accepted)
+            .OrderBy(c => c.IssuedAt)
+            .ThenBy(c => c.CreatedAt)
+            .ToList();
+
+    private static IssuedInvoice CurrentAdvance(IssuedInvoice advance, IReadOnlyList<IssuedInvoice> chain) => Corrections.CurrentState(advance, chain);
+
+    private static decimal OtherAdvances(IReadOnlyList<IssuedInvoice> chain, Guid exceptAdvanceId) =>
+        AcceptedAdvances(chain).Where(a => a.Id != exceptAdvanceId).Sum(a => CurrentAdvance(a, chain).AdvanceAmount ?? 0m);
+
+    private static IssuedInvoice? LatestOrder(IReadOnlyList<IssuedInvoice> chain) =>
+        AcceptedAdvances(chain) is { Count: > 0 } advances ? CurrentAdvance(advances[^1], chain) : null;
+
+    private static bool HasFinal(IReadOnlyList<IssuedInvoice> chain) =>
+        chain.Any(c => c.InvoiceType == IssuedInvoiceType.Roz && (c.Status == IssuedInvoiceStatus.Accepted || c.IsOpen));
+
+    /// <summary>
+    /// FakturaZaliczkowa and the deducted split. A ROZ lists every accepted ZAL whose current state is not zero;
+    /// a ZAL that reaches the order value lists every earlier accepted ZAL (art. 106f ust. 4).
+    /// </summary>
+    private static (Fa3Refs? Refs, IReadOnlyList<IssuedInvoice> Advances) ChainRefs(IssuedInvoice invoice, IReadOnlyList<IssuedInvoice> chain)
+    {
+        var advances = AcceptedAdvances(chain).Where(a => a.Id != invoice.Id && a.IssuedAt <= (invoice.IssuedAt ?? DateTime.MaxValue)).ToList();
+        if (invoice.InvoiceType == IssuedInvoiceType.Roz)
+        {
+            var listed = advances.Where(a => CurrentAdvance(a, chain).AdvanceAmount != 0).ToList();
+            return (new Fa3Refs(null, null, null, listed.Select(a => a.KsefNumber!).ToList(), Advances.Deducted(advances.Select(a => CurrentAdvance(a, chain)))), listed);
+        }
+
+        var isLast = invoice.InvoiceType == IssuedInvoiceType.Zal && advances.Count > 0
+            && advances.Sum(a => CurrentAdvance(a, chain).AdvanceAmount ?? 0m) + (invoice.AdvanceAmount ?? 0m) == Advances.OrderValue(invoice.Lines);
+        return isLast ? (new Fa3Refs(null, null, null, advances.Select(a => a.KsefNumber!).ToList()), advances) : (null, []);
+    }
+
+    /// <summary>P_15ZK: for KOR_ZAL the advance amount of the corrected state, for KOR_ROZ the ROZ remaining amount before this correction.</summary>
+    private static decimal? AmountBefore(IssuedInvoice correction, IssuedInvoice original, IEnumerable<IssuedInvoice> corrections) => correction.InvoiceType switch
+    {
+        IssuedInvoiceType.KorZal => Corrections.StateBefore(original, corrections.Where(c => c.Id != correction.Id).Append(correction), correction).AdvanceAmount,
+        IssuedInvoiceType.KorRoz => Corrections.AcceptedChain(original, corrections.Where(c => c.Id != correction.Id).Append(correction)) is var accepted
+            && accepted.ToList().FindIndex(d => d.Id == correction.Id) is var index
+                ? accepted.Take(index > 0 ? index : accepted.Count).Sum(d => d.TotalGross)
+                : null,
+        _ => null
+    };
+
+    private OrderChainView ChainView(IssuedInvoice invoice, IReadOnlyList<IssuedInvoice> chain)
+    {
+        var order = invoice.InvoiceType.IsAdvance() ? invoice : LatestOrder(chain);
+        var orderValue = order is null ? 0m : Advances.OrderValue(order.Lines);
+        var paid = AcceptedAdvances(chain).Where(a => !(invoice.IsEditable && a.Id == invoice.Id)).Sum(a => CurrentAdvance(a, chain).AdvanceAmount ?? 0m);
+        return new OrderChainView(
+            orderValue,
+            chain.Where(c => c.InvoiceType == IssuedInvoiceType.Zal).OrderBy(c => c.CreatedAt).ToList(),
+            chain.Where(c => c.InvoiceType == IssuedInvoiceType.Roz).OrderByDescending(c => c.CreatedAt).FirstOrDefault(),
+            chain.Where(c => c.InvoiceType.IsCorrection()).OrderBy(c => c.CreatedAt).ToList(),
+            orderValue - paid,
+            chain.FirstOrDefault(c => c.IsOpen)?.Id);
+    }
+
+    private const string ChainClosedMessage = "Zamówienie jest już rozliczone fakturą rozliczającą. Kolejnej zaliczki nie można wystawić.";
+    private const string FinalExistsMessage = "To zamówienie ma już fakturę rozliczającą.";
+
+    private static InvoiceStateException ChainOpen(IssuedInvoice open) => new(
+        $"To zamówienie ma już otwarty dokument {open.Number ?? $"(szkic z {open.CreatedAt:yyyy-MM-dd})"}. Dokończ go albo usuń szkic, zanim wystawisz kolejny.",
+        ChainOpenCode);
+
+    private static InvoiceStateException UseFinalCorrection() => new(
+        "To zamówienie ma fakturę rozliczającą. Zaliczek nie koryguje się już osobno: skoryguj fakturę rozliczającą (KOR_ROZ).",
+        UseFinalCorrectionCode);
+
+    private static void CheckAmount(decimal? amount, List<InvoiceCheck> errors)
+    {
+        if (amount is { } value && (value < 0 || value >= MaxLineNet || Math.Round(value, 2) != value))
+            errors.Add(new(IssueChecks.AdvanceAmountCode, "advanceAmount", "Kwota zaliczki poza zakresem lub ponad 2 miejsca po przecinku"));
+    }
+
+    private static void CheckRate(decimal? rate, List<InvoiceCheck> errors)
+    {
+        if (rate is { } exchangeRate && (Math.Abs(exchangeRate) >= MaxExchangeRate || Math.Round(exchangeRate, 6) != exchangeRate))
+            errors.Add(new("INV-VAL-093", "exchangeRate", "Kurs waluty poza zakresem lub ponad 6 miejsc po przecinku"));
+    }
+
+    private static void CheckBuyer(IssuedInvoiceBuyerInput? buyer, List<InvoiceCheck> errors)
+    {
+        if (buyer?.Nip?.Trim().Replace("-", "").Length > 10)
+            errors.Add(new("INV-VAL-013", "buyer.nip", "Dla nabywcy firmy wymagany jest poprawny NIP"));
+        CheckLength(buyer?.Name, MaxTextLength, "buyer.name", errors);
+        CheckLength(buyer?.AddressLine1, MaxTextLength, "buyer.addressLine1", errors);
+        CheckLength(buyer?.AddressLine2, MaxTextLength, "buyer.addressLine2", errors);
+        CheckLength(buyer?.ForeignId, MaxForeignIdLength, "buyer.foreignId", errors);
+        var country = buyer?.CountryCode?.Trim();
+        if (!string.IsNullOrEmpty(country) && !IsLetters(country, 2))
+            errors.Add(new("INV-VAL-030", "buyer.countryCode", "Podaj kraj nabywcy inny niż Polska"));
     }
 
     private async Task<IssuedInvoiceView> AddCopyAsync(Guid tenantId, IssuedInvoice source, IssuedInvoice state, bool clearBuyerId, CancellationToken ct)
@@ -555,23 +899,13 @@ public class IssuedInvoiceService(
             ? null
             : ParseName(input.ExemptionBasisKind, default(ExemptionBasisKind), "INV-VAL-072", "exemptionBasis.kind", "Podstawa zwolnienia: Act, Directive lub Other", errors);
 
-        if (input.Buyer?.Nip?.Trim().Replace("-", "").Length > 10)
-            errors.Add(new("INV-VAL-013", "buyer.nip", "Dla nabywcy firmy wymagany jest poprawny NIP"));
-        CheckLength(input.Buyer?.Name, MaxTextLength, "buyer.name", errors);
-        CheckLength(input.Buyer?.AddressLine1, MaxTextLength, "buyer.addressLine1", errors);
-        CheckLength(input.Buyer?.AddressLine2, MaxTextLength, "buyer.addressLine2", errors);
+        CheckBuyer(input.Buyer, errors);
         CheckLength(input.ExemptionBasisText, MaxShortTextLength, "exemptionBasis.text", errors);
-        CheckLength(input.Buyer?.ForeignId, MaxForeignIdLength, "buyer.foreignId", errors);
-
-        var country = input.Buyer?.CountryCode?.Trim();
-        if (!string.IsNullOrEmpty(country) && !IsLetters(country, 2))
-            errors.Add(new("INV-VAL-030", "buyer.countryCode", "Podaj kraj nabywcy inny niż Polska"));
 
         var currency = input.Currency?.Trim().ToUpperInvariant();
         if (currency is not null && !IsLetters(currency, 3))
             errors.Add(new("INV-VAL-090", "currency", "Waluta musi być trzyliterowym kodem ISO 4217"));
-        if (input.ExchangeRate is { } exchangeRate && (Math.Abs(exchangeRate) >= MaxExchangeRate || Math.Round(exchangeRate, 6) != exchangeRate))
-            errors.Add(new("INV-VAL-093", "exchangeRate", "Kurs waluty poza zakresem lub ponad 6 miejsc po przecinku"));
+        CheckRate(input.ExchangeRate, errors);
 
         var parsedLines = ParseLines(input.Lines ?? [], errors);
 
@@ -690,7 +1024,24 @@ public class IssuedInvoiceService(
 
     private async Task<IssuedInvoiceView> ViewAsync(IssuedInvoice invoice, CancellationToken ct)
     {
-        if (invoice.InvoiceType == IssuedInvoiceType.Kor)
+        var view = await DocumentViewAsync(invoice, ct);
+        if (invoice.OrderChainId is not { } chainId)
+            return view;
+
+        var chain = (await db.IssuedInvoices.AsNoTracking().Include(i => i.Lines)
+                .Where(i => i.TenantId == invoice.TenantId && i.OrderChainId == chainId && i.Id != invoice.Id)
+                .ToListAsync(ct))
+            .Append(invoice)
+            .ToList();
+        if (invoice.InvoiceType.IsCorrection())
+            return view with { Chain = ChainView(invoice, chain) };
+        var (refs, advances) = ChainRefs(invoice, chain);
+        return view with { Chain = ChainView(invoice, chain), AdvanceInvoices = advances, Deducted = refs?.Deducted };
+    }
+
+    private async Task<IssuedInvoiceView> DocumentViewAsync(IssuedInvoice invoice, CancellationToken ct)
+    {
+        if (invoice.InvoiceType.IsCorrection())
         {
             var original = await db.IssuedInvoices.AsNoTracking().Include(i => i.Lines)
                 .SingleAsync(i => i.TenantId == invoice.TenantId && i.Id == invoice.CorrectedInvoiceId, ct);
@@ -700,7 +1051,13 @@ public class IssuedInvoiceService(
             var sellerVersion = invoice.IsEditable
                 ? await db.SellerProfiles.AsNoTracking().Where(p => p.TenantId == invoice.TenantId).Select(p => EF.Property<uint>(p, "Version")).SingleOrDefaultAsync(ct)
                 : 0;
-            return SnapshotView(invoice) with { SellerVersion = sellerVersion, Original = original, CorrectedState = Corrections.StateBefore(original, siblings.Append(invoice), invoice) };
+            return SnapshotView(invoice) with
+            {
+                SellerVersion = sellerVersion,
+                Original = original,
+                CorrectedState = Corrections.StateBefore(original, siblings.Append(invoice), invoice),
+                AmountBefore = AmountBefore(invoice, original, siblings)
+            };
         }
 
         if (!invoice.IsEditable)

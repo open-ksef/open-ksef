@@ -107,7 +107,47 @@ public record IssuedInvoiceResponse(
     IssuedInvoiceBuyerModel? BuyerBefore = null,
     CurrentStateResponse? CurrentState = null,
     IReadOnlyList<CorrectionListItemResponse>? Corrections = null,
-    Guid? OpenCorrectionId = null);
+    Guid? OpenCorrectionId = null,
+    Guid? OrderChainId = null,
+    decimal? AdvanceAmount = null,
+    decimal? AmountBefore = null,
+    IReadOnlyList<AdvanceInvoiceRefResponse>? AdvanceInvoices = null,
+    OrderChainResponse? Chain = null);
+
+public record AdvanceInvoiceRefResponse(Guid Id, string? Number, string? KsefNumber);
+
+public record OrderChainResponse(
+    decimal OrderValue,
+    IReadOnlyList<CorrectionListItemResponse> Advances,
+    CorrectionListItemResponse? Final,
+    IReadOnlyList<CorrectionListItemResponse> Corrections,
+    decimal Remaining,
+    Guid? OpenDocumentId);
+
+public record AdvanceDraftRequest(
+    IssuedInvoiceBuyerModel? Buyer = null,
+    DateOnly? IssueDate = null,
+    DateOnly? PaymentDate = null,
+    decimal? AdvanceAmount = null,
+    string? PaymentMethod = null,
+    string? Currency = null,
+    decimal? ExchangeRate = null,
+    DateOnly? ExchangeRateDate = null,
+    ExemptionBasisModel? ExemptionBasis = null,
+    IReadOnlyList<IssuedInvoiceLineRequest>? Lines = null);
+
+public record FinalDraftRequest(
+    DateOnly? IssueDate = null,
+    DateOnly? SaleDate = null,
+    DateOnly? DueDate = null,
+    string? PaymentMethod = null,
+    bool? SplitPayment = null,
+    decimal? ExchangeRate = null,
+    DateOnly? ExchangeRateDate = null,
+    ExemptionBasisModel? ExemptionBasis = null,
+    IReadOnlyList<IssuedInvoiceLineRequest>? Lines = null,
+    IssuedInvoiceBuyerModel? Buyer = null,
+    string? Currency = null);
 
 public record CorrectedInvoiceRefResponse(Guid Id, string? Number, string? KsefNumber, DateOnly IssueDate, string InvoiceType);
 
@@ -150,7 +190,8 @@ public record CorrectionDraftRequest(
     string? CorrectionReason = null,
     int? CorrectionType = null,
     IssuedInvoiceBuyerModel? Buyer = null,
-    IReadOnlyList<CorrectionLineRequest>? Lines = null);
+    IReadOnlyList<CorrectionLineRequest>? Lines = null,
+    decimal? AdvanceAmount = null);
 
 public record ExchangeRateProposalResponse(string Currency, decimal? Rate, DateOnly? TableDate);
 

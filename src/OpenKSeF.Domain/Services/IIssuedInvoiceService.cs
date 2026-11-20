@@ -22,7 +22,35 @@ public record IssuedInvoiceCorrectionInput(
     int? CorrectionType,
     IssuedInvoiceBuyerInput? Buyer,
     string? BuyerIdType,
+    IReadOnlyList<IssuedInvoiceLineInput>? Lines,
+    decimal? AdvanceAmount = null);
+
+public record IssuedInvoiceAdvanceInput(
+    IssuedInvoiceBuyerInput? Buyer,
+    DateOnly? IssueDate,
+    DateOnly? PaymentDate,
+    decimal? AdvanceAmount,
+    string? PaymentMethod,
+    string? Currency,
+    decimal? ExchangeRate,
+    DateOnly? ExchangeRateDate,
+    string? ExemptionBasisKind,
+    string? ExemptionBasisText,
     IReadOnlyList<IssuedInvoiceLineInput>? Lines);
+
+public record IssuedInvoiceFinalInput(
+    DateOnly? IssueDate,
+    DateOnly? SaleDate,
+    DateOnly? DueDate,
+    string? PaymentMethod,
+    bool? SplitPayment,
+    decimal? ExchangeRate,
+    DateOnly? ExchangeRateDate,
+    string? ExemptionBasisKind,
+    string? ExemptionBasisText,
+    IReadOnlyList<IssuedInvoiceLineInput>? Lines,
+    IssuedInvoiceBuyerInput? Buyer,
+    string? Currency);
 
 public record IssuedInvoiceDraftInput(
     IssuedInvoiceBuyerInput? Buyer,
@@ -85,7 +113,28 @@ public record IssuedInvoiceView(IssuedInvoice Invoice, IssuedInvoiceSeller Selle
 
     /// <summary>Set on an accepted VAT original with at least one accepted correction.</summary>
     public IssuedInvoice? CurrentState { get; init; }
+
+    /// <summary>Set on KOR_ZAL and KOR_ROZ: P_15ZK.</summary>
+    public decimal? AmountBefore { get; init; }
+
+    /// <summary>Set on a ROZ and on the last ZAL: the advances listed in FakturaZaliczkowa.</summary>
+    public IReadOnlyList<IssuedInvoice> AdvanceInvoices { get; init; } = [];
+
+    /// <summary>Set on a ROZ: the split per rate of the advances it deducts.</summary>
+    public IReadOnlyList<VatSummary>? Deducted { get; init; }
+
+    /// <summary>Set on every document of an order chain.</summary>
+    public OrderChainView? Chain { get; init; }
 }
+
+/// <summary>Order chain of a document: order value of the latest order, advances, ROZ, corrections, remaining value and the open document.</summary>
+public record OrderChainView(
+    decimal OrderValue,
+    IReadOnlyList<IssuedInvoice> Advances,
+    IssuedInvoice? Final,
+    IReadOnlyList<IssuedInvoice> Corrections,
+    decimal Remaining,
+    Guid? OpenDocumentId);
 
 /// <summary>Draft CRUD, issue, copy and tenant delete. Null means not found; <see cref="InvoiceStateException"/> maps to 409, <see cref="InvoiceValidationException"/> to 400/422.</summary>
 public interface IIssuedInvoiceService
@@ -113,6 +162,16 @@ public interface IIssuedInvoiceService
     Task<IssuedInvoiceView?> UpdateCorrectionAsync(Guid tenantId, Guid id, IssuedInvoiceCorrectionInput input, uint? expectedVersion = null, CancellationToken ct = default);
 
     Task<IssuedInvoiceView?> ReissueAsync(Guid tenantId, Guid originalId, CancellationToken ct = default);
+
+    Task<IssuedInvoiceView?> CreateAdvanceAsync(Guid tenantId, IssuedInvoiceAdvanceInput? input, CancellationToken ct = default);
+
+    Task<IssuedInvoiceView?> NextAdvanceAsync(Guid tenantId, Guid advanceId, CancellationToken ct = default);
+
+    Task<IssuedInvoiceView?> UpdateAdvanceAsync(Guid tenantId, Guid id, IssuedInvoiceAdvanceInput input, uint? expectedVersion = null, CancellationToken ct = default);
+
+    Task<IssuedInvoiceView?> CreateFinalAsync(Guid tenantId, Guid advanceId, CancellationToken ct = default);
+
+    Task<IssuedInvoiceView?> UpdateFinalAsync(Guid tenantId, Guid id, IssuedInvoiceFinalInput input, uint? expectedVersion = null, CancellationToken ct = default);
 
     Task<bool> DeleteTenantAsync(Guid tenantId, CancellationToken ct = default);
 }

@@ -51,7 +51,7 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
         Fa(invoice, refs));
 
     private static IEnumerable<IssuedInvoiceLine> AllLines(IssuedInvoice invoice, Fa3Refs? refs) =>
-        refs is null ? invoice.Lines : invoice.Lines.Concat(refs.CorrectedState.Lines);
+        refs?.CorrectedState is { } state ? invoice.Lines.Concat(state.Lines) : invoice.Lines;
 
     private static XElement[] BuyerId(IssuedInvoice invoice) => (invoice.BuyerKind, invoice.BuyerIdType) switch
     {
@@ -74,20 +74,62 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
         new XElement(Ns + "AdresL1", line1),
         line2 is null ? null : new XElement(Ns + "AdresL2", line2));
 
-    private static XElement Fa(IssuedInvoice invoice, Fa3Refs? refs) => new(Ns + "Fa",
-        new XElement(Ns + "KodWaluty", invoice.Currency),
-        new XElement(Ns + "P_1", Date(invoice.IssueDate)),
-        new XElement(Ns + "P_2", invoice.Number),
-        invoice.SaleDate == invoice.IssueDate || refs is not null ? null : new XElement(Ns + "P_6", Date(invoice.SaleDate)),
-        Buckets(refs is null ? invoice.VatSummary() : Corrections.Deltas(refs.CorrectedState.Lines, invoice.Lines)),
-        new XElement(Ns + "P_15", Money(invoice.TotalGross)),
-        Adnotacje(invoice, refs),
-        new XElement(Ns + "RodzajFaktury", invoice.InvoiceType.Code()),
-        refs is null ? null : CorrectionHeader(invoice, refs),
-        refs is null
-            ? invoice.Lines.OrderBy(l => l.LineNo).Select(l => Line(l, ExchangeRate(invoice)))
-            : Corrections.Rows(refs.CorrectedState.Lines, invoice.Lines).Select(r => Row(r, ExchangeRate(invoice))),
-        refs is null || invoice.TotalGross > 0 ? Platnosc(invoice) : null);
+    private static XElement Fa(IssuedInvoice invoice, Fa3Refs? refs)
+    {
+        var type = invoice.InvoiceType;
+        var isCorrection = type.IsCorrection();
+        var rate = ExchangeRate(invoice);
+        return new(Ns + "Fa",
+            new XElement(Ns + "KodWaluty", invoice.Currency),
+            new XElement(Ns + "P_1", Date(invoice.IssueDate)),
+            new XElement(Ns + "P_2", invoice.Number),
+            invoice.SaleDate == invoice.IssueDate || isCorrection ? null : new XElement(Ns + "P_6", Date(invoice.SaleDate)),
+            Buckets(invoice.Buckets(refs?.CorrectedState, refs?.Deducted)),
+            new XElement(Ns + "P_15", Money(invoice.TotalGross)),
+            type.IsAdvance() && rate is not null ? new XElement(Ns + "KursWalutyZ", Rate(rate.Value)) : null,
+            Adnotacje(invoice, refs),
+            new XElement(Ns + "RodzajFaktury", type.Code()),
+            isCorrection ? CorrectionHeader(invoice, refs!) : null,
+            refs?.AdvanceKsefNumbers?.Select(n => new XElement(Ns + "FakturaZaliczkowa", new XElement(Ns + "NrKSeFFaZaliczkowej", n))),
+            type switch
+            {
+                IssuedInvoiceType.Kor or IssuedInvoiceType.KorRoz => Corrections.Rows(refs!.CorrectedState!.Lines, invoice.Lines).Select(r => Row(r, rate)),
+                IssuedInvoiceType.Zal or IssuedInvoiceType.KorZal => null,
+                _ => invoice.Lines.OrderBy(l => l.LineNo).Select(l => Line(l, rate))
+            },
+            type switch
+            {
+                IssuedInvoiceType.Vat => Platnosc(invoice),
+                IssuedInvoiceType.Zal => new XElement(Ns + "Platnosc",
+                    new XElement(Ns + "Zaplacono", 1),
+                    new XElement(Ns + "DataZaplaty", Date(invoice.SaleDate)),
+                    new XElement(Ns + "FormaPlatnosci", PaymentForm(invoice.PaymentMethod))),
+                IssuedInvoiceType.KorZal => null,
+                _ => invoice.TotalGross > 0 ? Platnosc(invoice) : null
+            },
+            type switch
+            {
+                IssuedInvoiceType.Zal => Zamowienie(invoice.Lines, invoice.Lines.OrderBy(l => l.LineNo)
+                    .Select(l => new CorrectionRow(l.LineNo, false, null, l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate, l.NetAmount))),
+                IssuedInvoiceType.KorZal => Zamowienie(invoice.Lines, Advances.OrderRows(refs!.CorrectedState!, invoice)),
+                _ => null
+            });
+    }
+
+    private static XElement Zamowienie(IEnumerable<IssuedInvoiceLine> order, IEnumerable<CorrectionRow> rows) => new(Ns + "Zamowienie",
+        new XElement(Ns + "WartoscZamowienia", Money(Advances.OrderValue(order))),
+        rows.Select(r => new XElement(Ns + "ZamowienieWiersz",
+            new XElement(Ns + "NrWierszaZam", r.RowNo),
+            new XElement(Ns + "P_7Z", r.Name),
+            new XElement(Ns + "P_8AZ", r.Unit),
+            new XElement(Ns + "P_8BZ", r.Quantity.ToString("0.######", Inv)),
+            new XElement(Ns + "P_9AZ", Money(r.UnitNetPrice)),
+            new XElement(Ns + "P_11NettoZ", Money(r.NetAmount)),
+            new XElement(Ns + "P_11VatZ", Money(Math.Round(r.NetAmount * r.VatRate.Fraction(), 2, MidpointRounding.AwayFromZero))),
+            new XElement(Ns + "P_12Z", r.VatRate.Code()),
+            r.IsBefore ? new XElement(Ns + "StanPrzedZ", 1) : null)));
+
+    private static string Rate(decimal value) => value.ToString("0.######", Inv);
 
     private static decimal? ExchangeRate(IssuedInvoice invoice) => invoice.Currency == IssuedInvoice.DefaultCurrency ? null : invoice.ExchangeRate;
 
@@ -96,15 +138,19 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
         yield return invoice.CorrectionReason is null ? null : new XElement(Ns + "PrzyczynaKorekty", invoice.CorrectionReason);
         yield return invoice.CorrectionType is null ? null : new XElement(Ns + "TypKorekty", invoice.CorrectionType);
         yield return new XElement(Ns + "DaneFaKorygowanej",
-            new XElement(Ns + "DataWystFaKorygowanej", Date(refs.Original.IssueDate)),
+            new XElement(Ns + "DataWystFaKorygowanej", Date(refs.Original!.IssueDate)),
             new XElement(Ns + "NrFaKorygowanej", refs.Original.Number),
             new XElement(Ns + "NrKSeF", 1),
             new XElement(Ns + "NrKSeFFaKorygowanej", refs.Original.KsefNumber));
-        var before = refs.CorrectedState;
+        var before = refs.CorrectedState!;
         yield return Corrections.BuyerDataDiffers(invoice, before)
             ? new XElement(Ns + "Podmiot2K",
                 new XElement(Ns + "DaneIdentyfikacyjne", BuyerId(before), new XElement(Ns + "Nazwa", before.BuyerName)),
                 before.BuyerAddressLine1 is null ? null : Address(before.BuyerAddressLine1, before.BuyerAddressLine2, before.BuyerCountryCode ?? "PL"))
+            : null;
+        yield return refs.AmountBefore is { } amountBefore ? new XElement(Ns + "P_15ZK", Money(amountBefore)) : null;
+        yield return refs.AmountBefore is not null && invoice.InvoiceType == IssuedInvoiceType.KorZal && ExchangeRate(invoice) is { } rate
+            ? new XElement(Ns + "KursWalutyZK", Rate(rate))
             : null;
     }
 
@@ -151,7 +197,7 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
         new XElement(Ns + "P_9A", Money(line.UnitNetPrice)),
         new XElement(Ns + "P_11", Money(line.NetAmount)),
         new XElement(Ns + "P_12", line.VatRate.Code()),
-        exchangeRate is null ? null : new XElement(Ns + "KursWaluty", exchangeRate.Value.ToString("0.######", Inv)));
+        exchangeRate is null ? null : new XElement(Ns + "KursWaluty", Rate(exchangeRate.Value)));
 
     private static XElement Row(CorrectionRow row, decimal? exchangeRate) => new(Ns + "FaWiersz",
         new XElement(Ns + "NrWierszaFa", row.RowNo),
@@ -161,21 +207,23 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
         new XElement(Ns + "P_9A", Money(row.UnitNetPrice)),
         new XElement(Ns + "P_11", Money(row.NetAmount)),
         new XElement(Ns + "P_12", row.VatRate.Code()),
-        exchangeRate is null ? null : new XElement(Ns + "KursWaluty", exchangeRate.Value.ToString("0.######", Inv)),
+        exchangeRate is null ? null : new XElement(Ns + "KursWaluty", Rate(exchangeRate.Value)),
         row.IsBefore ? new XElement(Ns + "StanPrzed", 1) : null);
 
     private static XElement Platnosc(IssuedInvoice invoice) => new(Ns + "Platnosc",
         new XElement(Ns + "TerminPlatnosci", new XElement(Ns + "Termin", Date(invoice.DueDate))),
-        new XElement(Ns + "FormaPlatnosci", invoice.PaymentMethod switch
-        {
-            PaymentMethod.Cash => 1,
-            PaymentMethod.Card => 2,
-            _ => 6
-        }),
+        new XElement(Ns + "FormaPlatnosci", PaymentForm(invoice.PaymentMethod)),
         invoice.PaymentMethod != PaymentMethod.Transfer || (invoice.SellerIban ?? invoice.SellerBankAccount) is not { } account ? null : new XElement(Ns + "RachunekBankowy",
             new XElement(Ns + "NrRB", account),
             invoice.SellerBankSwift is null ? null : new XElement(Ns + "SWIFT", invoice.SellerBankSwift),
             invoice.SellerBankName is null ? null : new XElement(Ns + "NazwaBanku", invoice.SellerBankName)));
+
+    private static int PaymentForm(PaymentMethod method) => method switch
+    {
+        PaymentMethod.Cash => 1,
+        PaymentMethod.Card => 2,
+        _ => 6
+    };
 
     private static string Money(decimal value) => value.ToString("0.00", Inv);
 
