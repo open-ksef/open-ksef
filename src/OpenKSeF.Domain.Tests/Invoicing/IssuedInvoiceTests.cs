@@ -6,7 +6,7 @@ namespace OpenKSeF.Domain.Tests.Invoicing;
 public class IssuedInvoiceTests
 {
     private const string ValidBuyerNip = "3333333333";
-    private const string ValidNrb = "61109010140000071219812874";
+    private const string ValidNrb = "93000000002026111700000815";
     private static readonly DateOnly Today = new(2026, 11, 3);
     private static readonly DateTime Now = new(2026, 11, 3, 10, 0, 0, DateTimeKind.Utc);
 
@@ -390,10 +390,10 @@ public class IssuedInvoiceTests
     {
         var invoice = ValidDraft();
         invoice.Issue(CompleteProfile(), "1234563218", "FV/1/11/2026", Now);
-        invoice.AttachSentXml([1, 2, 3], "hash", "test", "https://qr-test.ksef.mf.gov.pl/invoice/x");
+        invoice.AttachSentXml([1, 2, 3], "test", "https://qr-test.ksef.mf.gov.pl/invoice/x");
 
         invoice.MarkSendStarted("S-1", Now.AddSeconds(1));
-        Assert.Throws<InvoiceStateException>(() => invoice.AttachSentXml([9], "other", "test", null));
+        Assert.Throws<InvoiceStateException>(() => invoice.AttachSentXml([9], "test", null));
         invoice.RecordElementRef("E-1", Now.AddSeconds(2));
         invoice.ScheduleRetry("KSeF nie odpowiada, ponowimy wysyłkę", Now.AddSeconds(20), Now.AddSeconds(2));
         invoice.MarkAccepted("1234563218-20261103-0100A0B0C0D0-E1", Now.AddSeconds(30), 200, "Sukces", Now.AddSeconds(31));
@@ -420,7 +420,7 @@ public class IssuedInvoiceTests
     {
         var invoice = ValidDraft();
         invoice.Issue(CompleteProfile(), "1234563218", "FV/1/11/2026", Now);
-        invoice.AttachSentXml([1, 2, 3], "hash", "test", null);
+        invoice.AttachSentXml([1, 2, 3], "test", null);
         invoice.MarkSendStarted("S-2", Now.AddSeconds(1));
         invoice.RecordElementRef("E-2", Now.AddSeconds(2));
         DateTime? acceptedAt = timeKnown ? Now.AddDays(-1) : null;
@@ -451,7 +451,7 @@ public class IssuedInvoiceTests
         var invoice = ValidDraft();
 
         Assert.Throws<InvoiceStateException>(() => invoice.MarkSendStarted("S", Now));
-        Assert.Throws<InvoiceStateException>(() => invoice.AttachSentXml([1], "h", "test", null));
+        Assert.Throws<InvoiceStateException>(() => invoice.AttachSentXml([1], "test", null));
         Assert.Throws<InvoiceStateException>(() => invoice.MarkAccepted("K", Now, 200, null, Now));
         Assert.Throws<InvoiceStateException>(() => invoice.AttachUpo([1], Now));
     }

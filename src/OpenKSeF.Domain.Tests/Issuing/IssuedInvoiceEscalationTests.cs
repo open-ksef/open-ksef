@@ -28,7 +28,7 @@ public class IssuedInvoiceEscalationTests
     {
         await using var db = NewDb();
         var invoice = Fa3InvoiceWriterTests.Issued(i => i.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]), now: IssuedAt);
-        invoice.AttachSentXml([1], "hash", "test", null);
+        invoice.AttachSentXml([1], "test", null);
         arrange?.Invoke(invoice);
         db.IssuedInvoices.Add(invoice);
         await db.SaveChangesAsync();

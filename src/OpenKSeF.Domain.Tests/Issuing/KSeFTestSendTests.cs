@@ -406,13 +406,13 @@ public class KSeFTestSendTests(ITestOutputHelper output)
                 sellerNip: SellerNip, buyerNip: buyerNip ?? env["KSEF_TEST_NIP"], number: number, tenantId: Guid.NewGuid(), now: DateTime.UtcNow);
             if (xml is not null)
             {
-                invoice.AttachSentXml(xml, Convert.ToHexString(SHA256.HashData(xml)), "test", null);
+                invoice.AttachSentXml(xml, "test", null);
                 return invoice;
             }
 
             var written = new Fa3InvoiceWriter().Write(invoice, DateTime.UtcNow);
             Assert.Empty(written.SchemaErrors);
-            invoice.AttachSentXml(written.Xml, Convert.ToHexString(SHA256.HashData(written.Xml)), "test", null);
+            invoice.AttachSentXml(written.Xml, "test", null);
             return invoice;
         }
 

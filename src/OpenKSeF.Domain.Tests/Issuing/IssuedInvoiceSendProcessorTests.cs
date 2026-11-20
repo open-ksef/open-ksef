@@ -56,7 +56,7 @@ public class IssuedInvoiceSendProcessorTests
                 ]
             });
         var invoice = Fa3InvoiceWriterTests.Issued(i => i.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]), tenantId: tenantId);
-        invoice.AttachSentXml(Xml, Convert.ToHexString(SHA256.HashData(Xml)), environment, null);
+        invoice.AttachSentXml(Xml, environment, null);
         arrange?.Invoke(invoice);
         db.IssuedInvoices.Add(invoice);
         await db.SaveChangesAsync();
@@ -546,7 +546,7 @@ public class IssuedInvoiceSendProcessorTests
     public async Task Duplicate440_AfterResend_SessionNotListable_PrefixOrAttributeOrderOnly_StaysSending(string _, string sent, string original)
     {
         var sentBytes = Encoding.UTF8.GetBytes(sent);
-        var id = await SeedAsync(i => i.AttachSentXml(sentBytes, Convert.ToHexString(SHA256.HashData(sentBytes)), "test", null));
+        var id = await SeedAsync(i => i.AttachSentXml(sentBytes, "test", null));
         await using (var db = NewDb())
         {
             var invoice = await db.IssuedInvoices.SingleAsync(i => i.Id == id);
@@ -571,7 +571,7 @@ public class IssuedInvoiceSendProcessorTests
     public async Task Duplicate440_AfterResend_SessionNotListable_SameNamesOtherValue_Rejected()
     {
         var sentBytes = Encoding.UTF8.GetBytes("<Faktura><P a=\"1\">x</P></Faktura>");
-        var id = await SeedAsync(i => i.AttachSentXml(sentBytes, Convert.ToHexString(SHA256.HashData(sentBytes)), "test", null));
+        var id = await SeedAsync(i => i.AttachSentXml(sentBytes, "test", null));
         await using (var db = NewDb())
         {
             var invoice = await db.IssuedInvoices.SingleAsync(i => i.Id == id);

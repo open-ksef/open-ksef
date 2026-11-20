@@ -784,10 +784,6 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<byte[]>("SentXml")
                         .HasColumnType("bytea");
 
-                    b.Property<string>("SentXmlSha256")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
                     b.Property<bool>("SplitPayment")
                         .HasColumnType("boolean");
 
