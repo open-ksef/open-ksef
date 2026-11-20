@@ -97,7 +97,7 @@ Numbering patterns must contain `{RRRR}` (`SP-VAL-007`), because the counter res
 ```jsonc
 // SellerProfileRequest
 { "legalName": "OpenKSeF Test A sp. z o.o.", "addressLine1": "ul. Prosta 1", "addressLine2": "00-001 Warszawa",
-  "bankAccount": "61109010140000071219812874", "cashAccounting": false,
+  "bankAccount": "93000000002026111700000815", "cashAccounting": false,
   "numberingPattern": "FV/{nr}/{MM}/{RRRR}", "nextNumber": 57, "nextNumberPeriod": "2026-11",     // these two optional
   "bankSwift": "TESTPLPW", "bankName": "...", "foreignBankAccount": "GB82WEST12345698765432", "foreignBankSwift": "TESTGB2L", "foreignBankName": "..." }  // optional: null keeps, "" clears
 // SellerProfileResponse = request fields +
@@ -105,7 +105,7 @@ Numbering patterns must contain `{RRRR}` (`SP-VAL-007`), because the counter res
 
 // NipLookupResponse
 { "nip": "1234567890", "name": "...", "addressLine1": "ul. Prosta 1", "addressLine2": "00-001 Warszawa",
-  "vatStatus": "Czynny", "bankAccounts": ["61109010140000071219812874"] }                          // Czynny|Zwolniony|Niezarejestrowany
+  "vatStatus": "Czynny", "bankAccounts": ["93000000002026111700000815"] }                          // Czynny|Zwolniony|Niezarejestrowany
 
 // IssuedInvoiceDraftRequest (no seller fields; unknown fields ignored)
 { "buyer": { "kind": "Company", "nip": "1234567890", "name": "...", "addressLine1": "...", "addressLine2": "...",  // kind Company|Person|Foreign; Person, Foreign: nip null

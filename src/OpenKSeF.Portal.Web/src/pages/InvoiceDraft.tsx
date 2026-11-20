@@ -129,13 +129,24 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   // Not invoice.version: a refetch moves the prop past the content this form holds, and sending that would hide the conflict.
   const version = useRef(invoice?.version)
   const [errors, setErrors] = useState<ValidationIssue[]>([])
+  const [issueBlocked, setIssueBlocked] = useState(false)
   const [warnings, setWarnings] = useState<ValidationIssue[]>(invoice?.warnings ?? [])
   const [failure, setFailure] = useState<string | null>(null)
   const [confirmFor, setConfirmFor] = useState<IssuedInvoiceResponse | null>(null)
   const [pastDate, setPastDate] = useState<{ target: IssuedInvoiceResponse; message: string } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [companyNotice] = useState(() => {
+    const noticeState = location.state as { companyNotice?: string; companyId?: string } | null
+    return noticeState?.companyId === tenantId ? noticeState.companyNotice : undefined
+  })
   const issueOpener = useRef<HTMLButtonElement | null>(null)
   const mounted = useRef(true)
+
+  useEffect(() => {
+    if ((location.state as { companyNotice?: string } | null)?.companyNotice) {
+      navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true })
+    }
+  }, [location, navigate])
 
   useEffect(() => {
     mounted.current = true
@@ -151,7 +162,9 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
       vatRate: line.vatRate,
     })),
   )
-  const fieldErrors = toFieldErrors(errors)
+  const blockingError = issueBlocked ? (missingTaxIdError(form) ?? missingRateError(form)) : null
+  const shownErrors = blockingError ? [blockingError, ...errors] : errors
+  const fieldErrors = toFieldErrors(shownErrors)
 
   async function saveDraft(stay = false): Promise<IssuedInvoiceResponse> {
     const snapshot = JSON.stringify(form)
@@ -166,6 +179,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
       baseline.current = snapshot
     }
     setErrors([])
+    setIssueBlocked(false)
     setFailure(null)
     setWarnings(saved.warnings)
     queryClient.setQueryData(['issued-invoice', tenantId, saved.id], saved)
@@ -264,8 +278,6 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   const issuing = prepareIssue.isPending || issue.isPending
   const busy = save.isPending || issuing || remove.isPending
   const expectedNumber = form.issueDate.startsWith(profile.nextNumberPeriod) ? profile.nextNumberPreview : null
-  const noticeState = location.state as { companyNotice?: string; companyId?: string } | null
-  const companyNotice = noticeState?.companyId === tenantId ? noticeState.companyNotice : undefined
   const totalText = formatMoney(totals.totalGross, form.currency)
   const isForeign = form.buyer.kind === 'Foreign'
   const title = invoice?.status === 'Rejected' ? `Popraw fakturę ${invoice.number ?? ''}`.trim() : invoice ? 'Szkic faktury' : 'Nowa faktura'
@@ -276,9 +288,9 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
       disabled={busy || !profile.isComplete || !canSubmit}
       onClick={(event) => {
         issueOpener.current = event.currentTarget
-        const missing = missingTaxIdError(form) ?? missingRateError(form)
-        if (missing) {
-          setErrors([missing])
+        if (missingTaxIdError(form) ?? missingRateError(form)) {
+          setErrors([])
+          setIssueBlocked(true)
           return
         }
         prepareIssue.mutate()
@@ -343,7 +355,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
           </div>
         )}
         {failure ? <ErrorBanner message={failure} /> : null}
-        <ValidationSummary errors={errors} warnings={warnings} />
+        <ValidationSummary errors={shownErrors} warnings={warnings} />
 
         <BuyerSection value={form.buyer} fieldErrors={fieldErrors} onChange={(buyer) => setForm(withBuyer(form, buyer))} />
         <LinesTable

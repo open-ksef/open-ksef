@@ -53,7 +53,7 @@ const profile: SellerProfileResponse = {
   legalName: 'OpenKSeF Test A sp. z o.o.',
   addressLine1: 'ul. Prosta 1',
   addressLine2: '00-001 Warszawa',
-  bankAccount: '61109010140000071219812874',
+  bankAccount: '93000000002026111700000815',
   cashAccounting: false,
   numberingPattern: 'FV/{nr}/{MM}/{RRRR}',
   nextNumber: 1,
@@ -365,6 +365,26 @@ describe('foreign invoices in the portal', () => {
 
       expect(container.querySelector('#buyer-foreignId-error')?.textContent).toContain('Bez numeru podatkowego')
       expect(createIssuedInvoice).not.toHaveBeenCalled()
+
+      await act(async () => typeInto(input('buyer-foreignId'), 'GB-123'))
+
+      expect(container.querySelector('#buyer-foreignId-error')).toBeNull()
+      expect(container.textContent).not.toContain('Podaj numer podatkowy nabywcy')
+    })
+
+    it('clears the empty-rate block when a rate is typed, without a save', async () => {
+      vi.mocked(getExchangeRateProposal).mockRejectedValue(new Error('down'))
+      await openForeignForm('DE')
+      await act(async () => choose(select('invoice-currency'), 'GBP'))
+      await waitFor(() => container.textContent?.includes('Brak kursu NBP') ?? false)
+      await act(async () => byText('Wystaw i wyślij do KSeF')!.click())
+      expect(container.querySelector('#exchange-rate-error')?.textContent).toContain('Podaj kurs waluty')
+
+      await act(async () => typeInto(input('exchange-rate'), '5,2'))
+
+      expect(container.querySelector('#exchange-rate-error')).toBeNull()
+      expect(container.textContent).not.toContain('Podaj kurs waluty')
+      expect(createIssuedInvoice).not.toHaveBeenCalled()
     })
 
     it.each(['test', 'production'] as const)('blocks issuing on %s while the rate is empty, and the rate is on screen before anything is sent', async (environment) => {
@@ -388,6 +408,7 @@ describe('foreign invoices in the portal', () => {
 
       await act(async () => byText('Użyj kursu NBP')!.click())
       expect(input('exchange-rate').value).toBe('5,1234')
+      expect(container.textContent).not.toContain('Podaj kurs waluty')
       await act(async () => byText('Wystaw i wyślij do KSeF')!.click())
       await waitFor(() => vi.mocked(updateIssuedInvoice).mock.calls.length === 1)
       expect(vi.mocked(updateIssuedInvoice).mock.calls[0][2].exchangeRate).toBe(5.1234)
@@ -464,7 +485,7 @@ describe('foreign invoices in the portal', () => {
 
     it('shows the IBAN built from the main account, SWIFT and bank', async () => {
       await openForeignForm()
-      expect(plain(container.querySelector('.inv-account')?.textContent)).toContain('PL61 1090 1014 0000 0712 1981 2874')
+      expect(plain(container.querySelector('.inv-account')?.textContent)).toContain('PL93 0000 0000 2026 1117 0000 0815')
       expect(plain(container.querySelector('.inv-account')?.textContent)).toContain('SWIFT TESTPLPW')
       expect(plain(container.querySelector('.inv-account')?.textContent)).toContain('Bank Główny')
     })

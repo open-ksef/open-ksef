@@ -8,7 +8,7 @@ namespace OpenKSeF.Domain.Tests.Services;
 
 public class TransferDetailsServiceTests
 {
-    private const string ValidAccount = "PL61 1090 1014 0000 0712 1981 2874";
+    private const string ValidAccount = "PL93 0000 0000 2026 1117 0000 0815";
     private const string CorrectionMessage = "Faktura korygująca: kwota to różnica. Sprawdź, czy jest coś do zapłaty.";
     private const string TypeMessage = "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Dostęp do KSeF i pobieranie).";
     private const string AccountMessage = "Brak poprawnego numeru rachunku na fakturze.";
@@ -117,7 +117,7 @@ public class TransferDetailsServiceTests
 
         Assert.True(data.QrAvailable);
         Assert.Null(data.QrMessage);
-        Assert.Equal("1234567890|PL|61109010140000071219812874|123456|Odbiorca 1|FV 1/2026|||", _qr.BuildZbpPayload(data));
+        Assert.Equal("1234567890|PL|93000000002026111700000815|123456|Odbiorca 1|FV 1/2026|||", _qr.BuildZbpPayload(data));
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class TransferDetailsServiceTests
 
         var payload = _qr.BuildZbpPayload(Data(invoice));
 
-        Assert.Equal("1234567890|PL|61109010140000071219812874|123456|Firma Testowa Spolka|FV 1/2026|||", payload);
+        Assert.Equal("1234567890|PL|93000000002026111700000815|123456|Firma Testowa Spolka|FV 1/2026|||", payload);
     }
 
     [Fact]
@@ -252,8 +252,8 @@ public class TransferDetailsServiceTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    [InlineData("PL62 1090 1014 0000 0712 1981 2874")]
-    [InlineData("DE61109010140000071219812874")]
+    [InlineData("PL94 0000 0000 2026 1117 0000 0815")]
+    [InlineData("DE93000000002026111700000815")]
     public void Qr_NoOrInvalidAccount_NoQr_CopyStillWorks(string? account)
     {
         var invoice = MakeInvoice(vendorBankAccount: account);
@@ -632,7 +632,7 @@ public class TransferDetailsServiceTests
     public void Qr_FactorAccountInvalid_NoQr_AccountMessage()
     {
         var invoice = MakeInvoice(vendorBankAccount: ValidAccount);
-        invoice.FactorBankAccount = "PL62 1090 1014 0000 0712 1981 2874";
+        invoice.FactorBankAccount = "PL94 0000 0000 2026 1117 0000 0815";
         invoice.FactorNip = "1111111111";
         invoice.FactorName = "Faktor Testowy SA";
 

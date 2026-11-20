@@ -54,7 +54,7 @@ public class IssuedInvoicesApiTests : IDisposable
         if (withProfile)
         {
             var profile = await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", new SellerProfileRequest(
-                "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false,
+                "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "93000000002026111700000815", false,
                 "FV/{nr}/{MM}/{RRRR}", nextNumber, nextNumberPeriod));
             profile.EnsureSuccessStatusCode();
         }
@@ -132,7 +132,7 @@ public class IssuedInvoicesApiTests : IDisposable
     private async Task SetPatternAsync(Guid tenantId, string pattern)
     {
         var profile = await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", new SellerProfileRequest(
-            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, pattern, null, null));
+            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "93000000002026111700000815", false, pattern, null, null));
         profile.EnsureSuccessStatusCode();
     }
 
@@ -276,13 +276,13 @@ public class IssuedInvoicesApiTests : IDisposable
         await IssueAsync(tenantId, draft.Id);
 
         await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", new SellerProfileRequest(
-            "Nowa nazwa", "ul. Nowa 9", null, "61109010140000071219812874", true, "FV/{nr}/{MM}/{RRRR}"));
+            "Nowa nazwa", "ul. Nowa 9", null, "93000000002026111700000815", true, "FV/{nr}/{MM}/{RRRR}"));
 
         var stored = await LoadAsync(draft.Id);
         Assert.Equal(nip, stored.SellerNip);
         Assert.Equal("OpenKSeF Test A sp. z o.o.", stored.SellerName);
         Assert.Equal("ul. Prosta 1", stored.SellerAddressLine1);
-        Assert.Equal("61109010140000071219812874", stored.SellerBankAccount);
+        Assert.Equal("93000000002026111700000815", stored.SellerBankAccount);
         Assert.False(stored.SellerCashAccounting);
 
         var reloaded = await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{draft.Id}");
@@ -368,7 +368,6 @@ public class IssuedInvoicesApiTests : IDisposable
         var stored = await LoadAsync(draft.Id);
         Assert.Equal(IssuedInvoiceStatus.Queued, stored.Status);
         Assert.NotEmpty(stored.SentXml!);
-        Assert.Equal(Convert.ToHexString(SHA256.HashData(stored.SentXml!)), stored.SentXmlSha256);
         Assert.Equal("test", stored.KsefEnvironment);
         Assert.Contains("<P_2>FV/1/11/2026</P_2>", System.Text.Encoding.UTF8.GetString(stored.SentXml!));
 
@@ -659,7 +658,7 @@ public class IssuedInvoicesApiTests : IDisposable
     public async Task StoredPatternWithoutYear_StaysReadable_CollidesNextYear_UntilPatternFixed(string pattern, string firstNumber)
     {
         const string legalName = "OpenKSeF Test A sp. z o.o.";
-        const string nrb = "61109010140000071219812874";
+        const string nrb = "93000000002026111700000815";
         var tenantId = await CreateTenantAsync();
         await WithDbAsync(async db =>
         {
@@ -1043,7 +1042,7 @@ public class IssuedInvoicesApiTests : IDisposable
         var draft = await CreateDraftAsync(tenantId);
         Assert.Equal("test", draft.Ksef.Environment);
         await IssueAsync(tenantId, draft.Id);
-        await MutateAsync(draft.Id, invoice => invoice.AttachSentXml(invoice.SentXml!, invoice.SentXmlSha256!, environment, invoice.VerificationUrl));
+        await MutateAsync(draft.Id, invoice => invoice.AttachSentXml(invoice.SentXml!, environment, invoice.VerificationUrl));
         await MutateAsync(draft.Id, MarkAccepted);
 
         var accepted = await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{draft.Id}");
@@ -1430,7 +1429,7 @@ public class IssuedInvoicesApiTests : IDisposable
         await IssueAsync(tenantId, draft.Id);
         await MutateAsync(draft.Id, invoice =>
         {
-            invoice.AttachSentXml(invoice.SentXml!, invoice.SentXmlSha256!, environment, null);
+            invoice.AttachSentXml(invoice.SentXml!, environment, null);
             change(invoice);
         });
         return draft.Id;

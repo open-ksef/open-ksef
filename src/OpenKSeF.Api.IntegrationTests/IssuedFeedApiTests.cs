@@ -1,10 +1,16 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Api.Models;
+using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
@@ -389,7 +395,7 @@ public class IssuedFeedApiTests : IDisposable
         var tenantId = await CreateTenantAsync();
         var sold = Synced(tenantId, "KSEF-SOLD-DETAIL", DateTime.UtcNow.AddDays(-40));
         sold.DueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
-        sold.VendorBankAccount = "PL61109010140000071219812874";
+        sold.VendorBankAccount = "PL93000000002026111700000815";
         await WithDbAsync(async db =>
         {
             db.InvoiceHeaders.Add(sold);
@@ -429,6 +435,94 @@ public class IssuedFeedApiTests : IDisposable
         var details = await _client.GetFromJsonAsync<JsonObject>($"/api/tenants/{tenantId}/invoices/{bought.Id}");
 
         Assert.True(details!["isOverdue"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task ClientCancelledRequest_Returns499_LogsNoError()
+    {
+        var tenantId = await CreateTenantAsync();
+        var rates = new BlockingExchangeRateSource();
+        var outcome = new TaskCompletionSource<(int Status, Exception? Error)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var errors = new LogCapture(LogLevel.Error);
+        using var factory = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+        {
+            s.AddSingleton<IExchangeRateSource>(rates);
+            s.AddSingleton<ILoggerFactory>(new LoggerFactory([errors]));
+            s.AddSingleton<IStartupFilter>(new OutcomeFilter(outcome));
+        }));
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = _client.DefaultRequestHeaders.Authorization;
+        using var cts = new CancellationTokenSource();
+
+        var request = client.GetAsync($"/api/tenants/{tenantId}/issued-invoices/exchange-rate?currency=EUR", cts.Token);
+        await rates.Entered.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request);
+        var (status, error) = await outcome.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Null(error);
+        Assert.Equal(StatusCodes.Status499ClientClosedRequest, status);
+        Assert.Empty(errors.Entries);
+    }
+
+    [Fact]
+    public async Task ServerSideCancellation_WithoutClientAbort_StaysA500()
+    {
+        var tenantId = await CreateTenantAsync();
+        var errors = new LogCapture(LogLevel.Error);
+        using var kestrel = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+        {
+            s.AddSingleton<IExchangeRateSource>(new CancelledExchangeRateSource());
+            s.AddSingleton<ILoggerFactory>(new LoggerFactory([errors]));
+        }));
+        kestrel.UseKestrel(0);
+        kestrel.StartServer();
+        using var client = kestrel.CreateClient();
+        client.DefaultRequestHeaders.Authorization = _client.DefaultRequestHeaders.Authorization;
+
+        var response = await client.GetAsync($"/api/tenants/{tenantId}/issued-invoices/exchange-rate?currency=EUR");
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Contains(errors.Entries, e => e.Contains(nameof(OperationCanceledException)));
+    }
+
+    private sealed class CancelledExchangeRateSource : IExchangeRateSource
+    {
+        public Task<ExchangeRateQuote?> LatestMidBeforeAsync(string currency, DateOnly date, CancellationToken ct = default) =>
+            throw new OperationCanceledException();
+    }
+
+    private sealed class BlockingExchangeRateSource : IExchangeRateSource
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<ExchangeRateQuote?> LatestMidBeforeAsync(string currency, DateOnly date, CancellationToken ct = default)
+        {
+            Entered.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+            return null;
+        }
+    }
+
+    private sealed class OutcomeFilter(TaskCompletionSource<(int Status, Exception? Error)> outcome) : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, inner) =>
+            {
+                try
+                {
+                    await inner();
+                    outcome.TrySetResult((context.Response.StatusCode, null));
+                }
+                catch (Exception e)
+                {
+                    outcome.TrySetResult((context.Response.StatusCode, e));
+                    throw;
+                }
+            });
+            next(app);
+        };
     }
 
     private sealed record TenantIdDto(Guid Id);

@@ -20,7 +20,7 @@ namespace OpenKSeF.Api.Tests.Controllers;
 public class TransferAfterFullResyncTests : IDisposable
 {
     private const string UserId = "user-1";
-    private const string Account = "PL61 1090 1014 0000 0712 1981 2874";
+    private const string Account = "PL93 0000 0000 2026 1117 0000 0815";
     private const string VendorNip = "1111111111";
 
     private readonly ApplicationDbContext _db = new(

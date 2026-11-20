@@ -66,7 +66,6 @@ public sealed class IssuedInvoice
 
     public string? KsefEnvironment { get; private set; }
     public byte[]? SentXml { get; private set; }
-    public string? SentXmlSha256 { get; private set; }
     public string? VerificationUrl { get; private set; }
     public string? KsefSessionRef { get; private set; }
     public string? KsefElementRef { get; private set; }
@@ -256,7 +255,6 @@ public sealed class IssuedInvoice
         Number = assigned;
         Status = IssuedInvoiceStatus.Queued;
         SentXml = null;
-        SentXmlSha256 = null;
         VerificationUrl = null;
         KsefSessionRef = null;
         KsefElementRef = null;
@@ -271,11 +269,10 @@ public sealed class IssuedInvoice
         UpdatedAt = now;
     }
 
-    public void AttachSentXml(byte[] xml, string sha256, string ksefEnvironment, string? verificationUrl)
+    public void AttachSentXml(byte[] xml, string ksefEnvironment, string? verificationUrl)
     {
         EnsureStatus(IssuedInvoiceStatus.Queued);
         SentXml = xml;
-        SentXmlSha256 = sha256;
         KsefEnvironment = ksefEnvironment;
         VerificationUrl = verificationUrl;
     }

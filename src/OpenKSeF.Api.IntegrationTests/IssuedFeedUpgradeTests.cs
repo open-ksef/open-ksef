@@ -25,7 +25,7 @@ public sealed class IssuedFeedUpgradeTests : IAsyncLifetime
     private const string TenantNip = "1234563218";
     private const string PaidNumber = "KSEF-PAID";
     private const string UnpaidNumber = "KSEF-UNPAID";
-    private const string Account = "PL61109010140000071219812874";
+    private const string Account = "PL93000000002026111700000815";
 
     private const string RollbackSql = """
         BEGIN;

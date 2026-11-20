@@ -72,7 +72,7 @@ public sealed class InvoiceIssuingMigrationTests : IAsyncLifetime
             await AssertSyncedDataIntactAsync(db);
 
             var profile = new SellerProfile(tenantId);
-            profile.Update("Sprzedawca", "ul. Prosta 1", null, "61 1090 1014 0000 0712 1981 2874", false, InvoiceNumbering.DefaultPattern);
+            profile.Update("Sprzedawca", "ul. Prosta 1", null, "93 0000 0000 2026 1117 0000 0815", false, InvoiceNumbering.DefaultPattern);
             db.SellerProfiles.Add(profile);
             db.IssuedInvoices.Add(NewInvoice(tenantId));
             await db.SaveChangesAsync();
@@ -86,7 +86,7 @@ public sealed class InvoiceIssuingMigrationTests : IAsyncLifetime
             Assert.Equal([VatRate.Rate23, VatRate.Exempt, VatRate.ZeroDomestic], invoice.Lines.OrderBy(l => l.LineNo).Select(l => l.VatRate));
             Assert.Equal(1.5m, invoice.Lines.Single(l => l.LineNo == 1).Quantity);
             Assert.Equal((255m, 11.50m, 266.50m), (invoice.TotalNet, invoice.TotalVat, invoice.TotalGross));
-            Assert.Equal("61109010140000071219812874", (await db.SellerProfiles.SingleAsync()).BankAccount);
+            Assert.Equal("93000000002026111700000815", (await db.SellerProfiles.SingleAsync()).BankAccount);
 
             invoice.ReplaceLines([("Nowa", null, 1, 10m, VatRate.Rate8), ("Druga", null, 1, 10m, VatRate.Rate8)]);
             await db.SaveChangesAsync();
@@ -135,7 +135,7 @@ public sealed class InvoiceIssuingMigrationTests : IAsyncLifetime
         }
 
         var profile = new SellerProfile(tenantId);
-        profile.Update("Sprzedawca", "ul. Prosta 1", null, "61109010140000071219812874", false, InvoiceNumbering.DefaultPattern);
+        profile.Update("Sprzedawca", "ul. Prosta 1", null, "93000000002026111700000815", false, InvoiceNumbering.DefaultPattern);
         await using (var db = NewContext())
         {
             var invoices = await db.IssuedInvoices.Include(i => i.Lines).ToListAsync();

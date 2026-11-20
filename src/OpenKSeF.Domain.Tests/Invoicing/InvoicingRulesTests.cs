@@ -39,10 +39,10 @@ public class InvoicingRulesTests
     }
 
     [Theory]
-    [InlineData("61109010140000071219812874", true)]
-    [InlineData("61109010140000071219812875", false)]
-    [InlineData("6110901014000007121981287", false)]
-    [InlineData("6110901014000007121981287A", false)]
+    [InlineData("93000000002026111700000815", true)]
+    [InlineData("93000000002026111700000816", false)]
+    [InlineData("9300000000202611170000081", false)]
+    [InlineData("9300000000202611170000081A", false)]
     [InlineData(null, false)]
     public void Nrb_IsValid_ChecksMod97AndDigitsOnly(string? nrb, bool expected)
     {
@@ -52,7 +52,7 @@ public class InvoicingRulesTests
     [Fact]
     public void Nrb_Normalize_StripsSpacesAndDashes()
     {
-        Assert.Equal("61109010140000071219812874", Nrb.Normalize("61 1090 1014-0000 0712 1981 2874"));
+        Assert.Equal("93000000002026111700000815", Nrb.Normalize("93 0000 0000-2026 1117 0000 0815"));
     }
 
     [Theory]

@@ -73,10 +73,10 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
         invoice.SetBuyer(BuyerKind.Company, "3333333333", "Nabywca", "ul. Długa 2", "00-002 Warszawa");
         invoice.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
         var profile = new SellerProfile(tenantId);
-        profile.Update("Sprzedawca", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, InvoiceNumbering.DefaultPattern);
+        profile.Update("Sprzedawca", "ul. Prosta 1", "00-001 Warszawa", "93000000002026111700000815", false, InvoiceNumbering.DefaultPattern);
         invoice.Issue(profile, "4444444444", number, dueAt);
         var xml = Encoding.UTF8.GetBytes(number);
-        invoice.AttachSentXml(xml, Convert.ToHexString(SHA256.HashData(xml)), "test", null);
+        invoice.AttachSentXml(xml, "test", null);
         arrange?.Invoke(invoice);
 
         await using var db = NewContext();
@@ -190,7 +190,7 @@ public sealed class IssuedInvoiceSendProcessorTenantDeleteTests : IAsyncLifetime
         var xml = Fa(number);
         var id = await SeedInvoiceAsync(tenant, number, Now, invoice =>
         {
-            invoice.AttachSentXml(xml, Convert.ToHexString(SHA256.HashData(xml)), "test", null);
+            invoice.AttachSentXml(xml, "test", null);
             invoice.MarkSendStarted("sess-1", Now);
             invoice.MarkSendStarted("sess-2", Now);
             invoice.RecordElementRef("el-2", Now);

@@ -194,7 +194,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(i => i.TotalVat).HasPrecision(18, 2);
             entity.Property(i => i.TotalGross).HasPrecision(18, 2);
             entity.Property(i => i.KsefEnvironment).HasMaxLength(16);
-            entity.Property(i => i.SentXmlSha256).HasMaxLength(64);
             entity.Property(i => i.VerificationUrl).HasMaxLength(512);
             entity.Property(i => i.KsefSessionRef).HasMaxLength(100);
             entity.Property(i => i.KsefElementRef).HasMaxLength(100);

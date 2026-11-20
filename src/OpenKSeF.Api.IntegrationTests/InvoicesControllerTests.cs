@@ -17,7 +17,7 @@ namespace OpenKSeF.Api.IntegrationTests;
 [Collection(TestcontainersCollection.Name)]
 public class InvoicesControllerTests : IAsyncLifetime
 {
-    private const string ValidAccount = "PL61 1090 1014 0000 0712 1981 2874";
+    private const string ValidAccount = "PL93 0000 0000 2026 1117 0000 0815";
 
     private readonly TestcontainersFixture _fixture;
     private readonly string _database = $"invoices_ctrl_{Guid.NewGuid():N}";
@@ -208,7 +208,7 @@ public class InvoicesControllerTests : IAsyncLifetime
 
     [Theory]
     [InlineData(null, "Vat", "Brak poprawnego numeru rachunku na fakturze.")]
-    [InlineData("PL62 1090 1014 0000 0712 1981 2874", "Vat", "Brak poprawnego numeru rachunku na fakturze.")]
+    [InlineData("PL94 0000 0000 2026 1117 0000 0815", "Vat", "Brak poprawnego numeru rachunku na fakturze.")]
     [InlineData(ValidAccount, "Kor", "Faktura korygująca: kwota to różnica. Sprawdź, czy jest coś do zapłaty.")]
     [InlineData(ValidAccount, null, "Nie można ustalić rodzaju faktury. Sprawdź kwotę na fakturze. Aby uzyskać kod QR, uruchom pełną resynchronizację (portal: Firma, zakładka Dostęp do KSeF i pobieranie).")]
     public async Task GetTransferDetails_Blocked_NullQrWithMessageAndText(string? account, string? invoiceType, string message)

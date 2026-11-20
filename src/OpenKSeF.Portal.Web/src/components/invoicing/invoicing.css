@@ -565,6 +565,11 @@ fieldset.inv-card {
   font-weight: 500;
 }
 
+.inv-chips button:not([aria-pressed='true']):not(:disabled):hover {
+  background: var(--ui-surface-2);
+  border-color: var(--ui-primary);
+}
+
 .inv-chips button[aria-pressed='true'] {
   background: var(--ui-primary-subtle);
   border-color: var(--ui-primary);

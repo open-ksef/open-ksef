@@ -38,6 +38,7 @@
         <#nested "socialProviders">
         <#if displayInfo><#nested "info"></#if>
     </div>
+    <p class="auth-legal"><a href="${privacyUrl()}">Prywatność</a></p>
 </main>
 </body>
 </html>
@@ -111,6 +112,10 @@
         <#if messagesPerField.existsError(n)><#return messagesPerField.get(n)></#if>
     </#list>
     <#return "">
+</#function>
+
+<#function privacyUrl>
+    <#return url.resourcesPath?keep_before("/resources/")?keep_before_last("/") + "/privacy">
 </#function>
 
 <#function portalHome>

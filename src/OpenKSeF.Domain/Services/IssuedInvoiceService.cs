@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using OpenKSeF.Domain.Abstractions;
@@ -292,7 +291,6 @@ public class IssuedInvoiceService(
 
         invoice.AttachSentXml(
             written.Xml,
-            Convert.ToHexString(SHA256.HashData(written.Xml)),
             environment.Current,
             environment.BuildVerificationUrl(sellerNip, invoice.IssueDate, written.Xml));
 
