@@ -59,7 +59,7 @@ public class AdvanceTests
 
         Assert.Equal(Buckets(vector.GetProperty("buckets")), final.Buckets(null, deducted).Select(b => ((string?)b.VatRate.Code(), b.Net, b.Vat)).ToList());
         Assert.Equal(vector.GetProperty("p15").GetDecimal(), final.TotalGross);
-        Assert.Equal(vector.GetProperty("exceeds").GetBoolean(), IssueChecks.ChainErrors(final, deducted).Any(e => e.Code == IssueChecks.AdvancesExceedCode));
+        Assert.Equal(vector.GetProperty("exceeds").GetBoolean(), IssueChecks.ChainErrors(final, deducted, advances.Count).Any(e => e.Code == IssueChecks.AdvancesExceedCode));
         Assert.True(name.Length > 0);
     }
 

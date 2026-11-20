@@ -43,6 +43,17 @@
       ]
     },
     {
+      "name": "order value per rate, not per line",
+      "order": [
+        { "quantity": 1, "unitNetPrice": 33.33, "vatRate": "23" },
+        { "quantity": 1, "unitNetPrice": 33.33, "vatRate": "23" },
+        { "quantity": 1, "unitNetPrice": 33.33, "vatRate": "23" }
+      ],
+      "amount": 122.99,
+      "orderValue": 122.99,
+      "buckets": [{ "vatRate": "23", "net": 99.99, "vat": 23.00 }]
+    },
+    {
       "name": "np I advance has no VAT",
       "order": [{ "quantity": 2, "unitNetPrice": 250.00, "vatRate": "np I" }],
       "amount": 200.00,
@@ -64,6 +75,28 @@
       "lines": [{ "quantity": 1, "unitNetPrice": 1000.00, "vatRate": "23" }],
       "advances": [369.00, 861.00],
       "buckets": [{ "vatRate": "23", "net": 0.00, "vat": 0.00 }],
+      "p15": 0.00,
+      "exceeds": false
+    },
+    {
+      "name": "three advances 410.00 leave a zero ROZ with grosz split",
+      "lines": [{ "quantity": 1, "unitNetPrice": 1000.00, "vatRate": "23" }],
+      "advances": [410.00, 410.00, 410.00],
+      "buckets": [{ "vatRate": "23", "net": 0.01, "vat": -0.01 }],
+      "p15": 0.00,
+      "exceeds": false
+    },
+    {
+      "name": "two rates 50+50+77 drift between buckets",
+      "lines": [
+        { "quantity": 1, "unitNetPrice": 100.00, "vatRate": "23" },
+        { "quantity": 1, "unitNetPrice": 50.00, "vatRate": "8" }
+      ],
+      "advances": [50.00, 50.00, 77.00],
+      "buckets": [
+        { "vatRate": "23", "net": 0.00, "vat": -0.01 },
+        { "vatRate": "8", "net": 0.01, "vat": 0.00 }
+      ],
       "p15": 0.00,
       "exceeds": false
     },

@@ -5,15 +5,13 @@ public static class Advances
 {
     public const string ExceedsMessage = "Zaliczki przekraczają wartość rozliczenia. Najpierw skoryguj fakturę zaliczkową.";
 
-    /// <summary>WartoscZamowienia: sum of P_11NettoZ + P_11VatZ, VAT rounded per line.</summary>
-    public static decimal OrderValue(IEnumerable<IssuedInvoiceLine> order) => order.Sum(l => l.NetAmount + l.VatAmount);
+    /// <summary>WartoscZamowienia: gross with VAT per rate (REQ-0024), the same basis as the ROZ, so advances up to it never leave a negative P_15.</summary>
+    public static decimal OrderValue(IEnumerable<IssuedInvoiceLine> order) => IssuedInvoice.SummaryOf(order).Sum(s => s.Net + s.Vat);
 
     /// <summary>Gross per rate proportional to the order's gross per rate, rounded to grosze, remainder on the largest share; P_14 = round(G·r/(100+r), 2) (art. 106f ust. 1 pkt 3).</summary>
     public static IReadOnlyList<VatSummary> Split(IReadOnlyList<IssuedInvoiceLine> order, decimal amount)
     {
-        var grossByRate = order.GroupBy(l => l.VatRate).OrderBy(g => g.Key)
-            .Select(g => (Rate: g.Key, Gross: g.Sum(l => l.NetAmount + l.VatAmount)))
-            .ToList();
+        var grossByRate = IssuedInvoice.SummaryOf(order).Select(s => (Rate: s.VatRate, Gross: s.Net + s.Vat)).ToList();
         var total = grossByRate.Sum(r => r.Gross);
         if (total == 0)
             return grossByRate.Select(r => new VatSummary(r.Rate, 0m, 0m)).ToList();
@@ -40,6 +38,13 @@ public static class Advances
                 (a.GetValueOrDefault(rate)?.Vat ?? 0m) - b.GetValueOrDefault(rate).Vat))
             .ToList();
     }
+
+    /// <summary>
+    /// Each ZAL rounds its own VAT and the ROZ subtracts what the ZAL show (art. 106f ust. 3), so a correct ROZ may carry
+    /// net +0.01 / VAT -0.01 on a rate. Only gross is checked: P_15 below zero, or a rate below the rounding drift of the shares.
+    /// </summary>
+    public static bool Exceeds(IReadOnlyList<VatSummary> remaining, int advances) =>
+        remaining.Sum(b => b.Net + b.Vat) < 0 || remaining.Any(b => b.Net + b.Vat < -0.01m * advances * remaining.Count);
 
     /// <summary>Sum of the split of each advance's current state (after KOR_ZAL).</summary>
     public static IReadOnlyList<VatSummary> Deducted(IEnumerable<IssuedInvoice> advanceStates) =>

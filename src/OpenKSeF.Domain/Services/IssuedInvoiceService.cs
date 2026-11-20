@@ -298,6 +298,7 @@ public class IssuedInvoiceService(
         IssuedInvoice? original = null;
         IssuedInvoice? state = null;
         Fa3Refs? refs = null;
+        var advanceCount = 0;
         IReadOnlyList<IssuedInvoice> chain = [];
         if (invoice.OrderChainId is { } chainId)
         {
@@ -325,7 +326,8 @@ public class IssuedInvoiceService(
                     invoice.InvoiceType == IssuedInvoiceType.Roz ? FinalExistsCode : ChainClosedCode);
             if (invoice.InvoiceType == IssuedInvoiceType.Zal && IssueChecks.ChainAmountError(invoice, OtherAdvances(chain, invoice.Id)) is { } amountError)
                 throw new InvoiceValidationException([amountError]);
-            refs = ChainRefs(invoice, chain).Refs;
+            (refs, var listed) = ChainRefs(invoice, chain);
+            advanceCount = listed.Count;
         }
 
         var pattern = profile.Pattern(invoice.InvoiceType);
@@ -334,7 +336,7 @@ public class IssuedInvoiceService(
             await sellerProfiles.AllocateNumberAsync(tenantId, InvoiceNumbering.PeriodKey(pattern, invoice.IssueDate), invoice.InvoiceType.Series(), ct),
             invoice.IssueDate);
 
-        invoice.Issue(profile, sellerNip, number, now, original, state, refs?.Deducted);
+        invoice.Issue(profile, sellerNip, number, now, original, state, refs?.Deducted, advanceCount);
         var written = writer.Write(invoice, now, refs);
         if (!written.IsValid)
             throw new InvoiceValidationException(written.SchemaErrors.Select(e => new InvoiceCheck("INV-XSD", null, $"Faktura nie spełnia schematu FA(3): {e}")).ToList());
@@ -579,9 +581,10 @@ public class IssuedInvoiceService(
         if (lines is not null)
             final.ReplaceLines(lines.Select(l => (l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)));
         var chain = await ChainOfAsync(tenantId, final.OrderChainId!.Value, ct);
-        var deducted = ChainRefs(final, chain).Refs?.Deducted ?? [];
+        var (finalRefs, deductedAdvances) = ChainRefs(final, chain);
+        var deducted = finalRefs?.Deducted ?? [];
         final.RecalculateTotals(null, deducted);
-        if (IssueChecks.ChainErrors(final, deducted).ToList() is { Count: > 0 } chainErrors)
+        if (IssueChecks.ChainErrors(final, deducted, deductedAdvances.Count).ToList() is { Count: > 0 } chainErrors)
             throw new InvoiceValidationException(chainErrors);
 
         await ProposeRateIfMissingAsync(final, ct);

@@ -120,7 +120,7 @@ public static class IssueChecks
     }
 
     /// <summary>REQ-0028 checks of a ZAL or ROZ that need no other document of the chain. The remaining-value check is the service's (ChainAmountError).</summary>
-    public static IEnumerable<InvoiceCheck> ChainErrors(IssuedInvoice invoice, IReadOnlyList<VatSummary>? deducted)
+    public static IEnumerable<InvoiceCheck> ChainErrors(IssuedInvoice invoice, IReadOnlyList<VatSummary>? deducted, int advances = 0)
     {
         if (invoice.InvoiceType == IssuedInvoiceType.Zal)
         {
@@ -130,7 +130,7 @@ public static class IssueChecks
                 yield return new(PaymentDateCode, "paymentDate", "Data otrzymania zapłaty nie może być późniejsza niż data wystawienia faktury zaliczkowej");
         }
 
-        if (invoice.InvoiceType == IssuedInvoiceType.Roz && (invoice.TotalGross < 0 || invoice.Buckets(null, deducted).Any(b => b.Net < 0 || b.Vat < 0)))
+        if (invoice.InvoiceType == IssuedInvoiceType.Roz && Advances.Exceeds(invoice.Buckets(null, deducted), advances))
             yield return new(AdvancesExceedCode, "lines", Advances.ExceedsMessage);
     }
 

@@ -380,7 +380,7 @@ public sealed class IssuedInvoice
         .ToList();
 
     /// <summary>A correction is issued with its original and the state it corrects, a ROZ with the advances it deducts; totals are recomputed against them.</summary>
-    public void Issue(SellerProfile profile, string sellerNip, string? number, DateTime now, IssuedInvoice? original = null, IssuedInvoice? state = null, IReadOnlyList<VatSummary>? deducted = null)
+    public void Issue(SellerProfile profile, string sellerNip, string? number, DateTime now, IssuedInvoice? original = null, IssuedInvoice? state = null, IReadOnlyList<VatSummary>? deducted = null, int advances = 0)
     {
         EnsureEditable();
         var isCorrection = InvoiceType.IsCorrection();
@@ -392,7 +392,7 @@ public sealed class IssuedInvoice
 
         var errors = isCorrection
             ? IssueChecks.CorrectionErrors(this, original!, state!, PolandDate(now))
-            : IssueChecks.Errors(this, profile, PolandDate(now)).Concat(IssueChecks.ChainErrors(this, deducted)).ToList();
+            : IssueChecks.Errors(this, profile, PolandDate(now)).Concat(IssueChecks.ChainErrors(this, deducted, advances)).ToList();
         if (errors.Count > 0)
             throw new InvoiceValidationException(errors);
 
