@@ -83,14 +83,7 @@ export const isFirstAdvance = (invoice: IssuedInvoiceResponse): boolean => invoi
 export const formLines = (form: DraftFormValue): TotalsLineInput[] =>
   form.lines.map((line) => ({ quantity: parseDecimal(line.quantity), unitNetPrice: parseDecimal(line.unitNetPrice), vatRate: line.vatRate }))
 
-export function paidBefore(invoice: IssuedInvoiceResponse): number {
-  const chain = invoice.chain
-  if (!chain) return 0
-  const accepted = [...chain.advances, ...chain.corrections.filter((item) => item.invoiceType === 'KOR_ZAL')].filter(
-    (item) => item.id !== invoice.id && item.status === 'Accepted',
-  )
-  return toPln(accepted.reduce((sum, item) => sum + grosze(item.totalGross), 0n))
-}
+export const paidBefore = (invoice: IssuedInvoiceResponse): number => (invoice.chain ? toPln(grosze(invoice.chain.orderValue) - grosze(invoice.chain.remaining)) : 0)
 
 export function advancesOf(invoice: IssuedInvoiceResponse): VatSummaryRow[] {
   const full = computeTotals(invoice.lines).vatSummary
