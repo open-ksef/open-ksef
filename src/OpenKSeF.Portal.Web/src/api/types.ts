@@ -105,6 +105,7 @@ export interface InvoiceResponse {
   isPaid: boolean
   paidAt: string | null
   paidByName?: string | null
+  paidBySeller?: boolean
   hasXml: boolean
   verificationUrl?: string | null
   vendorBankAccount?: string | null

@@ -1,17 +1,23 @@
 using System.Net;
 using System.Text;
 using KSeF.Client.Core.Exceptions;
+using KSeF.Client.Core.Interfaces.Services;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using OpenKSeF.Api.Controllers;
+using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
+using OpenKSeF.Domain.DTOs;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
 using OpenKSeF.Domain.Events;
+using OpenKSeF.Domain.Models;
 using OpenKSeF.Domain.Services;
 using OpenKSeF.Sync;
 using OpenKSeF.Sync.Issuing;
@@ -166,11 +172,12 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         number, "FV 7/2026", Nip, "Moja firma", "3333333333", "Nabywca", 200m, 46m, 246m, "PLN", DateTime.UtcNow.AddDays(-5), DateTime.UtcNow, "Vat",
         BuyerIdType: "Nip");
 
-    private static byte[] Xml(string? dueDate)
+    private static byte[] Xml(string? dueDate, string? zaplacono = null)
     {
+        var paid = zaplacono is null ? "" : $"<Zaplacono>{zaplacono}</Zaplacono><DataZaplaty>2026-10-01</DataZaplaty>";
         var term = dueDate is null ? "" : $"<TerminPlatnosci><Termin>{dueDate}</Termin></TerminPlatnosci>";
         return Encoding.UTF8.GetBytes(
-            $"""<Faktura xmlns="{Fa3}"><Fa><Platnosc>{term}<RachunekBankowy><NrRB>{Account}</NrRB></RachunekBankowy></Platnosc><FaWiersz><NrWierszaFa>1</NrWierszaFa><P_7>Towar nowy</P_7><P_11>100</P_11><P_12>23</P_12></FaWiersz></Fa></Faktura>""");
+            $"""<Faktura xmlns="{Fa3}"><Fa><Platnosc>{paid}{term}<RachunekBankowy><NrRB>{Account}</NrRB></RachunekBankowy></Platnosc><FaWiersz><NrWierszaFa>1</NrWierszaFa><P_7>Towar nowy</P_7><P_11>100</P_11><P_12>23</P_12></FaWiersz></Fa></Faktura>""");
     }
 
     private static KsefRateLimitException RateLimited(int retryAfterSeconds) => new("429", retryAfterSeconds);
@@ -1222,7 +1229,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SellerPaidWithoutDate_StoredAsMinValueOnPostgres_PayShowsNoQrAndNoDate()
+    public async Task SellerPaidWithoutDate_StoredAsMinValueOnPostgres_DefaultsToPaid_PayShowsNoQrAndNoDate()
     {
         await InsertAsync("PAID-NODATE", hasLine: false);
         await MigrateAsync();
@@ -1235,11 +1242,196 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         var row = await RowAsync("PAID-NODATE");
         Assert.Equal(DateOnly.MinValue, row.SellerPaidOn);
-        Assert.False(row.IsPaid);
-        Assert.Null(row.PaidAt);
+        Assert.True(row.IsPaid);
+        Assert.Equal(row.XmlFetchedAt, row.PaidAt);
+        Assert.Null(row.PaidByUserId);
         var data = new TransferDetailsService().BuildTransferData(row, Nip);
         Assert.False(data.QrAvailable);
         Assert.Equal("Sprzedawca oznaczył fakturę jako zapłaconą.", data.QrMessage);
+    }
+
+    private InvoicesController Controller(ApplicationDbContext db)
+    {
+        var user = Substitute.For<ICurrentUserService>();
+        user.UserId.Returns(UserId);
+        return new InvoicesController(db, user, new TransferDetailsService(), Substitute.For<IQrCodeService>(), Substitute.For<IVerificationLinkService>());
+    }
+
+    private async Task<InvoiceResponse> SetPaidAsync(string number, bool isPaid)
+    {
+        await using var db = NewContext();
+        var id = (await RowAsync(number)).Id;
+        return Assert.IsType<InvoiceResponse>(((OkObjectResult)await Controller(db).SetPaid(_tenantId, id, new SetInvoicePaidRequest(isPaid))).Value);
+    }
+
+    private async Task ClearSettlementAsync(string number)
+    {
+        await using var db = NewContext();
+        await db.InvoiceHeaders.Where(i => i.KSeFInvoiceNumber == number).ExecuteUpdateAsync(s => s.SetProperty(i => i.Settlement, (SettlementState?)null));
+    }
+
+    private async Task<IReadOnlyList<InvoiceResponse>> ListAsync(bool? isPaid = null)
+    {
+        await using var db = NewContext();
+        return Assert.IsType<PagedResult<InvoiceResponse>>(((OkObjectResult)await Controller(db).List(_tenantId, isPaid: isPaid)).Value).Items;
+    }
+
+    [Fact]
+    public async Task SellerPaid_FirstXmlRead_DefaultsToPaid_NotUnpaidNorOverdue_PaidBySeller_SameNotifications()
+    {
+        await MigrateAsync();
+        _received = _ => Page([Bought("SELLER-PAID")]);
+        _xml = _ => Xml("2026-10-05", zaplacono: "1");
+
+        await WorkerCycleAsync();
+
+        var row = await RowAsync("SELLER-PAID");
+        Assert.NotNull(row.XmlFetchedAt);
+        Assert.Equal(new DateOnly(2026, 10, 1), row.SellerPaidOn);
+        Assert.Equal((true, row.XmlFetchedAt, (string?)null), (row.IsPaid, row.PaidAt, row.PaidByUserId));
+        Assert.Empty(await ListAsync(isPaid: false));
+        var listed = Assert.Single(await ListAsync());
+        Assert.Equal((true, false, true, (string?)null), (listed.IsPaid, listed.IsOverdue, listed.PaidBySeller, listed.PaidByName));
+        await using (var db = NewContext())
+        {
+            var detail = Assert.IsType<InvoiceResponse>(((OkObjectResult)await Controller(db).Get(_tenantId, row.Id)).Value);
+            Assert.Equal((true, false, true), (detail.IsPaid, detail.IsOverdue, detail.PaidBySeller));
+        }
+        await _notifications.Received(1).NotifyNewInvoiceAsync(Arg.Is<NewInvoiceDetectedEvent>(e => e.InvoiceId == row.Id));
+        Assert.Single(_notifications.ReceivedCalls());
+    }
+
+    [Fact]
+    public async Task SellerPaidDefault_UserSetsUnpaid_WorkerCycleAndFullResyncKeepItUnpaid()
+    {
+        await MigrateAsync();
+        _received = _ => Page([Bought("SELLER-PAID")]);
+        _xml = _ => Xml("2026-10-05", zaplacono: "1");
+        await WorkerCycleAsync();
+
+        var unpaid = await SetPaidAsync("SELLER-PAID", false);
+        await ClearSettlementAsync("SELLER-PAID");
+        await WorkerCycleAsync();
+        await ClearSettlementAsync("SELLER-PAID");
+        await ManualSyncAsync(fullResync: true);
+
+        Assert.Equal((false, false), (unpaid.IsPaid, unpaid.PaidBySeller));
+        Assert.Equal(["SELLER-PAID", "SELLER-PAID", "SELLER-PAID"], _downloads);
+        var row = await RowAsync("SELLER-PAID");
+        Assert.Equal((false, (DateTime?)null, (string?)null), (row.IsPaid, row.PaidAt, row.PaidByUserId));
+        var listed = Assert.Single(await ListAsync(isPaid: false));
+        Assert.True(listed.IsOverdue);
+        Assert.False(listed.PaidBySeller);
+    }
+
+    [Fact]
+    public async Task PaidFlagToggledBeforeFirstXmlRead_SellerPaidXml_LeavesPaidFieldsUnchanged()
+    {
+        await InsertAsync("MARKED-PAID");
+        await InsertAsync("MARKED-THEN-UNPAID");
+        await MigrateAsync();
+        await SetPaidAsync("MARKED-PAID", true);
+        await SetPaidAsync("MARKED-THEN-UNPAID", true);
+        await SetPaidAsync("MARKED-THEN-UNPAID", false);
+        var paidBefore = await RowAsync("MARKED-PAID");
+        _xml = _ => Xml("2026-10-05", zaplacono: "1");
+
+        await WorkerCycleAsync();
+
+        Assert.Equal(["MARKED-PAID", "MARKED-THEN-UNPAID"], _downloads.Order());
+        var paid = await RowAsync("MARKED-PAID");
+        Assert.NotNull(paid.XmlFetchedAt);
+        Assert.Equal((true, paidBefore.PaidAt, UserId), (paid.IsPaid, paid.PaidAt, paid.PaidByUserId));
+        var unpaid = await RowAsync("MARKED-THEN-UNPAID");
+        Assert.NotNull(unpaid.XmlFetchedAt);
+        Assert.Equal((false, (DateTime?)null, (string?)null), (unpaid.IsPaid, unpaid.PaidAt, unpaid.PaidByUserId));
+        Assert.Equal([false, false], (await ListAsync()).Select(i => i.PaidBySeller));
+    }
+
+    [Fact]
+    public async Task XmlReadBeforeUpgrade_SellerPaid_UpgradeAndLaterSyncsLeaveIsPaidUnchanged()
+    {
+        await InsertAsync("READ-BEFORE-PAID");
+        await MigrateAsync();
+        await using (var db = NewContext())
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '1 day', "SellerPaidOn" = '2026-10-01' WHERE "KSeFInvoiceNumber" = 'READ-BEFORE-PAID'""");
+        _xml = _ => Xml("2026-10-05", zaplacono: "1");
+
+        await WorkerCycleAsync();
+        await ManualSyncAsync(fullResync: true);
+
+        Assert.Contains("READ-BEFORE-PAID", _downloads);
+        var row = await RowAsync("READ-BEFORE-PAID");
+        Assert.Equal(new DateOnly(2026, 10, 1), row.SellerPaidOn);
+        Assert.Equal((false, (DateTime?)null, (string?)null), (row.IsPaid, row.PaidAt, row.PaidByUserId));
+    }
+
+    [Fact]
+    public async Task ZaplaconoAbsentOrZero_OrIssuedInvoice_SyncNeverSetsIsPaid()
+    {
+        await InsertAsync("NO-ZAPLACONO", hasLine: false);
+        await InsertAsync("ZAPLACONO-0", hasLine: false);
+        await InsertAsync("ISSUED-ZAPLACONO", hasLine: false, direction: InvoiceDirection.Issued);
+        await MigrateAsync();
+        _xml = number => number switch
+        {
+            "NO-ZAPLACONO" => Xml("2026-10-05"),
+            "ZAPLACONO-0" => Xml("2026-10-05", zaplacono: "0"),
+            _ => Xml("2026-10-05", zaplacono: "1")
+        };
+
+        await WorkerCycleAsync();
+        await ManualSyncAsync(fullResync: true);
+
+        Assert.Equal(["ISSUED-ZAPLACONO", "NO-ZAPLACONO", "ZAPLACONO-0"], _downloads.Distinct().Order());
+        Assert.All(await SnapshotAsync(), r =>
+        {
+            Assert.NotNull(r.XmlFetchedAt);
+            Assert.Equal((false, (DateTime?)null), (r.IsPaid, r.PaidAt));
+        });
+    }
+
+    [Fact]
+    public async Task PaidToggleCommittedWhileFirstXmlReadWaits_ReadSeesIt_LeavesUnpaid()
+    {
+        await InsertAsync("RACE", hasLine: false);
+        await MigrateAsync();
+        var id = (await RowAsync("RACE")).Id;
+        await using var holder = NewContext();
+        await using var toggle = await holder.Database.BeginTransactionAsync();
+        await holder.Database.ExecuteSqlAsync($"""UPDATE "InvoiceHeaders" SET "LastUpdatedAt" = now() WHERE "Id" = {id}""");
+        holder.AuditEvents.Add(new AuditEvent { Id = Guid.NewGuid(), OccurredAt = DateTime.UtcNow, TenantId = _tenantId, ActorUserId = UserId, Action = AuditEvent.InvoiceUnpaid, Target = id.ToString() });
+        await holder.SaveChangesAsync();
+
+        var apply = Task.Run(async () =>
+        {
+            await using var db = NewContext();
+            await new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance)
+                .ApplyInvoiceXmlAsync(id, new InvoiceXmlDetails(Account, null, new DateOnly(2026, 10, 5), SellerPaidOn: new DateOnly(2026, 10, 1)));
+        });
+        await WaitForLockWaitOnInvoiceHeadersAsync();
+        await toggle.CommitAsync();
+        await apply;
+
+        var row = await RowAsync("RACE");
+        Assert.NotNull(row.XmlFetchedAt);
+        Assert.Equal((false, (DateTime?)null, (string?)null), (row.IsPaid, row.PaidAt, row.PaidByUserId));
+    }
+
+    private async Task WaitForLockWaitOnInvoiceHeadersAsync()
+    {
+        for (var attempt = 0; attempt < 200; attempt++)
+        {
+            await using var db = NewContext();
+            var waiting = await db.Database
+                .SqlQuery<int>($"""SELECT count(*)::int AS "Value" FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%"InvoiceHeaders"%'""")
+                .SingleAsync();
+            if (waiting > 0)
+                return;
+            await Task.Delay(50);
+        }
+
+        Assert.Fail("No query waited on the InvoiceHeaders row lock");
     }
 
     /// <summary>Virtual clock for the pacing tests: a timer moves the clock forward by its due time and fires at once, so waits are exact and take no real time.</summary>

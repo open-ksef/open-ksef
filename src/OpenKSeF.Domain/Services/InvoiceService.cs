@@ -243,7 +243,28 @@ public class InvoiceService : IInvoiceService
         invoice.LastUpdatedAt = invoice.XmlFetchedAt.Value;
         if (xml is not null)
             await StageXmlAsync(invoiceId, xml, invoice.XmlFetchedAt.Value, cancellationToken);
+        if (invoice.Direction == InvoiceDirection.Received && details.SellerPaidOn is not null)
+            await SaveDefaultingToSellerPaidAsync(invoiceId, invoice.XmlFetchedAt.Value, cancellationToken);
+        else
+            await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    // REQ-0043: decided in SQL under the row lock, never from tracked values, so a concurrent apply or a user's paid toggle always wins.
+    private async Task SaveDefaultingToSellerPaidAsync(Guid invoiceId, DateTime readAt, CancellationToken cancellationToken)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+        await _db.Database.ExecuteSqlAsync($"""SELECT 1 FROM "InvoiceHeaders" WHERE "Id" = {invoiceId} FOR UPDATE""", cancellationToken);
+        var target = invoiceId.ToString();
+        await _db.InvoiceHeaders
+            .Where(i => i.Id == invoiceId && i.XmlFetchedAt == null && !i.IsPaid
+                && !_db.AuditEvents.Any(a => a.TenantId == i.TenantId && a.Target == target
+                    && (a.Action == AuditEvent.InvoicePaid || a.Action == AuditEvent.InvoiceUnpaid)))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.IsPaid, true)
+                .SetProperty(i => i.PaidAt, readAt)
+                .SetProperty(i => i.PaidByUserId, (string?)null), cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task RecordFailedInvoiceXmlAsync(Guid invoiceId, bool xmlReceived, byte[]? xml = null, CancellationToken cancellationToken = default)

@@ -35,7 +35,8 @@ public record InvoiceResponse(
     string? BuyerIdType = null,
     string? BuyerForeignId = null,
     bool HasXml = false,
-    string? VerificationUrl = null)
+    string? VerificationUrl = null,
+    bool PaidBySeller = false)
 {
     public static Expression<Func<InvoiceHeader, InvoiceResponse>> Projection(IQueryable<UserProfile> profiles) => i => new InvoiceResponse(
         i.Id,
@@ -63,7 +64,9 @@ public record InvoiceResponse(
         i.Direction.ToString(),
         i.BuyerIdType,
         i.BuyerForeignId,
-        i.Xml != null);
+        i.Xml != null,
+        null,
+        i.IsPaid && i.PaidByUserId == null && i.SellerPaidOn != null);
 
     private static readonly Func<InvoiceHeader, InvoiceResponse> CompiledProjection = Projection(Enumerable.Empty<UserProfile>().AsQueryable()).Compile();
 
