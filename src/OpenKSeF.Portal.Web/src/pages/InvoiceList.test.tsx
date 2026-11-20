@@ -474,7 +474,7 @@ describe('InvoiceListPage', () => {
       await wait(300)
       await settle()
 
-      expect(open).toHaveBeenCalledExactlyOnceWith('/invoices/KSEF-001?tenantId=tenant-1', '_blank')
+      expect(open).toHaveBeenCalledExactlyOnceWith('/invoices/KSEF-001?tenantId=tenant-1', '_blank', 'noopener')
       expect(router.state.location.pathname).toBe('/invoices')
       open.mockRestore()
     })
@@ -523,7 +523,7 @@ describe('InvoiceListPage', () => {
       await wait(300)
       await settle()
 
-      expect(open).toHaveBeenCalledExactlyOnceWith('/invoices/KSEF-001?tenantId=tenant-1', '_blank')
+      expect(open).toHaveBeenCalledExactlyOnceWith('/invoices/KSEF-001?tenantId=tenant-1', '_blank', 'noopener')
       expect(router.state.location.pathname).toBe('/invoices')
       open.mockRestore()
     })
