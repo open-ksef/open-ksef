@@ -696,6 +696,15 @@ describe('InvoiceDetailsPage', () => {
       expect(collapsed.querySelector('[data-testid="toggle-paid-btn"]')).toBeNull()
     })
 
+    it('says seller-paid instead of the OpenKSeF mark note when the seller declared payment', async () => {
+      mockOne(invoiceOf({ isPaid: true, paidAt: '2026-03-04T10:00:00Z', paidBySeller: true }), transferOf())
+
+      await render('/invoices/KSEF-001?tenantId=tenant-1')
+
+      expect(testId('transfer-details')?.querySelector('.pay-paid-note')?.textContent).toBe('04.03.2026 Opłacona wg sprzedawcy')
+      expect(container.textContent).not.toContain(PAID_NOTE)
+    })
+
     it('has no collapsed block and no paid note for an unpaid invoice', async () => {
       mockOne()
 
