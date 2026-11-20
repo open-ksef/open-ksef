@@ -676,6 +676,15 @@ describe('issuing pages', () => {
       expect(byTestId('location').textContent).toBe('/issued/new')
     })
 
+    it('drops the notice from history state, so a reload does not show it again', async () => {
+      await openNewForm()
+      await chooseB()
+
+      await waitFor(() => byTestId('location').dataset.state === 'null')
+      expect(container.textContent).toContain('Nowy sprzedawca: Firma B')
+      expect(byTestId('location').textContent).toBe('/issued/new')
+    })
+
     it('asks on a filled form and shows both sellers', async () => {
       await openNewForm()
       await fill()
