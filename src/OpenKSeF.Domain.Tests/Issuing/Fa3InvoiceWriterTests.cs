@@ -8,7 +8,7 @@ public class Fa3InvoiceWriterTests
 {
     private const string SellerNip = "4444444444";
     private const string BuyerNip = "3333333333";
-    private const string Nrb = "61109010140000071219812874";
+    private const string Nrb = "93000000002026111700000815";
     private static readonly XNamespace Ns = Fa3InvoiceWriter.Namespace;
     private static readonly DateOnly Day = new(2026, 11, 3);
     private static readonly DateTime Now = new(2026, 11, 3, 10, 0, 0, DateTimeKind.Utc);
@@ -599,7 +599,7 @@ public class Fa3InvoiceWriterTests
               </TerminPlatnosci>
               <FormaPlatnosci>6</FormaPlatnosci>
               <RachunekBankowy>
-                <NrRB>61109010140000071219812874</NrRB>
+                <NrRB>93000000002026111700000815</NrRB>
               </RachunekBankowy>
             </Platnosc>
           </Fa>

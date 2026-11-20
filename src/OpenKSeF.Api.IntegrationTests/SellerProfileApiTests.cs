@@ -41,7 +41,7 @@ public class SellerProfileApiTests : IDisposable
     }
 
     private static SellerProfileRequest Request(
-        string? bankAccount = "61 1090 1014 0000 0712 1981 2874",
+        string? bankAccount = "93 0000 0000 2026 1117 0000 0815",
         string? pattern = "FV/{nr}/{MM}/{RRRR}",
         int? nextNumber = null,
         string? nextNumberPeriod = null) =>
@@ -80,11 +80,11 @@ public class SellerProfileApiTests : IDisposable
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var profile = (await response.Content.ReadFromJsonAsync<SellerProfileResponse>())!;
-        Assert.Equal("61109010140000071219812874", profile.BankAccount);
+        Assert.Equal("93000000002026111700000815", profile.BankAccount);
         Assert.True(profile.IsComplete);
 
         var reloaded = await _client.GetFromJsonAsync<SellerProfileResponse>($"/api/tenants/{tenantId}/seller-profile");
-        Assert.Equal("61109010140000071219812874", reloaded!.BankAccount);
+        Assert.Equal("93000000002026111700000815", reloaded!.BankAccount);
         Assert.Equal("OpenKSeF Test A sp. z o.o.", reloaded.LegalName);
     }
 
@@ -94,7 +94,7 @@ public class SellerProfileApiTests : IDisposable
         var tenantId = await CreateTenantAsync();
 
         var envelope = await AssertBadRequestAsync(await _client.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/seller-profile", Request(bankAccount: "61 1090 1014 0000 0712 1981 2875")));
+            $"/api/tenants/{tenantId}/seller-profile", Request(bankAccount: "93 0000 0000 2026 1117 0000 0816")));
 
         var error = Assert.Single(envelope.Errors);
         Assert.Equal(("bankAccount", "Niepoprawny numer rachunku"), (error.Field, error.Message));

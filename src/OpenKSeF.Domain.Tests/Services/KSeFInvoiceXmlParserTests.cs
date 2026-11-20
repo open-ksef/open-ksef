@@ -15,7 +15,7 @@ public class KSeFInvoiceXmlParserTests
 
     private string? Account(string xml) => _sut.ExtractInvoiceDetails(Encoding.UTF8.GetBytes(xml)).BankAccount;
 
-    private const string ValidNrb = "PL61 1090 1014 0000 0712 1981 2874";
+    private const string ValidNrb = "PL93 0000 0000 2026 1117 0000 0815";
     private const string FactorNrb = "94000000001234567890123456";
 
     private InvoiceXmlDetails Details(string ns, string fa, string extra = "") =>
@@ -147,9 +147,9 @@ public class KSeFInvoiceXmlParserTests
     [Fact]
     public void ExtractBankAccount_Fa3_ReturnsBankAccount()
     {
-        var xml = BuildInvoiceXml(Fa3Namespace, "PL61109010140000071219812874");
+        var xml = BuildInvoiceXml(Fa3Namespace, "PL93000000002026111700000815");
         var result = Account(xml);
-        Assert.Equal("PL61109010140000071219812874", result);
+        Assert.Equal("PL93000000002026111700000815", result);
     }
 
     [Fact]

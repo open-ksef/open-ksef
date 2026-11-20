@@ -268,7 +268,7 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
         var ids = await sut.UpsertInvoicesAsync(tenantId, [received]);
         var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
         stored.DueDate = new DateOnly(2026, 11, 20);
-        stored.VendorBankAccount = "PL61109010140000071219812874";
+        stored.VendorBankAccount = "PL93000000002026111700000815";
         stored.IsPaid = true;
         var updatedAt = stored.LastUpdatedAt;
         await _db.SaveChangesAsync();
@@ -282,7 +282,7 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
         Assert.Equal(received.VendorName, stored.VendorName);
         Assert.Equal(received.AmountGross, stored.AmountGross);
         Assert.Equal(new DateOnly(2026, 11, 20), stored.DueDate);
-        Assert.Equal("PL61109010140000071219812874", stored.VendorBankAccount);
+        Assert.Equal("PL93000000002026111700000815", stored.VendorBankAccount);
         Assert.Equal(updatedAt, stored.LastUpdatedAt);
         Assert.Null(stored.BuyerIdType);
         Assert.True(stored.IsPaid);
@@ -294,7 +294,7 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
         var ids = await sut.UpsertInvoicesAsync(_tenantId, [CreateInvoice() with { Direction = InvoiceDirection.Issued }]);
 
-        await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails("PL61109010140000071219812874", [Line()], new DateOnly(2026, 11, 20)));
+        await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails("PL93000000002026111700000815", [Line()], new DateOnly(2026, 11, 20)));
 
         var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
         Assert.Null(stored.DueDate);
@@ -309,13 +309,13 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
     {
         var sut = new InvoiceService(_db, _notifications, NullLogger<InvoiceService>.Instance);
         var ids = await sut.UpsertInvoicesAsync(_tenantId, [CreateInvoice()]);
-        await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails("PL61109010140000071219812874", [Line()], null));
+        await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails("PL93000000002026111700000815", [Line()], null));
         var lineId = (await _db.InvoiceLines.SingleAsync()).Id;
 
         await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails("PL00000000000000000000000000", [Line(), Line()], new DateOnly(2026, 11, 20)));
 
         var stored = await _db.InvoiceHeaders.SingleAsync(i => i.Id == ids[0]);
-        Assert.Equal("PL61109010140000071219812874", stored.VendorBankAccount);
+        Assert.Equal("PL93000000002026111700000815", stored.VendorBankAccount);
         Assert.Equal(new DateOnly(2026, 11, 20), stored.DueDate);
         Assert.Equal(lineId, (await _db.InvoiceLines.SingleAsync()).Id);
     }
@@ -333,11 +333,11 @@ public class InvoiceServiceTests(TestcontainersFixture fixture) : IAsyncLifetime
         await _db.SaveChangesAsync();
 
         await sut.ApplyInvoiceXmlAsync(ids[0], new InvoiceXmlDetails(
-            "PL61109010140000071219812874", [Line(), Line()], null,
+            "PL93000000002026111700000815", [Line(), Line()], null,
             SettlementState.Confirmed, 800m, true, new DateOnly(2026, 3, 5), 1,
             "PL94000000001234567890123456", "1111111111", "Faktor Testowy SA"));
 
-        Assert.Equal("PL61109010140000071219812874", stored.VendorBankAccount);
+        Assert.Equal("PL93000000002026111700000815", stored.VendorBankAccount);
         Assert.Equal(SettlementState.Confirmed, stored.Settlement);
         Assert.Equal(800m, stored.SettlementAmount);
         Assert.True(stored.SplitPayment);

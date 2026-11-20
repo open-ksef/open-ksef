@@ -48,7 +48,7 @@ public class ForeignInvoicesApiTests : IDisposable
         var tenantId = (await response.Content.ReadFromJsonAsync<TenantIdDto>())!.Id;
 
         var profile = await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", new SellerProfileRequest(
-            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, "FV/{nr}/{MM}/{RRRR}"));
+            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "93000000002026111700000815", false, "FV/{nr}/{MM}/{RRRR}"));
         profile.EnsureSuccessStatusCode();
         return tenantId;
     }
@@ -130,8 +130,8 @@ public class ForeignInvoicesApiTests : IDisposable
         Assert.Equal(HttpStatusCode.Accepted, issue.StatusCode);
         var issued = (await issue.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!;
         Assert.Null(issued.Ksef.KsefNumber);
-        Assert.Equal("PL61109010140000071219812874", issued.Seller.Iban);
-        Assert.Equal("61109010140000071219812874", issued.Seller.BankAccount);
+        Assert.Equal("PL93000000002026111700000815", issued.Seller.Iban);
+        Assert.Equal("93000000002026111700000815", issued.Seller.BankAccount);
 
         var xml = await SentXmlAsync(draft.Id);
         Assert.Contains("<BrakID>1</BrakID>", xml);
@@ -140,7 +140,7 @@ public class ForeignInvoicesApiTests : IDisposable
         Assert.Contains("<P_13_8>20000.00</P_13_8>", xml);
         Assert.Contains("<P_18>1</P_18>", xml);
         Assert.Contains("<KursWaluty>5.2133</KursWaluty>", xml);
-        Assert.Contains("<NrRB>PL61109010140000071219812874</NrRB>", xml);
+        Assert.Contains("<NrRB>PL93000000002026111700000815</NrRB>", xml);
     }
 
     [Fact]
@@ -403,7 +403,7 @@ public class ForeignInvoicesApiTests : IDisposable
         var path = $"/api/tenants/{tenantId}/seller-profile";
 
         var saved = await _client.PutAsJsonAsync(path, new SellerProfileRequest(
-            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, "FV/{nr}/{MM}/{RRRR}",
+            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "93000000002026111700000815", false, "FV/{nr}/{MM}/{RRRR}",
             BankSwift: "testplpw", BankName: "Bank Testowy S.A.", ForeignBankAccount: "gb82 west 1234 5698 7654 32", ForeignBankSwift: "TESTGB2L", ForeignBankName: "West Test Bank"));
         Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
 
@@ -412,7 +412,7 @@ public class ForeignInvoicesApiTests : IDisposable
             legalName = "Nowa nazwa sp. z o.o.",
             addressLine1 = "ul. Prosta 1",
             addressLine2 = "00-001 Warszawa",
-            bankAccount = "61109010140000071219812874",
+            bankAccount = "93000000002026111700000815",
             cashAccounting = false,
             numberingPattern = "FV/{nr}/{MM}/{RRRR}"
         });
@@ -440,7 +440,7 @@ public class ForeignInvoicesApiTests : IDisposable
         var tenantId = await CreateTenantAsync();
 
         var response = await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", new SellerProfileRequest(
-            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, "FV/{nr}/{MM}/{RRRR}",
+            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "93000000002026111700000815", false, "FV/{nr}/{MM}/{RRRR}",
             BankSwift: "SHORT", ForeignBankAccount: "GB00WEST12345698765432"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);

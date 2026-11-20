@@ -25,7 +25,7 @@ public class TransferContractSerializationTests
     public void TransferDetailsResponse_WithQr_WritesNullMessage()
     {
         var response = new TransferDetailsResponse(
-            "Odbiorca 1", "61109010140000071219812874", "1234567890", 100m, "PLN", "FV 1/2026", "text", "data:image/png;base64,AA");
+            "Odbiorca 1", "93000000002026111700000815", "1234567890", 100m, "PLN", "FV 1/2026", "text", "data:image/png;base64,AA");
 
         var json = JsonNode.Parse(JsonSerializer.Serialize(response, Web))!.AsObject();
 
@@ -35,7 +35,7 @@ public class TransferContractSerializationTests
     }
 
     [Theory]
-    [InlineData("61109010140000071219812874")]
+    [InlineData("93000000002026111700000815")]
     [InlineData(null)]
     public void InvoiceResponse_WritesVendorBankAccount(string? account)
     {

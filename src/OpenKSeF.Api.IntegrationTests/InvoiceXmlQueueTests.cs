@@ -24,7 +24,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     private const string PreviousMigration = "20261104125258_AddForeignServiceInvoice";
     private const string UserId = "user-1";
     private const string Nip = "1234563218";
-    private const string Account = "PL61109010140000071219812874";
+    private const string Account = "PL93000000002026111700000815";
     private const string Fa3 = "http://crd.gov.pl/wzor/2025/06/25/13775/";
 
     private static readonly DateTime PaidAt = new(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);

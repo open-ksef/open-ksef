@@ -22,7 +22,7 @@ public sealed class InvoiceDueDateUpgradeTests : IAsyncLifetime
     private const string PaidNumber = "KSEF-PAID";
     private const string UnpaidNumber = "KSEF-UNPAID";
     private const string FailingNumber = "KSEF-FAILS";
-    private const string Account = "PL61109010140000071219812874";
+    private const string Account = "PL93000000002026111700000815";
     private const string Fa3 = "http://crd.gov.pl/wzor/2025/06/25/13775/";
 
     private static readonly DateTime Issued = DateTime.UtcNow.AddDays(-10);

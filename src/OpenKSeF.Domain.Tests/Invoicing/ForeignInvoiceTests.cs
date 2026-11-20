@@ -4,7 +4,7 @@ namespace OpenKSeF.Domain.Tests.Invoicing;
 
 public class ForeignInvoiceTests
 {
-    private const string ValidNrb = "61109010140000071219812874";
+    private const string ValidNrb = "93000000002026111700000815";
     private static readonly DateOnly Today = new(2026, 11, 3);
     private static readonly DateTime Now = new(2026, 11, 3, 10, 0, 0, DateTimeKind.Utc);
 
@@ -322,7 +322,7 @@ public class ForeignInvoiceTests
 
     [Theory]
     [InlineData("GB82WEST12345698765432", true)]
-    [InlineData("PL61109010140000071219812874", true)]
+    [InlineData("PL93000000002026111700000815", true)]
     [InlineData("GB82WEST12345698765433", false)]
     [InlineData("gb82west12345698765432", false)]
     [InlineData("82GBWEST12345698765432", false)]

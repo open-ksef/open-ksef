@@ -6,7 +6,7 @@ namespace OpenKSeF.Domain.Tests.Services;
 
 public class QrCodeServiceTests
 {
-    private const string ValidNrb = "61109010140000071219812874";
+    private const string ValidNrb = "93000000002026111700000815";
 
     private readonly QrCodeService _sut = new();
 
@@ -141,13 +141,13 @@ public class QrCodeServiceTests
         {
             RecipientNip = "1234567890",
             RecipientName = "Odbiorca 1",
-            RecipientAccount = "PL61 1090 1014 0000 0712 1981 2874",
+            RecipientAccount = "PL93 0000 0000 2026 1117 0000 0815",
             Amount = 1234.56m,
             Currency = "PLN",
             Title = "FV 1/2026"
         };
 
-        Assert.Equal("1234567890|PL|61109010140000071219812874|123456|Odbiorca 1|FV 1/2026|||", _sut.BuildZbpPayload(data));
+        Assert.Equal("1234567890|PL|93000000002026111700000815|123456|Odbiorca 1|FV 1/2026|||", _sut.BuildZbpPayload(data));
     }
 
     [Theory]
@@ -231,16 +231,16 @@ public class QrCodeServiceTests
     [InlineData("1234 5678 9012 3456 7890 1234 56", "")]
     [InlineData("PL12345678901234567890123456", "")]
     [InlineData("PL123456789012345678901234", "")]
-    [InlineData("DE61109010140000071219812874", "")]
-    [InlineData("6110901014000007121981287X", "")]
-    [InlineData("61109010140000071219812875", "")]
-    [InlineData("61109010140000071219812874", "61109010140000071219812874")]
+    [InlineData("DE93000000002026111700000815", "")]
+    [InlineData("9300000000202611170000081X", "")]
+    [InlineData("93000000002026111700000816", "")]
+    [InlineData("93000000002026111700000815", "93000000002026111700000815")]
     [InlineData("92124012340001567890123456", "92124012340001567890123456")]
-    [InlineData("61 1090 1014 0000 0712 1981 2874", "61109010140000071219812874")]
-    [InlineData("61-1090-1014-0000-0712-1981-2874", "61109010140000071219812874")]
-    [InlineData("PL61 1090 1014 0000 0712 1981 2874", "61109010140000071219812874")]
-    [InlineData("pl61109010140000071219812874", "61109010140000071219812874")]
-    [InlineData("61\u00A01090\u00A01014\u00A00000\u00A00712\u00A01981\u00A02874", "61109010140000071219812874")]
+    [InlineData("93 0000 0000 2026 1117 0000 0815", "93000000002026111700000815")]
+    [InlineData("93-0000-0000-2026-1117-0000-0815", "93000000002026111700000815")]
+    [InlineData("PL93 0000 0000 2026 1117 0000 0815", "93000000002026111700000815")]
+    [InlineData("pl93000000002026111700000815", "93000000002026111700000815")]
+    [InlineData("93\u00A00000\u00A00000\u00A02026\u00A01117\u00A00000\u00A00815", "93000000002026111700000815")]
     public void SanitizeAccount_ValidatesCorrectly(string? input, string expected)
     {
         Assert.Equal(expected, QrCodeService.SanitizeAccount(input));

@@ -90,7 +90,7 @@ public class MobileContractApiTests : IDisposable
         var sellerResponse = await _client.PostAsJsonAsync("/api/tenants", new { nip = TestNip.New(), displayName = "Mobile contract seller" });
         var sellerId = (await sellerResponse.EnsureSuccessStatusCode().Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         await Read("PUT /api/tenants/{id}/seller-profile", await _client.PutAsJsonAsync($"/api/tenants/{sellerId}/seller-profile", new SellerProfileRequest(
-            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "61109010140000071219812874", false, "FV/{nr}/{MM}/{RRRR}")));
+            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "93000000002026111700000815", false, "FV/{nr}/{MM}/{RRRR}")));
         await Read("GET /api/tenants/{id}/seller-profile", await _client.GetAsync($"/api/tenants/{sellerId}/seller-profile"));
 
         var issued = $"/api/tenants/{sellerId}/issued-invoices";
@@ -159,7 +159,7 @@ public class MobileContractApiTests : IDisposable
             InvoiceNumber = "FV/1/2026",
             VendorName = "Vendor",
             VendorNip = "1112223344",
-            VendorBankAccount = "61109010140000071219812874",
+            VendorBankAccount = "93000000002026111700000815",
             BuyerName = "Buyer",
             BuyerNip = "2223334455",
             AmountNet = 100m,
@@ -236,7 +236,7 @@ public class MobileContractApiTests : IDisposable
                 Content = new StringContent($$$"""
                     {"result":{"subject":{"name":"Nabywca sp. z o.o.","nip":"{{{FakeNip}}}","statusVat":"Czynny",
                     "residenceAddress":null,"workingAddress":"ul. Krótka 2, 00-002 Warszawa",
-                    "accountNumbers":["61109010140000071219812874"]},"requestId":"x"}}
+                    "accountNumbers":["93000000002026111700000815"]},"requestId":"x"}}
                     """, Encoding.UTF8, "application/json")
             });
         }
