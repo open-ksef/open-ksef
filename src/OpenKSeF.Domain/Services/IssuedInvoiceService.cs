@@ -610,15 +610,20 @@ public class IssuedInvoiceService(
         var source = chain.SingleOrDefault(c => c.Id == advanceId);
         if (source is not { InvoiceType: IssuedInvoiceType.Zal, Status: IssuedInvoiceStatus.Accepted })
             throw new InvoiceStateException("Kolejną zaliczkę i fakturę rozliczającą wystawisz z faktury zaliczkowej przyjętej w KSeF.", ChainSourceCode);
-        if (chain.FirstOrDefault(c => c.InvoiceType == IssuedInvoiceType.Roz && (c.Status == IssuedInvoiceStatus.Accepted || c.IsOpen)) is not null)
+        if (chain.Any(c => c.InvoiceType == IssuedInvoiceType.Roz && c.Status == IssuedInvoiceStatus.Accepted))
             throw type == IssuedInvoiceType.Roz
                 ? new InvoiceStateException(FinalExistsMessage, FinalExistsCode)
                 : new InvoiceStateException(ChainClosedMessage, ChainClosedCode);
         if (chain.FirstOrDefault(c => c.IsOpen) is { } open)
-            throw ChainOpen(open);
+            throw type == IssuedInvoiceType.Roz && open.InvoiceType == IssuedInvoiceType.Roz
+                ? new InvoiceStateException(FinalExistsMessage, FinalExistsCode)
+                : ChainOpen(open);
 
-        var first = chain.Single(c => c.Id == source.OrderChainId);
-        var document = IssuedInvoice.ChainDocument(Guid.NewGuid(), type, first, LatestOrder(chain)!, Today(), Now());
+        var buyerState = chain.Where(c => c.Status == IssuedInvoiceStatus.Accepted && c.InvoiceType.IsAdvance())
+            .OrderBy(c => c.IssuedAt)
+            .ThenBy(c => c.AcceptedAt)
+            .Last();
+        var document = IssuedInvoice.ChainDocument(Guid.NewGuid(), type, buyerState, LatestOrder(chain)!, Today(), Now());
         if (type == IssuedInvoiceType.Roz)
             document.RecalculateTotals(null, ChainRefs(document, chain).Refs?.Deducted);
         await ProposeRateIfMissingAsync(document, ct);

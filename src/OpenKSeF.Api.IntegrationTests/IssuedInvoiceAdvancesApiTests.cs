@@ -262,6 +262,42 @@ public class IssuedInvoiceAdvancesApiTests : IDisposable
     }
 
     [Fact]
+    public async Task KorZalBuyerAddress_LaterDocumentsTakeTheCorrectedBuyer()
+    {
+        var tenantId = await CreateTenantAsync();
+        var zal = await AcceptedFirstAdvanceAsync(tenantId);
+        var korZal = await Read(await _client.PostAsJsonAsync($"{Base(tenantId)}/{zal.Id}/corrections", new CorrectionCreateRequest()), HttpStatusCode.Created);
+        await Read(await _client.PutAsJsonAsync($"{Base(tenantId)}/{korZal.Id}/correction", new CorrectionDraftRequest(
+            CorrectionReason: "Zmiana adresu nabywcy", Buyer: Buyer with { AddressLine1 = "ul. Nowa 5" })), HttpStatusCode.OK);
+        await IssueAsync(tenantId, korZal.Id, "KOR_ZAL");
+        Assert.Contains("<Podmiot2K>", await XmlOf(korZal.Id));
+        await AcceptAsync(korZal.Id, "5213456789-20261220-ABCDEF12345B-AA");
+
+        var next = await Read(await _client.PostAsync($"{Base(tenantId)}/{zal.Id}/advances", null), HttpStatusCode.Created);
+        Assert.Equal("ul. Nowa 5", next.Buyer.AddressLine1);
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"{Base(tenantId)}/{next.Id}")).StatusCode);
+        var final = await Read(await _client.PostAsync($"{Base(tenantId)}/{zal.Id}/final", null), HttpStatusCode.Created);
+        Assert.Equal("ul. Nowa 5", final.Buyer.AddressLine1);
+    }
+
+    [Fact]
+    public async Task ChainLock_ParallelNextAdvanceAndFinal_One201One409()
+    {
+        var tenantId = await CreateTenantAsync();
+        var zal = await AcceptedFirstAdvanceAsync(tenantId);
+        using var second = _factory.CreateClient();
+        second.SetBearerToken(await _fixture.GetAccessTokenAsync());
+
+        var responses = await Task.WhenAll(
+            _client.PostAsync($"{Base(tenantId)}/{zal.Id}/advances", null),
+            second.PostAsync($"{Base(tenantId)}/{zal.Id}/final", null));
+
+        Assert.Equal([HttpStatusCode.Created, HttpStatusCode.Conflict], responses.Select(r => r.StatusCode).Order());
+        Assert.Equal("INV-CHAIN-OPEN", await CodeOf(responses.Single(r => r.StatusCode == HttpStatusCode.Conflict)));
+        Assert.Equal(2, await WithDbAsync(db => db.IssuedInvoices.CountAsync(i => i.OrderChainId == zal.Id)));
+    }
+
+    [Fact]
     public async Task GbpNp1Advance_RatePrefilledFromDayBeforePayment()
     {
         var tenantId = await CreateTenantAsync();

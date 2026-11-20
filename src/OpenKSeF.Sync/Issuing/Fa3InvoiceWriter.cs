@@ -111,7 +111,7 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
             {
                 IssuedInvoiceType.Zal => Zamowienie(invoice.Lines, invoice.Lines.OrderBy(l => l.LineNo)
                     .Select(l => new CorrectionRow(l.LineNo, false, null, l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate, l.NetAmount))),
-                IssuedInvoiceType.KorZal => Zamowienie(invoice.Lines, Advances.OrderRows(refs!.CorrectedState!, invoice)),
+                IssuedInvoiceType.KorZal when Advances.OrderRows(refs!.CorrectedState!, invoice) is { Count: > 0 } rows => Zamowienie(invoice.Lines, rows),
                 _ => null
             });
     }

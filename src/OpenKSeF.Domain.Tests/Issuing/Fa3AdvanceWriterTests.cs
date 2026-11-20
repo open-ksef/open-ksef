@@ -182,6 +182,41 @@ public class Fa3AdvanceWriterTests
     }
 
     [Fact]
+    public void KorRozToZero_ReversesFullLinesKeepsRemainingBefore()
+    {
+        var first = Zal369();
+        var second = Accept(Zal(246m, new DateOnly(2026, 11, 10), 10, "ZAL/2/11/2026", first), Zal2Ksef);
+        var final = Accept(Roz(first, [first, second], out _), RozKsef);
+        var correction = IssuedInvoice.Correction(Guid.NewGuid(), final, final, CorrectionMode.ToZero, new DateOnly(2026, 11, 20), At(20));
+        correction.SetCorrection("Anulowanie", null);
+        correction.Issue(Profile(), SellerNip, "KOR/3/11/2026", At(20), final, final);
+        var result = Writer.Write(correction, At(20), new Fa3Refs(final, final, final.TotalGross));
+
+        Assert.Empty(result.SchemaErrors);
+        Assert.Equal((IssuedInvoiceType.KorRoz, 0, -1230m), (correction.InvoiceType, correction.Lines.Count, correction.TotalGross));
+        var fa = XDocument.Load(new MemoryStream(result.Xml)).Root!.Element(Ns + "Fa")!;
+        Assert.Equal(("-1000.00", "-230.00", "-1230.00", "615.00"), (Of(fa, "P_13_1"), Of(fa, "P_14_1"), Of(fa, "P_15"), Of(fa, "P_15ZK")));
+        Assert.Null(fa.Element(Ns + "Platnosc"));
+    }
+
+    [Fact]
+    public void KorZalBuyerDataOnly_NoZamowienieRows()
+    {
+        var zal = Zal369();
+        var correction = IssuedInvoice.Correction(Guid.NewGuid(), zal, zal, CorrectionMode.Edit, new DateOnly(2026, 11, 20), At(20));
+        correction.SetCorrection("Zmiana adresu nabywcy", null);
+        correction.SetCorrectionBuyer(zal.BuyerName, "ul. Nowa 5", zal.BuyerAddressLine2, null);
+        correction.Issue(Profile(), SellerNip, "KOR/4/11/2026", At(20), zal, zal);
+        var result = Writer.Write(correction, At(20), new Fa3Refs(zal, zal, 369m));
+
+        Assert.Empty(result.SchemaErrors);
+        var fa = XDocument.Load(new MemoryStream(result.Xml)).Root!.Element(Ns + "Fa")!;
+        Assert.NotNull(fa.Element(Ns + "Podmiot2K"));
+        Assert.Null(fa.Element(Ns + "Zamowienie"));
+        Assert.Equal("0.00", Of(fa, "P_15"));
+    }
+
+    [Fact]
     public void KorRoz_LineDownDeltasAndRemainingBefore()
     {
         var first = Zal369();

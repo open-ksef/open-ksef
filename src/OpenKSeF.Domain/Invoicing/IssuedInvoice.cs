@@ -136,21 +136,21 @@ public sealed class IssuedInvoice
         return advance;
     }
 
-    /// <summary>Next ZAL or the ROZ of a chain: buyer and currency of the first ZAL, lines of the latest order. The rate is proposed again.</summary>
-    public static IssuedInvoice ChainDocument(Guid id, IssuedInvoiceType type, IssuedInvoice first, IssuedInvoice order, DateOnly today, DateTime now)
+    /// <summary>Next ZAL or the ROZ of a chain: buyer and currency of the latest accepted ZAL or KOR_ZAL, lines of the latest order. The rate is proposed again.</summary>
+    public static IssuedInvoice ChainDocument(Guid id, IssuedInvoiceType type, IssuedInvoice buyerState, IssuedInvoice order, DateOnly today, DateTime now)
     {
-        var document = Draft(id, first.TenantId, today, now);
+        var document = Draft(id, buyerState.TenantId, today, now);
         document.InvoiceType = type;
-        document.OrderChainId = first.OrderChainId;
-        document.BuyerKind = first.BuyerKind;
-        document.BuyerNip = first.BuyerNip;
-        document.BuyerName = first.BuyerName;
-        document.BuyerAddressLine1 = first.BuyerAddressLine1;
-        document.BuyerAddressLine2 = first.BuyerAddressLine2;
-        document.BuyerCountryCode = first.BuyerCountryCode;
-        document.BuyerIdType = first.BuyerIdType;
-        document.BuyerForeignId = first.BuyerForeignId;
-        document.Currency = first.Currency;
+        document.OrderChainId = buyerState.OrderChainId;
+        document.BuyerKind = buyerState.BuyerKind;
+        document.BuyerNip = buyerState.BuyerNip;
+        document.BuyerName = buyerState.BuyerName;
+        document.BuyerAddressLine1 = buyerState.BuyerAddressLine1;
+        document.BuyerAddressLine2 = buyerState.BuyerAddressLine2;
+        document.BuyerCountryCode = buyerState.BuyerCountryCode;
+        document.BuyerIdType = buyerState.BuyerIdType;
+        document.BuyerForeignId = buyerState.BuyerForeignId;
+        document.Currency = buyerState.Currency;
         document.PaymentMethod = order.PaymentMethod;
         document.ExemptionBasisKind = order.ExemptionBasisKind;
         document.ExemptionBasisText = order.ExemptionBasisText;
