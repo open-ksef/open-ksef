@@ -1229,7 +1229,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SellerPaidWithoutDate_StoredAsMinValueOnPostgres_DefaultsToPaid_PayShowsNoQrAndNoDate()
+    public async Task SellerPaidWithoutDate_RowFromBeforeXmlMarker_StaysUnpaid_PayShowsNoQrAndNoDate()
     {
         await InsertAsync("PAID-NODATE", hasLine: false);
         await MigrateAsync();
@@ -1242,12 +1242,26 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
 
         var row = await RowAsync("PAID-NODATE");
         Assert.Equal(DateOnly.MinValue, row.SellerPaidOn);
-        Assert.True(row.IsPaid);
-        Assert.Equal(row.XmlFetchedAt, row.PaidAt);
-        Assert.Null(row.PaidByUserId);
+        Assert.Equal((false, (DateTime?)null, (string?)null), (row.IsPaid, row.PaidAt, row.PaidByUserId));
         var data = new TransferDetailsService().BuildTransferData(row, Nip);
         Assert.False(data.QrAvailable);
         Assert.Equal("Sprzedawca oznaczył fakturę jako zapłaconą.", data.QrMessage);
+    }
+
+    [Fact]
+    public async Task SellerPaidWithoutDate_RowFirstSeenToday_DefaultsToPaidOnFirstRead()
+    {
+        await InsertAsync("PAID-NODATE-NEW", daysAgo: 0, hasLine: false);
+        await MigrateAsync();
+        _xml = _ => Encoding.UTF8.GetBytes(
+            $"""<Faktura xmlns="{Fa3}"><Fa><RodzajFaktury>VAT</RodzajFaktury><Platnosc><Zaplacono>1</Zaplacono><RachunekBankowy><NrRB>{Account}</NrRB></RachunekBankowy></Platnosc><FaWiersz><NrWierszaFa>1</NrWierszaFa><P_7>Towar</P_7><P_11>100</P_11><P_12>23</P_12></FaWiersz></Fa></Faktura>""");
+
+        await WorkerCycleAsync();
+
+        var row = await RowAsync("PAID-NODATE-NEW");
+        Assert.Equal(DateOnly.MinValue, row.SellerPaidOn);
+        Assert.NotNull(row.XmlFetchedAt);
+        Assert.Equal((true, row.XmlFetchedAt, (string?)null), (row.IsPaid, row.PaidAt, row.PaidByUserId));
     }
 
     private InvoicesController Controller(ApplicationDbContext db)
@@ -1327,8 +1341,8 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     [Fact]
     public async Task PaidFlagToggledBeforeFirstXmlRead_SellerPaidXml_LeavesPaidFieldsUnchanged()
     {
-        await InsertAsync("MARKED-PAID");
-        await InsertAsync("MARKED-THEN-UNPAID");
+        await InsertAsync("MARKED-PAID", daysAgo: 0);
+        await InsertAsync("MARKED-THEN-UNPAID", daysAgo: 0);
         await MigrateAsync();
         await SetPaidAsync("MARKED-PAID", true);
         await SetPaidAsync("MARKED-THEN-UNPAID", true);
@@ -1351,7 +1365,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     [Fact]
     public async Task XmlReadBeforeUpgrade_SellerPaid_UpgradeAndLaterSyncsLeaveIsPaidUnchanged()
     {
-        await InsertAsync("READ-BEFORE-PAID");
+        await InsertAsync("READ-BEFORE-PAID", daysAgo: 0);
         await MigrateAsync();
         await using (var db = NewContext())
             await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '1 day', "SellerPaidOn" = '2026-10-01' WHERE "KSeFInvoiceNumber" = 'READ-BEFORE-PAID'""");
@@ -1369,9 +1383,9 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     [Fact]
     public async Task ZaplaconoAbsentOrZero_OrIssuedInvoice_SyncNeverSetsIsPaid()
     {
-        await InsertAsync("NO-ZAPLACONO", hasLine: false);
-        await InsertAsync("ZAPLACONO-0", hasLine: false);
-        await InsertAsync("ISSUED-ZAPLACONO", hasLine: false, direction: InvoiceDirection.Issued);
+        await InsertAsync("NO-ZAPLACONO", daysAgo: 0, hasLine: false);
+        await InsertAsync("ZAPLACONO-0", daysAgo: 0, hasLine: false);
+        await InsertAsync("ISSUED-ZAPLACONO", daysAgo: 0, hasLine: false, direction: InvoiceDirection.Issued);
         await MigrateAsync();
         _xml = number => number switch
         {
@@ -1394,7 +1408,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
     [Fact]
     public async Task PaidToggleCommittedWhileFirstXmlReadWaits_ReadSeesIt_LeavesUnpaid()
     {
-        await InsertAsync("RACE", hasLine: false);
+        await InsertAsync("RACE", daysAgo: 0, hasLine: false);
         await MigrateAsync();
         var id = (await RowAsync("RACE")).Id;
         await using var holder = NewContext();

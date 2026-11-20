@@ -250,13 +250,15 @@ public class InvoiceService : IInvoiceService
     }
 
     // REQ-0043: decided in SQL under the row lock, never from tracked values, so a concurrent apply or a user's paid toggle always wins.
+    // The FirstSeenAt window keeps rows that predate the XmlFetchedAt marker (NULL without a read) manual: no backfill.
     private async Task SaveDefaultingToSellerPaidAsync(Guid invoiceId, DateTime readAt, CancellationToken cancellationToken)
     {
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
         await _db.Database.ExecuteSqlAsync($"""SELECT 1 FROM "InvoiceHeaders" WHERE "Id" = {invoiceId} FOR UPDATE""", cancellationToken);
         var target = invoiceId.ToString();
-        await _db.InvoiceHeaders
-            .Where(i => i.Id == invoiceId && i.XmlFetchedAt == null && !i.IsPaid
+        var firstSeenSince = readAt - PushRetryWindow;
+        var marked = await _db.InvoiceHeaders
+            .Where(i => i.Id == invoiceId && i.XmlFetchedAt == null && !i.IsPaid && i.FirstSeenAt >= firstSeenSince
                 && !_db.AuditEvents.Any(a => a.TenantId == i.TenantId && a.Target == target
                     && (a.Action == AuditEvent.InvoicePaid || a.Action == AuditEvent.InvoiceUnpaid)))
             .ExecuteUpdateAsync(s => s
@@ -265,6 +267,8 @@ public class InvoiceService : IInvoiceService
                 .SetProperty(i => i.PaidByUserId, (string?)null), cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        if (marked == 1)
+            _logger.LogInformation("Invoice {InvoiceId} marked paid from seller XML", invoiceId);
     }
 
     public async Task RecordFailedInvoiceXmlAsync(Guid invoiceId, bool xmlReceived, byte[]? xml = null, CancellationToken cancellationToken = default)
