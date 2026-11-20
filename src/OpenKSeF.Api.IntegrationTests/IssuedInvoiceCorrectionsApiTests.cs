@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Api.Models;
+using OpenKSeF.Domain.Abstractions;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Invoicing;
 
@@ -272,6 +273,69 @@ public class IssuedInvoiceCorrectionsApiTests : IDisposable
 
         var early = await PutCorrectionAsync(tenantId, correction.Id, new CorrectionDraftRequest(IssueDate: new DateOnly(2026, 11, 2)));
         Assert.Contains(await ErrorsOf(early), e => e!["code"]!.GetValue<string>() == "INV-VAL-085" && e["field"]!.GetValue<string>() == "issueDate");
+    }
+
+    [Fact]
+    public async Task DuplicateBaseLineNo_Returns422AndSavesNothing()
+    {
+        var tenantId = await CreateTenantAsync();
+        var correction = await NewCorrectionAsync(tenantId, await AcceptedOriginalAsync(tenantId));
+
+        var put = await PutCorrectionAsync(tenantId, correction.Id, new CorrectionDraftRequest(
+            CorrectionReason: "Rabat", Lines: [new(1, "Usługa", "szt.", 1, 90m, "23"), new(1, "Usługa", "szt.", 1, 80m, "23")]));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, put.StatusCode);
+        Assert.Contains(await ErrorsOf(put), e => e!["code"]!.GetValue<string>() == "INV-VAL-086" && e["field"]!.GetValue<string>() == "lines[1].baseLineNo");
+        Assert.Equal(100m, (await WithDbAsync(db => db.IssuedInvoiceLines.AsNoTracking().SingleAsync(l => l.IssuedInvoiceId == correction.Id))).UnitNetPrice);
+    }
+
+    [Fact]
+    public async Task RejectedCorrection_NumberTakenIsClosed_OtherRejectionStaysOpen()
+    {
+        var tenantId = await CreateTenantAsync();
+        async Task<Guid> RejectedCorrectionAsync(Guid originalId, int code)
+        {
+            var correction = await NewCorrectionAsync(tenantId, originalId);
+            (await PutCorrectionAsync(tenantId, correction.Id, new CorrectionDraftRequest(CorrectionReason: "Rabat", Lines: [new(1, "Usługa", "szt.", 1, 90m, "23")]))).EnsureSuccessStatusCode();
+            Assert.Equal(HttpStatusCode.Accepted, (await IssueCorrectionAsync(tenantId, correction.Id)).StatusCode);
+            await WithDbAsync(async db =>
+            {
+                var invoice = await db.IssuedInvoices.SingleAsync(i => i.Id == correction.Id);
+                invoice.MarkSendStarted("session-1", DateTime.UtcNow);
+                invoice.MarkRejected(code, "Odrzucona", "details", DateTime.UtcNow);
+                return await db.SaveChangesAsync();
+            });
+            return correction.Id;
+        }
+
+        var semanticOriginal = await AcceptedOriginalAsync(tenantId);
+        await RejectedCorrectionAsync(semanticOriginal, 450);
+        Assert.Equal("INV-KOR-OPEN", await CodeOf(await CreateCorrectionAsync(tenantId, semanticOriginal)));
+
+        var takenOriginal = await AcceptedOriginalAsync(tenantId);
+        var taken = await RejectedCorrectionAsync(takenOriginal, KSeFSentInvoice.Duplicate);
+        Assert.Equal(HttpStatusCode.Created, (await CreateCorrectionAsync(tenantId, takenOriginal)).StatusCode);
+        var resend = await IssueCorrectionAsync(tenantId, taken);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resend.StatusCode);
+        Assert.Contains(await ErrorsOf(resend), e => e!["code"]!.GetValue<string>() == "INV-VAL-023");
+    }
+
+    [Fact]
+    public async Task KorNumberTakenByFvSeries_409PointsToCorrectionNextNumber()
+    {
+        var tenantId = await CreateTenantAsync();
+        (await _client.PutAsJsonAsync($"/api/tenants/{tenantId}/seller-profile", new SellerProfileRequest(
+            "OpenKSeF Test A sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "93000000002026111700000815", false,
+            "A{nr}/{RRRR}", NextNumber: 11, NextNumberPeriod: "2026", CorrectionNumberingPattern: "A1{nr}/{RRRR}"))).EnsureSuccessStatusCode();
+        var originalId = await AcceptedOriginalAsync(tenantId);
+        Assert.Equal("A11/2026", (await _client.GetFromJsonAsync<IssuedInvoiceResponse>($"{Base(tenantId)}/{originalId}"))!.Number);
+        var correction = await NewCorrectionAsync(tenantId, originalId);
+        (await PutCorrectionAsync(tenantId, correction.Id, new CorrectionDraftRequest(CorrectionReason: "Rabat", Lines: [new(1, "Usługa", "szt.", 1, 90m, "23")]))).EnsureSuccessStatusCode();
+
+        var issue = await IssueCorrectionAsync(tenantId, correction.Id);
+
+        Assert.Equal(HttpStatusCode.Conflict, issue.StatusCode);
+        Assert.Contains("następny numer korekt", (await issue.Content.ReadFromJsonAsync<JsonObject>())!["message"]!.GetValue<string>());
     }
 
     [Fact]

@@ -19,7 +19,7 @@ public static class Corrections
     public static IReadOnlyList<CorrectionRow> Rows(IEnumerable<IssuedInvoiceLine> state, IEnumerable<IssuedInvoiceLine> after)
     {
         var afterLines = after.OrderBy(l => l.LineNo).ToList();
-        var byBase = afterLines.Where(l => l.BaseLineNo is not null).ToDictionary(l => l.BaseLineNo!.Value);
+        var byBase = afterLines.Where(l => l.BaseLineNo is not null).DistinctBy(l => l.BaseLineNo).ToDictionary(l => l.BaseLineNo!.Value);
         var rows = new List<CorrectionRow>();
 
         foreach (var before in state.OrderBy(l => l.LineNo))

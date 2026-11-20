@@ -294,7 +294,7 @@ public class IssuedInvoiceService(
         if (invoice.InvoiceType == IssuedInvoiceType.Kor)
         {
             (original, var corrections) = await LockOriginalAsync(tenantId, invoice.CorrectedInvoiceId!.Value, ct);
-            if (corrections.FirstOrDefault(c => c.IsOpen && c.Id != invoice.Id) is { } open)
+            if (!invoice.IsNumberTakenInKsef && corrections.FirstOrDefault(c => c.IsOpen && c.Id != invoice.Id) is { } open)
                 throw OpenCorrection(open);
             state = Corrections.CurrentState(original, corrections);
         }
@@ -331,7 +331,9 @@ public class IssuedInvoiceService(
         }
         catch (DbUpdateException e) when (IsUniqueViolation(e))
         {
-            throw new InvoiceStateException($"Numer {number} jest już użyty. Ustaw wyższy następny numer w danych do faktur.");
+            throw new InvoiceStateException(invoice.InvoiceType == IssuedInvoiceType.Kor
+                ? $"Numer {number} jest już użyty. Ustaw wyższy następny numer korekt w danych do faktur."
+                : $"Numer {number} jest już użyty. Ustaw wyższy następny numer w danych do faktur.");
         }
 
         return (await ViewAsync(invoice, ct), true);
