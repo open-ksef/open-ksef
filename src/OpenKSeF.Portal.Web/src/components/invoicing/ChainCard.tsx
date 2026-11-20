@@ -22,7 +22,7 @@ export function ChainCard({ chain, currency, currentId, itemHref, children }: Ch
       <dl className="kv">
         <dt>Wartość zamówienia</dt>
         <dd data-testid="chain-order">{formatMoney(chain.orderValue, currency)}</dd>
-        <dt>Pozostało do zapłaty</dt>
+        <dt>Pozostało po zaliczkach</dt>
         <dd data-testid="chain-remaining">
           <b>{formatMoney(chain.remaining, currency)}</b>
         </dd>

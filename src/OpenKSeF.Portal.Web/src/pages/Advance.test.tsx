@@ -21,7 +21,11 @@ import type { IssuedInvoiceResponse, OrderChain, SellerProfileResponse } from '@
 import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
 import acceptedCorrectionSample from '@/test/fixtures/issued-invoice-correction-accepted.json'
+import chainSample from '@/test/fixtures/issued-invoice-chain.json'
+import korZalSample from '@/test/fixtures/issued-invoice-kor-zal.json'
 import originalSample from '@/test/fixtures/issued-invoice-original-with-corrections.json'
+import rozSample from '@/test/fixtures/issued-invoice-roz.json'
+import zalSample from '@/test/fixtures/issued-invoice-zal.json'
 import { ownerAccess } from '@/test/tenant'
 import { ChainDraftPage } from './ChainDraft'
 import { CorrectionDraftPage } from './CorrectionDraft'
@@ -402,5 +406,57 @@ describe('advance and final invoices in the portal', () => {
     expect(container.textContent).not.toContain('Termin płatności')
     expect(container.textContent).not.toContain('Rachunek')
     expect([...container.querySelectorAll('dt')].map((dt) => dt.textContent)).not.toContain('Płatność')
+  })
+
+  describe('backend fixtures', () => {
+    const fixture = (json: object, id: string): IssuedInvoiceResponse => {
+      const raw = json as unknown as IssuedInvoiceResponse
+      return {
+        ...raw,
+        id,
+        createdAt: '2026-12-06T10:00:00Z',
+        updatedAt: '2026-12-06T10:00:00Z',
+        issuedAt: raw.issuedAt ? '2026-12-06T10:01:00Z' : null,
+        ksef: { ...raw.ksef, acceptedAt: raw.ksef.acceptedAt ? '2026-12-06T10:05:00Z' : null, verificationUrl: raw.ksef.verificationUrl ? 'https://qr-test.ksef.mf.gov.pl/x' : null },
+        correctedInvoice: raw.correctedInvoice ? { ...raw.correctedInvoice, id: 'z-1' } : null,
+        chain: raw.chain
+          ? {
+              ...raw.chain,
+              advances: raw.chain.advances.map((item, index) => ({ ...item, id: `a-${index}` })),
+              final: raw.chain.final ? { ...raw.chain.final, id: 'f-1' } : null,
+              corrections: raw.chain.corrections.map((item, index) => ({ ...item, id: `c-${index}` })),
+            }
+          : null,
+        advanceInvoices: raw.advanceInvoices?.map((item, index) => ({ ...item, id: `a-${index}` })) ?? null,
+      }
+    }
+
+    it('ZAL draft: live split and open amount equal the server values', async () => {
+      const zal = fixture(zalSample, 'z-1')
+      serve(zal)
+      await render('/issued/z-1/chain?tenantId=t-1')
+      await waitFor(() => Boolean(container.querySelector('#advance-amount')))
+      expect(text('total-gross')).toBe('369,00 PLN')
+      expect([...container.querySelectorAll('[data-testid="chain-summary"] tbody tr')].map((row) => row.textContent)).toEqual(['23%300,0069,00369,00'])
+      expect(zal.chain!.remaining).toBe(1230)
+      expect(text('advance-open')).toContain('Do zapłaty przed tą zaliczką: 1 230,00 PLN')
+    })
+
+    it('chain view on an accepted ZAL, ROZ and KOR_ZAL shows the server order value and remaining', async () => {
+      for (const [json, id, remaining] of [
+        [chainSample, 'z-1', '615,00 PLN'],
+        [rozSample, 'r-1', '615,00 PLN'],
+        [korZalSample, 'kz-1', '984,00 PLN'],
+      ] as const) {
+        act(() => root.unmount())
+        root = createRoot(container)
+        serve(fixture(json, id))
+        await render(`/issued/${id}?tenantId=t-1`)
+        await waitFor(() => text('chain-remaining') === remaining)
+        expect(text('chain-order')).toBe('1 230,00 PLN')
+        expect(button('Kolejna zaliczka')).toBeUndefined()
+      }
+      expect(text('amount-before')).toBe('369,00 PLN')
+    })
   })
 })
