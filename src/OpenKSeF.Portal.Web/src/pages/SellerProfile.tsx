@@ -160,6 +160,13 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
   const preview = unchangedNumbering
     ? profile.nextNumberPreview
     : previewNumber(form.numberingPattern, Number(form.nextNumber) || 1, new Date())
+  const unchangedCorrectionNumbering =
+    form.correctionNumberingPattern === profile.correctionNumberingPattern &&
+    form.correctionNextNumber === String(profile.correctionNextNumber)
+  const correctionPreview =
+    unchangedCorrectionNumbering && profile.correctionNextNumberPreview
+      ? profile.correctionNextNumberPreview
+      : previewNumber(form.correctionNumberingPattern, Number(form.correctionNextNumber) || 1, new Date())
 
   return (
     <form onSubmit={onSubmit} noValidate className="inv-stack" aria-label="Dane do faktur">
@@ -295,6 +302,27 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
             </div>
             <p className="inv-help" role="status">
               Następna faktura otrzyma numer <span className="mono">{preview}</span>
+            </p>
+            <div className="inv-grid">
+              <TextField
+                id="correction-numbering-pattern"
+                label="Wzorzec numeru korekty"
+                value={form.correctionNumberingPattern}
+                error={errors.correctionNumberingPattern}
+                mono
+                onChange={(correctionNumberingPattern) => set({ correctionNumberingPattern })}
+              />
+              <TextField
+                id="correction-next-number"
+                label="Następny numer korekty"
+                value={form.correctionNextNumber}
+                error={errors.correctionNextNumber ?? errors.correctionNextNumberPeriod}
+                numeric
+                onChange={(correctionNextNumber) => set({ correctionNextNumber: digitsOnly(correctionNextNumber) })}
+              />
+            </div>
+            <p className="inv-help" role="status">
+              Następna korekta otrzyma numer <span className="mono">{correctionPreview}</span>. Korekty mają własną numerację, faktur nie przesuwają.
             </p>
           </section>
         </div>

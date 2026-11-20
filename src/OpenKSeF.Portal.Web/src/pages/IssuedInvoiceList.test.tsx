@@ -167,6 +167,19 @@ describe('Wystawione faktury, niepełne pobieranie', () => {
     expect(rowLink(1).getAttribute('aria-label')).toBe('Nabywca, FV/1')
   })
 
+  it('marks a correction as Korekta with a signed amount; VAT rows stay unsigned', async () => {
+    const own = { ...invoice, source: 'OpenKSeF' }
+    await render(feed([{ ...own, id: 'k', number: 'KOR/1/11/2026', invoiceType: 'KOR', totalNet: -100, totalGross: -123 }, { ...own, id: 'v', invoiceType: 'VAT' }]))
+
+    expect(rowLink(0).getAttribute('aria-label')).toBe('Nabywca, Korekta · KOR/1/11/2026')
+    const rows = [...container.querySelectorAll('[data-testid="issued-invoice-table"] tbody tr')].map((row) => row.textContent?.replace(/\s/g, ' '))
+    expect(rows[0]).toContain('Korekta · KOR/1/11/2026')
+    expect(rows[0]).toContain('-123,00 PLN')
+    expect(rows[1]).toContain('123,00 PLN')
+    expect(rows[1]).not.toContain('+')
+    expect(rows[1]).not.toContain('Korekta')
+  })
+
   it('stops at row 10 000 with the clamped page range and a narrowing hint', async () => {
     const items = Array.from({ length: 20 }, (_, i) => ({ ...invoice, id: `r${i}` }))
     await render({ items, page: 500, pageSize: 20, totalCount: 12_000, totalPages: 600 }, '/issued?tenantId=a&page=600')

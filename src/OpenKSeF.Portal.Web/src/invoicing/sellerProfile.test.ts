@@ -66,4 +66,22 @@ describe('seller profile form', () => {
     )
     expect(yearly).toMatchObject({ nextNumber: 5, nextNumberPeriod: '2026', addressLine2: null })
   })
+
+  it('keeps the KOR series apart: default pattern, own next number, distinct pattern', () => {
+    const form = fromProfile(profile)
+    expect(form.correctionNumberingPattern).toBe('KOR/{nr}/{MM}/{RRRR}')
+    expect(toSellerProfileRequest(form, profile, today)).not.toHaveProperty('correctionNextNumber')
+    expect(toSellerProfileRequest({ ...form, correctionNextNumber: '4' }, profile, today)).toMatchObject({
+      correctionNumberingPattern: 'KOR/{nr}/{MM}/{RRRR}',
+      correctionNextNumber: 4,
+      correctionNextNumberPeriod: '2026-11',
+    })
+    expect(validateSellerProfile({ ...form, correctionNumberingPattern: 'FV/{nr}/{MM}/{RRRR}' }).correctionNumberingPattern).toBe(
+      'Wzorzec korekt musi różnić się od wzorca faktur',
+    )
+    expect(Object.keys(validateSellerProfile({ ...form, correctionNumberingPattern: 'KOR', correctionNextNumber: '0' })).sort()).toEqual([
+      'correctionNextNumber',
+      'correctionNumberingPattern',
+    ])
+  })
 })

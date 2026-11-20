@@ -223,4 +223,31 @@ describe('buildPrintDocument', () => {
     expect(() => buildPrintDocument('<nie-faktura/>', KSEF, URL, 'EN-PL')).toThrow('Nie udało się odczytać XML faktury')
     expect(() => buildPrintDocument('<Faktura', KSEF, URL, 'EN-PL')).toThrow('Nie udało się odczytać XML faktury')
   })
+
+  it('GBP np I correction prints title, original reference, both rows, deltas and KOD I', () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/">
+  <Podmiot1><DaneIdentyfikacyjne><NIP>4444444444</NIP><Nazwa>Sprzedawca</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>PL</KodKraju><AdresL1>ul. Prosta 1</AdresL1></Adres></Podmiot1>
+  <Podmiot2><DaneIdentyfikacyjne><BrakID>1</BrakID><Nazwa>Example Ltd</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>GB</KodKraju><AdresL1>1 Sample Street</AdresL1></Adres></Podmiot2>
+  <Fa><KodWaluty>GBP</KodWaluty><P_1>2026-11-20</P_1><P_2>KOR/1/11/2026</P_2><P_13_8>-1234.50</P_13_8><P_15>-1234.50</P_15>
+    <Adnotacje><P_16>2</P_16><P_18>1</P_18></Adnotacje><RodzajFaktury>KOR</RodzajFaktury><PrzyczynaKorekty>Zwrot towaru</PrzyczynaKorekty>
+    <DaneFaKorygowanej><DataWystFaKorygowanej>2026-11-03</DataWystFaKorygowanej><NrFaKorygowanej>FV/7/11/2026</NrFaKorygowanej><NrKSeF>1</NrKSeF><NrKSeFFaKorygowanej>4444444444-20261103-ABC-01</NrKSeFFaKorygowanej></DaneFaKorygowanej>
+    <FaWiersz><NrWierszaFa>1</NrWierszaFa><P_7>Consulting</P_7><P_8A>szt.</P_8A><P_8B>1</P_8B><P_9A>1234.50</P_9A><P_11>1234.50</P_11><P_12>np I</P_12><KursWaluty>5.1234</KursWaluty><StanPrzed>1</StanPrzed></FaWiersz>
+    <FaWiersz><NrWierszaFa>2</NrWierszaFa><P_7>Consulting</P_7><P_8A>szt.</P_8A><P_8B>0</P_8B><P_9A>1234.50</P_9A><P_11>0.00</P_11><P_12>np I</P_12><KursWaluty>5.1234</KursWaluty></FaWiersz>
+  </Fa>
+</Faktura>`
+    const document = buildPrintDocument(xml, KSEF, URL, 'EN-PL')
+    const items = flatten(document)
+    expect(items[0].text).toBe('Corrective invoice no. KOR/1/11/2026')
+    expect(items[1].text).toBe('Faktura korygująca nr KOR/1/11/2026')
+    for (const value of ['FV/7/11/2026', '2026-11-03', '4444444444-20261103-ABC-01', 'Zwrot towaru', 'before', 'przed', 'after', 'po', 'np I', 'Differences by rate']) {
+      expect(has(items, value)).toBe(true)
+    }
+    expect(items.filter((item) => item.text === '-1,234.50 GBP')).toHaveLength(2)
+    expect(has(items, 'To be refunded')).toBe(true)
+    expect(has(items, '1,234.50 GBP')).toBe(true)
+    expect(has(items, 'Date of sale')).toBe(false)
+    expect(has(items, 'Exchange rate: 1 GBP = 5.1234 PLN')).toBe(true)
+    expect(JSON.stringify(document)).toContain(`"qr":"${URL}"`)
+  })
 })

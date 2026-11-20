@@ -43,6 +43,7 @@ import {
   withBuyer,
   type DraftFormValue,
 } from '@/invoicing/form'
+import { isCorrection } from '@/invoicing/correction'
 import { countryName, foreignAccountOf, foreignRateFor } from '@/invoicing/foreign'
 import { formatDate, formatDecimal, formatMoney } from '@/invoicing/format'
 import { isReissueBlocked } from '@/invoicing/status'
@@ -89,6 +90,8 @@ export function InvoiceDraftPage(): ReactElement {
         <Skeleton variant="card" lines={8} label={id ? 'Wczytywanie faktury…' : 'Wczytywanie…'} />
       ) : !id && !profileQuery.data.isComplete ? (
         <Navigate to={`/company/invoice-data?tenantId=${encodeURIComponent(tenantId)}&next=new`} replace />
+      ) : invoiceQuery.data && isCorrection(invoiceQuery.data) ? (
+        <Navigate to={`/issued/${encodeURIComponent(invoiceQuery.data.id)}/correct?tenantId=${encodeURIComponent(tenantId)}`} replace />
       ) : invoiceQuery.data && (!EDITABLE.includes(invoiceQuery.data.status) || isReissueBlocked(invoiceQuery.data)) ? (
         <Navigate to={`/issued/${encodeURIComponent(invoiceQuery.data.id)}?tenantId=${encodeURIComponent(tenantId)}`} replace />
       ) : (
@@ -514,7 +517,6 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
             </dl>
           </>
         ) : null}
-        <p className="inv-help">Korekt nie wystawisz jeszcze w OpenKSeF — użyj Aplikacji Podatnika KSeF.</p>
       </ConfirmDialog>
 
       <ConfirmDialog

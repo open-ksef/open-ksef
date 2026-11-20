@@ -1,0 +1,219 @@
+[
+  {
+    "name": "quantity 1 to 0",
+    "state": [
+      { "lineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "23" }
+    ],
+    "after": [
+      { "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 0, "unitNetPrice": 100, "vatRate": "23" }
+    ],
+    "expected": {
+      "rows": [
+        { "rowNo": 1, "isBefore": true, "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "23", "netAmount": 100 },
+        { "rowNo": 2, "isBefore": false, "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 0, "unitNetPrice": 100, "vatRate": "23", "netAmount": 0 }
+      ],
+      "deltas": [
+        { "vatRate": "23", "net": -100, "vat": -23 }
+      ],
+      "totalNet": -100,
+      "totalVat": -23,
+      "totalGross": -123
+    }
+  },
+  {
+    "name": "unit price 100 to 120",
+    "state": [
+      { "lineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "23" }
+    ],
+    "after": [
+      { "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 120, "vatRate": "23" }
+    ],
+    "expected": {
+      "rows": [
+        { "rowNo": 1, "isBefore": true, "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "23", "netAmount": 100 },
+        { "rowNo": 2, "isBefore": false, "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 120, "vatRate": "23", "netAmount": 120 }
+      ],
+      "deltas": [
+        { "vatRate": "23", "net": 20, "vat": 4.6 }
+      ],
+      "totalNet": 20,
+      "totalVat": 4.6,
+      "totalGross": 24.6
+    }
+  },
+  {
+    "name": "rate 23 to 8",
+    "state": [
+      { "lineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "23" }
+    ],
+    "after": [
+      { "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "8" }
+    ],
+    "expected": {
+      "rows": [
+        { "rowNo": 1, "isBefore": true, "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "23", "netAmount": 100 },
+        { "rowNo": 2, "isBefore": false, "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "8", "netAmount": 100 }
+      ],
+      "deltas": [
+        { "vatRate": "23", "net": -100, "vat": -23 },
+        { "vatRate": "8", "net": 100, "vat": 8 }
+      ],
+      "totalNet": 0,
+      "totalVat": -15,
+      "totalGross": -15
+    }
+  },
+  {
+    "name": "3 x 0.33 at 23, one line removed",
+    "state": [
+      { "lineNo": 1, "name": "A", "unit": "szt.", "quantity": 1, "unitNetPrice": 0.33, "vatRate": "23" },
+      { "lineNo": 2, "name": "B", "unit": "szt.", "quantity": 1, "unitNetPrice": 0.33, "vatRate": "23" },
+      { "lineNo": 3, "name": "C", "unit": "szt.", "quantity": 1, "unitNetPrice": 0.33, "vatRate": "23" }
+    ],
+    "after": [
+      { "baseLineNo": 1, "name": "A", "unit": "szt.", "quantity": 1, "unitNetPrice": 0.33, "vatRate": "23" },
+      { "baseLineNo": 2, "name": "B", "unit": "szt.", "quantity": 1, "unitNetPrice": 0.33, "vatRate": "23" }
+    ],
+    "expected": {
+      "rows": [
+        { "rowNo": 1, "isBefore": true, "baseLineNo": 3, "name": "C", "unit": "szt.", "quantity": 1, "unitNetPrice": 0.33, "vatRate": "23", "netAmount": 0.33 },
+        { "rowNo": 2, "isBefore": false, "baseLineNo": 3, "name": "C", "unit": "szt.", "quantity": 0, "unitNetPrice": 0.33, "vatRate": "23", "netAmount": 0 }
+      ],
+      "deltas": [
+        { "vatRate": "23", "net": -0.33, "vat": -0.08 }
+      ],
+      "totalNet": -0.33,
+      "totalVat": -0.08,
+      "totalGross": -0.41
+    }
+  },
+  {
+    "name": "second correction: state 900 after the first, corrected to 700",
+    "state": [
+      { "lineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 900, "vatRate": "23" }
+    ],
+    "after": [
+      { "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 700, "vatRate": "23" }
+    ],
+    "expected": {
+      "rows": [
+        { "rowNo": 1, "isBefore": true, "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 900, "vatRate": "23", "netAmount": 900 },
+        { "rowNo": 2, "isBefore": false, "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 700, "vatRate": "23", "netAmount": 700 }
+      ],
+      "deltas": [
+        { "vatRate": "23", "net": -200, "vat": -46 }
+      ],
+      "totalNet": -200,
+      "totalVat": -46,
+      "totalGross": -246
+    }
+  },
+  {
+    "name": "name only",
+    "state": [
+      { "lineNo": 1, "name": "Usluga", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "23" }
+    ],
+    "after": [
+      { "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "23" }
+    ],
+    "expected": {
+      "rows": [
+        { "rowNo": 1, "isBefore": true, "baseLineNo": 1, "name": "Usluga", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "23", "netAmount": 100 },
+        { "rowNo": 2, "isBefore": false, "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "23", "netAmount": 100 }
+      ],
+      "deltas": [
+        { "vatRate": "23", "net": 0, "vat": 0 }
+      ],
+      "totalNet": 0,
+      "totalVat": 0,
+      "totalGross": 0
+    }
+  },
+  {
+    "name": "data only: lines unchanged",
+    "state": [
+      { "lineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "23" }
+    ],
+    "after": [
+      { "baseLineNo": 1, "name": "Usługa", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "23" }
+    ],
+    "expected": {
+      "rows": [],
+      "deltas": [],
+      "totalNet": 0,
+      "totalVat": 0,
+      "totalGross": 0
+    }
+  },
+  {
+    "name": "to zero: every line removed",
+    "state": [
+      { "lineNo": 1, "name": "A", "unit": "szt.", "quantity": 2, "unitNetPrice": 50, "vatRate": "23" },
+      { "lineNo": 2, "name": "B", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "8" }
+    ],
+    "after": [],
+    "expected": {
+      "rows": [
+        { "rowNo": 1, "isBefore": true, "baseLineNo": 1, "name": "A", "unit": "szt.", "quantity": 2, "unitNetPrice": 50, "vatRate": "23", "netAmount": 100 },
+        { "rowNo": 2, "isBefore": false, "baseLineNo": 1, "name": "A", "unit": "szt.", "quantity": 0, "unitNetPrice": 50, "vatRate": "23", "netAmount": 0 },
+        { "rowNo": 3, "isBefore": true, "baseLineNo": 2, "name": "B", "unit": "szt.", "quantity": 1, "unitNetPrice": 100, "vatRate": "8", "netAmount": 100 },
+        { "rowNo": 4, "isBefore": false, "baseLineNo": 2, "name": "B", "unit": "szt.", "quantity": 0, "unitNetPrice": 100, "vatRate": "8", "netAmount": 0 }
+      ],
+      "deltas": [
+        { "vatRate": "23", "net": -100, "vat": -23 },
+        { "vatRate": "8", "net": -100, "vat": -8 }
+      ],
+      "totalNet": -200,
+      "totalVat": -31,
+      "totalGross": -231
+    }
+  },
+  {
+    "name": "GBP np I quantity 10 to 8",
+    "state": [
+      { "lineNo": 1, "name": "Consulting", "unit": "h", "quantity": 10, "unitNetPrice": 50, "vatRate": "np I" }
+    ],
+    "after": [
+      { "baseLineNo": 1, "name": "Consulting", "unit": "h", "quantity": 8, "unitNetPrice": 50, "vatRate": "np I" }
+    ],
+    "expected": {
+      "rows": [
+        { "rowNo": 1, "isBefore": true, "baseLineNo": 1, "name": "Consulting", "unit": "h", "quantity": 10, "unitNetPrice": 50, "vatRate": "np I", "netAmount": 500 },
+        { "rowNo": 2, "isBefore": false, "baseLineNo": 1, "name": "Consulting", "unit": "h", "quantity": 8, "unitNetPrice": 50, "vatRate": "np I", "netAmount": 400 }
+      ],
+      "deltas": [
+        { "vatRate": "np I", "net": -100, "vat": 0 }
+      ],
+      "totalNet": -100,
+      "totalVat": 0,
+      "totalGross": -100
+    }
+  },
+  {
+    "name": "one changed, one added, one unchanged",
+    "state": [
+      { "lineNo": 1, "name": "A", "unit": "szt.", "quantity": 1, "unitNetPrice": 10, "vatRate": "23" },
+      { "lineNo": 2, "name": "B", "unit": "szt.", "quantity": 1, "unitNetPrice": 20, "vatRate": "23" },
+      { "lineNo": 3, "name": "C", "unit": "szt.", "quantity": 1, "unitNetPrice": 30, "vatRate": "23" }
+    ],
+    "after": [
+      { "baseLineNo": 1, "name": "A", "unit": "szt.", "quantity": 1, "unitNetPrice": 10, "vatRate": "23" },
+      { "baseLineNo": 2, "name": "B", "unit": "szt.", "quantity": 2, "unitNetPrice": 20, "vatRate": "23" },
+      { "baseLineNo": null, "name": "D", "unit": "szt.", "quantity": 1, "unitNetPrice": 5, "vatRate": "23" },
+      { "baseLineNo": 3, "name": "C", "unit": "szt.", "quantity": 1, "unitNetPrice": 30, "vatRate": "23" }
+    ],
+    "expected": {
+      "rows": [
+        { "rowNo": 1, "isBefore": true, "baseLineNo": 2, "name": "B", "unit": "szt.", "quantity": 1, "unitNetPrice": 20, "vatRate": "23", "netAmount": 20 },
+        { "rowNo": 2, "isBefore": false, "baseLineNo": 2, "name": "B", "unit": "szt.", "quantity": 2, "unitNetPrice": 20, "vatRate": "23", "netAmount": 40 },
+        { "rowNo": 3, "isBefore": false, "baseLineNo": null, "name": "D", "unit": "szt.", "quantity": 1, "unitNetPrice": 5, "vatRate": "23", "netAmount": 5 }
+      ],
+      "deltas": [
+        { "vatRate": "23", "net": 25, "vat": 5.75 }
+      ],
+      "totalNet": 25,
+      "totalVat": 5.75,
+      "totalGross": 30.75
+    }
+  }
+]

@@ -211,6 +211,32 @@ describe('SellerProfilePage', () => {
     expect(input(container, 'bank-account')).not.toBeNull()
   })
 
+  it('edits the KOR series: pattern, next number and preview, sent apart from the FV series', async () => {
+    vi.mocked(getSellerProfile).mockResolvedValue({
+      ...empty,
+      legalName: 'Firma',
+      addressLine1: 'ul. Prosta 1',
+      correctionNumberingPattern: 'KOR/{nr}/{MM}/{RRRR}',
+      correctionNextNumber: 1,
+      correctionNextNumberPeriod: '2026-11',
+      correctionNextNumberPreview: 'KOR/1/11/2026',
+    })
+    vi.mocked(updateSellerProfile).mockResolvedValue(empty)
+    await render('/company/invoice-data?tenantId=t-1')
+    expect(container.textContent).toContain('Następna korekta otrzyma numer KOR/1/11/2026')
+
+    await act(async () => typeInto(input(container, 'correction-next-number'), '7'))
+    expect(container.textContent).toMatch(/Następna korekta otrzyma numer KOR\/7\/\d{2}\/\d{4}/)
+    await act(async () => buttonByText(container, 'Zapisz dane').click())
+    await waitFor(() => vi.mocked(updateSellerProfile).mock.calls.length === 1)
+    expect(vi.mocked(updateSellerProfile).mock.calls[0][1]).toMatchObject({
+      numberingPattern: 'FV/{nr}/{MM}/{RRRR}',
+      correctionNumberingPattern: 'KOR/{nr}/{MM}/{RRRR}',
+      correctionNextNumber: 7,
+    })
+    expect(vi.mocked(updateSellerProfile).mock.calls[0][1]).not.toHaveProperty('nextNumber')
+  })
+
   it('blocks save on a bad NRB and shows API validation inline', async () => {
     vi.mocked(updateSellerProfile).mockRejectedValue(
       await apiError(400, { errors: [{ code: 'SP-VAL-001', field: 'bankAccount', message: 'Niepoprawny numer rachunku (API)' }], warnings: [] }),

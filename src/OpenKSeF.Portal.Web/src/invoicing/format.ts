@@ -72,3 +72,5 @@ export function formatWarsawDate(iso: string | null | undefined): string {
 export function formatDateTime(iso: string | null | undefined): string {
   return iso ? dateTimeFormat.format(new Date(iso)) : '—'
 }
+
+export const formatSignedMoney = (amount: number, currency: string): string => `${amount > 0 ? '+' : ''}${formatMoney(amount, currency)}`

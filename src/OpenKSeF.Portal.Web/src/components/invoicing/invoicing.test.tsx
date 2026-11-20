@@ -163,6 +163,17 @@ describe('issuing components', () => {
     expect(container.textContent).toContain(message)
   })
 
+  it('NipLookupField shows the server message on 503 NIP-LOOKUP-QUOTA', async () => {
+    const message = 'Dzienny limit wyszukiwań w wykazie MF wyczerpany. Wpisz dane ręcznie.'
+    const body = JSON.stringify({ errors: [{ code: 'NIP-LOOKUP-QUOTA', field: 'nip', message }], warnings: [] })
+    const response = new Response(body, { status: 503, headers: { 'Content-Type': 'application/json' } })
+    vi.mocked(lookupNip).mockRejectedValue(new ApiError('Serwer jest chwilowo niedostępny.', 503, response))
+    await render(<NipLookupField id="nip" value="4444444444" onChange={() => {}} onFound={() => {}} />)
+    await act(async () => container.querySelector('button')!.click())
+    expect(container.textContent).toContain(message)
+    expect(container.textContent).not.toContain('Biała lista nie odpowiada')
+  })
+
   it('status and environment badges use Polish labels', async () => {
     await render(
       <>

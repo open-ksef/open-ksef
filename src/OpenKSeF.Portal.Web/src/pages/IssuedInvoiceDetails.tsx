@@ -5,25 +5,29 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import {
   copyIssuedInvoice,
+  createCorrection,
   deleteIssuedInvoice,
   getIssuedInvoice,
   getIssuedInvoiceUpo,
   getIssuedInvoiceXml,
+  reissueInvoice,
 } from '@/api/endpoints/issuedInvoices'
-import type { IssuedInvoiceResponse } from '@/api/types'
+import type { CorrectionMode, IssuedInvoiceLineResponse, IssuedInvoiceResponse } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Icon } from '@/components/Icon'
 import { Skeleton } from '@/components/Skeleton'
 import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
+import { CorrectionRows } from '@/components/invoicing/CorrectionRows'
 import { KsefStatusPanel } from '@/components/invoicing/KsefStatusPanel'
 import { VatSummary } from '@/components/invoicing/VatSummary'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
 import { renderBilingualPdf, type PrintVariant } from '@/invoicing/bilingualPrint'
+import { CORRECTION_TYPES, isCorrection } from '@/invoicing/correction'
 import { countryName } from '@/invoicing/foreign'
-import { formatDate, formatDecimal, formatIban, formatMoney, formatNrb } from '@/invoicing/format'
+import { formatDate, formatDecimal, formatIban, formatMoney, formatNrb, formatSignedMoney } from '@/invoicing/format'
 import { downloadFile, fileStem, isReissueBlocked, ksefPollInterval, renderInvoicePdf } from '@/invoicing/status'
 import { vatRateLabel } from '@/invoicing/totals'
 
@@ -71,6 +75,12 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
   const { ksefNumber, verificationUrl } = invoice.ksef
   const accepted = invoice.status === 'Accepted'
   const isForeign = invoice.buyer.kind === 'Foreign'
+  const correction = isCorrection(invoice)
+  const correctable = accepted && !correction && !invoice.currentState?.isZero
+  const openCorrection = invoice.corrections?.find((item) => item.id === invoice.openCorrectionId)
+  const [wrongNipOpen, setWrongNipOpen] = useState(false)
+  const editHref = `/issued/${encodeURIComponent(invoice.id)}/${correction ? 'correct' : 'edit'}?${tenantQuery}`
+  const itemHref = (id: string): string => `/issued/${encodeURIComponent(id)}?${tenantQuery}`
 
   function showFailure(error: unknown, fallback: string): void {
     setFailure(error instanceof Error ? error.message : fallback)
@@ -93,6 +103,31 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
       navigate(`/issued/${encodeURIComponent(draft.id)}/edit?${tenantQuery}`)
     },
     onError: (error) => showFailure(error, 'Nie udało się skopiować faktury'),
+  })
+
+  const correct = useMutation({
+    mutationFn: (mode: CorrectionMode) => createCorrection(tenantId, invoice.id, mode),
+    onMutate: () => setFailure(null),
+    onSuccess: (draft) => {
+      setWrongNipOpen(false)
+      void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
+      void queryClient.invalidateQueries({ queryKey: ['issued-invoice', tenantId, invoice.id] })
+      navigate(`/issued/${encodeURIComponent(draft.id)}/correct?${tenantQuery}`)
+    },
+    onError: (error) => {
+      setWrongNipOpen(false)
+      showFailure(error, 'Nie udało się utworzyć korekty')
+    },
+  })
+
+  const reissue = useMutation({
+    mutationFn: () => reissueInvoice(tenantId, invoice.id),
+    onMutate: () => setFailure(null),
+    onSuccess: (draft) => {
+      void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
+      navigate(`/issued/${encodeURIComponent(draft.id)}/edit?${tenantQuery}`)
+    },
+    onError: (error) => showFailure(error, 'Nie udało się utworzyć faktury'),
   })
 
   const pdf = useMutation({
@@ -178,7 +213,10 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
         <Icon name="arrow-left" size={14} /> Wystawione
       </Link>
       <header className="page-header invoice-details-head">
-        <h1>{invoice.number ?? 'Szkic'}</h1>
+        <h1>
+          {correction ? <span className="inv-caption">Faktura korygująca </span> : null}
+          {invoice.number ?? 'Szkic'}
+        </h1>
         <KsefStatusBadge status={invoice.status} />
         <EnvBadge environment={invoice.ksef.environment} />
       </header>
@@ -188,8 +226,8 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
       <KsefStatusPanel
         invoice={invoice}
         tenantId={tenantId}
-        editHref={`/issued/${encodeURIComponent(invoice.id)}/edit?${tenantQuery}`}
-        copyAction={copyButton}
+        editHref={editHref}
+        copyAction={correction ? null : copyButton}
         downloads={downloads}
         deleteAction={
           <button type="button" className="ui-button ui-button--danger-outline ui-button--md" onClick={() => setDeleteOpen(true)}>
@@ -197,6 +235,111 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
           </button>
         }
       />
+
+      {correction && invoice.correctedInvoice ? (
+        <section className="card" aria-labelledby="corrected-title" data-testid="corrected-invoice">
+          <h2 id="corrected-title">Korygowana faktura</h2>
+          <dl className="kv">
+            <dt>Faktura</dt>
+            <dd>
+              <Link to={itemHref(invoice.correctedInvoice.id)} className="mono">
+                {invoice.correctedInvoice.number ?? '—'}
+              </Link>{' '}
+              z {formatDate(invoice.correctedInvoice.issueDate)}
+            </dd>
+            {invoice.correctedInvoice.ksefNumber ? (
+              <>
+                <dt>Numer KSeF</dt>
+                <dd className="mono">{invoice.correctedInvoice.ksefNumber}</dd>
+              </>
+            ) : null}
+            <dt>Przyczyna</dt>
+            <dd>{invoice.correctionReason || '—'}</dd>
+            {invoice.correctionType ? (
+              <>
+                <dt>Typ korekty</dt>
+                <dd>{CORRECTION_TYPES.find((type) => type.value === invoice.correctionType)?.label}</dd>
+              </>
+            ) : null}
+            {invoice.buyerBefore ? (
+              <>
+                <dt>Nabywca przed korektą</dt>
+                <dd>
+                  <Party {...invoice.buyerBefore} />
+                </dd>
+              </>
+            ) : null}
+          </dl>
+          <p className="inv-help">Kolejną korektę zrobisz z faktury pierwotnej: „Koryguj” poprawia jej aktualny stan.</p>
+        </section>
+      ) : null}
+
+      {accepted && !correction ? (
+        <section className="card" aria-labelledby="corrections-title" data-testid="corrections-card">
+          <h2 id="corrections-title">Korekty</h2>
+          {invoice.openCorrectionId ? (
+            <div className="inv-alert inv-alert--info" role="status" data-testid="open-correction">
+              Ta faktura ma otwartą korektę{openCorrection?.number ? <span className="mono"> {openCorrection.number}</span> : null}. Dokończ ją albo usuń szkic,
+              zanim zaczniesz kolejną. <Link to={itemHref(invoice.openCorrectionId)}>Otwórz korektę</Link>
+            </div>
+          ) : null}
+          {correctable ? (
+            <div className="status-panel__row">
+              <button
+                type="button"
+                className="ui-button ui-button--primary ui-button--md"
+                disabled={correct.isPending || Boolean(invoice.openCorrectionId)}
+                onClick={() => correct.mutate('Edit')}
+              >
+                <Icon name="pencil" /> Koryguj
+              </button>
+              <button
+                type="button"
+                className="ui-button ui-button--outline ui-button--md"
+                disabled={correct.isPending || Boolean(invoice.openCorrectionId)}
+                onClick={() => correct.mutate('ToZero')}
+              >
+                Koryguj do zera
+              </button>
+              {invoice.buyer.nip || invoice.buyer.foreignId ? (
+                <button
+                  type="button"
+                  className="ui-button ui-button--outline ui-button--md"
+                  disabled={correct.isPending || Boolean(invoice.openCorrectionId)}
+                  onClick={() => setWrongNipOpen(true)}
+                >
+                  Błędny NIP nabywcy
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {invoice.currentState?.isZero ? (
+            <div data-testid="reissue">
+              <p className="inv-help">
+                Faktura jest skorygowana do zera. „Wystaw poprawną fakturę” utworzy szkic z pozycjami sprzed tej korekty. Po korekcie „Błędny NIP nabywcy” pole
+                NIP będzie puste: wpisz poprawny NIP.
+              </p>
+              <button type="button" className="ui-button ui-button--primary ui-button--md" disabled={reissue.isPending} onClick={() => reissue.mutate()}>
+                {reissue.isPending ? 'Tworzenie…' : 'Wystaw poprawną fakturę'}
+              </button>
+            </div>
+          ) : null}
+          {invoice.corrections?.length ? (
+            <ul className="inv-kor-list" aria-label="Korekty tej faktury">
+              {invoice.corrections.map((item) => (
+                <li key={item.id}>
+                  <Link to={itemHref(item.id)} className="mono">
+                    {item.number ?? 'Szkic korekty'}
+                  </Link>{' '}
+                  {formatDate(item.issueDate)} · <KsefStatusBadge status={item.status} /> · {formatSignedMoney(item.totalGross, invoice.currency)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="inv-help">Brak korekt.</p>
+          )}
+        </section>
+      ) : null}
 
       {accepted && verificationUrl ? (
         <section className="card kod-card" aria-labelledby="kod-title" data-testid="kod-card">
@@ -288,37 +431,19 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
         </section>
 
         <div className="col">
-          <section className="card" aria-labelledby="lines-title">
-            <h2 id="lines-title">Pozycje</h2>
-            <table className="lines">
-              <thead>
-                <tr>
-                  <th scope="col">Ilość</th>
-                  <th scope="col">Cena netto</th>
-                  <th scope="col">Stawka</th>
-                  <th scope="col">Netto</th>
-                </tr>
-              </thead>
-              {invoice.lines.map((line) => (
-                <tbody key={line.lineNo}>
-                  <tr>
-                    <th colSpan={4} scope="rowgroup">
-                      {line.name}
-                    </th>
-                  </tr>
-                  <tr>
-                    <td>
-                      {formatDecimal(line.quantity, 0)} {line.unit}
-                    </td>
-                    <td>{formatDecimal(line.unitNetPrice, 2)}</td>
-                    <td>{vatRateLabel(line.vatRate)}</td>
-                    <td>{formatMoney(line.netAmount, invoice.currency)}</td>
-                  </tr>
-                </tbody>
-              ))}
-            </table>
-            {invoice.exemptionBasis ? <p className="inv-help">Podstawa zwolnienia: {invoice.exemptionBasis.text}</p> : null}
-          </section>
+          {correction ? (
+            <section className="card" aria-labelledby="lines-title">
+              <h2 id="lines-title">Pozycje przed i po korekcie</h2>
+              <CorrectionRows rows={invoice.correctionRows ?? []} currency={invoice.currency} />
+              <p className="inv-help">Kwoty w podsumowaniu to różnice wobec stanu przed korektą.</p>
+            </section>
+          ) : (
+            <section className="card" aria-labelledby="lines-title">
+              <h2 id="lines-title">Pozycje</h2>
+              <Lines lines={invoice.lines} currency={invoice.currency} />
+              {invoice.exemptionBasis ? <p className="inv-help">Podstawa zwolnienia: {invoice.exemptionBasis.text}</p> : null}
+            </section>
+          )}
           <VatSummary
             rows={invoice.vatSummary}
             totalNet={invoice.totalNet}
@@ -326,6 +451,17 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
             totalGross={invoice.totalGross}
             currency={invoice.currency}
           />
+          {invoice.currentState ? (
+            <section className="card" aria-labelledby="current-state-title" data-testid="current-state">
+              <h2 id="current-state-title">Stan po korektach</h2>
+              {invoice.currentState.isZero ? <p className="inv-help">Faktura skorygowana do zera.</p> : null}
+              <Lines lines={invoice.currentState.lines} currency={invoice.currency} />
+              <p className="inv-help">
+                Nabywca: {invoice.currentState.buyer.name ?? '—'}. Razem brutto:{' '}
+                <b data-testid="current-gross">{formatMoney(invoice.currentState.totalGross, invoice.currency)}</b>
+              </p>
+            </section>
+          ) : null}
         </div>
       </div>
 
@@ -340,7 +476,50 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
         onConfirm={() => remove.mutate()}
         onCancel={() => setDeleteOpen(false)}
       />
+
+      <ConfirmDialog
+        open={wrongNipOpen}
+        title="Błędny NIP nabywcy?"
+        message="NIP-u nie zmienisz korektą. Utworzymy korektę do zera z obecnym NIP-em. Po jej przyjęciu w KSeF wystawisz poprawną fakturę z właściwym NIP-em."
+        confirmLabel="Utwórz korektę do zera"
+        pendingLabel="Tworzenie…"
+        isPending={correct.isPending}
+        onConfirm={() => correct.mutate('WrongBuyerId')}
+        onCancel={() => setWrongNipOpen(false)}
+      />
     </section>
+  )
+}
+
+function Lines({ lines, currency }: { lines: IssuedInvoiceLineResponse[]; currency: string }): ReactElement {
+  return (
+    <table className="lines">
+      <thead>
+        <tr>
+          <th scope="col">Ilość</th>
+          <th scope="col">Cena netto</th>
+          <th scope="col">Stawka</th>
+          <th scope="col">Netto</th>
+        </tr>
+      </thead>
+      {lines.map((line) => (
+        <tbody key={line.lineNo}>
+          <tr>
+            <th colSpan={4} scope="rowgroup">
+              {line.name}
+            </th>
+          </tr>
+          <tr>
+            <td>
+              {formatDecimal(line.quantity, 0)} {line.unit}
+            </td>
+            <td>{formatDecimal(line.unitNetPrice, 2)}</td>
+            <td>{vatRateLabel(line.vatRate)}</td>
+            <td>{formatMoney(line.netAmount, currency)}</td>
+          </tr>
+        </tbody>
+      ))}
+    </table>
   )
 }
 
