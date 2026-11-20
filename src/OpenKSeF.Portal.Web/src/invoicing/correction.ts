@@ -173,7 +173,7 @@ export function toCorrectionRequest(form: CorrectionFormValue, buyer: IssuedInvo
     dueDate: text(form.dueDate),
     paymentMethod: form.paymentMethod,
     correctionReason: form.correctionReason.trim(),
-    correctionType: form.correctionType ? (Number(form.correctionType) as CorrectionType) : null,
+    correctionType: form.correctionType ? (Number(form.correctionType) as CorrectionType) : 0,
     buyer: {
       ...buyer,
       name: text(form.buyerName),

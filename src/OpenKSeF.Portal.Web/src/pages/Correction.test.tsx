@@ -18,6 +18,9 @@ import { ApiError } from '@/api/errors'
 import type { IssuedInvoiceResponse, SellerProfileResponse } from '@/api/types'
 import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
+import acceptedSample from '@/test/fixtures/issued-invoice-correction-accepted.json'
+import draftSample from '@/test/fixtures/issued-invoice-correction-draft.json'
+import originalSample from '@/test/fixtures/issued-invoice-original-with-corrections.json'
 import { ownerAccess } from '@/test/tenant'
 import { CorrectionDraftPage } from './CorrectionDraft'
 import { InvoiceDraftPage } from './InvoiceDraft'
@@ -55,74 +58,34 @@ const profile: SellerProfileResponse = {
   ksefEnvironment: 'test',
   correctionNumberingPattern: 'KOR/{nr}/{MM}/{RRRR}',
   correctionNextNumber: 1,
-  correctionNextNumberPeriod: '2026-11',
-  correctionNextNumberPreview: 'KOR/1/11/2026',
-}
-
-const ksef = {
-  environment: 'test' as const,
-  ksefNumber: null,
-  acceptedAt: null,
-  statusCode: null,
-  statusMessage: null,
-  statusDetails: null,
-  lastError: null,
-  verificationUrl: null,
-  hasUpo: false,
-  duplicateKsefNumber: null,
-  acceptedOn: null,
-  upoUnavailable: false,
+  correctionNextNumberPeriod: '2026-12',
+  correctionNextNumberPreview: 'KOR/1/12/2026',
 }
 
 const line = { lineNo: 1, name: 'Usługa', unit: 'szt.', quantity: 1, unitNetPrice: 100, vatRate: '23' as const, netAmount: 100, vatAmount: 23 }
 
-const original = (patch: Partial<IssuedInvoiceResponse> = {}): IssuedInvoiceResponse => ({
-  id: 'o-1',
-  status: 'Accepted',
-  number: 'FV/3/11/2026',
-  seller: { nip: '4444444444', name: 'Sprzedawca', addressLine1: 'a', addressLine2: 'b', bankAccount: null, cashAccounting: false },
-  buyer: { kind: 'Company', nip: '5555555555', name: 'Nabywca', addressLine1: 'ul. Krzywa 1', addressLine2: '00-002 Warszawa' },
-  issueDate: '2026-11-03',
-  saleDate: '2026-11-03',
-  dueDate: '2026-11-17',
-  paymentMethod: 'Transfer',
-  splitPayment: false,
-  exemptionBasis: null,
-  lines: [line],
-  vatSummary: [{ vatRate: '23', net: 100, vat: 23 }],
-  totalNet: 100,
-  totalVat: 23,
-  totalGross: 123,
-  currency: 'PLN',
-  ksef: { ...ksef, ksefNumber: '4444444444-20261103-ABC-01', acceptedAt: '2026-11-03T10:05:00Z' },
-  warnings: [],
-  createdAt: '2026-11-03T10:00:00Z',
-  updatedAt: '2026-11-03T10:00:00Z',
-  issuedAt: '2026-11-03T10:01:00Z',
-  version: 5,
-  sellerVersion: 3,
-  invoiceType: 'VAT',
-  ...patch,
-})
-
-const correction = (patch: Partial<IssuedInvoiceResponse> = {}): IssuedInvoiceResponse =>
-  original({
-    id: 'k-1',
-    status: 'Draft',
-    number: null,
-    issueDate: '2026-11-20',
-    lines: [{ ...line, baseLineNo: 1 }],
-    vatSummary: [],
-    totalNet: 0,
-    totalVat: 0,
-    totalGross: 0,
-    ksef,
-    issuedAt: null,
-    version: 1,
-    invoiceType: 'KOR',
-    correctedInvoice: { id: 'o-1', number: 'FV/3/11/2026', ksefNumber: '4444444444-20261103-ABC-01', issueDate: '2026-11-03', invoiceType: 'VAT' },
+const sample = (json: object, patch: Partial<IssuedInvoiceResponse>): IssuedInvoiceResponse => {
+  const base = json as unknown as IssuedInvoiceResponse
+  return {
+    ...base,
+    createdAt: '2026-11-03T10:00:00Z',
+    updatedAt: '2026-11-03T10:00:00Z',
+    issuedAt: base.issuedAt ? '2026-11-03T10:01:00Z' : null,
+    ksef: { ...base.ksef, acceptedAt: base.ksef.acceptedAt ? '2026-11-03T10:05:00Z' : null, verificationUrl: base.ksef.verificationUrl ? 'https://qr-test.ksef.mf.gov.pl/x' : null },
+    correctedInvoice: base.correctedInvoice ? { ...base.correctedInvoice, id: 'o-1' } : null,
+    corrections: base.corrections?.map((item) => ({ ...item, id: 'k-1' })) ?? null,
     ...patch,
-  })
+  }
+}
+
+const original = (patch: Partial<IssuedInvoiceResponse> = {}): IssuedInvoiceResponse =>
+  sample(originalSample, { id: 'o-1', version: 5, currentState: null, corrections: null, ...patch })
+
+const zeroedOriginal = (): IssuedInvoiceResponse => sample(originalSample, { id: 'o-1', version: 5 })
+
+const correction = (patch: Partial<IssuedInvoiceResponse> = {}): IssuedInvoiceResponse => sample(draftSample, { id: 'k-1', version: 1, ...patch })
+
+const acceptedCorrection = (patch: Partial<IssuedInvoiceResponse> = {}): IssuedInvoiceResponse => sample(acceptedSample, { id: 'k-1', version: 3, ...patch })
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
@@ -216,7 +179,7 @@ describe('KOR corrections in the portal', () => {
       serve(
         original({
           openCorrectionId: 'k-1',
-          corrections: [{ id: 'k-1', number: 'KOR/1/11/2026', invoiceType: 'KOR', status: 'Rejected', issueDate: '2026-11-20', totalGross: -123 }],
+          corrections: [{ id: 'k-1', number: 'KOR/1/12/2026', invoiceType: 'KOR', status: 'Rejected', issueDate: '2026-11-20', totalGross: -123 }],
         }),
       )
       await render('/issued/o-1?tenantId=t-1')
@@ -224,17 +187,17 @@ describe('KOR corrections in the portal', () => {
       expect(button('Koryguj')!.disabled).toBe(true)
       expect(button('Koryguj do zera')!.disabled).toBe(true)
       expect(button('Błędny NIP nabywcy')!.disabled).toBe(true)
-      expect(text('open-correction')).toContain('KOR/1/11/2026')
+      expect(text('open-correction')).toContain('KOR/1/12/2026')
       expect(text('corrections-card')).toContain('-123,00 PLN')
     })
 
     it('shows the server message of 409 INV-KOR-OPEN as is', async () => {
       serve(original())
-      vi.mocked(createCorrection).mockRejectedValue(conflict('Faktura ma otwartą korektę KOR/1/11/2026.', 'INV-KOR-OPEN'))
+      vi.mocked(createCorrection).mockRejectedValue(conflict('Faktura ma otwartą korektę KOR/1/12/2026.', 'INV-KOR-OPEN'))
       await render('/issued/o-1?tenantId=t-1')
       await waitFor(() => Boolean(button('Koryguj do zera')))
       await act(async () => button('Koryguj do zera')!.click())
-      await waitFor(() => (container.textContent ?? '').includes('Faktura ma otwartą korektę KOR/1/11/2026.'))
+      await waitFor(() => (container.textContent ?? '').includes('Faktura ma otwartą korektę KOR/1/12/2026.'))
       expect(createCorrection).toHaveBeenCalledWith('t-1', 'o-1', 'ToZero')
     })
 
@@ -251,10 +214,7 @@ describe('KOR corrections in the portal', () => {
     })
 
     it('lists corrections, shows the current state and Wystaw poprawną fakturę after a zero correction', async () => {
-      const zeroed = original({
-        currentState: { lines: [], vatSummary: [], totalNet: 0, totalVat: 0, totalGross: 0, buyer: original().buyer, isZero: true },
-        corrections: [{ id: 'k-1', number: 'KOR/1/11/2026', invoiceType: 'KOR', status: 'Accepted', issueDate: '2026-11-20', totalGross: -123 }],
-      })
+      const zeroed = zeroedOriginal()
       serve(zeroed, original({ id: 'n-1', status: 'Draft', number: null, buyer: { ...original().buyer, nip: null } }))
       vi.mocked(reissueInvoice).mockResolvedValue(original({ id: 'n-1', status: 'Draft', number: null }))
       await render('/issued/o-1?tenantId=t-1')
@@ -262,7 +222,7 @@ describe('KOR corrections in the portal', () => {
       expect(button('Koryguj do zera')).toBeUndefined()
       expect(text('current-state')).toContain('Faktura skorygowana do zera')
       expect(text('current-gross')).toBe('0,00 PLN')
-      expect(container.querySelector('a[href^="/issued/k-1"]')?.textContent).toBe('KOR/1/11/2026')
+      expect(container.querySelector('a[href^="/issued/k-1"]')?.textContent).toBe('KOR/1/12/2026')
       expect(text('reissue')).toContain('pole NIP będzie puste')
 
       await act(async () => button('Wystaw poprawną fakturę')!.click())
@@ -272,21 +232,7 @@ describe('KOR corrections in the portal', () => {
 
     it('a correction links to the original and shows before and after rows, without copy or new corrections', async () => {
       serve(
-        correction({
-          status: 'Accepted',
-          number: 'KOR/1/11/2026',
-          ksef: { ...ksef, ksefNumber: '4444444444-20261120-DEF-01' },
-          correctionReason: 'Zwrot towaru',
-          correctionType: 2,
-          correctionRows: [
-            { rowNo: 1, isBefore: true, baseLineNo: 1, name: 'Usługa', unit: 'szt.', quantity: 1, unitNetPrice: 100, vatRate: '23', netAmount: 100 },
-            { rowNo: 2, isBefore: false, baseLineNo: 1, name: 'Usługa', unit: 'szt.', quantity: 0, unitNetPrice: 100, vatRate: '23', netAmount: 0 },
-          ],
-          vatSummary: [{ vatRate: '23', net: -100, vat: -23 }],
-          totalNet: -100,
-          totalVat: -23,
-          totalGross: -123,
-        }),
+        acceptedCorrection({ correctionType: 2 }),
       )
       await render('/issued/k-1?tenantId=t-1')
       await waitFor(() => Boolean(container.querySelector('[data-testid="corrected-invoice"]')))
@@ -315,13 +261,13 @@ describe('KOR corrections in the portal', () => {
       vi.mocked(updateCorrection).mockImplementation(async (_tenant, _id, request) => correction({ correctionReason: request.correctionReason, version: 2 }))
       await render('/issued/k-1/correct?tenantId=t-1')
       await waitFor(() => Boolean(container.querySelector('#line-0-quantity')))
-      expect(text('buyer-locked')).toContain('5555555555')
+      expect(text('buyer-locked')).toContain('3333333333')
       expect(text('buyer-locked')).toContain('PLN')
       expect(container.querySelector('#buyer-nip')).toBeNull()
-      expect(text('corrected-ref')).toContain('FV/3/11/2026')
+      expect(text('corrected-ref')).toContain('FV/1/11/2026')
       expect(text('total-gross')).toBe('0,00 PLN')
       expect(byId('correction-type').value).toBe('')
-      expect(container.textContent).toContain('KOR/1/11/2026')
+      expect(container.textContent).toContain('KOR/1/12/2026')
 
       await act(async () => typeInto(byId('line-0-quantity'), '0'))
       expect(text('total-gross')).toBe('-123,00 PLN')
@@ -337,8 +283,8 @@ describe('KOR corrections in the portal', () => {
         'k-1',
         expect.objectContaining({
           correctionReason: 'Zwrot towaru',
-          correctionType: null,
-          buyer: expect.objectContaining({ kind: 'Company', nip: '5555555555' }),
+          correctionType: 0,
+          buyer: expect.objectContaining({ kind: 'Company', nip: '3333333333' }),
           lines: [{ baseLineNo: 1, name: 'Usługa', unit: 'szt.', quantity: 0, unitNetPrice: 100, vatRate: '23' }],
         }),
         1,
@@ -376,28 +322,47 @@ describe('KOR corrections in the portal', () => {
       expect(vi.mocked(updateCorrection).mock.calls[0][2]).toMatchObject({
         correctionReason: 'Błąd w adresie',
         correctionType: 2,
-        buyer: { nip: '5555555555', addressLine1: 'ul. Prosta 2' },
+        buyer: { nip: '3333333333', addressLine1: 'ul. Prosta 2' },
       })
     })
 
-    it('shows 422 field messages from the server and issues with invoiceType KOR', async () => {
+    it('shows issue-time 422 errors (INV-VAL-082, INV-VAL-084) as server messages, then issues with invoiceType KOR', async () => {
       serve(original(), correction())
-      const envelope = { errors: [{ code: 'INV-VAL-084', field: 'correctionReason', message: 'Podaj przyczynę korekty' }], warnings: [] }
-      vi.mocked(updateCorrection)
+      const envelope = {
+        errors: [
+          { code: 'INV-VAL-084', field: 'correctionReason', message: 'Podaj przyczynę korekty' },
+          { code: 'INV-VAL-082', field: null, message: 'Korekta nie zawiera zmian. Zmień pozycje albo dane nabywcy.' },
+        ],
+        warnings: [],
+      }
+      vi.mocked(updateCorrection).mockResolvedValue(correction({ version: 2 }))
+      vi.mocked(issueIssuedInvoice)
         .mockRejectedValueOnce(new ApiError('x', 422, new Response(JSON.stringify(envelope), { status: 422, headers: { 'Content-Type': 'application/json' } })))
-        .mockResolvedValue(correction({ version: 2 }))
-      vi.mocked(issueIssuedInvoice).mockResolvedValue(correction({ status: 'Sending', number: 'KOR/1/11/2026' }))
+        .mockResolvedValue(correction({ status: 'Sending', number: 'KOR/1/12/2026' }))
       await render('/issued/k-1/correct?tenantId=t-1')
       await waitFor(() => Boolean(button('Wystaw korektę')))
       await act(async () => button('Wystaw korektę')!.click())
       await waitFor(() => Boolean(container.querySelector('#correction-reason-error')))
       expect(container.querySelector('#correction-reason-error')?.textContent).toBe('Podaj przyczynę korekty')
-      expect(issueIssuedInvoice).not.toHaveBeenCalled()
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Korekta nie zawiera zmian. Zmień pozycje albo dane nabywcy.')
 
       await act(async () => button('Rabat')!.click())
+      await act(async () => typeInto(byId('line-0-quantity'), '0'))
       await act(async () => button('Wystaw korektę')!.click())
-      await waitFor(() => vi.mocked(issueIssuedInvoice).mock.calls.length === 1)
-      expect(vi.mocked(issueIssuedInvoice).mock.calls[0]).toEqual(['t-1', 'k-1', 2, 3, undefined, 'KOR'])
+      await waitFor(() => vi.mocked(issueIssuedInvoice).mock.calls.length === 2)
+      expect(vi.mocked(issueIssuedInvoice).mock.calls[1]).toEqual(['t-1', 'k-1', 2, 0, undefined, 'KOR'])
+    })
+
+    it('clearing TypKorekty sends 0, a set type sends its number', async () => {
+      serve(original(), correction({ correctionType: 2 }))
+      vi.mocked(updateCorrection).mockResolvedValue(correction({ version: 2 }))
+      await render('/issued/k-1/correct?tenantId=t-1')
+      await waitFor(() => Boolean(container.querySelector('#correction-type')))
+      expect(byId('correction-type').value).toBe('2')
+      await act(async () => typeInto(byId('correction-type'), ''))
+      await act(async () => button('Zapisz szkic')!.click())
+      await waitFor(() => vi.mocked(updateCorrection).mock.calls.length === 1)
+      expect(vi.mocked(updateCorrection).mock.calls[0][2].correctionType).toBe(0)
     })
 
     it('shows the server message of a 503 on issue as is', async () => {

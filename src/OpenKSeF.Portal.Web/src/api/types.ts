@@ -365,7 +365,7 @@ export interface CorrectionDraftRequest {
   dueDate?: string | null
   paymentMethod?: PaymentMethod | null
   correctionReason?: string | null
-  correctionType?: CorrectionType | null
+  correctionType?: CorrectionType | 0 | null
   buyer?: IssuedInvoiceBuyer | null
   lines?: CorrectionLineRequest[] | null
 }
