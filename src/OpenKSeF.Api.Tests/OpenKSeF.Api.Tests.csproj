@@ -24,6 +24,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\OpenKSeF.Worker\appsettings.json" Link="worker.appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\OpenKSeF.Api\OpenKSeF.Api.csproj" />
     <ProjectReference Include="..\OpenKSeF.Domain\OpenKSeF.Domain.csproj" />
   </ItemGroup>

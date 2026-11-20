@@ -29,11 +29,13 @@ public class AppSettingsLoggingTests
             sink.Events.Select(e => e.MessageTemplate.Text));
     }
 
-    [Fact]
-    public void ShippedAppSettings_DropHttpClientRequestUris()
+    [Theory]
+    [InlineData("appsettings.json")]
+    [InlineData("worker.appsettings.json")]
+    public void ShippedAppSettings_DropHttpClientRequestUris(string file)
     {
         var configuration = new ConfigurationBuilder()
-            .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"))
+            .AddJsonFile(Path.Combine(AppContext.BaseDirectory, file))
             .Build();
         var sink = new CapturingSink();
         using var serilog = new LoggerConfiguration().ReadFrom.Configuration(configuration).WriteTo.Sink(sink).CreateLogger();
@@ -43,6 +45,28 @@ public class AppSettingsLoggingTests
         factory.CreateLogger("System.Net.Http.HttpClient.Default.LogicalHandler").LogWarning("kept");
 
         Assert.Equal(["kept"], sink.Events.Select(e => e.MessageTemplate.Text));
+    }
+
+    [Theory]
+    [InlineData("appsettings.json")]
+    [InlineData("worker.appsettings.json")]
+    public void ShippedAppSettings_DropEfCommandText_KeepEfErrorsAndAppInformation(string file)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(AppContext.BaseDirectory, file))
+            .Build();
+        var sink = new CapturingSink();
+        using var serilog = new LoggerConfiguration().ReadFrom.Configuration(configuration).WriteTo.Sink(sink).CreateLogger();
+        using var factory = new SerilogLoggerFactory(serilog);
+
+        var efCommand = factory.CreateLogger("Microsoft.EntityFrameworkCore.Database.Command");
+        efCommand.LogInformation("Executed DbCommand (2ms) SELECT i.\"Id\" FROM \"IssuedInvoices\" AS i");
+        efCommand.LogError("Failed executing DbCommand");
+        factory.CreateLogger("OpenKSeF.Worker.Services.InvoiceSyncService").LogInformation("Sync cycle processed 0 tenants");
+
+        Assert.Equal(
+            ["Failed executing DbCommand", "Sync cycle processed 0 tenants"],
+            sink.Events.Select(e => e.MessageTemplate.Text));
     }
 
     private sealed class CapturingSink : ILogEventSink
