@@ -465,6 +465,33 @@ public class IssuedFeedApiTests : IDisposable
         Assert.Empty(errors.Entries);
     }
 
+    [Fact]
+    public async Task ServerSideCancellation_WithoutClientAbort_StaysA500()
+    {
+        var tenantId = await CreateTenantAsync();
+        var errors = new LogCapture(LogLevel.Error);
+        using var kestrel = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+        {
+            s.AddSingleton<IExchangeRateSource>(new CancelledExchangeRateSource());
+            s.AddSingleton<ILoggerFactory>(new LoggerFactory([errors]));
+        }));
+        kestrel.UseKestrel(0);
+        kestrel.StartServer();
+        using var client = kestrel.CreateClient();
+        client.DefaultRequestHeaders.Authorization = _client.DefaultRequestHeaders.Authorization;
+
+        var response = await client.GetAsync($"/api/tenants/{tenantId}/issued-invoices/exchange-rate?currency=EUR");
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Contains(errors.Entries, e => e.Contains(nameof(OperationCanceledException)));
+    }
+
+    private sealed class CancelledExchangeRateSource : IExchangeRateSource
+    {
+        public Task<ExchangeRateQuote?> LatestMidBeforeAsync(string currency, DateOnly date, CancellationToken ct = default) =>
+            throw new OperationCanceledException();
+    }
+
     private sealed class BlockingExchangeRateSource : IExchangeRateSource
     {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -114,9 +114,10 @@ public sealed class TenantIsolationTests : IAsyncLifetime
             LastUpdatedAt = now,
         };
         var device = Guid.NewGuid();
+        string ownerId = null!;
         await WithDbAsync(async db =>
         {
-            var ownerId = (await db.Tenants.SingleAsync(t => t.Id == tenantA)).UserId;
+            ownerId = (await db.Tenants.SingleAsync(t => t.Id == tenantA)).UserId;
             db.InvoiceHeaders.Add(invoice);
             db.InvoiceXmls.Add(new InvoiceXml { InvoiceHeaderId = invoice.Id, Content = "<Faktura/>"u8.ToArray(), Sha256 = Convert.ToBase64String(SHA256.HashData("<Faktura/>"u8)), StoredAt = now });
             db.DeviceTokens.Add(new DeviceToken
@@ -127,7 +128,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
             await db.SaveChangesAsync();
         });
 
-        _seed = new Seed(tenantA, tenantB, invoice.Id, invoice.KSeFInvoiceNumber, issuedId, device, inviteId);
+        _seed = new Seed(tenantA, tenantB, invoice.Id, invoice.KSeFInvoiceNumber, issuedId, device, inviteId, ownerId);
     }
 
     public Task DisposeAsync()
@@ -323,7 +324,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         var path = route.Template
             .Replace("{tenantId}", tenantId.ToString())
             .Replace("{ksefInvoiceNumber}", _seed.KsefNumber)
-            .Replace("{userId}", "no-such-member")
+            .Replace("{userId}", tenantId == _seed.TenantB ? _seed.OwnerUserId : "no-such-member")
             .Replace("{id}", ResourceId(route.Template, issuedId).ToString());
         if (path.Contains('{'))
             throw new InvalidOperationException($"Unfilled route parameter in {route.Key}");
@@ -386,7 +387,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         await action(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>());
     }
 
-    private sealed record Seed(Guid TenantA, Guid TenantB, Guid InvoiceId, string KsefNumber, Guid IssuedId, Guid DeviceId, Guid InviteId);
+    private sealed record Seed(Guid TenantA, Guid TenantB, Guid InvoiceId, string KsefNumber, Guid IssuedId, Guid DeviceId, Guid InviteId, string OwnerUserId);
 
     private sealed record IdDto(Guid Id);
 
