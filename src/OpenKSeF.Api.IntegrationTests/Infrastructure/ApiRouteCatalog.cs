@@ -1,43 +1,45 @@
-using System.Reflection;
-using System.Text.RegularExpressions;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.ActionConstraints;
+using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Routing.Patterns;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace OpenKSeF.Api.IntegrationTests.Infrastructure;
 
-/// <summary>Every controller action of the API as (method, template, parameters), read by reflection, so a test over all endpoints sees a new one.</summary>
-public static partial class ApiRouteCatalog
+/// <summary>Every controller action of the running API as (method, template, route and query parameters), read from MVC's action descriptors, so a test over all endpoints sees a new one with its inferred binding sources.</summary>
+public static class ApiRouteCatalog
 {
-    public sealed record ApiRoute(string Method, string Template, IReadOnlyList<string> Parameters)
+    public sealed record ApiRoute(string Method, string Template, IReadOnlyList<string> RouteParameters, IReadOnlyList<string> QueryParameters)
     {
         public string Key => $"{Method} {Template}";
+
+        public IEnumerable<string> Parameters => RouteParameters.Concat(QueryParameters);
     }
 
-    public static IReadOnlyList<ApiRoute> Discover() =>
-        typeof(Program).Assembly.GetTypes()
-            .Where(t => typeof(ControllerBase).IsAssignableFrom(t) && !t.IsAbstract)
-            .SelectMany(controller => controller.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                .SelectMany(action => action.GetCustomAttributes<HttpMethodAttribute>()
-                    .SelectMany(http => http.HttpMethods.Select(method => Route(controller, action, http, method)))))
+    public static IReadOnlyList<ApiRoute> Discover(IServiceProvider services) =>
+        services.GetRequiredService<IActionDescriptorCollectionProvider>().ActionDescriptors.Items
+            .OfType<ControllerActionDescriptor>()
+            .SelectMany(action => (action.ActionConstraints ?? []).OfType<HttpMethodActionConstraint>()
+                .SelectMany(constraint => constraint.HttpMethods)
+                .Select(method => Route(action, method)))
             .OrderBy(r => r.Template).ThenBy(r => r.Method)
             .ToList();
 
-    private static ApiRoute Route(Type controller, MethodInfo action, HttpMethodAttribute http, string method)
+    private static ApiRoute Route(ActionDescriptor action, string method)
     {
-        var prefix = (controller.GetCustomAttribute<RouteAttribute>()?.Template ?? "")
-            .Replace("[controller]", controller.Name[..^"Controller".Length].ToLowerInvariant());
-        var template = RouteConstraint().Replace(
-            string.IsNullOrEmpty(http.Template) ? prefix : $"{prefix}/{http.Template}", "{$1}");
-        var routeParameters = RouteParameter().Matches(template).Select(m => m.Groups[1].Value);
-        var queryParameters = action.GetParameters()
-            .Where(p => p.GetCustomAttribute<FromQueryAttribute>() is not null)
-            .Select(p => p.Name!);
-        return new ApiRoute(method, template, routeParameters.Concat(queryParameters).ToList());
+        var pattern = RoutePatternFactory.Parse(action.AttributeRouteInfo!.Template!);
+        var template = string.Join('/', pattern.PathSegments.Select(segment => string.Concat(segment.Parts.Select(part => part switch
+        {
+            RoutePatternLiteralPart literal => literal.Content.ToLowerInvariant(),
+            RoutePatternSeparatorPart separator => separator.Content,
+            RoutePatternParameterPart parameter => $"{{{parameter.Name}}}",
+            _ => throw new InvalidOperationException($"Unknown route part in {action.DisplayName}"),
+        }))));
+        var queryParameters = action.Parameters
+            .Where(p => p.BindingInfo?.BindingSource == BindingSource.Query)
+            .Select(p => p.BindingInfo!.BinderModelName ?? p.Name);
+        return new ApiRoute(method, template, pattern.Parameters.Select(p => p.Name).ToList(), queryParameters.ToList());
     }
-
-    [GeneratedRegex(@"\{(\w+):[^}]*\}")]
-    private static partial Regex RouteConstraint();
-
-    [GeneratedRegex(@"\{(\w+)\}")]
-    private static partial Regex RouteParameter();
 }

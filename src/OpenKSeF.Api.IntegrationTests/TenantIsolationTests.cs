@@ -144,7 +144,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
     [Fact]
     public void EveryTenantScopedEndpoint_HasAnIsolationCase()
     {
-        var discovered = ApiRouteCatalog.Discover().Where(IsTenantScoped).Select(r => r.Key).ToHashSet();
+        var discovered = ApiRouteCatalog.Discover(_factory.Services).Where(IsTenantScoped).Select(r => r.Key).ToHashSet();
 
         Assert.Empty(discovered.Except(Cases.Keys));
         Assert.Empty(Cases.Keys.Except(discovered));
@@ -155,7 +155,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
     [Fact]
     public async Task NonMember_GetsNotFound_OnEveryTenantScopedEndpoint()
     {
-        var routes = ApiRouteCatalog.Discover().Where(IsTenantScoped).ToList();
+        var routes = ApiRouteCatalog.Discover(_factory.Services).Where(IsTenantScoped).ToList();
         Assert.NotEmpty(routes);
 
         var failures = new List<string>();
@@ -176,7 +176,19 @@ public sealed class TenantIsolationTests : IAsyncLifetime
             Assert.False((await db.InvoiceHeaders.SingleAsync(i => i.Id == _seed.InvoiceId)).IsPaid);
             Assert.True(await db.DeviceTokens.AnyAsync(d => d.Id == _seed.DeviceId));
             Assert.False(await db.SellerProfiles.AnyAsync(p => p.TenantId == _seed.TenantA));
+            Assert.False(await db.KSeFCredentials.AnyAsync(c => c.TenantId == _seed.TenantA));
         });
+    }
+
+    [Fact]
+    public async Task NonMember_AllTenantsInvoiceRoutes_DoNotReturnForeignInvoice()
+    {
+        var list = await _other.GetFromJsonAsync<InvoicePageDto>("/api/invoices?pageSize=100");
+        var byNumber = await _other.GetAsync($"/api/invoices/by-number/{_seed.KsefNumber}");
+
+        Assert.DoesNotContain(list!.Items, i => i.Id == _seed.InvoiceId);
+        Assert.Equal(HttpStatusCode.NotFound, byNumber.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _owner.GetAsync($"/api/invoices/by-number/{_seed.KsefNumber}")).StatusCode);
     }
 
     [Theory]
@@ -192,8 +204,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
     [Fact]
     public async Task ForeignResourceIdUnderOwnTenant_Returns404()
     {
-        var routes = ApiRouteCatalog.Discover().Where(r =>
-            r.Parameters.Contains("tenantId") && (r.Parameters.Contains("id") || r.Parameters.Contains("ksefInvoiceNumber"))).ToList();
+        var routes = ApiRouteCatalog.Discover(_factory.Services).Where(r => IsTenantScoped(r) && r.RouteParameters.Any(p => p != "tenantId")).ToList();
         Assert.NotEmpty(routes);
 
         var failures = new List<string>();
@@ -217,7 +228,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         clients.Add(("Owner", TenantRole.Owner, _owner));
         Assert.Equal(HttpStatusCode.OK, (await _owner.PutAsJsonAsync($"/api/tenants/{_seed.TenantA}/seller-profile", new { legalName = "Sprzedawca Testowy", cashAccounting = false })).StatusCode);
 
-        var routes = ApiRouteCatalog.Discover().Where(r => r.Parameters.Contains("tenantId"))
+        var routes = ApiRouteCatalog.Discover(_factory.Services).Where(r => r.Parameters.Contains("tenantId"))
             .OrderBy(r => r.Key == "DELETE api/tenants/{tenantId}")
             .ToList();
         Assert.Equal(Cases.Count(c => c.Value.Permission is not null), routes.Count);
@@ -378,6 +389,8 @@ public sealed class TenantIsolationTests : IAsyncLifetime
     private sealed record Seed(Guid TenantA, Guid TenantB, Guid InvoiceId, string KsefNumber, Guid IssuedId, Guid DeviceId, Guid InviteId);
 
     private sealed record IdDto(Guid Id);
+
+    private sealed record InvoicePageDto(List<IdDto> Items);
 
     private sealed record NameDto(string DisplayName);
 
