@@ -203,6 +203,7 @@
   gap: 10px;
   width: 100%;
   font-size: 14px;
+  min-height: var(--ui-target-text);
   line-height: 21px;
   text-align: left;
   cursor: pointer;
@@ -310,7 +311,7 @@
 
   .auth-label-row a { margin: -12px 0; }
 
-  .auth-check { min-height: 44px; align-items: center; }
+  .auth-check { align-items: center; }
   .auth-check input { margin: 0; }
 }
 
@@ -334,7 +335,7 @@
 
 .app-banner { margin-bottom: 16px; }
 .app-footer { padding: 12px 24px; font-size: 13px; }
-.app-footer a { color: var(--ui-muted); }
+.app-footer a { display: inline-flex; align-items: center; min-height: var(--ui-target-text); color: var(--ui-muted); }
 .privacy-page { max-width: 760px; gap: 16px; line-height: 1.55; }
 .privacy-page h2 { margin: 8px 0; font-size: 18px; }
 .privacy-page p, .privacy-page ul { margin: 0 0 8px; }

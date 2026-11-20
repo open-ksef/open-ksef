@@ -56,6 +56,12 @@
   --ui-transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --ui-transition-slow: 250ms cubic-bezier(0.4, 0, 0.2, 1);
 
+  /* Target size (design-system.md §1) */
+  --ui-control-sm: 32px;
+  --ui-control-md: 40px;
+  --ui-target-text: 24px;
+  --ui-control-font: 14px;
+
   /* Breakpoints (for reference) */
   --ui-breakpoint-mobile: 768px;
   --ui-breakpoint-tablet: 1024px;
@@ -126,6 +132,15 @@
   --ui-scrim: rgba(0, 0, 0, 0.65);
 }
 
+@media (max-width: 820px), (pointer: coarse) {
+  :root {
+    --ui-control-sm: 44px;
+    --ui-control-md: 44px;
+    --ui-target-text: 44px;
+    --ui-control-font: 16px;
+  }
+}
+
 /* ─── Focus Ring ─────────────────────────────────────────────────────────── */
 :focus-visible {
   outline: 2px solid var(--ui-focus);
@@ -160,6 +175,7 @@
 .sidebar-brand {
   display: flex;
   align-items: center;
+  min-height: var(--ui-target-text);
   gap: 8px;
   padding: 0 8px;
   color: var(--ui-accent);
@@ -182,7 +198,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 40px;
+  height: var(--ui-control-md);
   padding: 0 12px;
   border-radius: var(--ui-radius-md);
   color: var(--ui-text);
@@ -233,8 +249,8 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: var(--ui-control-md);
+  height: var(--ui-control-md);
   padding: 0;
   border: 0;
   border-radius: var(--ui-radius-md);
@@ -331,7 +347,7 @@ summary.company-card:focus-visible {
 .company-menu input[type='search'] {
   flex: none;
   width: 100%;
-  min-height: 40px;
+  min-height: var(--ui-control-md);
   margin-bottom: 4px;
   padding: 0 10px;
   background: var(--ui-surface);
@@ -339,7 +355,7 @@ summary.company-card:focus-visible {
   border: 1px solid var(--ui-border-strong);
   border-radius: var(--ui-radius-md);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--ui-control-font);
 }
 
 .company-menu input[type='search']::placeholder {
@@ -387,7 +403,7 @@ summary.company-card:focus-visible {
   flex: none;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: var(--ui-control-md);
   margin-top: 4px;
   padding: 0 8px;
   border-top: 1px solid var(--ui-border);
@@ -500,11 +516,6 @@ summary.company-card:focus-visible {
     display: none;
   }
 
-  .sidebar-user__action {
-    width: 44px;
-    height: 44px;
-  }
-
   .sidebar-nav {
     position: fixed;
     left: 0;
@@ -529,18 +540,12 @@ summary.company-card:focus-visible {
     font-size: 12px;
   }
 
-  .company-option,
-  .company-add {
-    min-height: 44px;
-  }
-
   .ui-modal.company-switch-dialog {
     padding: 16px;
   }
 
   .company-switch-actions .ui-button {
     flex: 1 1 100%;
-    min-height: 44px;
   }
 
   .app-content {
@@ -579,7 +584,7 @@ summary.company-card:focus-visible {
   cursor: pointer;
   font-weight: 600;
   font-family: inherit;
-  min-height: 36px;
+  min-height: var(--ui-control-md);
   transition:
     background var(--ui-transition),
     border-color var(--ui-transition),
@@ -602,15 +607,9 @@ summary.company-card:focus-visible {
   transform: none;
 }
 
-.ui-button--sm { padding: 5px 10px; font-size: 12px; min-height: 32px; }
+.ui-button--sm { padding: 5px 10px; font-size: 12px; min-height: var(--ui-control-sm); }
 .ui-button--md { padding: 7px 14px; font-size: 13px; }
-.ui-button--lg { padding: 10px 20px; font-size: 14px; min-height: 42px; }
-
-@media (max-width: 820px) {
-  .ui-button {
-    min-height: 44px;
-  }
-}
+.ui-button--lg { padding: 10px 20px; font-size: 14px; min-height: 44px; }
 
 .ui-button--primary {
   background: var(--ui-primary);
@@ -676,7 +675,7 @@ button:where(:not(.ui-button):not(.sidebar-user__action):not(.company-option)) {
   font-weight: 600;
   font-size: 13px;
   padding: 7px 14px;
-  min-height: 36px;
+  min-height: var(--ui-control-md);
   cursor: pointer;
   transition:
     background var(--ui-transition),
@@ -701,14 +700,19 @@ button:where(:not(.ui-button):not(.sidebar-user__action):not(.company-option):di
 input[type='text'],
 input[type='email'],
 input[type='date'],
+input[type='month'],
 input[type='password'],
 input[type='number'],
+input[type='search'],
+input[type='tel'],
+input[type='url'],
 select,
 textarea {
   display: block;
   width: 100%;
+  min-height: var(--ui-control-md);
   padding: 7px 10px;
-  font-size: 14px;
+  font-size: var(--ui-control-font);
   line-height: 1.5;
   color: var(--ui-text);
   background: var(--ui-surface);
@@ -1027,8 +1031,8 @@ label {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: var(--ui-control-sm);
+  height: var(--ui-control-sm);
   border: none;
   border-radius: var(--ui-radius-md);
   background: transparent;
@@ -1156,10 +1160,10 @@ label {
 .received-tools input {
   width: auto;
   min-width: 0;
-  height: 40px;
+  height: var(--ui-control-md);
   padding: 0 12px;
   color: var(--ui-text);
-  font-size: 14px;
+  font-size: var(--ui-control-font);
   background: var(--ui-surface);
   border: 1px solid var(--ui-border-strong);
   border-radius: var(--ui-radius-md);
@@ -1353,10 +1357,6 @@ label {
     flex-wrap: wrap;
     padding: 4px 10px;
   }
-
-  .received-list .ui-pagination button {
-    min-height: 44px;
-  }
 }
 
 /* ─── Pagination ─────────────────────────────────────────────────────────── */
@@ -1388,7 +1388,7 @@ label {
   font-size: 13px;
   font-weight: 600;
   padding: 6px 12px;
-  min-height: 32px;
+  min-height: var(--ui-control-sm);
 }
 
 /* ─── Received invoice details ───────────────────────────────────────────── */
@@ -1577,7 +1577,9 @@ label {
 }
 
 .pay-details summary {
-  min-height: 24px;
+  display: flex;
+  align-items: center;
+  min-height: var(--ui-target-text);
   margin-bottom: 8px;
   font-size: 13px;
   font-weight: 600;
@@ -1637,11 +1639,6 @@ label {
   .invoice-details-head {
     flex-direction: row;
     align-items: center;
-  }
-
-  .invoice-walk .ui-button,
-  .pay-actions .ui-button {
-    min-height: 44px;
   }
 
   .pay-grid {
@@ -1771,7 +1768,7 @@ dd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
+  min-height: var(--ui-control-sm);
   font-size: 13px;
   font-weight: 600;
   color: var(--ui-link);
@@ -1786,7 +1783,9 @@ dd {
 }
 
 .status-panel__details summary {
-  min-height: 24px;
+  display: flex;
+  align-items: center;
+  min-height: var(--ui-target-text);
   font-weight: 600;
   cursor: pointer;
 }
@@ -1857,6 +1856,12 @@ dd {
 .inv-alert a {
   color: var(--ui-link);
   text-decoration: underline;
+}
+
+.kod-card a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ui-target-text);
 }
 
 .inv-alert a {
@@ -1962,7 +1967,7 @@ dd {
 .ui-tabs a {
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  min-height: var(--ui-control-md);
   margin-bottom: -1px;
   padding: 0 12px;
   border-bottom: 2px solid transparent;
@@ -2275,16 +2280,6 @@ input.nip-input {
   .device-company {
     display: none;
   }
-
-  .device-actions__row .ui-button,
-  .settings-actions .ui-button,
-  .danger-list .ui-button {
-    min-height: 44px;
-  }
-
-  .ui-tabs a {
-    min-height: 44px;
-  }
 }
 
 /* ─── Toasts ─────────────────────────────────────────────────────────────── */
@@ -2298,6 +2293,7 @@ input.nip-input {
 .back-link {
   display: inline-flex;
   align-items: center;
+  min-height: var(--ui-target-text);
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
@@ -2362,6 +2358,7 @@ input.nip-input {
 }
 
 .start-list li {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -2394,7 +2391,18 @@ input.nip-input {
   text-decoration: underline;
 }
 
+.start-row__main > a:first-child::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
 .start-row__main > a.start-attention-link {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ui-target-text);
   font-size: 13px;
   line-height: 18px;
   color: var(--ui-link);
@@ -2413,6 +2421,8 @@ input.nip-input {
 }
 
 .start-row__end {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex: none;
   flex-direction: column;
@@ -2437,7 +2447,9 @@ input.nip-input {
 .start-attention-icon--warning { color: var(--ui-warning); }
 
 .start-more {
-  display: block;
+  display: flex;
+  align-items: center;
+  min-height: var(--ui-target-text);
   flex: none;
   margin-top: 8px;
   font-weight: 600;
@@ -2676,7 +2688,9 @@ input.nip-input {
 }
 
 .auth-card__link {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ui-target-text);
   margin-top: 8px;
   color: var(--ui-primary);
   font-size: 14px;
@@ -2917,7 +2931,7 @@ input.nip-input {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 24px;
+  min-height: var(--ui-target-text);
   margin: 8px 0 0;
   font-size: 14px;
 }
@@ -2930,12 +2944,8 @@ input.nip-input {
   margin-top: 16px;
 }
 
-.wiz__actions .ui-button {
-  min-height: 40px;
-}
-
 button.wiz__skip {
-  min-height: 40px;
+  min-height: var(--ui-control-md);
   padding: 0 4px;
   border: 0;
   background: none;
@@ -3015,17 +3025,10 @@ button.wiz__skip:hover {
   color: var(--ui-error);
 }
 
-@media (max-width: 820px) {
-  .wiz__actions .ui-button,
-  button.wiz__skip {
-    min-height: 44px;
-  }
-
-  .wiz__howto summary {
-    display: flex;
-    align-items: center;
-    min-height: 44px;
-  }
+.wiz__howto summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--ui-target-text);
 }
 
 .onboarding-card {

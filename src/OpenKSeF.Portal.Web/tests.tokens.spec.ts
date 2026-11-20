@@ -48,7 +48,7 @@ describe('design tokens', () => {
   })
 
   it('overrides every colour token in dark', () => {
-    const notColours = /^--ui-(sidebar|font|shadow|radius|transition|breakpoint)/
+    const notColours = /^--ui-(sidebar|font|shadow|radius|transition|breakpoint|control|target)/
     const colours = Object.keys(light).filter((name) => !notColours.test(name))
     expect(Object.keys(darkMedia).sort()).toEqual(colours.sort())
   })
@@ -80,6 +80,18 @@ describe('design tokens', () => {
     const invoicing = readFileSync(resolve(src, 'components/invoicing/invoicing.css'), 'utf8')
     const rule = invoicing.match(/\.inv-chips button\[aria-pressed='true'\] \{([^}]*)\}/)
     expect(rule?.[1]).toContain('background: var(--ui-primary-subtle);')
+  })
+
+  it('sizes controls from one touch block: 44 px targets and 16 px input text', () => {
+    const touch = ui.indexOf('@media (max-width: 820px), (pointer: coarse) {')
+    expect(touch).toBeGreaterThan(0)
+    expect(tokensOf(ui.slice(touch, ui.indexOf('\n}\n', touch)))).toEqual({
+      '--ui-control-sm': '44px',
+      '--ui-control-md': '44px',
+      '--ui-target-text': '44px',
+      '--ui-control-font': '16px',
+    })
+    expect(light['--ui-control-md']).toBe('40px')
   })
 
   it('has no scoped token block in invoicing.css', () => {
