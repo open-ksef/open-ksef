@@ -1,0 +1,104 @@
+{
+  "id": "<id>",
+  "status": "Accepted",
+  "number": "KOR/1/12/2026",
+  "seller": {
+    "nip": "<nip>",
+    "name": "OpenKSeF Test A sp. z o.o.",
+    "addressLine1": "ul. Prosta 1",
+    "addressLine2": "00-001 Warszawa",
+    "bankAccount": "93000000002026111700000815",
+    "cashAccounting": false,
+    "iban": null,
+    "swift": null,
+    "bankName": null
+  },
+  "buyer": {
+    "kind": "Company",
+    "nip": "3333333333",
+    "name": "Nabywca sp. z o.o.",
+    "addressLine1": "ul. Krótka 2",
+    "addressLine2": "00-002 Warszawa",
+    "countryCode": null,
+    "idType": null,
+    "foreignId": null
+  },
+  "issueDate": "2026-12-20",
+  "saleDate": "2026-12-20",
+  "dueDate": "2027-01-03",
+  "paymentMethod": "Transfer",
+  "splitPayment": false,
+  "exemptionBasis": null,
+  "lines": [],
+  "vatSummary": [
+    {
+      "vatRate": "23",
+      "net": -100.00,
+      "vat": -23.00
+    }
+  ],
+  "totalNet": -100.00,
+  "totalVat": -23.00,
+  "totalGross": -123.00,
+  "currency": "PLN",
+  "ksef": {
+    "environment": "test",
+    "ksefNumber": "5213456789-20261220-ABCDEF123456-CD",
+    "acceptedAt": "<acceptedAt>",
+    "statusCode": 200,
+    "statusMessage": "Sukces",
+    "statusDetails": null,
+    "lastError": null,
+    "verificationUrl": "<verificationUrl>",
+    "hasUpo": false,
+    "duplicateKsefNumber": null,
+    "acceptedOn": null,
+    "upoUnavailable": true
+  },
+  "warnings": [],
+  "createdAt": "<createdAt>",
+  "updatedAt": "<updatedAt>",
+  "issuedAt": "<issuedAt>",
+  "exchangeRate": null,
+  "exchangeRateDate": null,
+  "version": "<version>",
+  "sellerVersion": 0,
+  "invoiceType": "KOR",
+  "correctedInvoice": {
+    "id": "<id>",
+    "number": "FV/1/11/2026",
+    "ksefNumber": "5213456789-20261103-ABCDEF123456-AB",
+    "issueDate": "2026-11-03",
+    "invoiceType": "VAT"
+  },
+  "correctionReason": "Zwrot towaru",
+  "correctionType": null,
+  "correctionRows": [
+    {
+      "rowNo": 1,
+      "isBefore": true,
+      "baseLineNo": 1,
+      "name": "Usługa",
+      "unit": "szt.",
+      "quantity": 1.000000,
+      "unitNetPrice": 100.00,
+      "vatRate": "23",
+      "netAmount": 100.00
+    },
+    {
+      "rowNo": 2,
+      "isBefore": false,
+      "baseLineNo": 1,
+      "name": "Usługa",
+      "unit": "szt.",
+      "quantity": 0,
+      "unitNetPrice": 100.00,
+      "vatRate": "23",
+      "netAmount": 0
+    }
+  ],
+  "buyerBefore": null,
+  "currentState": null,
+  "corrections": null,
+  "openCorrectionId": null
+}
