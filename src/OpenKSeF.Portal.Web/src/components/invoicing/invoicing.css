@@ -134,7 +134,7 @@
 .inv-days .inv-chips {
   flex-wrap: nowrap;
   gap: 4px;
-  min-height: 40px;
+  min-height: var(--ui-control-md);
   align-items: center;
 }
 
@@ -151,6 +151,9 @@
 }
 
 .inv-account a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ui-target-text);
   margin-left: auto;
 }
 
@@ -178,7 +181,7 @@
 
 .inv-line input,
 .inv-line select {
-  height: 40px;
+  height: var(--ui-control-md);
 }
 
 .inv-line__label {
@@ -218,8 +221,8 @@
 }
 
 .inv-line__del button {
-  width: 40px;
-  height: 40px;
+  width: var(--ui-control-md);
+  height: var(--ui-control-md);
   padding: 0;
 }
 
@@ -455,11 +458,6 @@
     justify-self: end;
   }
 
-  .inv-line__del button {
-    width: 44px;
-    height: 44px;
-  }
-
   .inv-dock {
     bottom: 64px;
   }
@@ -556,7 +554,9 @@ fieldset.inv-card {
 }
 
 .inv-chips button {
-  min-height: 32px;
+  flex: none;
+  min-width: var(--ui-control-sm);
+  min-height: var(--ui-control-sm);
   border: 1px solid var(--ui-border-strong);
   background: var(--ui-surface);
   border-radius: 999px;
@@ -575,12 +575,6 @@ fieldset.inv-card {
   border-color: var(--ui-primary);
   color: var(--ui-link);
   font-weight: 600;
-}
-
-@media (max-width: 820px) {
-  .inv-chips button {
-    min-height: 44px;
-  }
 }
 
 .inv-readonly {
@@ -615,8 +609,13 @@ fieldset.inv-card {
 .inv-check {
   display: flex;
   gap: 8px;
-  align-items: flex-start;
+  align-items: center;
+  min-height: var(--ui-target-text);
   font-size: 14px;
+}
+
+.inv-check:has(.inv-help) {
+  align-items: flex-start;
 }
 
 .inv-check input {
