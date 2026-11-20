@@ -11,7 +11,7 @@ import { AsyncStateView } from '@/components/AsyncStateView'
 import { Button } from '@/components/Button'
 import { DueDate } from '@/components/DueDate'
 import { Icon } from '@/components/Icon'
-import { PaidStatus } from '@/components/PaidStatus'
+import { PaidStatus, SELLER_PAID_LABEL } from '@/components/PaidStatus'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
 import { accountDigits, formatDate, formatDecimal, formatMoney, formatNrb, formatWarsawDate } from '@/invoicing/format'
@@ -166,7 +166,7 @@ function PaymentCard({
           {amount}
           <p className="pay-paid-note">
             {invoice.paidAt ? <span data-testid="invoice-detail-paid-date">{formatWarsawDate(invoice.paidAt)} </span> : null}
-            <span>Oznaczona w OpenKSeF. To nie jest potwierdzenie przelewu.</span>
+            <span>{invoice.paidBySeller ? SELLER_PAID_LABEL : 'Oznaczona w OpenKSeF. To nie jest potwierdzenie przelewu.'}</span>
           </p>
           <div className="pay-actions">{markButton}</div>
           {transfer ? (

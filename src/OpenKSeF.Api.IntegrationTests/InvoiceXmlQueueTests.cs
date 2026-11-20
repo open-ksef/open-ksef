@@ -1423,7 +1423,7 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
             await new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance)
                 .ApplyInvoiceXmlAsync(id, new InvoiceXmlDetails(Account, null, new DateOnly(2026, 10, 5), SellerPaidOn: new DateOnly(2026, 10, 1)));
         });
-        await WaitForLockWaitOnInvoiceHeadersAsync();
+        await WaitForLockWaitersAsync(1);
         await toggle.CommitAsync();
         await apply;
 
@@ -1432,7 +1432,89 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
         Assert.Equal((false, (DateTime?)null, (string?)null), (row.IsPaid, row.PaidAt, row.PaidByUserId));
     }
 
-    private async Task WaitForLockWaitOnInvoiceHeadersAsync()
+    private sealed record PaidState(string Number, bool IsPaid, DateTime? PaidAt, string? PaidByUserId);
+
+    private async Task<Dictionary<string, PaidState>> PaidStatesAsync()
+    {
+        await using var db = NewContext();
+        return await db.InvoiceHeaders.AsNoTracking()
+            .ToDictionaryAsync(i => i.KSeFInvoiceNumber, i => new PaidState(i.KSeFInvoiceNumber, i.IsPaid, i.PaidAt, i.PaidByUserId));
+    }
+
+    [Fact]
+    public async Task Upgrade_MixedRows_WorkerCycleAndFullResync_OnlyNewSellerPaidRowsChange()
+    {
+        await InsertAsync("U-LEGACY-PAID", daysAgo: 40, isPaid: true);
+        await InsertAsync("U-USER-PAID", daysAgo: 0);
+        await InsertAsync("U-USER-UNPAID", daysAgo: 0);
+        await InsertAsync("U-OLD-NULL", daysAgo: 30);
+        await InsertAsync("U-25H", daysAgo: 0);
+        await InsertAsync("U-FETCHED", daysAgo: 0);
+        await InsertAsync("U-ISSUED", daysAgo: 0, direction: InvoiceDirection.Issued);
+        await InsertAsync("U-23H", daysAgo: 0);
+        await InsertAsync("U-NEW", daysAgo: 0);
+        await MigrateAsync();
+        await SetPaidAsync("U-USER-PAID", true);
+        await SetPaidAsync("U-USER-UNPAID", true);
+        await SetPaidAsync("U-USER-UNPAID", false);
+        await using (var db = NewContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "FirstSeenAt" = now() - interval '25 hours' WHERE "KSeFInvoiceNumber" = 'U-25H'""");
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "FirstSeenAt" = now() - interval '23 hours' WHERE "KSeFInvoiceNumber" = 'U-23H'""");
+            await db.Database.ExecuteSqlRawAsync("""UPDATE "InvoiceHeaders" SET "XmlFetchedAt" = now() - interval '1 day', "SellerPaidOn" = '2026-10-01' WHERE "KSeFInvoiceNumber" = 'U-FETCHED'""");
+        }
+        var before = await PaidStatesAsync();
+        Assert.Equal("user-1", before["U-LEGACY-PAID"].PaidByUserId);
+        _xml = _ => Xml("2026-10-05", zaplacono: "1");
+
+        await WorkerCycleAsync();
+        await ManualSyncAsync(fullResync: true);
+        await WorkerCycleAsync();
+
+        Assert.Superset(new HashSet<string> { "U-LEGACY-PAID", "U-USER-PAID", "U-USER-UNPAID", "U-OLD-NULL", "U-25H", "U-ISSUED", "U-23H", "U-NEW" }, _downloads.ToHashSet());
+        var after = await PaidStatesAsync();
+        var changed = after.Values.Where(a => a != before[a.Number]).Select(a => a.Number).Order().ToList();
+        Assert.Equal(["U-23H", "U-NEW"], changed);
+        foreach (var number in changed)
+        {
+            var row = await RowAsync(number);
+            Assert.Equal((true, row.XmlFetchedAt, (string?)null), (row.IsPaid, row.PaidAt, row.PaidByUserId));
+        }
+        Assert.All(await SnapshotAsync(), r => Assert.NotNull(r.XmlFetchedAt));
+    }
+
+    [Fact]
+    public async Task FirstXmlReadHoldsRowLock_UserMarksPaidConcurrently_UserWins()
+    {
+        await InsertAsync("RACE-APPLY-FIRST", daysAgo: 0, hasLine: false);
+        await MigrateAsync();
+        var id = (await RowAsync("RACE-APPLY-FIRST")).Id;
+        await using var holder = NewContext();
+        await using var held = await holder.Database.BeginTransactionAsync();
+        await holder.Database.ExecuteSqlAsync($"""SELECT 1 FROM "InvoiceHeaders" WHERE "Id" = {id} FOR UPDATE""");
+
+        var apply = Task.Run(async () =>
+        {
+            await using var db = NewContext();
+            await new InvoiceService(db, _notifications, NullLogger<InvoiceService>.Instance)
+                .ApplyInvoiceXmlAsync(id, new InvoiceXmlDetails(Account, null, new DateOnly(2026, 10, 5), SellerPaidOn: new DateOnly(2026, 10, 1)));
+        });
+        await WaitForLockWaitersAsync(1);
+        var toggle = Task.Run(() => SetPaidAsync("RACE-APPLY-FIRST", true));
+        await WaitForLockWaitersAsync(2);
+        await held.CommitAsync();
+        await apply;
+        var response = await toggle;
+
+        var row = await RowAsync("RACE-APPLY-FIRST");
+        Assert.NotNull(row.XmlFetchedAt);
+        Assert.Equal((true, UserId), (row.IsPaid, row.PaidByUserId));
+        Assert.NotEqual(row.XmlFetchedAt, row.PaidAt);
+        Assert.False(response.PaidBySeller);
+        Assert.False(Assert.Single(await ListAsync()).PaidBySeller);
+    }
+
+    private async Task WaitForLockWaitersAsync(int count)
     {
         for (var attempt = 0; attempt < 200; attempt++)
         {
@@ -1440,12 +1522,12 @@ public sealed class InvoiceXmlQueueTests : IAsyncLifetime
             var waiting = await db.Database
                 .SqlQuery<int>($"""SELECT count(*)::int AS "Value" FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%"InvoiceHeaders"%'""")
                 .SingleAsync();
-            if (waiting > 0)
+            if (waiting >= count)
                 return;
             await Task.Delay(50);
         }
 
-        Assert.Fail("No query waited on the InvoiceHeaders row lock");
+        Assert.Fail($"Fewer than {count} queries waited on the InvoiceHeaders row lock");
     }
 
     /// <summary>Virtual clock for the pacing tests: a timer moves the clock forward by its due time and fires at once, so waits are exact and take no real time.</summary>
