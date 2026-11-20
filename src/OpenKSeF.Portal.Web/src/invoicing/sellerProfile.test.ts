@@ -13,7 +13,7 @@ const profile: SellerProfileResponse = {
   legalName: 'OpenKSeF Test A sp. z o.o.',
   addressLine1: 'ul. Prosta 1',
   addressLine2: '00-001 Warszawa',
-  bankAccount: '61109010140000071219812874',
+  bankAccount: '93000000002026111700000815',
   cashAccounting: false,
   numberingPattern: 'FV/{nr}/{MM}/{RRRR}',
   nextNumber: 57,
@@ -28,11 +28,11 @@ const today = new Date(2026, 10, 3)
 
 describe('seller profile form', () => {
   it('checks NRB with the IBAN mod 97 rule, spaces allowed', () => {
-    expect(isValidNrb('61109010140000071219812874')).toBe(true)
-    expect(isValidNrb('61 1090 1014 0000 0712 1981 2874')).toBe(true)
-    expect(isValidNrb('62109010140000071219812874')).toBe(false)
-    expect(isValidNrb('6110901014000007121981287')).toBe(false)
-    expect(isValidNrb('PL61109010140000071219812874')).toBe(false)
+    expect(isValidNrb('93000000002026111700000815')).toBe(true)
+    expect(isValidNrb('93 0000 0000 2026 1117 0000 0815')).toBe(true)
+    expect(isValidNrb('94000000002026111700000815')).toBe(false)
+    expect(isValidNrb('9300000000202611170000081')).toBe(false)
+    expect(isValidNrb('PL93000000002026111700000815')).toBe(false)
   })
 
   it('previews the next number from pattern tokens', () => {
@@ -55,9 +55,9 @@ describe('seller profile form', () => {
   })
 
   it('sends next number only when changed, with the period of the pattern', () => {
-    const unchanged = toSellerProfileRequest({ ...fromProfile(profile), bankAccount: '61 1090 1014 0000 0712 1981 2874' }, profile, today)
+    const unchanged = toSellerProfileRequest({ ...fromProfile(profile), bankAccount: '93 0000 0000 2026 1117 0000 0815' }, profile, today)
     expect(unchanged).not.toHaveProperty('nextNumber')
-    expect(unchanged.bankAccount).toBe('61109010140000071219812874')
+    expect(unchanged.bankAccount).toBe('93000000002026111700000815')
 
     const yearly = toSellerProfileRequest(
       { ...fromProfile(profile), numberingPattern: 'FV/{nr}/{RRRR}', nextNumber: '5', addressLine2: '' },

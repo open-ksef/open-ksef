@@ -53,7 +53,7 @@ const profile: SellerProfileResponse = {
   legalName: 'OpenKSeF Test A sp. z o.o.',
   addressLine1: 'ul. Prosta 1',
   addressLine2: '00-001 Warszawa',
-  bankAccount: '61109010140000071219812874',
+  bankAccount: '93000000002026111700000815',
   cashAccounting: false,
   numberingPattern: 'FV/{nr}/{MM}/{RRRR}',
   nextNumber: 1,
@@ -485,7 +485,7 @@ describe('foreign invoices in the portal', () => {
 
     it('shows the IBAN built from the main account, SWIFT and bank', async () => {
       await openForeignForm()
-      expect(plain(container.querySelector('.inv-account')?.textContent)).toContain('PL61 1090 1014 0000 0712 1981 2874')
+      expect(plain(container.querySelector('.inv-account')?.textContent)).toContain('PL93 0000 0000 2026 1117 0000 0815')
       expect(plain(container.querySelector('.inv-account')?.textContent)).toContain('SWIFT TESTPLPW')
       expect(plain(container.querySelector('.inv-account')?.textContent)).toContain('Bank Główny')
     })

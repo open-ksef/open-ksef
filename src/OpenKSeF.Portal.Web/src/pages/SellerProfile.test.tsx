@@ -114,7 +114,7 @@ describe('SellerProfilePage', () => {
       legalName: id === 't-1' ? 'Sprzedawca A' : 'Sprzedawca B',
       addressLine1: 'ul. Prosta 1',
       addressLine2: '00-001 Warszawa',
-      bankAccount: '61109010140000071219812874',
+      bankAccount: '93000000002026111700000815',
     }))
     vi.mocked(updateSellerProfile).mockResolvedValue({ ...empty, isComplete: true })
     await render('/company/invoice-data')
@@ -172,7 +172,7 @@ describe('SellerProfilePage', () => {
       addressLine1: 'ul. Prosta 1',
       addressLine2: '00-001 Warszawa',
       vatStatus: 'Czynny',
-      bankAccounts: ['61109010140000071219812874', '65114020040000330201234567'],
+      bankAccounts: ['93000000002026111700000815', '65114020040000330201234567'],
     })
     vi.mocked(updateSellerProfile).mockResolvedValue({ ...empty, isComplete: true })
     await render('/company/invoice-data?tenantId=t-1')
@@ -182,7 +182,7 @@ describe('SellerProfilePage', () => {
     await waitFor(() => input(container, 'legal-name').value === 'Firma Testowa sp. z o.o.')
 
     expect(input(container, 'address-line-1').value).toBe('ul. Prosta 1')
-    expect(container.textContent).toContain('61 1090 1014 0000 0712 1981 2874')
+    expect(container.textContent).toContain('93 0000 0000 2026 1117 0000 0815')
     const radios = container.querySelectorAll<HTMLInputElement>('input[name="bank-account"]')
     expect(radios).toHaveLength(3)
     expect(radios[0].checked).toBe(true)
@@ -219,14 +219,14 @@ describe('SellerProfilePage', () => {
     await act(async () => {
       typeInto(input(container, 'legal-name'), 'Firma')
       typeInto(input(container, 'address-line-1'), 'ul. Prosta 1')
-      typeInto(input(container, 'bank-account'), '61 1090 1014 0000 0712 1981 2875')
+      typeInto(input(container, 'bank-account'), '93 0000 0000 2026 1117 0000 0816')
     })
 
     await act(async () => buttonByText(container, 'Zapisz dane').click())
     expect(container.querySelector('#bank-account-error')?.textContent).toBe('Niepoprawny numer rachunku')
     expect(updateSellerProfile).not.toHaveBeenCalled()
 
-    await act(async () => typeInto(input(container, 'bank-account'), '61 1090 1014 0000 0712 1981 2874'))
+    await act(async () => typeInto(input(container, 'bank-account'), '93 0000 0000 2026 1117 0000 0815'))
     await act(async () => buttonByText(container, 'Zapisz dane').click())
     await waitFor(() => container.querySelector('#bank-account-error')?.textContent === 'Niepoprawny numer rachunku (API)')
     expect(input(container, 'bank-account').getAttribute('aria-invalid')).toBe('true')
@@ -241,7 +241,7 @@ describe('SellerProfilePage', () => {
     await act(async () => {
       typeInto(input(container, 'legal-name'), 'Firma')
       typeInto(input(container, 'address-line-1'), 'ul. Prosta 1')
-      typeInto(input(container, 'bank-account'), '61 1090 1014 0000 0712 1981 2874')
+      typeInto(input(container, 'bank-account'), '93 0000 0000 2026 1117 0000 0815')
       typeInto(input(container, 'numbering-pattern'), 'FV/{nr}')
     })
 

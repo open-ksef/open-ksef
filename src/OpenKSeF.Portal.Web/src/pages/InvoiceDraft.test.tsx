@@ -38,7 +38,7 @@ const profile: SellerProfileResponse = {
   legalName: 'OpenKSeF Test A sp. z o.o.',
   addressLine1: 'ul. Prosta 1',
   addressLine2: '00-001 Warszawa',
-  bankAccount: '61109010140000071219812874',
+  bankAccount: '93000000002026111700000815',
   cashAccounting: false,
   numberingPattern: 'FV/{nr}/{MM}/{RRRR}',
   nextNumber: 1,
@@ -135,7 +135,7 @@ describe('issuing pages', () => {
     await waitFor(() => Boolean(container.querySelector('#line-0-unitNetPrice')))
 
     expect(container.textContent).toContain('OpenKSeF Test A sp. z o.o.')
-    expect(container.textContent).toContain('61 1090 1014 0000 0712 1981 2874')
+    expect(container.textContent).toContain('93 0000 0000 2026 1117 0000 0815')
     expect(container.querySelector('#seller-name')).toBeNull()
     expect(container.textContent).toContain('FV/1/11/2026')
 

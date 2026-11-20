@@ -788,11 +788,11 @@ describe('InvoiceDetailsPage', () => {
       Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
       vi.mocked(listTenants).mockResolvedValue([{ id: 'tenant-1', nip: '1111111111', displayName: 'Firma', notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' }])
       vi.mocked(getInvoiceByKSeFNumber).mockResolvedValue(invoiceOf())
-      vi.mocked(getTransferDetails).mockResolvedValue(transferOf({ recipientAccount: 'PL61 1090 1014 0000 0712 1981 2874' }))
+      vi.mocked(getTransferDetails).mockResolvedValue(transferOf({ recipientAccount: 'PL93 0000 0000 2026 1117 0000 0815' }))
       await render('/invoices/KSEF-001?tenantId=tenant-1')
 
       await click(testId('copy-account-btn'))
-      expect(writeText).toHaveBeenCalledExactlyOnceWith('61109010140000071219812874')
+      expect(writeText).toHaveBeenCalledExactlyOnceWith('93000000002026111700000815')
       expect(testId('copy-transfer-btn')?.textContent).toBe('Kopiuj dane przelewu')
     })
 
