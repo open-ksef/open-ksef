@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import type { VatRateCode } from '@/api/types'
+
+import vectors from './AdvanceVectors.json'
 import { advanceDelta, exceedsAdvances, orderValue, remainingAfterAdvances, splitAdvance } from './advance'
 
 const order = [{ quantity: 1, unitNetPrice: 1000, vatRate: '23' as const }]
@@ -40,13 +43,30 @@ describe('advance split (REQ-0028)', () => {
     ]
     const remaining = remainingAfterAdvances(order, paid)
     expect(remaining).toEqual({ rows: [{ vatRate: '23', net: 500, vat: 115 }], totalNet: 500, totalVat: 115, totalGross: 615 })
-    expect(exceedsAdvances(remaining)).toBe(false)
-    expect(exceedsAdvances(remainingAfterAdvances([{ ...order[0], unitNetPrice: 500 }], paid))).toBe(false)
-    expect(exceedsAdvances(remainingAfterAdvances([{ ...order[0], unitNetPrice: 400 }], paid))).toBe(true)
+    expect(exceedsAdvances(remaining, 2)).toBe(false)
+    expect(exceedsAdvances(remainingAfterAdvances([{ ...order[0], unitNetPrice: 500 }], paid), 2)).toBe(false)
+    expect(exceedsAdvances(remainingAfterAdvances([{ ...order[0], unitNetPrice: 400 }], paid), 2)).toBe(true)
   })
 
   it('KOR_ZAL 369,00 to 246,00 gives -100,00 net, -23,00 VAT, -123,00; to zero reverses the advance', () => {
     expect(advanceDelta(order, order, 369, 246)).toEqual({ rows: [{ vatRate: '23', net: -100, vat: -23 }], totalNet: -100, totalVat: -23, totalGross: -123 })
     expect(advanceDelta(order, [], 369, 0).totalGross).toBe(-369)
+  })
+
+  describe('AdvanceVectors.json (shared with Domain.Tests)', () => {
+    type Line = { quantity: number; unitNetPrice: number; vatRate: VatRateCode }
+    it.each(vectors.split.map((vector) => [vector.name, vector] as const))('split: %s', (_name, vector) => {
+      const order = vector.order as Line[]
+      expect(orderValue(order)).toBe(vector.orderValue)
+      expect(splitAdvance(order, vector.amount).rows).toEqual(vector.buckets)
+    })
+
+    it.each(vectors.final.map((vector) => [vector.name, vector] as const))('final: %s', (_name, vector) => {
+      const lines = vector.lines as Line[]
+      const remaining = remainingAfterAdvances(lines, vector.advances.flatMap((amount) => splitAdvance(lines, amount).rows))
+      expect(remaining.rows).toEqual(vector.buckets)
+      expect(remaining.totalGross).toBe(vector.p15)
+      expect(exceedsAdvances(remaining, vector.advances.length)).toBe(vector.exceeds)
+    })
   })
 })

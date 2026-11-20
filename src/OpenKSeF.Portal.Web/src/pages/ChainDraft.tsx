@@ -132,7 +132,7 @@ function ChainForm({ tenantId, profile, invoice }: ChainFormProps): ReactElement
   const open = Math.round((value - paid) * 100) / 100
   const left = Math.round((open - received) * 100) / 100
   const summary = advance ? splitAdvance(lines, received) : remainingAfterAdvances(lines, advances)
-  const exceeds = !advance && exceedsAdvances(summary)
+  const exceeds = !advance && exceedsAdvances(summary, invoice.chain?.advances.filter((item) => item.status === 'Accepted').length ?? 0)
   const set = (patch: Partial<DraftFormValue>): void => setForm((current) => ({ ...current, ...patch }))
   const updateForm = useCallback((update: (current: DraftFormValue) => DraftFormValue) => setForm(update), [])
 

@@ -19,21 +19,13 @@ function buckets(rows: VatSummaryRow[]): Buckets {
   return { rows, totalNet: toPln(totalNet), totalVat: toPln(totalVat), totalGross: toPln(totalNet + totalVat) }
 }
 
-function grossByRate(order: readonly TotalsLineInput[]): Map<VatRateCode, bigint> {
-  const result = new Map<VatRateCode, bigint>()
-  for (const rate of ALL_RATES) {
-    for (const line of order.filter((item) => item.vatRate === rate.code)) {
-      const net = divideHalfAwayFromZero(toScaled(line.quantity, 6) * toScaled(line.unitNetPrice, 2), 1_000_000n)
-      result.set(rate.code, (result.get(rate.code) ?? 0n) + net + divideHalfAwayFromZero(net * BigInt(rate.percent), 100n))
-    }
-  }
-  return result
-}
+const grossByRate = (order: readonly TotalsLineInput[]): [VatRateCode, bigint][] =>
+  computeTotals(order).vatSummary.map((row) => [row.vatRate, grosze(row.net) + grosze(row.vat)])
 
-export const orderValue = (order: readonly TotalsLineInput[]): number => toPln([...grossByRate(order).values()].reduce((sum, value) => sum + value, 0n))
+export const orderValue = (order: readonly TotalsLineInput[]): number => computeTotals(order).totalGross
 
 export function splitAdvance(order: readonly TotalsLineInput[], amount: number): Buckets {
-  const byRate = [...grossByRate(order)]
+  const byRate = grossByRate(order)
   const total = byRate.reduce((sum, [, value]) => sum + value, 0n)
   if (total === 0n) return buckets(byRate.map(([vatRate]) => ({ vatRate, net: 0, vat: 0 })))
   const received = grosze(amount)
@@ -63,7 +55,8 @@ export function remainingAfterAdvances(lines: readonly TotalsLineInput[], advanc
   )
 }
 
-export const exceedsAdvances = (remaining: Buckets): boolean => remaining.totalGross < 0 || remaining.rows.some((row) => row.net < 0 || row.vat < 0)
+export const exceedsAdvances = (remaining: Buckets, advances: number): boolean =>
+  grosze(remaining.totalGross) < 0n || remaining.rows.some((row) => grosze(row.net) + grosze(row.vat) < -BigInt(advances * remaining.rows.length))
 
 export const KIND_LABELS: Record<IssuedInvoiceType, string> = {
   VAT: 'Faktura',
