@@ -22,8 +22,8 @@ export function useRowOpen<T>(pathOf: (row: T) => string, state?: unknown): (row
     clearTimeout(timer.current)
     if (event.detail > 1) return
     if (event.ctrlKey || event.metaKey || event.shiftKey) {
-      // No noopener: the OIDC user is in sessionStorage, and only a tab with an opener gets a copy of it.
-      window.open(pathOf(row), '_blank')
+      // noopener: a copied sessionStorage would share one refresh token, and Keycloak rotation ends every copy on the first renewal. The tab signs in through the SSO cookie instead.
+      window.open(pathOf(row), '_blank', 'noopener')
       return
     }
     if (event.detail === 0) {
