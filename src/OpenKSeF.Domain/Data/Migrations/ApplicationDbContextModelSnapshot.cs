@@ -657,6 +657,16 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<Guid?>("CorrectedInvoiceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CorrectionReason")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int?>("CorrectionType")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -687,6 +697,13 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<string>("ExemptionBasisText")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
+
+                    b.Property<string>("InvoiceType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasDefaultValue("VAT");
 
                     b.Property<DateOnly>("IssueDate")
                         .HasColumnType("date");
@@ -827,6 +844,8 @@ namespace OpenKSeF.Domain.Data.Migrations
 
                     b.HasIndex("Status", "NextAttemptAt");
 
+                    b.HasIndex("TenantId", "CorrectedInvoiceId");
+
                     b.HasIndex("TenantId", "CreatedAt");
 
                     b.HasIndex("TenantId", "KsefNumber");
@@ -842,6 +861,9 @@ namespace OpenKSeF.Domain.Data.Migrations
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("BaseLineNo")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("IssuedInvoiceId")
                         .HasColumnType("uuid");
@@ -887,6 +909,27 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.ToTable("IssuedInvoiceLines");
                 });
 
+            modelBuilder.Entity("OpenKSeF.Domain.Invoicing.NumberSeriesCounter", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Series")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("Period")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<int>("Next")
+                        .HasColumnType("integer");
+
+                    b.HasKey("TenantId", "Series", "Period");
+
+                    b.ToTable("NumberSeriesCounters");
+                });
+
             modelBuilder.Entity("OpenKSeF.Domain.Invoicing.SellerProfile", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -914,6 +957,13 @@ namespace OpenKSeF.Domain.Data.Migrations
 
                     b.Property<bool>("CashAccounting")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("CorrectionNumberingPattern")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasDefaultValue("KOR/{nr}/{MM}/{RRRR}");
 
                     b.Property<string>("ForeignBankAccount")
                         .HasMaxLength(34)
@@ -1061,6 +1111,15 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.HasOne("OpenKSeF.Domain.Invoicing.IssuedInvoice", null)
                         .WithMany("Lines")
                         .HasForeignKey("IssuedInvoiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenKSeF.Domain.Invoicing.NumberSeriesCounter", b =>
+                {
+                    b.HasOne("OpenKSeF.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

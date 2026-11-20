@@ -10,6 +10,11 @@ public static class IssueChecks
     public const string NumberTakenCode = "INV-VAL-023";
     public const string PastIssueDateCode = "INV-W-PAST-DATE";
     public const int PastIssueDateDays = 30;
+    public const string NoChangeCode = "INV-VAL-082";
+    public const string BuyerIdChangeCode = "INV-VAL-083";
+    public const string CorrectionReasonCode = "INV-VAL-084";
+    public const string CorrectionIssueDateCode = "INV-VAL-085";
+    public const string BaseLineCode = "INV-VAL-086";
 
     private static readonly Regex VatUeNumber = new(@"^[0-9A-Z+*]{1,12}$", RegexOptions.CultureInvariant);
 
@@ -58,24 +63,7 @@ public static class IssueChecks
         if (invoice.Lines.Count == 0)
             errors.Add(new("INV-VAL-002", "lines", "Faktura musi zawierać co najmniej jedną pozycję"));
 
-        foreach (var line in invoice.Lines)
-        {
-            var field = $"lines[{line.LineNo - 1}]";
-            if (line.Name.Length == 0)
-                errors.Add(new("INV-VAL-050", $"{field}.name", "Każda pozycja musi mieć nazwę"));
-            if (line.Quantity <= 0)
-                errors.Add(new("INV-VAL-051", $"{field}.quantity", "Ilość na pozycji musi być większa od zera"));
-            if (line.UnitNetPrice < 0)
-                errors.Add(new("INV-VAL-052", $"{field}.unitNetPrice", "Cena netto nie może być ujemna"));
-            if (invoice.BuyerKind == BuyerKind.Foreign)
-                AddForeignRateError(invoice, line, field, errors);
-            else if (!VatRates.Issuable.Contains(line.VatRate))
-                errors.Add(new("INV-VAL-060", $"{field}.vatRate", "Dozwolone stawki VAT: 23, 8, 5, 0 KR, zw"));
-        }
-
-        if (invoice.Lines.Any(l => l.VatRate == VatRate.Exempt)
-            && (invoice.ExemptionBasisKind is null || invoice.ExemptionBasisText is null))
-            errors.Add(new("INV-VAL-061", "exemptionBasis", "Podaj podstawę zwolnienia z VAT"));
+        AddLineErrors(invoice, errors);
 
         if (invoice.Currency != IssuedInvoice.DefaultCurrency)
         {
@@ -100,6 +88,66 @@ public static class IssueChecks
             warnings.Add(new("INV-W-FOREIGN-NIP", "buyer.foreignId", "Numer nabywcy wygląda jak polski NIP. Nabywca z polskim NIP to firma, nie firma zagraniczna"));
 
         return warnings;
+    }
+
+    private static void AddLineErrors(IssuedInvoice invoice, List<InvoiceCheck> errors)
+    {
+            foreach (var line in invoice.Lines)
+            {
+                var field = $"lines[{line.LineNo - 1}]";
+                if (line.Name.Length == 0)
+                    errors.Add(new("INV-VAL-050", $"{field}.name", "Każda pozycja musi mieć nazwę"));
+                if (line.Quantity <= 0)
+                    errors.Add(new("INV-VAL-051", $"{field}.quantity", "Ilość na pozycji musi być większa od zera"));
+                if (line.UnitNetPrice < 0)
+                    errors.Add(new("INV-VAL-052", $"{field}.unitNetPrice", "Cena netto nie może być ujemna"));
+                if (invoice.BuyerKind == BuyerKind.Foreign)
+                    AddForeignRateError(invoice, line, field, errors);
+                else if (!VatRates.Issuable.Contains(line.VatRate))
+                    errors.Add(new("INV-VAL-060", $"{field}.vatRate", "Dozwolone stawki VAT: 23, 8, 5, 0 KR, zw"));
+            }
+
+            if (invoice.Lines.Any(l => l.VatRate == VatRate.Exempt)
+                && (invoice.ExemptionBasisKind is null || invoice.ExemptionBasisText is null))
+                errors.Add(new("INV-VAL-061", "exemptionBasis", "Podaj podstawę zwolnienia z VAT"));
+    }
+
+    /// <summary>REQ-0027 checks of a KOR draft against its original and the state it corrects. Seller data is the snapshot of the original.</summary>
+    public static IReadOnlyList<InvoiceCheck> CorrectionErrors(IssuedInvoice correction, IssuedInvoice original, IssuedInvoice state, DateOnly today)
+    {
+        var errors = BaseLineErrors(correction, state).ToList();
+        var linesResolve = errors.Count == 0;
+
+        if (correction.BuyerName is null)
+            errors.Add(new("INV-VAL-015", "buyer.name", "Uzupełnij nazwę nabywcy"));
+        if (correction.BuyerAddressLine1 is null)
+            errors.Add(new("INV-VAL-016", "buyer.addressLine1", "Uzupełnij adres nabywcy"));
+        if (correction.CorrectionReason is null)
+            errors.Add(new(CorrectionReasonCode, "correctionReason", "Podaj przyczynę korekty"));
+        if (correction.IssueDate < original.IssueDate)
+            errors.Add(new(CorrectionIssueDateCode, "issueDate", $"Data korekty nie może być wcześniejsza niż data wystawienia faktury korygowanej ({original.IssueDate:yyyy-MM-dd})"));
+        if (correction.IssueDate > today)
+            errors.Add(new("INV-VAL-020", "issueDate", "Data wystawienia nie może być późniejsza niż dzisiejsza"));
+        if (correction.DueDate < correction.IssueDate)
+            errors.Add(new("INV-VAL-021", "dueDate", "Termin płatności jest wcześniejszy niż data wystawienia"));
+        if (correction.IsNumberTakenInKsef)
+            errors.Add(new(NumberTakenCode, "number", $"Numer {correction.Number} jest już w KSeF, więc nie można go wysłać ponownie."));
+        if (linesResolve && Corrections.Rows(state.Lines, correction.Lines).Count == 0 && !Corrections.BuyerDataDiffers(correction, state))
+            errors.Add(new(NoChangeCode, null, "Korekta nie zawiera zmian. Zmień pozycje albo dane nabywcy."));
+
+        AddLineErrors(correction, errors);
+        return errors;
+    }
+
+    public static IEnumerable<InvoiceCheck> BaseLineErrors(IssuedInvoice correction, IssuedInvoice state)
+    {
+        var stateLines = state.Lines.Select(l => l.LineNo).ToHashSet();
+        var seen = new HashSet<int>();
+        foreach (var line in correction.Lines.Where(l => l.BaseLineNo is not null))
+        {
+            if (!stateLines.Contains(line.BaseLineNo!.Value) || !seen.Add(line.BaseLineNo.Value))
+                yield return new(BaseLineCode, $"lines[{line.LineNo - 1}].baseLineNo", "Pozycja korygowana nie istnieje w aktualnym stanie faktury. Odśwież stronę.");
+        }
     }
 
     private static string ForeignIdLettersAndDigits(IssuedInvoice invoice) =>

@@ -24,6 +24,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<IssuedInvoiceLine> IssuedInvoiceLines => Set<IssuedInvoiceLine>();
     public DbSet<SellerProfile> SellerProfiles => Set<SellerProfile>();
     public DbSet<InvoiceNumberCounter> InvoiceNumberCounters => Set<InvoiceNumberCounter>();
+    public DbSet<NumberSeriesCounter> NumberSeriesCounters => Set<NumberSeriesCounter>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<TenantMember> TenantMembers => Set<TenantMember>();
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
@@ -166,6 +167,12 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(i => new { i.Status, i.NextAttemptAt });
             entity.HasIndex(i => new { i.TenantId, i.CreatedAt });
             entity.HasIndex(i => new { i.TenantId, i.KsefNumber });
+            entity.HasIndex(i => new { i.TenantId, i.CorrectedInvoiceId });
+            entity.Property(i => i.InvoiceType)
+                .HasConversion(t => t.Code(), code => IssuedInvoiceTypes.Parse(code))
+                .HasMaxLength(8)
+                .HasDefaultValue(IssuedInvoiceType.Vat);
+            entity.Property(i => i.CorrectionReason).HasMaxLength(256);
             entity.Property(i => i.Status).HasConversion<string>().HasMaxLength(16);
             entity.Property(i => i.Number).HasMaxLength(256);
             entity.Property(i => i.NumberPeriod).HasMaxLength(7);
@@ -241,6 +248,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(p => p.ForeignBankSwift).HasMaxLength(11);
             entity.Property(p => p.ForeignBankName).HasMaxLength(256);
             entity.Property(p => p.NumberingPattern).IsRequired().HasMaxLength(100);
+            entity.Property(p => p.CorrectionNumberingPattern).IsRequired().HasMaxLength(100).HasDefaultValue(InvoiceNumbering.DefaultCorrectionPattern);
             entity.HasOne<Tenant>()
                 .WithOne()
                 .HasForeignKey<SellerProfile>(p => p.TenantId)
@@ -250,6 +258,17 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<InvoiceNumberCounter>(entity =>
         {
             entity.HasKey(c => new { c.TenantId, c.Period });
+            entity.Property(c => c.Period).HasMaxLength(7);
+            entity.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(c => c.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<NumberSeriesCounter>(entity =>
+        {
+            entity.HasKey(c => new { c.TenantId, c.Series, c.Period });
+            entity.Property(c => c.Series).HasMaxLength(8);
             entity.Property(c => c.Period).HasMaxLength(7);
             entity.HasOne<Tenant>()
                 .WithMany()

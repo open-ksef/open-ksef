@@ -14,11 +14,13 @@ public sealed class IssuedInvoiceLine
     public VatRate VatRate { get; private set; }
     public decimal NetAmount { get; private set; }
     public decimal VatAmount { get; private set; }
+    public int? BaseLineNo { get; private set; }
 
     private IssuedInvoiceLine() { }
 
-    internal IssuedInvoiceLine(Guid issuedInvoiceId, int lineNo, string? name, string? unit, decimal quantity, decimal unitNetPrice, VatRate vatRate)
+    internal IssuedInvoiceLine(Guid issuedInvoiceId, int lineNo, string? name, string? unit, decimal quantity, decimal unitNetPrice, VatRate vatRate, int? baseLineNo = null)
     {
+        BaseLineNo = baseLineNo;
         IssuedInvoiceId = issuedInvoiceId;
         LineNo = lineNo;
         Name = name?.Trim() ?? string.Empty;

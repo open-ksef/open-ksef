@@ -24,6 +24,10 @@ public sealed class IssuedInvoice
 
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
+    public IssuedInvoiceType InvoiceType { get; private set; }
+    public Guid? CorrectedInvoiceId { get; private set; }
+    public string? CorrectionReason { get; private set; }
+    public int? CorrectionType { get; private set; }
     public IssuedInvoiceStatus Status { get; private set; }
     public string? Number { get; private set; }
     public string? NumberPeriod { get; private set; }
@@ -93,6 +97,9 @@ public sealed class IssuedInvoice
 
     public bool IsNumberTakenInKsef => Status == IssuedInvoiceStatus.Rejected && KsefStatusCode == KSeFSentInvoice.Duplicate;
 
+    public bool IsOpen => Status is IssuedInvoiceStatus.Draft or IssuedInvoiceStatus.Queued or IssuedInvoiceStatus.Sending
+        || (Status == IssuedInvoiceStatus.Rejected && !IsNumberTakenInKsef);
+
     public string? DuplicateKsefNumber =>
         IsNumberTakenInKsef && KsefStatusDetails is { } details && KsefNumberInText.Match(details) is { Success: true } match ? match.Value : null;
 
@@ -115,6 +122,91 @@ public sealed class IssuedInvoice
         CreatedAt = now,
         UpdatedAt = now
     };
+
+    /// <summary>KOR draft of the given current state: buyer, currency, rate, annotations and the seller snapshot of the original are copied and stay fixed.</summary>
+    public static IssuedInvoice Correction(Guid id, IssuedInvoice original, IssuedInvoice state, CorrectionMode mode, DateOnly today, DateTime now)
+    {
+        var issueDate = today < original.IssueDate ? original.IssueDate : today;
+        var correction = new IssuedInvoice
+        {
+            Id = id,
+            TenantId = original.TenantId,
+            InvoiceType = IssuedInvoiceType.Kor,
+            CorrectedInvoiceId = original.Id,
+            CorrectionReason = mode == CorrectionMode.WrongBuyerId ? Corrections.WrongBuyerIdReason : null,
+            Status = IssuedInvoiceStatus.Draft,
+            SellerNip = original.SellerNip,
+            SellerName = original.SellerName,
+            SellerAddressLine1 = original.SellerAddressLine1,
+            SellerAddressLine2 = original.SellerAddressLine2,
+            SellerBankAccount = original.SellerBankAccount,
+            SellerIban = original.SellerIban,
+            SellerBankSwift = original.SellerBankSwift,
+            SellerBankName = original.SellerBankName,
+            SellerCashAccounting = original.SellerCashAccounting,
+            BuyerKind = state.BuyerKind,
+            BuyerNip = state.BuyerNip,
+            BuyerName = state.BuyerName,
+            BuyerAddressLine1 = state.BuyerAddressLine1,
+            BuyerAddressLine2 = state.BuyerAddressLine2,
+            BuyerCountryCode = state.BuyerCountryCode,
+            BuyerIdType = state.BuyerIdType,
+            BuyerForeignId = state.BuyerForeignId,
+            Currency = original.Currency,
+            ExchangeRate = original.ExchangeRate,
+            ExchangeRateDate = original.ExchangeRateDate,
+            IssueDate = issueDate,
+            SaleDate = issueDate,
+            DueDate = issueDate.AddDays(DefaultPaymentDays),
+            PaymentMethod = original.PaymentMethod,
+            SplitPayment = original.SplitPayment,
+            ExemptionBasisKind = original.ExemptionBasisKind,
+            ExemptionBasisText = original.ExemptionBasisText,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        if (mode == CorrectionMode.Edit)
+            correction.ReplaceCorrectionLines(state.Lines.OrderBy(l => l.LineNo).Select(l => ((int?)l.LineNo, (string?)l.Name, (string?)l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)), state);
+        else
+            correction.RecalculateCorrectionTotals(state);
+        return correction;
+    }
+
+    public void SetCorrection(string? reason, int? type)
+    {
+        EnsureEditable();
+        CorrectionReason = Clean(reason);
+        CorrectionType = type;
+    }
+
+    /// <summary>Name and address only: kind and tax id of a correction never change (Podręcznik KSeF 1.6.4). The country changes only for a foreign buyer without a tax id.</summary>
+    public void SetCorrectionBuyer(string? name, string? addressLine1, string? addressLine2, string? countryCode)
+    {
+        EnsureEditable();
+        BuyerName = Clean(name);
+        BuyerAddressLine1 = Clean(addressLine1);
+        BuyerAddressLine2 = Clean(addressLine2);
+        if (BuyerKind == BuyerKind.Foreign && BuyerForeignId is null && Clean(countryCode)?.ToUpperInvariant() is { } code)
+            BuyerCountryCode = EuCountries.FromVatPrefix(code);
+    }
+
+    /// <summary>Full after state; quantity-0 lines are removed lines and are not stored. Totals are the deltas to the corrected state.</summary>
+    public void ReplaceCorrectionLines(IEnumerable<(int? BaseLineNo, string? Name, string? Unit, decimal Quantity, decimal UnitNetPrice, VatRate VatRate)> lines, IssuedInvoice state)
+    {
+        EnsureEditable();
+        _lines.Clear();
+        foreach (var line in lines.Where(l => l.Quantity != 0))
+            _lines.Add(new IssuedInvoiceLine(Id, _lines.Count + 1, line.Name, line.Unit, line.Quantity, line.UnitNetPrice, line.VatRate, line.BaseLineNo));
+        RecalculateCorrectionTotals(state);
+    }
+
+    public void RecalculateCorrectionTotals(IssuedInvoice state)
+    {
+        var deltas = Corrections.Deltas(state.Lines, _lines);
+        TotalNet = deltas.Sum(d => d.Net);
+        TotalVat = deltas.Sum(d => d.Vat);
+        TotalGross = TotalNet + TotalVat;
+    }
 
     public void SetBuyer(BuyerKind kind, string? nip, string? name, string? addressLine1, string? addressLine2)
     {
@@ -217,7 +309,9 @@ public sealed class IssuedInvoice
 
     public void Touch(DateTime now) => UpdatedAt = now;
 
-    public IReadOnlyList<VatSummary> VatSummary() => _lines
+    public IReadOnlyList<VatSummary> VatSummary() => SummaryOf(_lines);
+
+    public static IReadOnlyList<VatSummary> SummaryOf(IEnumerable<IssuedInvoiceLine> lines) => lines
         .GroupBy(l => l.VatRate)
         .OrderBy(g => g.Key)
         .Select(g =>
@@ -227,11 +321,19 @@ public sealed class IssuedInvoice
         })
         .ToList();
 
-    public void Issue(SellerProfile profile, string sellerNip, string? number, DateTime now)
+    /// <summary>A correction is issued with its original and the state it corrects; its totals are recomputed against that state.</summary>
+    public void Issue(SellerProfile profile, string sellerNip, string? number, DateTime now, IssuedInvoice? original = null, IssuedInvoice? state = null)
     {
         EnsureEditable();
+        var isCorrection = InvoiceType == IssuedInvoiceType.Kor;
+        if (isCorrection && (original is null || state is null))
+            throw new InvoiceStateException("A correction is issued with its original and corrected state.");
+        if (isCorrection)
+            RecalculateCorrectionTotals(state!);
 
-        var errors = IssueChecks.Errors(this, profile, PolandDate(now));
+        var errors = isCorrection
+            ? IssueChecks.CorrectionErrors(this, original!, state!, PolandDate(now))
+            : IssueChecks.Errors(this, profile, PolandDate(now));
         if (errors.Count > 0)
             throw new InvoiceValidationException(errors);
 
@@ -240,18 +342,22 @@ public sealed class IssuedInvoice
             throw new InvoiceStateException("Invoice number is required to issue a draft.");
 
         if (Number is null)
-            NumberPeriod = InvoiceNumbering.NumberPeriod(profile.NumberingPattern, IssueDate);
+            NumberPeriod = InvoiceNumbering.NumberPeriod(profile.Pattern(InvoiceType), IssueDate);
 
-        SellerNip = sellerNip;
-        SellerName = profile.LegalName;
-        SellerAddressLine1 = profile.AddressLine1;
-        SellerAddressLine2 = profile.AddressLine2;
-        var account = profile.PaymentAccountFor(BuyerKind);
-        SellerBankAccount = account.BankAccount;
-        SellerIban = account.Iban;
-        SellerBankSwift = account.Swift;
-        SellerBankName = account.BankName;
-        SellerCashAccounting = profile.CashAccounting;
+        if (!isCorrection)
+        {
+            SellerNip = sellerNip;
+            SellerName = profile.LegalName;
+            SellerAddressLine1 = profile.AddressLine1;
+            SellerAddressLine2 = profile.AddressLine2;
+            var account = profile.PaymentAccountFor(BuyerKind);
+            SellerBankAccount = account.BankAccount;
+            SellerIban = account.Iban;
+            SellerBankSwift = account.Swift;
+            SellerBankName = account.BankName;
+            SellerCashAccounting = profile.CashAccounting;
+        }
+
         Number = assigned;
         Status = IssuedInvoiceStatus.Queued;
         SentXml = null;

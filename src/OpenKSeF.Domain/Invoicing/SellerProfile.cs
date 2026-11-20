@@ -14,6 +14,7 @@ public sealed class SellerProfile
     public string? ForeignBankName { get; private set; }
     public bool CashAccounting { get; private set; }
     public string NumberingPattern { get; private set; } = InvoiceNumbering.DefaultPattern;
+    public string CorrectionNumberingPattern { get; private set; } = InvoiceNumbering.DefaultCorrectionPattern;
 
     public bool IsComplete => !string.IsNullOrWhiteSpace(LegalName) && !string.IsNullOrWhiteSpace(AddressLine1);
 
@@ -29,6 +30,12 @@ public sealed class SellerProfile
         BankAccount = string.IsNullOrWhiteSpace(bankAccount) ? null : Nrb.Normalize(bankAccount);
         CashAccounting = cashAccounting;
         NumberingPattern = numberingPattern.Trim();
+    }
+
+    public void SetCorrectionNumberingPattern(string? pattern)
+    {
+        if (pattern is not null)
+            CorrectionNumberingPattern = pattern.Trim();
     }
 
     /// <summary>Null keeps the stored value, so older clients cannot wipe it; an empty string clears it.</summary>

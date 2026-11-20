@@ -12,7 +12,17 @@ public record IssuedInvoiceBuyerInput(
     string? CountryCode = null,
     string? ForeignId = null);
 
-public record IssuedInvoiceLineInput(string? Name, string? Unit, decimal Quantity, decimal UnitNetPrice, string? VatRate);
+public record IssuedInvoiceLineInput(string? Name, string? Unit, decimal Quantity, decimal UnitNetPrice, string? VatRate, int? BaseLineNo = null);
+
+public record IssuedInvoiceCorrectionInput(
+    DateOnly? IssueDate,
+    DateOnly? DueDate,
+    string? PaymentMethod,
+    string? CorrectionReason,
+    int? CorrectionType,
+    IssuedInvoiceBuyerInput? Buyer,
+    string? BuyerIdType,
+    IReadOnlyList<IssuedInvoiceLineInput>? Lines);
 
 public record IssuedInvoiceDraftInput(
     IssuedInvoiceBuyerInput? Buyer,
@@ -48,7 +58,8 @@ public record IssuedFeedRow(
     string? KsefNumber,
     bool NeedsAttention,
     DateTime SortDate,
-    DateTime SeenAt);
+    DateTime SeenAt,
+    string InvoiceType);
 
 public record IssuedInvoiceSeller(
     string Nip,
@@ -61,7 +72,20 @@ public record IssuedInvoiceSeller(
     string? Swift,
     string? BankName);
 
-public record IssuedInvoiceView(IssuedInvoice Invoice, IssuedInvoiceSeller Seller, string KsefEnvironment, IReadOnlyList<InvoiceCheck> Warnings, uint Version, uint SellerVersion = 0);
+public record IssuedInvoiceView(IssuedInvoice Invoice, IssuedInvoiceSeller Seller, string KsefEnvironment, IReadOnlyList<InvoiceCheck> Warnings, uint Version, uint SellerVersion = 0)
+{
+    /// <summary>Set on a correction: the original it names in DaneFaKorygowanej.</summary>
+    public IssuedInvoice? Original { get; init; }
+
+    /// <summary>Set on a correction: the state it corrects.</summary>
+    public IssuedInvoice? CorrectedState { get; init; }
+
+    /// <summary>Set on an accepted VAT original: its corrections in any status.</summary>
+    public IReadOnlyList<IssuedInvoice> Corrections { get; init; } = [];
+
+    /// <summary>Set on an accepted VAT original with at least one accepted correction.</summary>
+    public IssuedInvoice? CurrentState { get; init; }
+}
 
 /// <summary>Draft CRUD, issue, copy and tenant delete. Null means not found; <see cref="InvoiceStateException"/> maps to 409, <see cref="InvoiceValidationException"/> to 400/422.</summary>
 public interface IIssuedInvoiceService
@@ -80,9 +104,15 @@ public interface IIssuedInvoiceService
 
     Task<bool> DeleteAsync(Guid tenantId, Guid id, uint? expectedVersion = null, CancellationToken ct = default);
 
-    Task<(IssuedInvoiceView View, bool Issued)?> IssueAsync(Guid tenantId, Guid id, uint? expectedVersion = null, bool confirmPastIssueDate = false, uint? expectedSellerVersion = null, CancellationToken ct = default);
+    Task<(IssuedInvoiceView View, bool Issued)?> IssueAsync(Guid tenantId, Guid id, uint? expectedVersion = null, bool confirmPastIssueDate = false, uint? expectedSellerVersion = null, string? invoiceType = null, CancellationToken ct = default);
 
-    Task<IssuedInvoiceView?> CopyAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+    Task<IssuedInvoiceView?> CopyAsync(Guid tenantId, Guid id, string? invoiceType = null, CancellationToken ct = default);
+
+    Task<IssuedInvoiceView?> CreateCorrectionAsync(Guid tenantId, Guid originalId, string? mode, CancellationToken ct = default);
+
+    Task<IssuedInvoiceView?> UpdateCorrectionAsync(Guid tenantId, Guid id, IssuedInvoiceCorrectionInput input, uint? expectedVersion = null, CancellationToken ct = default);
+
+    Task<IssuedInvoiceView?> ReissueAsync(Guid tenantId, Guid originalId, CancellationToken ct = default);
 
     Task<bool> DeleteTenantAsync(Guid tenantId, CancellationToken ct = default);
 }
