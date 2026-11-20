@@ -1,0 +1,117 @@
+name: Portal E2E
+
+on:
+  pull_request:
+    paths:
+      - 'src/OpenKSeF.Portal.Web/**'
+      - 'infra/keycloak/**'
+      - 'src/OpenKSeF.Api/**'
+      - 'docker-compose.dev.yml'
+      - '.github/workflows/portal-e2e.yml'
+
+concurrency:
+  group: portal-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portal-e2e:
+    name: Portal E2E (dev stack, no Relay, KSeF TEST)
+    runs-on: ubuntu-latest
+    # The image build needs NUGET_CIRFMF_PAT, which fork PRs do not get.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      COMPOSE: docker compose -f docker-compose.dev.yml -f ${{ github.workspace }}/../ci.override.yml
+      SERVICES: postgres keycloak api portal-web gateway
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/OpenKSeF.Portal.Web/package-lock.json
+
+      - name: Install portal packages
+        working-directory: src/OpenKSeF.Portal.Web
+        run: npm ci
+
+      - name: Throwaway env
+        run: |
+          KEY=$(openssl rand -base64 32); echo "::add-mask::$KEY"
+          ADMIN_PW="E2e-$(openssl rand -hex 12)!"; echo "::add-mask::$ADMIN_PW"
+          printf 'ENCRYPTION_KEY=%s\nKSEF_BASE_URL=test\nAPP_EXTERNAL_BASE_URL=http://localhost:8080\n' "$KEY" > .env
+          echo "PORTAL_ADMIN_PASSWORD=$ADMIN_PW" >> "$GITHUB_ENV"
+          # Prod hosts resolve to a dead address, and HttpClient logs every request so the last step can grep them.
+          cat > ../ci.override.yml <<'EOF'
+          services:
+            api:
+              extra_hosts:
+                - "api.ksef.mf.gov.pl:0.0.0.0"
+                - "push.open-ksef.pl:0.0.0.0"
+              environment:
+                Serilog__MinimumLevel__Override__System.Net.Http.HttpClient: Information
+          EOF
+
+      - name: Build and start stack (no worker)
+        env:
+          NUGET_CIRFMF_PAT: ${{ secrets.NUGET_CIRFMF_PAT }}
+        run: $COMPOSE up -d --build --quiet-pull $SERVICES
+
+      - name: Wait for Keycloak, API, gateway
+        run: |
+          for u in http://localhost:8082/auth/realms/master http://localhost:8081/health http://localhost:8080/; do
+            for i in $(seq 1 90); do curl -sf -o /dev/null "$u" && break; sleep 2; done
+            curl -sf -o /dev/null "$u" || { echo "timeout $u"; exit 1; }
+          done
+
+      - name: Seed realm through the setup wizard API (SignalR only, no Relay)
+        run: |
+          TOKEN=$(curl -sf -X POST http://localhost:8080/api/system/setup/authenticate -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"admin"}' | jq -r .setupToken)
+          test -n "$TOKEN" && test "$TOKEN" != null
+          jq -n --arg pw "$PORTAL_ADMIN_PASSWORD" '{externalBaseUrl:"http://localhost:8080", ksefBaseUrl:"test",
+            adminEmail:"admin@openksef.local", adminPassword:$pw, registrationAllowed:true}' > apply.json
+          curl -s -w '\n%{http_code}\n' -X POST http://localhost:8080/api/system/setup/apply -H 'Content-Type: application/json' \
+            -H "X-Setup-Token: $TOKEN" --data @apply.json | tee apply.out
+          rm apply.json
+          test "$(tail -1 apply.out)" = 200
+          curl -sf http://localhost:8080/api/system/setup-status | jq -e '.isInitialized == true'
+          ROWS=$(docker exec openksef-postgres psql -U openksef -d openksef -tAc \
+            "SELECT \"Key\" || '=' || CASE WHEN \"Key\" IN ('ksef_environment','external_base_url') THEN \"Value\" ELSE '<set>' END FROM \"SystemConfigs\" ORDER BY 1")
+          echo "$ROWS"
+          echo "$ROWS" | grep -qx 'ksef_environment=test'
+          ! echo "$ROWS" | grep -qi '^push_relay'
+
+      - name: Portal E2E
+        working-directory: src/OpenKSeF.Portal.Web
+        env:
+          BASE_URL: http://localhost:8080
+          KC_URL: http://localhost:8082/auth
+          BROWSER_CHANNEL: chrome
+          SHOT_DIR: ${{ github.workspace }}/e2e-shots
+        run: node e2e/portal.e2e.mjs
+
+      - name: No production KSeF or relay requests
+        if: always()
+        run: |
+          $COMPOSE logs --no-color $SERVICES > stack.log 2>&1
+          echo "HttpClient requests by host:"
+          grep -oE 'Sending HTTP request [A-Z]+ https?://[^/: ]+' stack.log | awk '{print $NF}' | sort | uniq -c
+          grep -q 'Sending HTTP request' stack.log || { echo 'no HttpClient log lines: the grep below proves nothing'; exit 1; }
+          if grep -nE 'api\.ksef\.mf\.gov\.pl|push\.open-ksef\.pl' stack.log; then echo 'production host contacted'; exit 1; fi
+
+      - name: Upload logs and shots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-e2e
+          path: |
+            stack.log
+            e2e-shots
+
+      - name: Stop stack
+        if: always()
+        run: $COMPOSE down -v
