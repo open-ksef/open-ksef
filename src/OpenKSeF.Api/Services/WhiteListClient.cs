@@ -1,15 +1,18 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Caching.Memory;
 using OpenKSeF.Api.Models;
 using OpenKSeF.Domain.Invoicing;
 
 namespace OpenKSeF.Api.Services;
 
-/// <summary>MF white list (wl-api.mf.gov.pl) NIP search, cached per NIP and day to save the daily search quota.</summary>
+/// <summary>MF white list (wykazpodatnikowvat.mf.gov.pl) NIP search, cached per NIP and day, capped at <see cref="DailyLimit"/> MF calls per Polish day.</summary>
 public class WhiteListClient(HttpClient http, IMemoryCache cache, TimeProvider timeProvider, ILogger<WhiteListClient> logger)
 {
-    public static readonly Uri BaseAddress = new("https://wl-api.mf.gov.pl/");
+    public static readonly Uri BaseAddress = new("https://wykazpodatnikowvat.mf.gov.pl/");
+
+    public const int DailyLimit = 100;
 
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(24);
 
@@ -19,6 +22,14 @@ public class WhiteListClient(HttpClient http, IMemoryCache cache, TimeProvider t
         var key = $"wl:{nip}:{date}";
         if (cache.TryGetValue(key, out NipLookupResponse? cached))
             return cached;
+
+        var calls = cache.GetOrCreate($"wl-quota:{date}", entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(25);
+            return new StrongBox<int>();
+        })!;
+        if (Interlocked.Increment(ref calls.Value) > DailyLimit)
+            throw new WhiteListQuotaExceededException();
 
         var result = await FetchAsync(nip, date, ct);
         cache.Set(key, result, CacheDuration);
@@ -83,3 +94,5 @@ public class WhiteListClient(HttpClient http, IMemoryCache cache, TimeProvider t
 public sealed class WhiteListUnavailableException : Exception;
 
 public sealed class WhiteListInvalidNipException : Exception;
+
+public sealed class WhiteListQuotaExceededException : Exception;

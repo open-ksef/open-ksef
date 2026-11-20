@@ -64,7 +64,7 @@ public class WhiteListClientTests
         Assert.Equal("00-925 WARSZAWA", result.AddressLine2);
         Assert.Equal("Czynny", result.VatStatus);
         Assert.Equal(2, result.BankAccounts.Count);
-        Assert.Equal("https://wl-api.mf.gov.pl/api/search/nip/3333333333?date=2026-10-31", Assert.Single(handler.Requests).ToString());
+        Assert.Equal("https://wykazpodatnikowvat.mf.gov.pl/api/search/nip/3333333333?date=2026-10-31", Assert.Single(handler.Requests).ToString());
     }
 
     [Fact]
@@ -98,6 +98,35 @@ public class WhiteListClientTests
         time.Now = time.Now.AddDays(1);
         await client.LookupAsync(Nip, CancellationToken.None);
         Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Lookup_101stUncachedCallOfPolishDay_ThrowsQuota_WithoutMfCall_CachedNipStillServed()
+    {
+        var (client, handler, _) = Create(_ => Json(HttpStatusCode.OK, FoundJson));
+
+        for (var i = 0; i < WhiteListClient.DailyLimit; i++)
+            await client.LookupAsync($"{i:D10}", CancellationToken.None);
+
+        await Assert.ThrowsAsync<WhiteListQuotaExceededException>(() => client.LookupAsync(Nip, CancellationToken.None));
+        Assert.Equal(WhiteListClient.DailyLimit, handler.Requests.Count);
+        Assert.NotNull(await client.LookupAsync($"{0:D10}", CancellationToken.None));
+        Assert.Equal(WhiteListClient.DailyLimit, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Lookup_QuotaResetsAtPolishMidnight()
+    {
+        var (client, handler, time) = Create(_ => Json(HttpStatusCode.OK, FoundJson));
+        for (var i = 0; i < WhiteListClient.DailyLimit; i++)
+            await client.LookupAsync($"{i:D10}", CancellationToken.None);
+
+        time.Now = new DateTimeOffset(2026, 10, 31, 22, 59, 59, TimeSpan.Zero);
+        await Assert.ThrowsAsync<WhiteListQuotaExceededException>(() => client.LookupAsync(Nip, CancellationToken.None));
+
+        time.Now = new DateTimeOffset(2026, 10, 31, 23, 0, 0, TimeSpan.Zero);
+        Assert.NotNull(await client.LookupAsync(Nip, CancellationToken.None));
+        Assert.Equal(WhiteListClient.DailyLimit + 1, handler.Requests.Count);
     }
 
     [Theory]
@@ -157,6 +186,20 @@ public class WhiteListClientTests
         var status = Assert.IsType<ObjectResult>(down);
         Assert.Equal(503, status.StatusCode);
         Assert.Equal("Wyszukiwarka MF niedostępna, wpisz dane ręcznie", Assert.IsType<ValidationEnvelope>(status.Value).Errors.Single().Message);
+    }
+
+    [Fact]
+    public async Task Controller_QuotaExceeded_Returns503Quota()
+    {
+        var (client, _, _) = Create(_ => Json(HttpStatusCode.OK, FoundJson));
+        for (var i = 0; i < WhiteListClient.DailyLimit; i++)
+            await client.LookupAsync($"{i:D10}", CancellationToken.None);
+
+        var result = Assert.IsType<ObjectResult>(await new NipLookupController(client).Get(Nip, CancellationToken.None));
+
+        Assert.Equal(503, result.StatusCode);
+        var issue = Assert.IsType<ValidationEnvelope>(result.Value).Errors.Single();
+        Assert.Equal(("NIP-LOOKUP-QUOTA", "Dzienny limit wyszukiwań w wykazie MF wyczerpany. Wpisz dane ręcznie."), (issue.Code, issue.Message));
     }
 
     [Fact]
