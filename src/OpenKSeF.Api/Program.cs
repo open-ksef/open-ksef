@@ -390,6 +390,11 @@ app.Use(async (context, next) =>
         context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
         await context.Response.WriteAsJsonAsync(new { error = CredentialsController.EncryptionKeyUnavailableMessage });
     }
+    catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+    {
+        if (!context.Response.HasStarted)
+            context.Response.StatusCode = StatusCodes.Status499ClientClosedRequest;
+    }
 });
 app.UseAuthentication();
 app.Use(async (context, next) =>
