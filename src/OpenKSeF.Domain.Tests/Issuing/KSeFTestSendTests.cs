@@ -199,6 +199,82 @@ public class KSeFTestSendTests(ITestOutputHelper output)
     }
 
     [KSeFTestFact]
+    public async Task AdvancesAndFinals_EveryReq0028Kind_AcceptedWithUpo()
+    {
+        await using var ksef = await TestKSeF.StartAsync();
+        var stamp = DateTime.UtcNow.ToString("yyMMddHHmmss");
+        var tenantId = Guid.NewGuid();
+        var profile = new SellerProfile(tenantId);
+        profile.Update("Sprzedawca testowy sp. z o.o.", "ul. Prosta 1", "00-001 Warszawa", "93000000002026111700000815", false, InvoiceNumbering.DefaultPattern);
+        var today = IssuedInvoice.PolandDate(DateTimeOffset.UtcNow);
+        var results = new List<string>();
+
+        async Task<IssuedInvoice> SendAsync(string name, IssuedInvoice document, Fa3Refs? refs = null, IssuedInvoice? original = null)
+        {
+            var now = DateTime.UtcNow;
+            document.Issue(profile, ksef.SellerNip, $"OKSEF-T845-{name}/{stamp}", now, original, original, refs?.Deducted);
+            var written = new Fa3InvoiceWriter().Write(document, now, refs);
+            Assert.Empty(written.SchemaErrors);
+            document.AttachSentXml(written.Xml, "test", null);
+            var sent = await ksef.ProcessUntilDoneAsync(document, ksef.TokenCredential(ksef.Token), output);
+            AssertAcceptedWithUpo(sent);
+            document.MarkAccepted(sent.KsefNumber!, now, 200, null, now);
+            results.Add($"{name}: {document.InvoiceType.Code()} {sent.KsefNumber} P_15={document.TotalGross:0.00} upo={sent.UpoXml!.Length}B");
+            return document;
+        }
+
+        IssuedInvoice FirstAdvance(decimal amount, Action<IssuedInvoice> buyer, params (string?, string?, decimal, decimal, VatRate)[] order)
+        {
+            var advance = IssuedInvoice.Advance(Guid.NewGuid(), tenantId, today, DateTime.UtcNow);
+            buyer(advance);
+            advance.ReplaceLines(order);
+            advance.SetAdvanceAmount(amount);
+            advance.SetDates(today, today.AddDays(-1), today);
+            return advance;
+        }
+
+        IssuedInvoice NextAdvance(IssuedInvoice first, decimal amount)
+        {
+            var advance = IssuedInvoice.ChainDocument(Guid.NewGuid(), IssuedInvoiceType.Zal, first, first, today, DateTime.UtcNow);
+            advance.SetAdvanceAmount(amount);
+            advance.SetDates(today, today, today);
+            return advance;
+        }
+
+        void Domestic(IssuedInvoice i) => i.SetBuyer(BuyerKind.Company, "1111111111", "Nabywca testowy sp. z o.o.", "ul. Fikcyjna 1", "00-000 Testowo");
+        (string?, string?, decimal, decimal, VatRate) project = ("Projekt testowy T-845", "szt.", 1, 1000m, VatRate.Rate23);
+
+        var zal1 = await SendAsync("zal", FirstAdvance(369m, Domestic, project));
+        var zal2 = await SendAsync("zal-second", NextAdvance(zal1, 246m));
+        var roz = IssuedInvoice.ChainDocument(Guid.NewGuid(), IssuedInvoiceType.Roz, zal1, zal2, today, DateTime.UtcNow);
+        roz = await SendAsync("roz", roz, new Fa3Refs(null, null, null, [zal1.KsefNumber!, zal2.KsefNumber!], Advances.Deducted([zal1, zal2])));
+        var korRoz = IssuedInvoice.Correction(Guid.NewGuid(), roz, roz, CorrectionMode.Edit, today, DateTime.UtcNow);
+        korRoz.SetCorrection("Rabat T-845", null);
+        korRoz.ReplaceCorrectionLines([(1, "Projekt testowy T-845", "szt.", 1m, 900m, VatRate.Rate23)], roz);
+        await SendAsync("kor-roz", korRoz, new Fa3Refs(roz, roz, roz.TotalGross), roz);
+
+        var zalB = await SendAsync("zal-b", FirstAdvance(369m, Domestic, project));
+        var korZal = IssuedInvoice.Correction(Guid.NewGuid(), zalB, zalB, CorrectionMode.Edit, today, DateTime.UtcNow);
+        korZal.SetCorrection("Zwrot części zaliczki T-845", null);
+        korZal.SetAdvanceAmount(246m);
+        korZal = await SendAsync("kor-zal", korZal, new Fa3Refs(zalB, zalB, zalB.AdvanceAmount), zalB);
+        var lastZal = await SendAsync("zal-last", NextAdvance(zalB, 984m), new Fa3Refs(null, null, null, [zalB.KsefNumber!]));
+        var zeroRoz = IssuedInvoice.ChainDocument(Guid.NewGuid(), IssuedInvoiceType.Roz, zalB, lastZal, today, DateTime.UtcNow);
+        zeroRoz = await SendAsync("roz-zero", zeroRoz, new Fa3Refs(null, null, null, [zalB.KsefNumber!, lastZal.KsefNumber!], Advances.Deducted([korZal, lastZal])));
+        Assert.Equal(0m, zeroRoz.TotalGross);
+
+        await SendAsync("zal-gbp-np1", FirstAdvance(2000m, i =>
+        {
+            i.SetBuyer(BuyerKind.Foreign, null, "Example Buyer Ltd", "1 Test Street", "Testville");
+            i.SetForeignBuyer("GB", null);
+            i.SetCurrency("GBP", 5.1234m, today.AddDays(-2));
+        }, ("Consulting T-845", "h", 10, 500m, VatRate.NotTaxable)));
+
+        foreach (var line in results)
+            output.WriteLine($"T-845 {line}");
+    }
+
+    [KSeFTestFact]
     public async Task KSeFAuthenticationCertificate_SyncFetchesInvoices_SendGetsKsefNumberAndUpo()
     {
         await using var ksef = await TestKSeF.StartAsync();
