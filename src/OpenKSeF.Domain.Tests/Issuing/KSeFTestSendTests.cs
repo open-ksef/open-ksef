@@ -134,6 +134,71 @@ public class KSeFTestSendTests(ITestOutputHelper output)
     }
 
     [KSeFTestFact]
+    public async Task Corrections_EveryReq0027Shape_AcceptedWithUpo()
+    {
+        await using var ksef = await TestKSeF.StartAsync();
+        var stamp = DateTime.UtcNow.ToString("yyMMddHHmmss");
+        const string fakeBuyerNip = "1111111111";
+
+        void Domestic(IssuedInvoice i) => i.ReplaceLines([("Usługa testowa T-843", null, 1, 100m, VatRate.Rate23)]);
+        void Gbp(IssuedInvoice i)
+        {
+            i.SetBuyer(BuyerKind.Foreign, null, "Example Buyer Ltd", "1 Test Street", "Testville");
+            i.SetForeignBuyer("GB", null);
+            i.SetCurrency("GBP", 5.1234m, null);
+            i.ReplaceLines([("Consulting T-843", "h", 10, 50m, VatRate.NotTaxable)]);
+        }
+        void Eur(IssuedInvoice i)
+        {
+            i.SetBuyer(BuyerKind.Foreign, null, "Example Buyer GmbH", "1 Teststrasse", "Berlin");
+            i.SetForeignBuyer("DE", "000000000");
+            i.SetCurrency("EUR", 4.2m, null);
+            i.ReplaceLines([("Consulting T-843", "h", 10, 50m, VatRate.NotTaxableArt100)]);
+        }
+        static Action<IssuedInvoice, IssuedInvoice> Quantity(decimal quantity) => (c, state) =>
+            c.ReplaceCorrectionLines(state.Lines.Select(l => ((int?)l.LineNo, (string?)l.Name, (string?)l.Unit, quantity, l.UnitNetPrice, l.VatRate)), state);
+
+        var cases = new (string Name, Action<IssuedInvoice> Original, Action<IssuedInvoice, IssuedInvoice> Edit, CorrectionMode Mode)[]
+        {
+            ("qty-to-0", Domestic, Quantity(0), CorrectionMode.Edit),
+            ("rate-23-8", Domestic, (c, s) => c.ReplaceCorrectionLines(s.Lines.Select(l => ((int?)l.LineNo, (string?)l.Name, (string?)l.Unit, l.Quantity, l.UnitNetPrice, VatRate.Rate8)), s), CorrectionMode.Edit),
+            ("podmiot2k", Domestic, (c, s) => c.SetCorrectionBuyer(s.BuyerName, "ul. Długa 22", s.BuyerAddressLine2, null), CorrectionMode.Edit),
+            ("wrong-nip", Domestic, (_, _) => { }, CorrectionMode.WrongBuyerId),
+            ("gbp-np1", Gbp, Quantity(8), CorrectionMode.Edit),
+            ("eur-np2", Eur, Quantity(8), CorrectionMode.Edit),
+        };
+
+        var results = new List<string>();
+        foreach (var (name, configure, edit, mode) in cases)
+        {
+            var now = DateTime.UtcNow;
+            var original = Fa3InvoiceWriterTests.Issued(configure, sellerNip: ksef.SellerNip, buyerNip: fakeBuyerNip,
+                number: $"OKSEF-T843-{name}/{stamp}", tenantId: Guid.NewGuid(), now: now);
+            var written = new Fa3InvoiceWriter().Write(original, now);
+            Assert.Empty(written.SchemaErrors);
+            original.AttachSentXml(written.Xml, "test", null);
+            var sent = await ksef.ProcessUntilDoneAsync(original, ksef.TokenCredential(ksef.Token), output);
+            AssertAcceptedWithUpo(sent);
+            original.MarkAccepted(sent.KsefNumber!, now, 200, null, now);
+
+            var correction = IssuedInvoice.Correction(Guid.NewGuid(), original, original, mode, IssuedInvoice.PolandDate(DateTimeOffset.UtcNow), DateTime.UtcNow);
+            if (mode != CorrectionMode.WrongBuyerId)
+                correction.SetCorrection("Test KSeF T-843", null);
+            edit(correction, original);
+            correction.Issue(new SellerProfile(original.TenantId), ksef.SellerNip, $"OKSEF-T843K-{name}/{stamp}", DateTime.UtcNow, original, original);
+            var korXml = new Fa3InvoiceWriter().Write(correction, DateTime.UtcNow, new Fa3Refs(original, original));
+            Assert.Empty(korXml.SchemaErrors);
+            correction.AttachSentXml(korXml.Xml, "test", null);
+            var kor = await ksef.ProcessUntilDoneAsync(correction, ksef.TokenCredential(ksef.Token), output);
+            AssertAcceptedWithUpo(kor);
+            results.Add($"{name}: original {sent.KsefNumber} KOR {kor.KsefNumber} P_15={correction.TotalGross:0.00} upo={kor.UpoXml!.Length}B");
+        }
+
+        foreach (var line in results)
+            output.WriteLine($"T-843 {line}");
+    }
+
+    [KSeFTestFact]
     public async Task KSeFAuthenticationCertificate_SyncFetchesInvoices_SendGetsKsefNumberAndUpo()
     {
         await using var ksef = await TestKSeF.StartAsync();

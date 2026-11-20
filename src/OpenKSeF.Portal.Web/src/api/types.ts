@@ -225,6 +225,12 @@ export type ExemptionBasisKind = 'Act' | 'Directive' | 'Other'
 
 export type IssuedInvoiceStatus = 'Draft' | 'Sending' | 'Accepted' | 'Rejected'
 
+export type IssuedInvoiceType = 'VAT' | 'KOR' | 'ZAL' | 'ROZ' | 'KOR_ZAL' | 'KOR_ROZ'
+
+export type CorrectionMode = 'Edit' | 'ToZero' | 'WrongBuyerId'
+
+export type CorrectionType = 1 | 2 | 3
+
 export interface ValidationIssue {
   code: string
   field: string | null
@@ -245,6 +251,9 @@ export interface SellerProfileRequest {
   numberingPattern: string | null
   nextNumber?: number | null
   nextNumberPeriod?: string | null
+  correctionNumberingPattern?: string | null
+  correctionNextNumber?: number | null
+  correctionNextNumberPeriod?: string | null
   bankSwift?: string | null
   bankName?: string | null
   foreignBankAccount?: string | null
@@ -270,6 +279,10 @@ export interface SellerProfileResponse {
   foreignBankAccount?: string | null
   foreignBankSwift?: string | null
   foreignBankName?: string | null
+  correctionNumberingPattern?: string
+  correctionNextNumber?: number
+  correctionNextNumberPeriod?: string
+  correctionNextNumberPreview?: string
 }
 
 export interface NipLookupResponse {
@@ -340,6 +353,60 @@ export interface IssuedInvoiceLineResponse {
   vatRate: VatRateCode
   netAmount: number
   vatAmount: number
+  baseLineNo?: number | null
+}
+
+export interface CorrectionLineRequest extends IssuedInvoiceLineRequest {
+  baseLineNo?: number | null
+}
+
+export interface CorrectionDraftRequest {
+  issueDate?: string | null
+  dueDate?: string | null
+  paymentMethod?: PaymentMethod | null
+  correctionReason?: string | null
+  correctionType?: CorrectionType | 0 | null
+  buyer?: IssuedInvoiceBuyer | null
+  lines?: CorrectionLineRequest[] | null
+}
+
+export interface IssuedInvoiceRef {
+  id: string
+  number: string | null
+  ksefNumber: string | null
+  issueDate: string
+  invoiceType: IssuedInvoiceType
+}
+
+export interface CorrectionRow {
+  rowNo: number
+  isBefore: boolean
+  baseLineNo?: number | null
+  name: string
+  unit: string
+  quantity: number
+  unitNetPrice: number
+  vatRate: VatRateCode
+  netAmount: number
+}
+
+export interface IssuedInvoiceCurrentState {
+  lines: IssuedInvoiceLineResponse[]
+  vatSummary: VatSummaryRow[]
+  totalNet: number
+  totalVat: number
+  totalGross: number
+  buyer: IssuedInvoiceBuyer
+  isZero: boolean
+}
+
+export interface IssuedInvoiceCorrectionItem {
+  id: string
+  number: string | null
+  invoiceType: IssuedInvoiceType
+  status: IssuedInvoiceStatus
+  issueDate: string
+  totalGross: number
 }
 
 export interface VatSummaryRow {
@@ -390,6 +457,15 @@ export interface IssuedInvoiceResponse {
   exchangeRateDate?: string | null
   version: number
   sellerVersion: number
+  invoiceType?: IssuedInvoiceType
+  correctedInvoice?: IssuedInvoiceRef | null
+  correctionReason?: string | null
+  correctionType?: CorrectionType | null
+  correctionRows?: CorrectionRow[] | null
+  buyerBefore?: IssuedInvoiceBuyer | null
+  currentState?: IssuedInvoiceCurrentState | null
+  corrections?: IssuedInvoiceCorrectionItem[] | null
+  openCorrectionId?: string | null
 }
 
 export interface ExchangeRateProposalResponse {
@@ -414,6 +490,7 @@ export interface IssuedInvoiceListItemResponse {
   buyerCountryCode?: string | null
   buyerIdType?: BuyerIdType | null
   buyerForeignId?: string | null
+  invoiceType?: IssuedInvoiceType
 }
 
 export interface IssuedFeedItemResponse extends Omit<IssuedInvoiceListItemResponse, 'dueDate'> {

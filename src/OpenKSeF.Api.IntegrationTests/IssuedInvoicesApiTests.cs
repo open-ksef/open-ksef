@@ -1210,9 +1210,18 @@ public class IssuedInvoicesApiTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync($"{url}?version={draft.Version}", Draft(buyerName: "Po zamrożeniu"))).StatusCode);
     }
 
-    private static void AssertMatchesFixture(string fixture, JsonNode actual)
+    internal static void AssertMatchesFixture(string fixture, JsonNode actual)
     {
         Normalize(actual);
+        if (Environment.GetEnvironmentVariable("UPDATE_FIXTURES") == "1")
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (!File.Exists(Path.Combine(dir.FullName, "OpenKSeF.Api.IntegrationTests.csproj")))
+                dir = dir.Parent!;
+            File.WriteAllText(Path.Combine(dir.FullName, "Fixtures", "IssuedInvoices", fixture), actual.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }) + "\n");
+            return;
+        }
+
         var expected = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "IssuedInvoices", fixture)))!;
         Assert.True(JsonNode.DeepEquals(expected, actual), $"{fixture} differs.\nExpected:\n{expected}\nActual:\n{actual}");
     }
@@ -1228,7 +1237,7 @@ public class IssuedInvoicesApiTests : IDisposable
             case JsonObject obj:
                 foreach (var key in obj.Select(p => p.Key).ToList())
                 {
-                    if (key is "id" or "createdAt" or "updatedAt" or "issuedAt" or "acceptedAt" or "version" && obj[key] is not null
+                    if (key is "id" or "createdAt" or "updatedAt" or "issuedAt" or "acceptedAt" or "version" or "openCorrectionId" && obj[key] is not null
                         || key == "sellerVersion" && obj[key]!.GetValue<uint>() != 0)
                         obj[key] = $"<{key}>";
                     else if (key == "seller")

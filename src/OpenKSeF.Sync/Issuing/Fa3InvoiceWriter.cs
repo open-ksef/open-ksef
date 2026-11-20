@@ -22,21 +22,21 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
     private readonly XmlSchemaSet _schemas = LoadSchemas();
     private readonly Lock _validationLock = new();
 
-    public Fa3WriteResult Write(IssuedInvoice invoice, DateTime generatedAtUtc)
+    public Fa3WriteResult Write(IssuedInvoice invoice, DateTime generatedAtUtc, Fa3Refs? refs = null)
     {
-        var document = new XDocument(new XDeclaration("1.0", "UTF-8", null), Faktura(invoice, generatedAtUtc));
+        var document = new XDocument(new XDeclaration("1.0", "UTF-8", null), Faktura(invoice, generatedAtUtc, refs));
         var xml = ToBytes(document);
         return new Fa3WriteResult(xml, Validate(xml));
     }
 
-    private static XElement Faktura(IssuedInvoice invoice, DateTime generatedAtUtc) => new(Ns + "Faktura",
+    private static XElement Faktura(IssuedInvoice invoice, DateTime generatedAtUtc, Fa3Refs? refs) => new(Ns + "Faktura",
         new XElement(Ns + "Naglowek",
             new XElement(Ns + "KodFormularza", new XAttribute("kodSystemowy", "FA (3)"), new XAttribute("wersjaSchemy", "1-0E"), "FA"),
             new XElement(Ns + "WariantFormularza", 3),
             new XElement(Ns + "DataWytworzeniaFa", generatedAtUtc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", Inv)),
             new XElement(Ns + "SystemInfo", "OpenKSeF")),
         new XElement(Ns + "Podmiot1",
-            invoice.Lines.Any(l => l.VatRate == VatRate.NotTaxableArt100) ? new XElement(Ns + "PrefiksPodatnika", "PL") : null,
+            AllLines(invoice, refs).Any(l => l.VatRate == VatRate.NotTaxableArt100) ? new XElement(Ns + "PrefiksPodatnika", "PL") : null,
             new XElement(Ns + "DaneIdentyfikacyjne",
                 new XElement(Ns + "NIP", invoice.SellerNip),
                 new XElement(Ns + "Nazwa", invoice.SellerName)),
@@ -48,7 +48,10 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
             invoice.BuyerAddressLine1 is null ? null : Address(invoice.BuyerAddressLine1, invoice.BuyerAddressLine2, invoice.BuyerCountryCode ?? "PL"),
             new XElement(Ns + "JST", 2),
             new XElement(Ns + "GV", 2)),
-        Fa(invoice));
+        Fa(invoice, refs));
+
+    private static IEnumerable<IssuedInvoiceLine> AllLines(IssuedInvoice invoice, Fa3Refs? refs) =>
+        refs is null ? invoice.Lines : invoice.Lines.Concat(refs.CorrectedState.Lines);
 
     private static XElement[] BuyerId(IssuedInvoice invoice) => (invoice.BuyerKind, invoice.BuyerIdType) switch
     {
@@ -71,21 +74,43 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
         new XElement(Ns + "AdresL1", line1),
         line2 is null ? null : new XElement(Ns + "AdresL2", line2));
 
-    private static XElement Fa(IssuedInvoice invoice) => new(Ns + "Fa",
+    private static XElement Fa(IssuedInvoice invoice, Fa3Refs? refs) => new(Ns + "Fa",
         new XElement(Ns + "KodWaluty", invoice.Currency),
         new XElement(Ns + "P_1", Date(invoice.IssueDate)),
         new XElement(Ns + "P_2", invoice.Number),
-        invoice.SaleDate == invoice.IssueDate ? null : new XElement(Ns + "P_6", Date(invoice.SaleDate)),
-        Buckets(invoice),
+        invoice.SaleDate == invoice.IssueDate || refs is not null ? null : new XElement(Ns + "P_6", Date(invoice.SaleDate)),
+        Buckets(refs is null ? invoice.VatSummary() : Corrections.Deltas(refs.CorrectedState.Lines, invoice.Lines)),
         new XElement(Ns + "P_15", Money(invoice.TotalGross)),
-        Adnotacje(invoice),
-        new XElement(Ns + "RodzajFaktury", "VAT"),
-        invoice.Lines.OrderBy(l => l.LineNo).Select(l => Line(l, invoice.Currency == IssuedInvoice.DefaultCurrency ? null : invoice.ExchangeRate)),
-        Platnosc(invoice));
+        Adnotacje(invoice, refs),
+        new XElement(Ns + "RodzajFaktury", invoice.InvoiceType.Code()),
+        refs is null ? null : CorrectionHeader(invoice, refs),
+        refs is null
+            ? invoice.Lines.OrderBy(l => l.LineNo).Select(l => Line(l, ExchangeRate(invoice)))
+            : Corrections.Rows(refs.CorrectedState.Lines, invoice.Lines).Select(r => Row(r, ExchangeRate(invoice))),
+        refs is null || invoice.TotalGross > 0 ? Platnosc(invoice) : null);
 
-    private static IEnumerable<XElement> Buckets(IssuedInvoice invoice)
+    private static decimal? ExchangeRate(IssuedInvoice invoice) => invoice.Currency == IssuedInvoice.DefaultCurrency ? null : invoice.ExchangeRate;
+
+    private static IEnumerable<XElement?> CorrectionHeader(IssuedInvoice invoice, Fa3Refs refs)
     {
-        var byBucket = invoice.VatSummary()
+        yield return invoice.CorrectionReason is null ? null : new XElement(Ns + "PrzyczynaKorekty", invoice.CorrectionReason);
+        yield return invoice.CorrectionType is null ? null : new XElement(Ns + "TypKorekty", invoice.CorrectionType);
+        yield return new XElement(Ns + "DaneFaKorygowanej",
+            new XElement(Ns + "DataWystFaKorygowanej", Date(refs.Original.IssueDate)),
+            new XElement(Ns + "NrFaKorygowanej", refs.Original.Number),
+            new XElement(Ns + "NrKSeF", 1),
+            new XElement(Ns + "NrKSeFFaKorygowanej", refs.Original.KsefNumber));
+        var before = refs.CorrectedState;
+        yield return Corrections.BuyerDataDiffers(invoice, before)
+            ? new XElement(Ns + "Podmiot2K",
+                new XElement(Ns + "DaneIdentyfikacyjne", BuyerId(before), new XElement(Ns + "Nazwa", before.BuyerName)),
+                before.BuyerAddressLine1 is null ? null : Address(before.BuyerAddressLine1, before.BuyerAddressLine2, before.BuyerCountryCode ?? "PL"))
+            : null;
+    }
+
+    private static IEnumerable<XElement> Buckets(IEnumerable<VatSummary> summary)
+    {
+        var byBucket = summary
             .GroupBy(s => s.VatRate.Bucket())
             .ToDictionary(g => g.Key, g => (Net: g.Sum(s => s.Net), Vat: g.Sum(s => s.Vat), HasVat: g.First().VatRate.HasVatAmount()));
 
@@ -99,12 +124,12 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
         }
     }
 
-    private static XElement Adnotacje(IssuedInvoice invoice) => new(Ns + "Adnotacje",
+    private static XElement Adnotacje(IssuedInvoice invoice, Fa3Refs? refs) => new(Ns + "Adnotacje",
         new XElement(Ns + "P_16", invoice.SellerCashAccounting && invoice.BuyerKind != BuyerKind.Foreign ? 1 : 2),
         new XElement(Ns + "P_17", 2),
         new XElement(Ns + "P_18", invoice.BuyerKind == BuyerKind.Foreign ? 1 : 2),
         new XElement(Ns + "P_18A", invoice.SplitPayment ? 1 : 2),
-        new XElement(Ns + "Zwolnienie", invoice.Lines.Any(l => l.VatRate == VatRate.Exempt)
+        new XElement(Ns + "Zwolnienie", AllLines(invoice, refs).Any(l => l.VatRate == VatRate.Exempt)
             ? new object[] { new XElement(Ns + "P_19", 1), new XElement(Ns + ExemptionElement(invoice.ExemptionBasisKind), invoice.ExemptionBasisText) }
             : new XElement(Ns + "P_19N", 1)),
         new XElement(Ns + "NoweSrodkiTransportu", new XElement(Ns + "P_22N", 1)),
@@ -127,6 +152,17 @@ public sealed class Fa3InvoiceWriter : IFa3InvoiceWriter
         new XElement(Ns + "P_11", Money(line.NetAmount)),
         new XElement(Ns + "P_12", line.VatRate.Code()),
         exchangeRate is null ? null : new XElement(Ns + "KursWaluty", exchangeRate.Value.ToString("0.######", Inv)));
+
+    private static XElement Row(CorrectionRow row, decimal? exchangeRate) => new(Ns + "FaWiersz",
+        new XElement(Ns + "NrWierszaFa", row.RowNo),
+        new XElement(Ns + "P_7", row.Name),
+        new XElement(Ns + "P_8A", row.Unit),
+        new XElement(Ns + "P_8B", row.Quantity.ToString("0.######", Inv)),
+        new XElement(Ns + "P_9A", Money(row.UnitNetPrice)),
+        new XElement(Ns + "P_11", Money(row.NetAmount)),
+        new XElement(Ns + "P_12", row.VatRate.Code()),
+        exchangeRate is null ? null : new XElement(Ns + "KursWaluty", exchangeRate.Value.ToString("0.######", Inv)),
+        row.IsBefore ? new XElement(Ns + "StanPrzed", 1) : null);
 
     private static XElement Platnosc(IssuedInvoice invoice) => new(Ns + "Platnosc",
         new XElement(Ns + "TerminPlatnosci", new XElement(Ns + "Termin", Date(invoice.DueDate))),

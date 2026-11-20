@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from 'react'
 
 import { lookupNip } from '@/api/endpoints/nipLookup'
-import { ApiError } from '@/api/errors'
+import { ApiError, readValidationEnvelope } from '@/api/errors'
 import type { NipLookupResponse } from '@/api/types'
 import { isValidNip, nipError } from '@/invoicing/nip'
 
@@ -21,7 +21,7 @@ type LookupState =
   | { kind: 'loading' }
   | { kind: 'found'; vatStatus: string; at: Date }
   | { kind: 'notFound' }
-  | { kind: 'unavailable' }
+  | { kind: 'unavailable'; message: string }
 
 const timeFormat = new Intl.DateTimeFormat('pl-PL', { dateStyle: 'short', timeStyle: 'short' })
 
@@ -49,7 +49,9 @@ export function NipLookupField({
       onFound(result)
       setState({ kind: 'found', vatStatus: result.vatStatus, at: new Date() })
     } catch (lookupError) {
-      setState(lookupError instanceof ApiError && lookupError.status === 404 ? { kind: 'notFound' } : { kind: 'unavailable' })
+      const notFound = lookupError instanceof ApiError && lookupError.status === 404
+      const message = notFound ? null : (await readValidationEnvelope(lookupError))?.errors[0]?.message
+      setState(notFound ? { kind: 'notFound' } : { kind: 'unavailable', message: message ?? 'Biała lista nie odpowiada, wpisz dane ręcznie' })
     }
   }
 
@@ -99,7 +101,7 @@ export function NipLookupField({
           <span className="inv-badge inv-badge--warning">Nie ma na białej liście — wpisz dane ręcznie</span>
         ) : null}
         {state.kind === 'unavailable' ? (
-          <span className="inv-field-error">Biała lista nie odpowiada, wpisz dane ręcznie</span>
+          <span className="inv-field-error">{state.message}</span>
         ) : null}
       </span>
     </div>

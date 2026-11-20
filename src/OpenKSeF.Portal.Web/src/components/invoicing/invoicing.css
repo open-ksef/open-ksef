@@ -627,3 +627,23 @@ fieldset.inv-card {
 .inv-check .inv-help {
   display: block;
 }
+
+.inv-kor-rows {
+  overflow-x: auto;
+}
+
+.inv-kor-rows .inv-sum td.inv-kor-name {
+  text-align: left;
+  white-space: normal;
+}
+
+.inv-kor-before td {
+  color: var(--ui-muted);
+}
+
+.inv-kor-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 2;
+}

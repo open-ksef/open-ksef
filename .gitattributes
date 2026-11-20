@@ -1,2 +1,5 @@
 # Shell scripts must keep LF endings for Linux containers
 *.sh text eol=lf
+
+# FA(3) golden bytes: no line-ending conversion
+src/OpenKSeF.Domain.Tests/Issuing/Golden/*.xml -text

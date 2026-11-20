@@ -38,6 +38,16 @@ const LABELS = {
   ksefNumber: { pl: 'Numer KSeF', en: 'KSeF number' },
   kodHeading: { pl: 'Kod weryfikacyjny KSeF (KOD I)', en: 'KSeF verification code (QR)' },
   kodHint: { pl: 'Zeskanuj, aby sprawdzić fakturę w KSeF', en: 'Scan to verify this invoice in KSeF' },
+  correctedInvoice: { pl: 'Faktura korygowana', en: 'Corrected invoice' },
+  correctedIssueDate: { pl: 'Data wystawienia faktury korygowanej', en: 'Issue date of the corrected invoice' },
+  correctedKsefNumber: { pl: 'Numer KSeF faktury korygowanej', en: 'KSeF number of the corrected invoice' },
+  correctionReason: { pl: 'Przyczyna korekty', en: 'Reason for correction' },
+  before: { pl: 'przed', en: 'before' },
+  after: { pl: 'po', en: 'after' },
+  differences: { pl: 'Różnice w stawkach', en: 'Differences by rate' },
+  vat: { pl: 'Kwota VAT', en: 'VAT amount' },
+  totalDifference: { pl: 'Różnica razem', en: 'Total difference' },
+  refund: { pl: 'Do zwrotu', en: 'To be refunded' },
 } satisfies Record<string, Bilingual>
 
 const PAYMENT_METHODS: Record<string, Bilingual> = {
@@ -45,6 +55,22 @@ const PAYMENT_METHODS: Record<string, Bilingual> = {
   '1': { pl: 'Gotówka', en: 'Cash' },
   '2': { pl: 'Karta', en: 'Card' },
 }
+
+const BUCKETS: [string, string][] = [
+  ['1', '23%'],
+  ['2', '8%'],
+  ['3', '5%'],
+  ['4', '4%'],
+  ['5', 'OSS'],
+  ['6_1', '0% (kraj)'],
+  ['6_2', '0% WDT'],
+  ['6_3', '0% EX'],
+  ['7', 'zw'],
+  ['8', 'np I'],
+  ['9', 'np II'],
+  ['10', 'oo'],
+  ['11', 'marża'],
+]
 
 const UNITS: Record<string, string> = { 'szt.': 'pcs', 'godz.': 'hours', 'usł.': 'service' }
 
@@ -146,7 +172,15 @@ export function buildPrintDocument(xml: string, ksefNumber: string, verification
   const number = text(fa, 'P_2') ?? ''
   const total = text(fa, 'P_15') ?? '0.00'
   const paid = text(payment, 'Zaplacono') === '1'
-  const money = (digits: string): string => `${formatPrintNumber(digits, main)} ${currency}`
+  const corrective = text(fa, 'RodzajFaktury')?.startsWith('KOR') ?? false
+  const corrected = child(fa, 'DaneFaKorygowanej')
+  const refund = total.startsWith('-')
+  const amount = total.replace('-', '')
+  const money = (digits: string): string =>
+    digits.startsWith('-') ? `-${formatPrintNumber(digits.slice(1), main)} ${currency}` : `${formatPrintNumber(digits, main)} ${currency}`
+  const title: Bilingual = corrective
+    ? { pl: `Faktura korygująca nr ${number}`, en: `Corrective invoice no. ${number}` }
+    : { pl: `Faktura nr ${number}`, en: `Invoice no. ${number}` }
 
   const sellerIdValue = `${text(seller, 'PrefiksPodatnika') ?? ''}${text(child(seller, 'DaneIdentyfikacyjne'), 'NIP') ?? ''}`
   const sellerIdRows = sellerIdValue ? [row(LABELS.sellerTaxId, sellerIdValue, main)] : []
@@ -159,7 +193,9 @@ export function buildPrintDocument(xml: string, ksefNumber: string, verification
       : []
 
   const itemRows: DocNode[][] = lines.map((line) => [
-    text(line, 'NrWierszaFa') ?? '',
+    corrective
+      ? { stack: [text(line, 'NrWierszaFa') ?? '', stacked(text(line, 'StanPrzed') === '1' ? LABELS.before : LABELS.after, main)] }
+      : (text(line, 'NrWierszaFa') ?? ''),
     itemName(text(line, 'P_7') ?? '', main),
     { text: formatPrintNumber(text(line, 'P_8B') ?? '', main), alignment: 'right' },
     unitCell(text(line, 'P_8A') ?? '', main),
@@ -169,7 +205,32 @@ export function buildPrintDocument(xml: string, ksefNumber: string, verification
   ])
   const hasNp = lines.some((line) => text(line, 'P_12')?.startsWith('np'))
   const rate = text(lines[0], 'KursWaluty')
-  const words = amountInWords(total, currency)
+  const words = amountInWords(amount, currency)
+  const differenceRows: DocNode[][] = corrective
+    ? BUCKETS.filter(([bucket]) => text(fa, `P_13_${bucket}`) !== null).map(([bucket, label]) => [
+        label,
+        { text: money(text(fa, `P_13_${bucket}`) ?? ''), alignment: 'right' },
+        { text: text(fa, `P_14_${bucket}`) ? money(text(fa, `P_14_${bucket}`) ?? '') : '', alignment: 'right' },
+      ])
+    : []
+  const correctionRows: DocNode[][] = corrective
+    ? [
+        row(LABELS.correctedInvoice, { text: text(corrected, 'NrFaKorygowanej') ?? '', bold: true }, main),
+        row(LABELS.correctedIssueDate, text(corrected, 'DataWystFaKorygowanej') ?? '', main),
+        row(LABELS.correctedKsefNumber, text(corrected, 'NrKSeFFaKorygowanej') ?? '', main),
+        row(LABELS.correctionReason, text(fa, 'PrzyczynaKorekty') ?? '', main),
+      ]
+    : []
+  const totalRows: DocNode[][] = corrective
+    ? [
+        row(LABELS.totalDifference, { text: money(total), bold: true, alignment: 'right' }, main),
+        row(refund ? LABELS.refund : LABELS.balance, { text: money(amount), bold: true, alignment: 'right' }, main),
+      ]
+    : [
+        row(LABELS.total, { text: money(total), bold: true, alignment: 'right' }, main),
+        row(LABELS.paid, { text: money(paid ? total : '0.00'), alignment: 'right' }, main),
+        row(LABELS.balance, { text: money(paid ? '0.00' : total), bold: true, alignment: 'right' }, main),
+      ]
   const method = PAYMENT_METHODS[text(payment, 'FormaPlatnosci') ?? '']
   const dueDate = text(child(payment, 'TerminPlatnosci'), 'Termin')
   const bank = text(account, 'NazwaBanku')
@@ -209,14 +270,14 @@ export function buildPrintDocument(xml: string, ksefNumber: string, verification
         columns: [
           {
             stack: [
-              { text: main === 'en' ? `Invoice no. ${number}` : `Faktura nr ${number}`, fontSize: TITLE_SIZE, bold: true },
-              { text: main === 'en' ? `Faktura nr ${number}` : `Invoice no. ${number}`, fontSize: MAIN_SIZE, color: MUTED },
+              { text: title[main], fontSize: TITLE_SIZE, bold: true },
+              { text: title[main === 'en' ? 'pl' : 'en'], fontSize: MAIN_SIZE, color: MUTED },
             ],
           },
           {
             width: 210,
             ...(details(
-              [row(LABELS.issueDate, issueDate, main), row(LABELS.saleDate, text(fa, 'P_6') ?? issueDate, main)],
+              [row(LABELS.issueDate, issueDate, main), ...(corrective ? [] : [row(LABELS.saleDate, text(fa, 'P_6') ?? issueDate, main)])],
               110,
             ) as object),
           },
@@ -228,6 +289,7 @@ export function buildPrintDocument(xml: string, ksefNumber: string, verification
         columnGap: 18,
         margin: [0, 0, 0, 14],
       },
+      correctionRows.length ? { ...(details(correctionRows, 150) as object), margin: [0, 0, 0, 14] } : null,
       { ...(stacked(LABELS.items, main) as object), margin: [0, 0, 0, 4] },
       {
         table: {
@@ -242,19 +304,23 @@ export function buildPrintDocument(xml: string, ksefNumber: string, verification
         layout: 'lightHorizontalLines',
       },
       hasNp ? { ...(stacked(LABELS.rateLegend, main) as object), margin: [0, 4, 0, 0] } : null,
+      differenceRows.length
+        ? {
+            table: {
+              headerRows: 1,
+              widths: ['*', 90, 90],
+              body: [[LABELS.differences, LABELS.net, LABELS.vat].map((label) => stacked(label, main)), ...differenceRows],
+            },
+            layout: 'lightHorizontalLines',
+            margin: [0, 12, 0, 0],
+          }
+        : null,
       {
         columns: [
           { stack: notes.map((note) => (typeof note === 'string' ? note : { ...note, margin: [0, 0, 0, 5] })), width: '*' },
           {
             width: 210,
-            ...(details(
-              [
-                row(LABELS.total, { text: money(total), bold: true, alignment: 'right' }, main),
-                row(LABELS.paid, { text: money(paid ? total : '0.00'), alignment: 'right' }, main),
-                row(LABELS.balance, { text: money(paid ? '0.00' : total), bold: true, alignment: 'right' }, main),
-              ],
-              100,
-            ) as object),
+            ...(details(totalRows, 100) as object),
           },
         ],
         columnGap: 18,

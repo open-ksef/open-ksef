@@ -1,11 +1,14 @@
 import { apiClient } from '../client'
 import type {
+  CorrectionDraftRequest,
+  CorrectionMode,
   ExchangeRateProposalResponse,
   IssuedFeedItemResponse,
   IssuedInvoiceDraftRequest,
   IssuedInvoiceListItemResponse,
   IssuedInvoiceResponse,
   IssuedInvoiceStatus,
+  IssuedInvoiceType,
   PagedResult,
 } from '../types'
 
@@ -68,8 +71,23 @@ export function issueIssuedInvoice(
   version?: number,
   sellerVersion?: number,
   confirmPastIssueDate?: boolean,
+  invoiceType?: IssuedInvoiceType,
 ): Promise<IssuedInvoiceResponse> {
-  return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/issue`, undefined, { query: { version, sellerVersion, confirmPastIssueDate } })
+  return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/issue`, undefined, {
+    query: { version, sellerVersion, confirmPastIssueDate, invoiceType },
+  })
+}
+
+export function createCorrection(tenantId: string, id: string, mode: CorrectionMode): Promise<IssuedInvoiceResponse> {
+  return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/corrections`, { mode })
+}
+
+export function updateCorrection(tenantId: string, id: string, request: CorrectionDraftRequest, version?: number): Promise<IssuedInvoiceResponse> {
+  return apiClient.put<IssuedInvoiceResponse>(`${item(tenantId, id)}/correction`, request, { query: { version } })
+}
+
+export function reissueInvoice(tenantId: string, id: string): Promise<IssuedInvoiceResponse> {
+  return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/reissue`)
 }
 
 export function copyIssuedInvoice(tenantId: string, id: string): Promise<IssuedInvoiceResponse> {

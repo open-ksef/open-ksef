@@ -18,7 +18,8 @@ import { Table, type TableColumn } from '@/components/Table'
 import { useCredentials } from '@/hooks/useCredentials'
 import { selectWordAt, useRowOpen } from '@/hooks/useRowOpen'
 import { useTenants } from '@/hooks/useTenants'
-import { formatDate, formatMoney } from '@/invoicing/format'
+import { isCorrection } from '@/invoicing/correction'
+import { formatDate, formatMoney, formatSignedMoney } from '@/invoicing/format'
 
 const PAGE_SIZE = 20
 const MAX_ROWS = 10_000
@@ -38,6 +39,9 @@ function lastPageSearch(current: URLSearchParams, lastPage: number): string {
   else next.delete('page')
   return next.toString()
 }
+
+const amount = (row: IssuedFeedItemResponse, value: number): string =>
+  isCorrection(row) ? formatSignedMoney(value, row.currency) : formatMoney(value, row.currency)
 
 const EXTERNAL_HINT = 'Faktura wystawiona w innym programie, tylko do odczytu'
 
@@ -127,19 +131,21 @@ export function IssuedInvoiceListPage(): ReactElement {
       render: (row) => {
         const number = row.number ?? (row.status === 'Draft' ? '— (szkic)' : '—')
         const external = row.source === 'External' ? `, Spoza OpenKSeF: ${EXTERNAL_HINT}` : ''
+        const kind = isCorrection(row) ? 'Korekta · ' : ''
         return (
           <>
             <Link
               to={detailsPath(row)}
               className="rowlink"
               title={row.buyerName ?? undefined}
-              aria-label={`${row.buyerName ?? 'Bez nabywcy'}, ${number}${external}`}
+              aria-label={`${row.buyerName ?? 'Bez nabywcy'}, ${kind}${number}${external}`}
               onClick={(event) => event.preventDefault()}
               onDoubleClick={selectWordAt}
             >
               {row.buyerName ?? '—'}
             </Link>
             <span className="received-sub" title={number}>
+              {kind}
               {number} · {formatDate(row.issueDate)}
             </span>
           </>
@@ -151,7 +157,7 @@ export function IssuedInvoiceListPage(): ReactElement {
       key: 'totalNet',
       label: 'Netto',
       className: 'received-net received-num',
-      render: (row) => formatMoney(row.totalNet, row.currency),
+      render: (row) => amount(row, row.totalNet),
     },
     {
       key: 'totalGross',
@@ -159,8 +165,8 @@ export function IssuedInvoiceListPage(): ReactElement {
       className: 'received-gross received-num',
       render: (row) => (
         <>
-          <span className="received-amount" title={formatMoney(row.totalGross, row.currency)}>
-            {formatMoney(row.totalGross, row.currency)}
+          <span className="received-amount" title={amount(row, row.totalGross)}>
+            {amount(row, row.totalGross)}
           </span>
           <span className="received-status-mobile">
             <KsefStatusBadge status={row.status} />

@@ -60,7 +60,8 @@ public class IssuedInvoicesController(
                     i.EscalatedAt != null,
                     i.BuyerCountryCode,
                     i.BuyerIdType,
-                    i.BuyerForeignId))
+                    i.BuyerForeignId,
+                    i.InvoiceType.Code()))
                 .ToListAsync(ct);
 
             return Ok(new PagedResult<IssuedInvoiceListItemResponse> { Items = items, Page = page, PageSize = pageSize, TotalCount = totalCount });
@@ -102,7 +103,8 @@ public class IssuedInvoicesController(
                 r.TotalGross,
                 r.Currency,
                 r.KsefNumber,
-                r.NeedsAttention)).ToList();
+                r.NeedsAttention,
+                r.InvoiceType)).ToList();
 
             var syncState = await db.SyncStates.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
 
@@ -177,10 +179,10 @@ public class IssuedInvoicesController(
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public Task<IActionResult> Issue(Guid tenantId, Guid id, [FromQuery] uint? version, CancellationToken ct, [FromQuery] bool confirmPastIssueDate = false, [FromQuery] uint? sellerVersion = null) =>
+    public Task<IActionResult> Issue(Guid tenantId, Guid id, [FromQuery] uint? version, CancellationToken ct, [FromQuery] bool confirmPastIssueDate = false, [FromQuery] uint? sellerVersion = null, [FromQuery] string? invoiceType = null) =>
         GuardedAsync(StatusCodes.Status422UnprocessableEntity, async () =>
         {
-            if (await issuedInvoices.IssueAsync(tenantId, id, version, confirmPastIssueDate, sellerVersion, ct) is not { } result)
+            if (await issuedInvoices.IssueAsync(tenantId, id, version, confirmPastIssueDate, sellerVersion, invoiceType, ct) is not { } result)
                 return NotFound();
 
             var response = ToResponse(result.View);
@@ -192,9 +194,48 @@ public class IssuedInvoicesController(
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public Task<IActionResult> Copy(Guid tenantId, Guid id, CancellationToken ct) =>
+    public Task<IActionResult> Copy(Guid tenantId, Guid id, CancellationToken ct, [FromQuery] string? invoiceType = null) =>
         GuardedAsync(StatusCodes.Status400BadRequest, async () =>
-            await issuedInvoices.CopyAsync(tenantId, id, ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());
+            await issuedInvoices.CopyAsync(tenantId, id, invoiceType, ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());
+
+    [HttpPost("{id:guid}/corrections")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> CreateCorrection(Guid tenantId, Guid id, CorrectionCreateRequest? request, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
+            await issuedInvoices.CreateCorrectionAsync(tenantId, id, request?.Mode, ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());
+
+    [HttpPut("{id:guid}/correction")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> UpdateCorrection(Guid tenantId, Guid id, CorrectionDraftRequest request, [FromQuery] uint? version, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status422UnprocessableEntity, async () =>
+            await issuedInvoices.UpdateCorrectionAsync(tenantId, id, new IssuedInvoiceCorrectionInput(
+                request.IssueDate,
+                request.DueDate,
+                request.PaymentMethod,
+                request.CorrectionReason,
+                request.CorrectionType,
+                request.Buyer is { } buyer ? new IssuedInvoiceBuyerInput(buyer.Kind, buyer.Nip, buyer.Name, buyer.AddressLine1, buyer.AddressLine2, buyer.CountryCode, buyer.ForeignId) : null,
+                request.Buyer?.IdType,
+                request.Lines?.Select(l => new IssuedInvoiceLineInput(l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate, l.BaseLineNo)).ToList()), version, ct) is { } view
+                ? Ok(ToResponse(view))
+                : NotFound());
+
+    [HttpPost("{id:guid}/reissue")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> Reissue(Guid tenantId, Guid id, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
+            await issuedInvoices.ReissueAsync(tenantId, id, ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());
 
     [HttpGet("{id:guid}/xml")]
     [TenantAccess(TenantPermissions.InvoicesRead)]
@@ -273,27 +314,37 @@ public class IssuedInvoicesController(
         request.ExchangeRate,
         request.ExchangeRateDate);
 
+    private static IssuedInvoiceLineResponse LineResponse(IssuedInvoiceLine l) =>
+        new(l.LineNo, l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate.Code(), l.NetAmount, l.VatAmount, l.BaseLineNo);
+
+    private static IssuedInvoiceBuyerModel BuyerModel(IssuedInvoice invoice) =>
+        new(invoice.BuyerKind.ToString(), invoice.BuyerNip, invoice.BuyerName, invoice.BuyerAddressLine1, invoice.BuyerAddressLine2,
+            invoice.BuyerCountryCode, invoice.BuyerIdType, invoice.BuyerForeignId);
+
+    private static IReadOnlyList<VatSummaryResponse> SummaryResponse(IEnumerable<VatSummary> summary) =>
+        summary.Select(s => new VatSummaryResponse(s.VatRate.Code(), s.Net, s.Vat)).ToList();
+
     private static IssuedInvoiceResponse ToResponse(IssuedInvoiceView view)
     {
         var invoice = view.Invoice;
+        var state = view.CorrectedState;
+        var original = view.Original;
+        var current = view.CurrentState;
         return new IssuedInvoiceResponse(
             invoice.Id,
             WireStatus(invoice.Status),
             invoice.Number,
             new IssuedInvoiceSellerResponse(view.Seller.Nip, view.Seller.Name, view.Seller.AddressLine1, view.Seller.AddressLine2, view.Seller.BankAccount, view.Seller.CashAccounting,
                 view.Seller.Iban, view.Seller.Swift, view.Seller.BankName),
-            new IssuedInvoiceBuyerModel(invoice.BuyerKind.ToString(), invoice.BuyerNip, invoice.BuyerName, invoice.BuyerAddressLine1, invoice.BuyerAddressLine2,
-                invoice.BuyerCountryCode, invoice.BuyerIdType, invoice.BuyerForeignId),
+            BuyerModel(invoice),
             invoice.IssueDate,
             invoice.SaleDate,
             invoice.DueDate,
             invoice.PaymentMethod.ToString(),
             invoice.SplitPayment,
             invoice.ExemptionBasisKind is { } kind ? new ExemptionBasisModel(kind.ToString(), invoice.ExemptionBasisText) : null,
-            invoice.Lines.OrderBy(l => l.LineNo)
-                .Select(l => new IssuedInvoiceLineResponse(l.LineNo, l.Name, l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate.Code(), l.NetAmount, l.VatAmount))
-                .ToList(),
-            invoice.VatSummary().Select(s => new VatSummaryResponse(s.VatRate.Code(), s.Net, s.Vat)).ToList(),
+            invoice.Lines.OrderBy(l => l.LineNo).Select(LineResponse).ToList(),
+            SummaryResponse(state is null ? invoice.VatSummary() : Corrections.Deltas(state.Lines, invoice.Lines)),
             invoice.TotalNet,
             invoice.TotalVat,
             invoice.TotalGross,
@@ -318,6 +369,32 @@ public class IssuedInvoicesController(
             invoice.ExchangeRate,
             invoice.ExchangeRateDate,
             view.Version,
-            view.SellerVersion);
+            view.SellerVersion,
+            invoice.InvoiceType.Code(),
+            original is null ? null : new CorrectedInvoiceRefResponse(original.Id, original.Number, original.KsefNumber, original.IssueDate, original.InvoiceType.Code()),
+            invoice.CorrectionReason,
+            invoice.CorrectionType,
+            state is null
+                ? null
+                : Corrections.Rows(state.Lines, invoice.Lines)
+                    .Select(r => new CorrectionRowResponse(r.RowNo, r.IsBefore, r.BaseLineNo, r.Name, r.Unit, r.Quantity, r.UnitNetPrice, r.VatRate.Code(), r.NetAmount))
+                    .ToList(),
+            state is not null && Corrections.BuyerDataDiffers(invoice, state) ? BuyerModel(state) : null,
+            current is null
+                ? null
+                : new CurrentStateResponse(
+                    current.Lines.OrderBy(l => l.LineNo).Select(LineResponse).ToList(),
+                    SummaryResponse(current.VatSummary()),
+                    current.VatSummary().Sum(s => s.Net),
+                    current.VatSummary().Sum(s => s.Vat),
+                    current.VatSummary().Sum(s => s.Net + s.Vat),
+                    BuyerModel(current),
+                    current.Lines.Count == 0),
+            view.Corrections.Count == 0
+                ? null
+                : view.Corrections.OrderBy(c => c.CreatedAt)
+                    .Select(c => new CorrectionListItemResponse(c.Id, c.Number, c.InvoiceType.Code(), WireStatus(c.Status), c.IssueDate, c.TotalGross))
+                    .ToList(),
+            view.Corrections.FirstOrDefault(c => c.IsOpen)?.Id);
     }
 }

@@ -13,7 +13,7 @@ export const FOREIGN_VAT_RATES: typeof VAT_RATES = [
   { code: 'np II', label: 'np II', percent: 0 },
 ]
 
-const ALL_RATES = [...VAT_RATES, ...FOREIGN_VAT_RATES]
+export const ALL_RATES = [...VAT_RATES, ...FOREIGN_VAT_RATES]
 
 export interface TotalsLineInput {
   quantity: number

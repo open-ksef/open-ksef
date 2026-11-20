@@ -41,11 +41,16 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
         var pattern = input.NumberingPattern?.Trim() ?? InvoiceNumbering.DefaultPattern;
         var bankAccount = string.IsNullOrWhiteSpace(input.BankAccount) ? null : Nrb.Normalize(input.BankAccount);
         var period = input.NextNumberPeriod?.Trim() ?? InvoiceNumbering.PeriodKey(pattern, Today());
+        var profile = await db.SellerProfiles.SingleOrDefaultAsync(p => p.TenantId == tenantId, ct);
+        var correctionPattern = input.CorrectionNumberingPattern?.Trim() ?? profile?.CorrectionNumberingPattern ?? InvoiceNumbering.DefaultCorrectionPattern;
+        var correctionPeriod = input.CorrectionNextNumberPeriod?.Trim() ?? InvoiceNumbering.PeriodKey(correctionPattern, Today());
         var errors = Validate(input, pattern, bankAccount, period);
+        errors.AddRange(ValidatePattern(correctionPattern, input.CorrectionNextNumber, correctionPeriod, "correctionNumberingPattern", "correctionNextNumber", "correctionNextNumberPeriod"));
+        if (pattern == correctionPattern)
+            errors.Add(new("SP-VAL-010", "correctionNumberingPattern", "Wzorzec numeracji korekt musi różnić się od wzorca faktur"));
         if (errors.Count > 0)
             return (null, errors);
 
-        var profile = await db.SellerProfiles.SingleOrDefaultAsync(p => p.TenantId == tenantId, ct);
         if (profile is null)
         {
             profile = new SellerProfile(tenantId);
@@ -58,6 +63,7 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
 
         profile.Update(input.LegalName, input.AddressLine1, input.AddressLine2, bankAccount, input.CashAccounting, pattern);
         profile.SetBankDetails(input.BankSwift, input.BankName, input.ForeignBankAccount, input.ForeignBankSwift, input.ForeignBankName);
+        profile.SetCorrectionNumberingPattern(correctionPattern);
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var tenantLocked = await db.Database
@@ -77,13 +83,28 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
                 SELECT "Next" AS "Value" FROM "InvoiceNumberCounters" WHERE "TenantId" = {tenantId} AND "Period" = {period} FOR UPDATE
                 """).ToListAsync(ct);
 
-            var highestUsed = await HighestUsedNumberAsync(tenantId, pattern, period, ct);
-            if (next <= highestUsed)
-                throw new InvoiceValidationException([new("SP-VAL-006", "nextNumber",
-                    $"Numer {next} jest już użyty. Ostatni numer w tym okresie to {highestUsed}, podaj co najmniej {highestUsed + 1}.")]);
+            await EnsureAboveUsedAsync(tenantId, IssuedInvoiceType.Vat, pattern, period, next, "nextNumber", ct);
 
             await db.Database.ExecuteSqlAsync($"""
                 UPDATE "InvoiceNumberCounters" SET "Next" = {next} WHERE "TenantId" = {tenantId} AND "Period" = {period}
+                """, ct);
+        }
+
+        if (input.CorrectionNextNumber is { } correctionNext)
+        {
+            const string series = IssuedInvoiceTypes.KorSeries;
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO "NumberSeriesCounters" ("TenantId", "Series", "Period", "Next") VALUES ({tenantId}, {series}, {correctionPeriod}, 1)
+                ON CONFLICT ("TenantId", "Series", "Period") DO NOTHING
+                """, ct);
+            await db.Database.SqlQuery<int>($"""
+                SELECT "Next" AS "Value" FROM "NumberSeriesCounters" WHERE "TenantId" = {tenantId} AND "Series" = {series} AND "Period" = {correctionPeriod} FOR UPDATE
+                """).ToListAsync(ct);
+
+            await EnsureAboveUsedAsync(tenantId, IssuedInvoiceType.Kor, correctionPattern, correctionPeriod, correctionNext, "correctionNextNumber", ct);
+
+            await db.Database.ExecuteSqlAsync($"""
+                UPDATE "NumberSeriesCounters" SET "Next" = {correctionNext} WHERE "TenantId" = {tenantId} AND "Series" = {series} AND "Period" = {correctionPeriod}
                 """, ct);
         }
 
@@ -100,21 +121,35 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
         return (await ViewAsync(profile, nip, ct), []);
     }
 
-    public async Task<int> AllocateNumberAsync(Guid tenantId, string period, CancellationToken ct = default)
+    public async Task<int> AllocateNumberAsync(Guid tenantId, string period, string series = IssuedInvoiceTypes.FvSeries, CancellationToken ct = default)
     {
-        var numbers = await db.Database.SqlQuery<int>($"""
-            INSERT INTO "InvoiceNumberCounters" ("TenantId", "Period", "Next") VALUES ({tenantId}, {period}, 2)
-            ON CONFLICT ("TenantId", "Period") DO UPDATE SET "Next" = "InvoiceNumberCounters"."Next" + 1
-            RETURNING "Next" - 1 AS "Value"
-            """).ToListAsync(ct);
+        var numbers = series == IssuedInvoiceTypes.FvSeries
+            ? await db.Database.SqlQuery<int>($"""
+                INSERT INTO "InvoiceNumberCounters" ("TenantId", "Period", "Next") VALUES ({tenantId}, {period}, 2)
+                ON CONFLICT ("TenantId", "Period") DO UPDATE SET "Next" = "InvoiceNumberCounters"."Next" + 1
+                RETURNING "Next" - 1 AS "Value"
+                """).ToListAsync(ct)
+            : await db.Database.SqlQuery<int>($"""
+                INSERT INTO "NumberSeriesCounters" ("TenantId", "Series", "Period", "Next") VALUES ({tenantId}, {series}, {period}, 2)
+                ON CONFLICT ("TenantId", "Series", "Period") DO UPDATE SET "Next" = "NumberSeriesCounters"."Next" + 1
+                RETURNING "Next" - 1 AS "Value"
+                """).ToListAsync(ct);
         return numbers.Single();
     }
 
-    private async Task<int> HighestUsedNumberAsync(Guid tenantId, string pattern, string period, CancellationToken ct)
+    private async Task EnsureAboveUsedAsync(Guid tenantId, IssuedInvoiceType type, string pattern, string period, int next, string field, CancellationToken ct)
+    {
+        var highestUsed = await HighestUsedNumberAsync(tenantId, type, pattern, period, ct);
+        if (next <= highestUsed)
+            throw new InvoiceValidationException([new("SP-VAL-006", field,
+                $"Numer {next} jest już użyty. Ostatni numer w tym okresie to {highestUsed}, podaj co najmniej {highestUsed + 1}.")]);
+    }
+
+    private async Task<int> HighestUsedNumberAsync(Guid tenantId, IssuedInvoiceType type, string pattern, string period, CancellationToken ct)
     {
         var (prefix, suffix) = InvoiceNumbering.NumberAffixes(pattern, InvoiceNumbering.PeriodStart(period));
         var numbers = await db.IssuedInvoices
-            .Where(i => i.TenantId == tenantId && i.Number != null && i.Number.StartsWith(prefix) && i.Number.EndsWith(suffix))
+            .Where(i => i.TenantId == tenantId && i.InvoiceType == type && i.Number != null && i.Number.StartsWith(prefix) && i.Number.EndsWith(suffix))
             .Select(i => i.Number!)
             .ToListAsync(ct);
 
@@ -131,16 +166,7 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
 
         if (bankAccount is not null && !Nrb.IsValid(bankAccount))
             errors.Add(new("SP-VAL-001", "bankAccount", "Niepoprawny numer rachunku"));
-        if (!InvoiceNumbering.HasNumberToken(pattern))
-            errors.Add(new("SP-VAL-002", "numberingPattern", "Wzorzec numeracji musi zawierać {nr}"));
-        if (!InvoiceNumbering.HasYearToken(pattern))
-            errors.Add(new("SP-VAL-007", "numberingPattern", "Wzorzec numeracji musi zawierać {RRRR}, inaczej numery powtórzą się w kolejnym roku"));
-        if (pattern.Length > MaxPatternLength)
-            errors.Add(new("SP-VAL-005", "numberingPattern", $"Wzorzec numeracji może mieć najwyżej {MaxPatternLength} znaków"));
-        if (input.NextNumber is < 1)
-            errors.Add(new("SP-VAL-003", "nextNumber", "Następny numer musi być większy od zera"));
-        if (!(pattern.Contains("{MM}", StringComparison.Ordinal) ? MonthPeriodRegex() : YearPeriodRegex()).IsMatch(period))
-            errors.Add(new("SP-VAL-004", "nextNumberPeriod", "Okres numeracji musi mieć format RRRR-MM (wzorzec z {MM}) lub RRRR"));
+        errors.AddRange(ValidatePattern(pattern, input.NextNumber, period, "numberingPattern", "nextNumber", "nextNumberPeriod"));
 
         foreach (var (field, value) in new[] { ("legalName", input.LegalName), ("addressLine1", input.AddressLine1), ("addressLine2", input.AddressLine2) })
         {
@@ -166,6 +192,20 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
         return errors;
     }
 
+    private static IEnumerable<InvoiceCheck> ValidatePattern(string pattern, int? next, string period, string patternField, string nextField, string periodField)
+    {
+        if (!InvoiceNumbering.HasNumberToken(pattern))
+            yield return new("SP-VAL-002", patternField, "Wzorzec numeracji musi zawierać {nr}");
+        if (!InvoiceNumbering.HasYearToken(pattern))
+            yield return new("SP-VAL-007", patternField, "Wzorzec numeracji musi zawierać {RRRR}, inaczej numery powtórzą się w kolejnym roku");
+        if (pattern.Length > MaxPatternLength)
+            yield return new("SP-VAL-005", patternField, $"Wzorzec numeracji może mieć najwyżej {MaxPatternLength} znaków");
+        if (next is < 1)
+            yield return new("SP-VAL-003", nextField, "Następny numer musi być większy od zera");
+        if (!(pattern.Contains("{MM}", StringComparison.Ordinal) ? MonthPeriodRegex() : YearPeriodRegex()).IsMatch(period))
+            yield return new("SP-VAL-004", periodField, "Okres numeracji musi mieć format RRRR-MM (wzorzec z {MM}) lub RRRR");
+    }
+
     private async Task<SellerProfileView> ViewAsync(SellerProfile profile, string nip, CancellationToken ct)
     {
         var today = Today();
@@ -174,7 +214,13 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
             .Where(c => c.TenantId == profile.TenantId && c.Period == period)
             .Select(c => (int?)c.Next)
             .SingleOrDefaultAsync(ct) ?? 1;
-        return new SellerProfileView(profile, nip, next, period, InvoiceNumbering.Format(profile.NumberingPattern, next, today));
+        var correctionPeriod = InvoiceNumbering.PeriodKey(profile.CorrectionNumberingPattern, today);
+        var correctionNext = await db.NumberSeriesCounters
+            .Where(c => c.TenantId == profile.TenantId && c.Series == IssuedInvoiceTypes.KorSeries && c.Period == correctionPeriod)
+            .Select(c => (int?)c.Next)
+            .SingleOrDefaultAsync(ct) ?? 1;
+        return new SellerProfileView(profile, nip, next, period, InvoiceNumbering.Format(profile.NumberingPattern, next, today),
+            correctionNext, correctionPeriod, InvoiceNumbering.Format(profile.CorrectionNumberingPattern, correctionNext, today));
     }
 
     private DateOnly Today() => IssuedInvoice.PolandDate(timeProvider.GetUtcNow());

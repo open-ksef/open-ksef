@@ -39,7 +39,8 @@ public class SellerProfileController(
             var (view, errors) = await sellerProfiles.SaveAsync(tenantId, new SellerProfileInput(
                 request.LegalName, request.AddressLine1, request.AddressLine2, request.BankAccount, request.CashAccounting,
                 request.NumberingPattern, request.NextNumber, request.NextNumberPeriod,
-                request.BankSwift, request.BankName, request.ForeignBankAccount, request.ForeignBankSwift, request.ForeignBankName), ct);
+                request.BankSwift, request.BankName, request.ForeignBankAccount, request.ForeignBankSwift, request.ForeignBankName,
+                request.CorrectionNumberingPattern, request.CorrectionNextNumber, request.CorrectionNextNumberPeriod), ct);
 
             if (errors.Count > 0)
                 return BadRequest(ToEnvelope(errors));
@@ -76,5 +77,9 @@ public class SellerProfileController(
         view.Profile.BankName,
         view.Profile.ForeignBankAccount,
         view.Profile.ForeignBankSwift,
-        view.Profile.ForeignBankName);
+        view.Profile.ForeignBankName,
+        view.Profile.CorrectionNumberingPattern,
+        view.CorrectionNextNumber,
+        view.CorrectionNextNumberPeriod,
+        view.CorrectionNextNumberPreview);
 }

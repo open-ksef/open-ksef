@@ -12,12 +12,16 @@ export interface SellerProfileFormValue {
   cashAccounting: boolean
   numberingPattern: string
   nextNumber: string
+  correctionNumberingPattern: string
+  correctionNextNumber: string
   bankSwift: string
   bankName: string
   foreignBankAccount: string
   foreignBankSwift: string
   foreignBankName: string
 }
+
+export const DEFAULT_CORRECTION_PATTERN = 'KOR/{nr}/{MM}/{RRRR}'
 
 export const NUMBER_TOKENS = ['{nr}', '{MM}', '{RRRR}'] as const
 
@@ -42,6 +46,8 @@ export function fromProfile(profile: SellerProfileResponse): SellerProfileFormVa
     cashAccounting: profile.cashAccounting,
     numberingPattern: profile.numberingPattern,
     nextNumber: String(profile.nextNumber),
+    correctionNumberingPattern: profile.correctionNumberingPattern ?? DEFAULT_CORRECTION_PATTERN,
+    correctionNextNumber: String(profile.correctionNextNumber ?? 1),
     bankSwift: profile.bankSwift ?? '',
     bankName: profile.bankName ?? '',
     foreignBankAccount: profile.foreignBankAccount ?? '',
@@ -59,6 +65,14 @@ export function validateSellerProfile(form: SellerProfileFormValue): Record<stri
   if (!/^\d+$/.test(form.nextNumber) || Number(form.nextNumber) < 1) {
     errors.nextNumber = 'Następny numer musi być większy od zera'
   }
+  if (!form.correctionNumberingPattern.includes('{nr}')) {
+    errors.correctionNumberingPattern = 'Wzorzec numeracji musi zawierać {nr}'
+  } else if (form.correctionNumberingPattern.trim() === form.numberingPattern.trim()) {
+    errors.correctionNumberingPattern = 'Wzorzec korekt musi różnić się od wzorca faktur'
+  }
+  if (!/^\d+$/.test(form.correctionNextNumber) || Number(form.correctionNextNumber) < 1) {
+    errors.correctionNextNumber = 'Następny numer musi być większy od zera'
+  }
   return errors
 }
 
@@ -69,6 +83,7 @@ export function toSellerProfileRequest(
 ): SellerProfileRequest {
   const text = (value: string): string | null => value.trim() || null
   const numberChanged = Number(form.nextNumber) !== profile.nextNumber
+  const correctionNumberChanged = Number(form.correctionNextNumber) !== (profile.correctionNextNumber ?? 1)
   return {
     legalName: text(form.legalName),
     addressLine1: text(form.addressLine1),
@@ -76,6 +91,7 @@ export function toSellerProfileRequest(
     bankAccount: text(digitsOnly(form.bankAccount)),
     cashAccounting: form.cashAccounting,
     numberingPattern: form.numberingPattern,
+    correctionNumberingPattern: form.correctionNumberingPattern,
     bankSwift: form.bankSwift.trim(),
     bankName: form.bankName.trim(),
     foreignBankAccount: form.foreignBankAccount.trim(),
@@ -83,6 +99,12 @@ export function toSellerProfileRequest(
     foreignBankName: form.foreignBankName.trim(),
     ...(numberChanged
       ? { nextNumber: Number(form.nextNumber), nextNumberPeriod: numberingPeriod(form.numberingPattern, today) }
+      : {}),
+    ...(correctionNumberChanged
+      ? {
+          correctionNextNumber: Number(form.correctionNextNumber),
+          correctionNextNumberPeriod: numberingPeriod(form.correctionNumberingPattern, today),
+        }
       : {}),
   }
 }

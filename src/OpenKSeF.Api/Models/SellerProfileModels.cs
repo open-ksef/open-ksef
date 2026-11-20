@@ -13,7 +13,10 @@ public record SellerProfileRequest(
     string? BankName = null,
     string? ForeignBankAccount = null,
     string? ForeignBankSwift = null,
-    string? ForeignBankName = null);
+    string? ForeignBankName = null,
+    string? CorrectionNumberingPattern = null,
+    int? CorrectionNextNumber = null,
+    string? CorrectionNextNumberPeriod = null);
 
 public record SellerProfileResponse(
     string? LegalName,
@@ -32,4 +35,8 @@ public record SellerProfileResponse(
     string? BankName = null,
     string? ForeignBankAccount = null,
     string? ForeignBankSwift = null,
-    string? ForeignBankName = null);
+    string? ForeignBankName = null,
+    string CorrectionNumberingPattern = "KOR/{nr}/{MM}/{RRRR}",
+    int CorrectionNextNumber = 1,
+    string? CorrectionNextNumberPeriod = null,
+    string? CorrectionNextNumberPreview = null);

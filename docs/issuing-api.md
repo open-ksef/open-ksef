@@ -66,6 +66,23 @@ An issue date after today in Europe/Warsaw blocks issuing with `INV-VAL-020` bef
 
 Tenant delete returns 409 while any invoice of the tenant is Queued or Sending, on any environment, or Accepted on production. `KsefEnvironment` stored on the invoice decides, not the current instance setting, and an Accepted invoice without one counts as production. Otherwise the delete removes the tenant and all its issued invoices in one transaction, and they cannot be restored. The delete also removes the seller profile with its bank account and number counter, and the paid marks on purchase invoices. The KSeF copy of an accepted invoice stays in KSeF. A tenant added again with the same NIP numbers from 1, so on the same KSeF environment a number already held there returns 440 and the invoice ends Rejected; set `nextNumber` in the seller profile above the last number used before issuing. To show the count before confirming, read `totalCount` from `GET /api/tenants/{tenantId}/issued-invoices?pageSize=1`; it includes drafts. The delete locks the tenant and invoice rows, so it waits for a concurrent issue or status change and decides on the committed status. An issue that waits for a delete that commits returns 404. Deleting the last invoices on the instance releases the KSeF environment lock. Deleting one Rejected invoice stays forbidden.
 
+### Corrections (REQ-0027, ADR-007)
+
+```
+POST /api/tenants/{tenantId}/issued-invoices/{id}/corrections   { mode?: "Edit" | "ToZero" | "WrongBuyerId" } -> 201 KOR draft | 400 (INV-VAL-074 mode) | 409 INV-KOR-SOURCE | 409 INV-KOR-OPEN
+PUT  /api/tenants/{tenantId}/issued-invoices/{id}/correction?version=   CorrectionDraftRequest -> 200 | 422 ValidationEnvelope | 409 (INV-KIND-MISMATCH on a non-KOR row, not editable, stale version)
+POST /api/tenants/{tenantId}/issued-invoices/{id}/issue?invoiceType=KOR -> as issue; a KOR without invoiceType=KOR, or a VAT row with it, returns 409 INV-KIND-MISMATCH
+POST /api/tenants/{tenantId}/issued-invoices/{id}/copy?invoiceType=KOR  -> 201 VAT draft of the original's current state; a KOR without invoiceType=KOR returns 409 INV-KIND-MISMATCH
+POST /api/tenants/{tenantId}/issued-invoices/{id}/reissue        -> 201 VAT draft with the lines of the last non-zero state; buyer NIP/foreign id empty after a "Błędny NIP nabywcy" correction | 409 INV-KOR-REISSUE unless the current state is zero
+```
+
+- `invoiceType` (`VAT`, `KOR`) is on the invoice, list and feed responses. A correction is created only from an Accepted VAT original with a KSeF number; the route id is always the original. One open correction per original: Draft, Sending, or Rejected without code 440. The 409 message names the open one.
+- A correction row stores its full after state: buyer, lines (`baseLineNo` links to the corrected line, null for an added line, removed lines are not stored), currency and rate copied from the original. `totalNet`, `totalVat`, `totalGross` and `vatSummary` on a correction are signed deltas to the state it corrects. `correctionRows` are the `StanPrzed` rows (before and after), `buyerBefore` is the corrected buyer data when only name or address changed.
+- On an Accepted VAT original: `corrections` (every status), `openCorrectionId`, and `currentState` once a correction is Accepted (`isZero` after a correction to zero). Current state = latest Accepted document of the original and its corrections by issue time.
+- `PUT {id}` (the VAT draft endpoint) on a correction returns 409 `INV-KIND-MISMATCH` "Ten dokument to faktura korygująca lub zaliczkowa. Edytuj go w portalu." and saves nothing, so released mobile builds cannot overwrite a correction.
+- `CorrectionDraftRequest`: every field optional, null keeps the stored value. `buyer` name and address lines may change; `kind`, `nip`, `idType`, `foreignId` (and `countryCode` of a buyer with a foreign tax id) are echo-only, a different value returns 422 `INV-VAL-083`. `correctionType`: 1, 2 or 3; 0 clears it (not written to the XML); null keeps it. `lines` replace the after state; quantity 0 means removed.
+- Numbering: own series `correctionNumberingPattern` (default `KOR/{nr}/{MM}/{RRRR}`) with its own counter (`NumberSeriesCounters`, series `KOR`); `correctionNextNumber`/`correctionNextNumberPeriod` as for the FV series. The FV counter is not touched.
+
 ### Foreign buyers (REQ-0046)
 
 Buyer `kind` `Foreign` is a business outside Poland, for services only. Domain rules and field map: `production/kb/domain/foreign-sales.md`.
@@ -187,6 +204,12 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | INV-VAL-073 | text fields | Pole może mieć najwyżej N znaków (draft 400; names and addresses 512, unit and exemption text 256, `buyer.foreignId` 50) |
 | INV-VAL-080 | `status` | Dozwolone statusy: Draft, Sending, Accepted, Rejected (list 400) |
 | INV-VAL-081 | `month` | Miesiąc musi mieć format RRRR-MM (list 400) |
+| INV-VAL-082 | null | Korekta nie zawiera zmian. Zmień pozycje albo dane nabywcy. (correction issue 422) |
+| INV-VAL-083 | `buyer.kind`, `buyer.nip`, `buyer.idType`, `buyer.foreignId`, `buyer.countryCode` | Korekta nie może zmienić rodzaju ani identyfikatora nabywcy. Przy błędnym NIP użyj „Błędny NIP nabywcy”. (correction PUT 422) |
+| INV-VAL-084 | `correctionReason` | Podaj przyczynę korekty (correction issue 422) |
+| INV-VAL-085 | `issueDate` | Data korekty nie może być wcześniejsza niż data wystawienia faktury korygowanej (correction PUT and issue 422) |
+| INV-VAL-086 | `lines[i].baseLineNo` | Pozycja korygowana nie istnieje w aktualnym stanie faktury. Odśwież stronę. (correction PUT and issue 422) |
+| INV-VAL-087 | `correctionType` | Typ korekty: 1, 2 lub 3; 0 usuwa typ (correction PUT 422) |
 | INV-VAL-090 | `currency` | Waluta musi być trzyliterowym kodem ISO 4217 (draft and exchange-rate 400) |
 | INV-VAL-091 | `currency` | Waluta inna niż PLN jest dostępna tylko dla firmy zagranicznej |
 | INV-VAL-092 | `exchangeRate` | Podaj kurs waluty większy od zera |
@@ -205,6 +228,7 @@ Stable codes in `ValidationEnvelope.errors` (issue blocked) and `warnings` (neve
 | SP-VAL-007 | `numberingPattern` | Wzorzec numeracji musi zawierać {RRRR}, inaczej numery powtórzą się w kolejnym roku (seller profile PUT 400) |
 | SP-VAL-008 | `foreignBankAccount` | Niepoprawny numer IBAN rachunku zagranicznego (seller profile PUT 400) |
 | SP-VAL-009 | `bankSwift`, `foreignBankSwift` | Kod SWIFT musi mieć 8 lub 11 znaków (seller profile PUT 400) |
+| SP-VAL-010 | `correctionNumberingPattern` | Wzorzec numeracji korekt musi różnić się od wzorca faktur (seller profile PUT 400) |
 | NIP-INVALID | `nip` | Niepoprawny NIP. Wpisz 10 cyfr z poprawną sumą kontrolną. (nip-lookup 400) |
 | NIP-NOT-FOUND | `nip` | Brak podmiotu w wykazie podatników VAT, wpisz dane ręcznie (nip-lookup 404) |
 | NIP-LOOKUP-UNAVAILABLE | `nip` | Wyszukiwarka MF niedostępna, wpisz dane ręcznie (nip-lookup 503) |

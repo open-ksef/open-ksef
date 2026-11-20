@@ -254,6 +254,17 @@ describe('issuing endpoints', () => {
     expect(apiClientMock.post).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1/issue', undefined, {
       query: { version: 7, sellerVersion: 4, confirmPastIssueDate: true },
     })
+
+    await issued.issueIssuedInvoice('t-1', 'k-1', 3, 4, undefined, 'KOR')
+    expect(apiClientMock.post).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/k-1/issue', undefined, {
+      query: { version: 3, sellerVersion: 4, invoiceType: 'KOR' },
+    })
+    await issued.createCorrection('t-1', 'i-1', 'ToZero')
+    expect(apiClientMock.post).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1/corrections', { mode: 'ToZero' })
+    await issued.reissueInvoice('t-1', 'i-1')
+    expect(apiClientMock.post).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/i-1/reissue')
+    await issued.updateCorrection('t-1', 'k-1', { correctionReason: 'Rabat' }, 2)
+    expect(apiClientMock.put).toHaveBeenLastCalledWith('/tenants/t-1/issued-invoices/k-1/correction', { correctionReason: 'Rabat' }, { query: { version: 2 } })
   })
 })
 
