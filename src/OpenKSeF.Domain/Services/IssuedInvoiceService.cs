@@ -114,7 +114,7 @@ public class IssuedInvoiceService(
                 i.BuyerForeignId,
                 i.BuyerCountryCode,
                 i.IssueDate,
-                i.DueDate,
+                i.InvoiceType == IssuedInvoiceType.Kor && i.TotalGross <= 0 ? null : i.DueDate,
                 i.TotalNet,
                 i.TotalGross,
                 i.Currency,
@@ -697,7 +697,10 @@ public class IssuedInvoiceService(
             var siblings = await db.IssuedInvoices.AsNoTracking().Include(i => i.Lines)
                 .Where(i => i.TenantId == invoice.TenantId && i.CorrectedInvoiceId == original.Id && i.Id != invoice.Id)
                 .ToListAsync(ct);
-            return SnapshotView(invoice) with { Original = original, CorrectedState = Corrections.StateBefore(original, siblings.Append(invoice), invoice) };
+            var sellerVersion = invoice.IsEditable
+                ? await db.SellerProfiles.AsNoTracking().Where(p => p.TenantId == invoice.TenantId).Select(p => EF.Property<uint>(p, "Version")).SingleOrDefaultAsync(ct)
+                : 0;
+            return SnapshotView(invoice) with { SellerVersion = sellerVersion, Original = original, CorrectedState = Corrections.StateBefore(original, siblings.Append(invoice), invoice) };
         }
 
         if (!invoice.IsEditable)

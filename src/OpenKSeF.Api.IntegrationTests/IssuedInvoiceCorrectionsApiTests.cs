@@ -136,7 +136,9 @@ public class IssuedInvoiceCorrectionsApiTests : IDisposable
         var list = await _client.GetFromJsonAsync<JsonObject>($"{Base(tenantId)}?pageSize=10");
         Assert.Contains(list!["items"]!.AsArray(), i => i!["invoiceType"]!.GetValue<string>() == "KOR" && i["totalGross"]!.GetValue<decimal>() == -123m);
         var feed = await _client.GetFromJsonAsync<JsonObject>($"{Base(tenantId)}/feed?pageSize=10");
-        Assert.Contains(feed!["items"]!.AsArray(), i => i!["invoiceType"]!.GetValue<string>() == "KOR");
+        var korRow = feed!["items"]!.AsArray().Single(i => i!["invoiceType"]!.GetValue<string>() == "KOR")!;
+        Assert.Null(korRow["dueDate"]);
+        Assert.NotNull(feed["items"]!.AsArray().First(i => i!["invoiceType"]!.GetValue<string>() == "VAT")!["dueDate"]);
 
         var reissue = await _client.PostAsync($"{Base(tenantId)}/{originalId}/reissue", null);
         Assert.Equal(HttpStatusCode.Created, reissue.StatusCode);

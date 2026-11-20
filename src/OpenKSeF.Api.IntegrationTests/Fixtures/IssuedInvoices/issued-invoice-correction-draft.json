@@ -68,7 +68,7 @@
   "exchangeRate": null,
   "exchangeRateDate": null,
   "version": "<version>",
-  "sellerVersion": 0,
+  "sellerVersion": "<sellerVersion>",
   "invoiceType": "KOR",
   "correctedInvoice": {
     "id": "<id>",
