@@ -411,6 +411,9 @@
             "nullable": true,
             "type": "string"
           },
+          "paidBySeller": {
+            "type": "boolean"
+          },
           "vendorBankAccount": {
             "nullable": true,
             "type": "string"
