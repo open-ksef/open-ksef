@@ -273,6 +273,16 @@ function ChainForm({ tenantId, profile, invoice }: ChainFormProps): ReactElement
             <dl className="inv-readonly" data-testid="buyer-locked">
               <dt>Nazwa</dt>
               <dd>{buyer.name ?? '—'}</dd>
+              {buyer.addressLine1 || buyer.addressLine2 ? (
+                <>
+                  <dt>Adres</dt>
+                  <dd>
+                    {buyer.addressLine1}
+                    {buyer.addressLine1 && buyer.addressLine2 ? <br /> : null}
+                    {buyer.addressLine2}
+                  </dd>
+                </>
+              ) : null}
               {buyer.nip ? (
                 <>
                   <dt>NIP</dt>

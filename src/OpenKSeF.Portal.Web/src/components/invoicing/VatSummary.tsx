@@ -11,9 +11,11 @@ interface VatSummaryProps {
   totalGross: number
   currency: string
   sticky?: boolean
+  totalLabel?: string
+  payable?: number
 }
 
-export function VatSummary({ rows, totalNet, totalVat, totalGross, currency, sticky = false }: VatSummaryProps): ReactElement {
+export function VatSummary({ rows, totalNet, totalVat, totalGross, currency, sticky = false, totalLabel = 'Do zapłaty', payable = totalGross }: VatSummaryProps): ReactElement {
   const table = (
     <table className="inv-sum">
       <caption className="visually-hidden">Kwoty w {currency}</caption>
@@ -61,9 +63,9 @@ export function VatSummary({ rows, totalNet, totalVat, totalGross, currency, sti
       {table}
       <p className="inv-help">Kwoty w {currency}.</p>
       <div>
-        <span className="inv-caption">Do zapłaty</span>
+        <span className="inv-caption">{totalLabel}</span>
         <output className="inv-amount" data-testid="total-gross">
-          {formatMoney(totalGross, currency)}
+          {formatMoney(payable, currency)}
         </output>
       </div>
     </section>

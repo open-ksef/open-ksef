@@ -295,6 +295,8 @@ describe('advance and final invoices in the portal', () => {
     await waitFor(() => Boolean(container.querySelector('#advance-amount')))
     expect(text('buyer-locked')).toContain('3333333333')
     expect(container.querySelector('#buyer-name')).toBeNull()
+    expect(text('buyer-locked')).toContain('ul. Krótka 2')
+    expect(text('buyer-locked')).toContain('00-002 Warszawa')
     expect(text('advance-open')).toContain('369,00 PLN')
     expect(text('advance-open')).toContain('861,00 PLN')
     await act(async () => typeInto(byId('advance-amount'), '246'))
@@ -387,6 +389,49 @@ describe('advance and final invoices in the portal', () => {
     await act(async () => button('Zapisz szkic')!.click())
     await waitFor(() => vi.mocked(updateCorrection).mock.calls.length === 1)
     expect(vi.mocked(updateCorrection).mock.calls[0][2]).toMatchObject({ advanceAmount: 246, correctionReason: 'Rabat' })
+  })
+
+  it('ZAL after an accepted KOR_ZAL shows the corrected advance as current state and captions the summary Zapłacono', async () => {
+    serve(
+      acceptedZal({
+        currentState: { lines: order, vatSummary: [{ vatRate: '23', net: 1000, vat: 230 }], totalNet: 1000, totalVat: 230, totalGross: 1230, buyer: base.buyer, isZero: false },
+        corrections: [
+          { id: 'kz-1', number: 'KOR/1/11/2026', invoiceType: 'KOR_ZAL', status: 'Accepted', issueDate: '2026-11-07', totalGross: -123 },
+          { id: 'kz-2', number: null, invoiceType: 'KOR_ZAL', status: 'Draft', issueDate: '2026-11-08', totalGross: -100 },
+        ],
+      }),
+    )
+    await render('/issued/z-1?tenantId=t-1')
+    await waitFor(() => Boolean(container.querySelector('[data-testid="current-state"]')))
+    expect(text('current-gross')).toBe('246,00 PLN')
+    expect(text('current-state')).toContain('Wartość zamówienia: 1 230,00 PLN')
+    const summary = container.querySelector('[aria-labelledby="vat-summary-title"]')!.textContent
+    expect(summary).toContain('Zapłacono')
+    expect(summary).not.toContain('Do zapłaty')
+    expect(text('total-gross')).toBe('369,00 PLN')
+  })
+
+  it('accepted KOR_ZAL details caption the advance after correction as Zapłacono', async () => {
+    serve(
+      doc({
+        id: 'kz-1',
+        status: 'Accepted',
+        number: 'KOR/1/11/2026',
+        invoiceType: 'KOR_ZAL',
+        orderChainId: 'z-1',
+        advanceAmount: 246,
+        amountBefore: 369,
+        correctedInvoice: { id: 'z-1', number: 'ZAL/1/11/2026', ksefNumber: 'K-1', issueDate: '2026-11-06', invoiceType: 'ZAL' },
+        vatSummary: [{ vatRate: '23', net: -100, vat: -23 }],
+        totalNet: -100,
+        totalVat: -23,
+        totalGross: -123,
+      }),
+    )
+    await render('/issued/kz-1?tenantId=t-1')
+    await waitFor(() => Boolean(container.querySelector('[data-testid="total-gross"]')))
+    expect(text('total-gross')).toBe('246,00 PLN')
+    expect(container.querySelector('[aria-labelledby="vat-summary-title"]')!.textContent).toContain('Zapłacono')
   })
 
   it('a refund correction (P_15 <= 0) hides Termin płatności, Płatność and Rachunek', async () => {
