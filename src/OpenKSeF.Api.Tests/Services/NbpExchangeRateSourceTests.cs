@@ -132,6 +132,15 @@ public class NbpExchangeRateSourceTests
     }
 
     [Fact]
+    public async Task RangeFailure_SingleDateFailure_StopsWalk()
+    {
+        var (source, handler) = Create(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+
+        Assert.Null(await source.LatestMidBeforeAsync("GBP", new DateOnly(2026, 11, 6)));
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
     public async Task RangeNotFound_MeansNoRateWithoutFallback()
     {
         var (source, handler) = Create(_ => new HttpResponseMessage(HttpStatusCode.NotFound));

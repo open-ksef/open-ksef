@@ -385,6 +385,13 @@ describe('advance and final invoices in the portal', () => {
     expect(text('correction-deltas')).toContain('-23,00')
     expect(container.querySelectorAll('[data-testid="correction-rows"] tbody tr')).toHaveLength(2)
 
+    await act(async () => typeInto(byId('advance-amount'), '492'))
+    expect(text('total-gross')).toBe('+123,00 PLN')
+    expect(container.textContent).not.toContain('Nabywca dopłaca')
+    expect(container.querySelector('#due-date')).toBeNull()
+    expect(container.querySelector('[aria-label="Forma płatności"]')).toBeNull()
+    await act(async () => typeInto(byId('advance-amount'), '246'))
+
     await act(async () => button('Rabat')!.click())
     await act(async () => button('Zapisz szkic')!.click())
     await waitFor(() => vi.mocked(updateCorrection).mock.calls.length === 1)
@@ -411,7 +418,15 @@ describe('advance and final invoices in the portal', () => {
     expect(text('total-gross')).toBe('369,00 PLN')
   })
 
-  it('accepted KOR_ZAL details caption the advance after correction as Zapłacono', async () => {
+  it('ZAL corrected to zero offers no reissue (server allows it only for VAT)', async () => {
+    serve(acceptedZal({ currentState: { lines: [], vatSummary: [], totalNet: 0, totalVat: 0, totalGross: 0, buyer: base.buyer, isZero: true } }))
+    await render('/issued/z-1?tenantId=t-1')
+    await waitFor(() => Boolean(container.querySelector('[data-testid="current-state"]')))
+    expect(container.querySelector('[data-testid="reissue"]')).toBeNull()
+    expect(button('Wystaw poprawną fakturę')).toBeUndefined()
+  })
+
+  it('KOR_ZAL details caption the advance after correction as Zaliczka po korekcie', async () => {
     serve(
       doc({
         id: 'kz-1',
@@ -431,7 +446,7 @@ describe('advance and final invoices in the portal', () => {
     await render('/issued/kz-1?tenantId=t-1')
     await waitFor(() => Boolean(container.querySelector('[data-testid="total-gross"]')))
     expect(text('total-gross')).toBe('246,00 PLN')
-    expect(container.querySelector('[aria-labelledby="vat-summary-title"]')!.textContent).toContain('Zapłacono')
+    expect(container.querySelector('[aria-labelledby="vat-summary-title"]')!.textContent).toContain('Zaliczka po korekcie')
   })
 
   it('a refund correction (P_15 <= 0) hides Termin płatności, Płatność and Rachunek', async () => {

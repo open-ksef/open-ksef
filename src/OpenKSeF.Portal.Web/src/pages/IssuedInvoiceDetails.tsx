@@ -384,7 +384,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
               ) : null}
             </div>
           ) : null}
-          {invoice.currentState?.isZero ? (
+          {invoice.currentState?.isZero && kind === 'VAT' ? (
             <div data-testid="reissue">
               <p className="inv-help">
                 Faktura jest skorygowana do zera. „Wystaw poprawną fakturę” utworzy szkic z pozycjami sprzed tej korekty. Po korekcie „Błędny NIP nabywcy” pole
@@ -535,7 +535,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
             totalVat={invoice.totalVat}
             totalGross={invoice.totalGross}
             currency={invoice.currency}
-            totalLabel={advance || kind === 'KOR_ZAL' ? 'Zapłacono' : undefined}
+            totalLabel={advance ? 'Zapłacono' : kind === 'KOR_ZAL' ? 'Zaliczka po korekcie' : undefined}
             payable={kind === 'KOR_ZAL' ? (invoice.advanceAmount ?? undefined) : undefined}
           />
           {invoice.currentState ? (
