@@ -90,6 +90,56 @@ public class NbpExchangeRateSourceTests
         Assert.Null(await source.LatestMidBeforeAsync("XXX", new DateOnly(2026, 11, 6)));
     }
 
+    private static HttpResponseMessage RangeDownSingleDateUp(HttpRequestMessage request)
+    {
+        var single = Regex.Match(request.RequestUri!.AbsolutePath, @"/gbp/(\d{4}-\d{2}-\d{2})/?$");
+        if (!single.Success)
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        var day = WorkingDays.Where(d => d.Date == single.Groups[1].Value).ToList();
+        return day.Count == 0
+            ? new HttpResponseMessage(HttpStatusCode.NotFound)
+            : Json($$"""{"table":"A","code":"GBP","rates":[{"no":"1/A/NBP/2026","effectiveDate":"{{day[0].Date}}","mid":{{day[0].Mid.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}]}""");
+    }
+
+    [Fact]
+    public async Task RangeServerError_FallsBackToSingleDatesWalkingBack()
+    {
+        var (source, handler) = Create(RangeDownSingleDateUp);
+
+        var quote = await source.LatestMidBeforeAsync("GBP", new DateOnly(2026, 11, 9));
+
+        Assert.Equal(new DateOnly(2026, 11, 6), quote!.TableDate);
+        Assert.Equal(5.1006m, quote.Rate);
+        Assert.Equal(
+            [
+                "https://api.nbp.pl/api/exchangerates/rates/a/gbp/2026-10-25/2026-11-08/?format=json",
+                "https://api.nbp.pl/api/exchangerates/rates/a/gbp/2026-11-08/?format=json",
+                "https://api.nbp.pl/api/exchangerates/rates/a/gbp/2026-11-07/?format=json",
+                "https://api.nbp.pl/api/exchangerates/rates/a/gbp/2026-11-06/?format=json"
+            ],
+            handler.Requests.Select(u => u.ToString()));
+    }
+
+    [Fact]
+    public async Task RangeFailure_NoRateWithinSevenDays_GivesNullAfterBoundedWalk()
+    {
+        var (source, handler) = Create(r => Regex.IsMatch(r.RequestUri!.AbsolutePath, @"/\d{4}-\d{2}-\d{2}/\d{4}-\d{2}-\d{2}/?$")
+            ? throw new HttpRequestException("down")
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        Assert.Null(await source.LatestMidBeforeAsync("GBP", new DateOnly(2026, 11, 6)));
+        Assert.Equal(8, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task RangeNotFound_MeansNoRateWithoutFallback()
+    {
+        var (source, handler) = Create(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        Assert.Null(await source.LatestMidBeforeAsync("GBP", new DateOnly(2026, 11, 6)));
+        Assert.Single(handler.Requests);
+    }
+
     [Fact]
     public async Task ServerError_GivesNull()
     {
