@@ -240,7 +240,8 @@ function CorrectionForm({ tenantId, profile, invoice, original }: CorrectionForm
   const expectedNumber =
     profile.correctionNextNumberPeriod && form.issueDate.startsWith(profile.correctionNextNumberPeriod) ? profile.correctionNextNumberPreview : null
   const total = correction.totalGross
-  const totalLabel = total > 0 ? 'Nabywca dopłaca' : total < 0 ? 'Do zwrotu nabywcy' : 'Kwota bez zmian'
+  const pays = total > 0 && !advanceKind
+  const totalLabel = pays ? 'Nabywca dopłaca' : total > 0 ? 'Zmiana zaliczki' : total < 0 ? 'Do zwrotu nabywcy' : 'Kwota bez zmian'
   const title = invoice.status === 'Rejected' ? `Popraw korektę ${invoice.number ?? ''}`.trim() : KIND_LABELS[invoice.invoiceType ?? 'KOR']
   const reasonError = fieldErrors.correctionReason
 
@@ -465,9 +466,9 @@ function CorrectionForm({ tenantId, profile, invoice, original }: CorrectionForm
           <h2 id="dates-title">Data i płatność</h2>
           <div className="inv-fields">
             <TextField type="date" id="issue-date" label="Data wystawienia" value={form.issueDate} error={fieldErrors.issueDate} onChange={(issueDate) => set({ issueDate })} />
-            {total > 0 ? <TextField type="date" id="due-date" label="Termin płatności" value={form.dueDate} error={fieldErrors.dueDate} onChange={(dueDate) => set({ dueDate })} /> : null}
+            {pays ? <TextField type="date" id="due-date" label="Termin płatności" value={form.dueDate} error={fieldErrors.dueDate} onChange={(dueDate) => set({ dueDate })} /> : null}
           </div>
-          {total > 0 ? (
+          {pays ? (
             <div className="inv-chips" role="group" aria-label="Forma płatności">
               {methods.map((option) => (
                 <button key={option.method} type="button" aria-pressed={form.paymentMethod === option.method} onClick={() => set({ paymentMethod: option.method })}>
