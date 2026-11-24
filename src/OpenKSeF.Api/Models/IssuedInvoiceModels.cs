@@ -236,3 +236,18 @@ public class IssuedFeedPageResponse : PagedResult<IssuedFeedItemResponse>
 {
     public bool IssuedFetchIncomplete { get; init; }
 }
+
+public record RecentBuyerResponse(IssuedInvoiceBuyerModel Buyer, DateOnly LastIssueDate);
+
+public record LineSuggestionResponse(string Name, string Unit, decimal UnitNetPrice, string VatRate);
+
+public record InvoiceTemplateRequest(string? Name);
+
+public record InvoiceTemplateResponse(
+    Guid Id,
+    string Name,
+    IssuedInvoiceBuyerModel Buyer,
+    string Currency,
+    int PaymentDays,
+    int LineCount,
+    DateTime CreatedAt);

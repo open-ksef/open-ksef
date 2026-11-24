@@ -135,6 +135,74 @@ public class IssuedInvoicesController(
             return Ok(new ExchangeRateProposalResponse(currency!.Trim().ToUpperInvariant(), quote?.Rate, quote?.TableDate));
         });
 
+    [HttpGet("recent-buyers")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IReadOnlyList<RecentBuyerResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public Task<IActionResult> RecentBuyers(Guid tenantId, [FromQuery] string? q = null, CancellationToken ct = default) =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
+            Ok((await issuedInvoices.RecentBuyersAsync(tenantId, q, ct))
+                .Select(b => new RecentBuyerResponse(
+                    new IssuedInvoiceBuyerModel(b.Kind.ToString(), b.Nip, b.Name, b.AddressLine1, b.AddressLine2, b.CountryCode, b.IdType, b.ForeignId),
+                    b.LastIssueDate))
+                .ToList()));
+
+    [HttpGet("line-suggestions")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IReadOnlyList<LineSuggestionResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public Task<IActionResult> LineSuggestions(Guid tenantId, [FromQuery] string? q = null, [FromQuery] string? buyerKind = null, CancellationToken ct = default) =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
+            Ok((await issuedInvoices.LineSuggestionsAsync(tenantId, q, buyerKind, ct))
+                .Select(l => new LineSuggestionResponse(l.Name, l.Unit, l.UnitNetPrice, l.VatRate.Code()))
+                .ToList()));
+
+    [HttpGet("templates")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IReadOnlyList<InvoiceTemplateResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public Task<IActionResult> ListTemplates(Guid tenantId, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
+            Ok((await issuedInvoices.ListTemplatesAsync(tenantId, ct)).Select(TemplateResponse).ToList()));
+
+    [HttpPost("{id:guid}/template")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(InvoiceTemplateResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> CreateTemplate(Guid tenantId, Guid id, InvoiceTemplateRequest request, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
+            await issuedInvoices.CreateTemplateAsync(tenantId, id, request.Name, ct) is { } template
+                ? StatusCode(StatusCodes.Status201Created, TemplateResponse(template))
+                : NotFound());
+
+    [HttpPut("templates/{id:guid}")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(InvoiceTemplateResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public Task<IActionResult> RenameTemplate(Guid tenantId, Guid id, InvoiceTemplateRequest request, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
+            await issuedInvoices.RenameTemplateAsync(tenantId, id, request.Name, ct) is { } template ? Ok(TemplateResponse(template)) : NotFound());
+
+    [HttpDelete("templates/{id:guid}")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public Task<IActionResult> DeleteTemplate(Guid tenantId, Guid id, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
+            await issuedInvoices.DeleteTemplateAsync(tenantId, id, ct) ? NoContent() : NotFound());
+
+    [HttpPost("templates/{id:guid}/draft")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public Task<IActionResult> DraftFromTemplate(Guid tenantId, Guid id, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
+            await issuedInvoices.DraftFromTemplateAsync(tenantId, id, ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());
+
     [HttpGet("{id:guid}")]
     [TenantAccess(TenantPermissions.InvoicesRead)]
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status200OK)]
@@ -401,6 +469,11 @@ public class IssuedInvoicesController(
     private static IssuedInvoiceBuyerModel BuyerModel(IssuedInvoice invoice) =>
         new(invoice.BuyerKind.ToString(), invoice.BuyerNip, invoice.BuyerName, invoice.BuyerAddressLine1, invoice.BuyerAddressLine2,
             invoice.BuyerCountryCode, invoice.BuyerIdType, invoice.BuyerForeignId);
+
+    private static InvoiceTemplateResponse TemplateResponse(InvoiceTemplate t) =>
+        new(t.Id, t.Name,
+            new IssuedInvoiceBuyerModel(t.BuyerKind.ToString(), t.BuyerNip, t.BuyerName, t.BuyerAddressLine1, t.BuyerAddressLine2, t.BuyerCountryCode, t.BuyerIdType, t.BuyerForeignId),
+            t.Currency, t.PaymentDays, t.Lines.Count, t.CreatedAt);
 
     private static IReadOnlyList<VatSummaryResponse> SummaryResponse(IEnumerable<VatSummary> summary) =>
         summary.Select(s => new VatSummaryResponse(s.VatRate.Code(), s.Net, s.Vat)).ToList();

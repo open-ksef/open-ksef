@@ -1,10 +1,12 @@
-import type { ReactElement, ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
 
-import type { VatRateCode } from '@/api/types'
+import { listLineSuggestions } from '@/api/endpoints/issuedInvoices'
+import type { BuyerKind, VatRateCode } from '@/api/types'
 import { Icon } from '@/components/Icon'
 import { emptyLine, parseDecimal, type InvoiceLineFormValue } from '@/invoicing/form'
 import { formatMoney } from '@/invoicing/format'
-import { computeTotals, VAT_RATES } from '@/invoicing/totals'
+import { computeTotals, VAT_RATES, vatRateLabel } from '@/invoicing/totals'
 import { VatRateSelect } from './VatRateSelect'
 
 interface LinesTableProps {
@@ -16,9 +18,29 @@ interface LinesTableProps {
   fieldErrors?: Record<string, string>
   children?: ReactNode
   title?: string
+  suggest?: { tenantId: string; buyerKind: BuyerKind }
 }
 
-export function LinesTable({ lines, currency, rates, newLineRate, onChange, fieldErrors = {}, children, title = 'Pozycje' }: LinesTableProps): ReactElement {
+const SUGGEST_DELAY_MS = 300
+
+export function LinesTable({ lines, currency, rates, newLineRate, onChange, fieldErrors = {}, children, title = 'Pozycje', suggest }: LinesTableProps): ReactElement {
+  const [active, setActive] = useState<number | null>(null)
+  const activeName = active === null ? '' : (lines[active]?.name.trim() ?? '')
+  const [term, setTerm] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => setTerm(activeName), SUGGEST_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [activeName])
+
+  const suggestionsQuery = useQuery({
+    queryKey: ['line-suggestions', suggest?.tenantId, suggest?.buyerKind, term],
+    queryFn: () => listLineSuggestions(suggest!.tenantId, term, suggest!.buyerKind),
+    enabled: Boolean(suggest) && term.length >= 2,
+  })
+  const allowedRates = rates ?? VAT_RATES
+  const suggestions = term.length >= 2 ? (suggestionsQuery.data ?? []).filter((item) => allowedRates.some((rate) => rate.code === item.vatRate)) : []
+
   const { lineNet } = computeTotals(
     lines.map((line) => ({ quantity: parseDecimal(line.quantity), unitNetPrice: parseDecimal(line.unitNetPrice), vatRate: line.vatRate })),
   )
@@ -27,9 +49,15 @@ export function LinesTable({ lines, currency, rates, newLineRate, onChange, fiel
     onChange(lines.map((line, i) => (i === index ? { ...line, ...patch } : line)))
   }
 
+  function updateName(index: number, value: string): void {
+    const picked = suggestions.find((item) => item.name === value)
+    update(index, picked ? { name: picked.name, unit: picked.unit, unitNetPrice: String(picked.unitNetPrice).replace('.', ','), vatRate: picked.vatRate } : { name: value })
+  }
+
   function field(index: number, name: keyof InvoiceLineFormValue, label: string, place: string, numeric = false) {
     const id = `line-${index}-${name}`
     const error = fieldErrors[`lines[${index}].${name}`]
+    const suggestName = name === 'name' && suggest !== undefined
     return (
       <div className={`inv-line__field inv-line__${place}`}>
         <label htmlFor={id} className="inv-line__label">
@@ -42,8 +70,11 @@ export function LinesTable({ lines, currency, rates, newLineRate, onChange, fiel
           aria-invalid={error ? 'true' : 'false'}
           aria-describedby={error ? `${id}-error` : undefined}
           className={numeric ? 'num' : undefined}
+          list={suggestName ? 'line-suggestions' : undefined}
+          autoComplete={suggestName ? 'off' : undefined}
           value={lines[index][name]}
-          onChange={(event) => update(index, { [name]: event.target.value })}
+          onFocus={suggestName ? () => setActive(index) : undefined}
+          onChange={(event) => (suggestName ? updateName(index, event.target.value) : update(index, { [name]: event.target.value }))}
         />
         {error ? (
           <span className="inv-field-error" id={`${id}-error`}>
@@ -112,6 +143,13 @@ export function LinesTable({ lines, currency, rates, newLineRate, onChange, fiel
         </button>
         <p className="inv-help">VAT w wierszu jest poglądowy. Podatek liczymy od sumy netto w każdej stawce.</p>
       </div>
+      {suggest ? (
+        <datalist id="line-suggestions">
+          {suggestions.map((item) => (
+            <option key={item.name} value={item.name} label={`${item.unit} · ${formatMoney(item.unitNetPrice, currency)} · ${vatRateLabel(item.vatRate)}`} />
+          ))}
+        </datalist>
+      ) : null}
       {fieldErrors.lines ? <span className="inv-field-error">{fieldErrors.lines}</span> : null}
       {children}
     </section>

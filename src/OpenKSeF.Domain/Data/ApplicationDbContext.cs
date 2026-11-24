@@ -25,6 +25,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<SellerProfile> SellerProfiles => Set<SellerProfile>();
     public DbSet<InvoiceNumberCounter> InvoiceNumberCounters => Set<InvoiceNumberCounter>();
     public DbSet<NumberSeriesCounter> NumberSeriesCounters => Set<NumberSeriesCounter>();
+    public DbSet<InvoiceTemplate> InvoiceTemplates => Set<InvoiceTemplate>();
+    public DbSet<InvoiceTemplateLine> InvoiceTemplateLines => Set<InvoiceTemplateLine>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<TenantMember> TenantMembers => Set<TenantMember>();
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
@@ -277,6 +279,49 @@ public class ApplicationDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(c => c.TenantId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InvoiceTemplate>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+            entity.Property(t => t.Id).ValueGeneratedNever();
+            entity.HasIndex(t => t.TenantId);
+            entity.Property(t => t.Name).IsRequired().HasMaxLength(InvoiceTemplate.MaxNameLength);
+            entity.Property(t => t.BuyerKind).HasConversion<string>().HasMaxLength(16);
+            entity.Property(t => t.BuyerNip).HasMaxLength(10);
+            entity.Property(t => t.BuyerName).HasMaxLength(512);
+            entity.Property(t => t.BuyerAddressLine1).HasMaxLength(512);
+            entity.Property(t => t.BuyerAddressLine2).HasMaxLength(512);
+            entity.Property(t => t.BuyerCountryCode).HasMaxLength(2);
+            entity.Property(t => t.BuyerIdType).HasMaxLength(8);
+            entity.Property(t => t.BuyerForeignId).HasMaxLength(50);
+            entity.Property(t => t.Currency).IsRequired().HasMaxLength(3);
+            entity.Property(t => t.PaymentMethod).HasConversion<string>().HasMaxLength(16);
+            entity.Property(t => t.ExemptionBasisKind).HasConversion<string>().HasMaxLength(16);
+            entity.Property(t => t.ExemptionBasisText).HasMaxLength(256);
+            entity.HasMany(t => t.Lines)
+                .WithOne()
+                .HasForeignKey(l => l.InvoiceTemplateId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(t => t.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(t => t.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InvoiceTemplateLine>(entity =>
+        {
+            entity.HasKey(l => l.Id);
+            entity.Property(l => l.Id).ValueGeneratedNever();
+            entity.HasIndex(l => new { l.InvoiceTemplateId, l.LineNo });
+            entity.Property(l => l.Name).IsRequired().HasMaxLength(512);
+            entity.Property(l => l.Unit).IsRequired().HasMaxLength(256);
+            entity.Property(l => l.Quantity).HasPrecision(18, 6);
+            entity.Property(l => l.UnitNetPrice).HasPrecision(18, 2);
+            entity.Property(l => l.VatRate)
+                .HasConversion(r => r.Code(), code => VatRates.Parse(code))
+                .HasMaxLength(8);
         });
 
         modelBuilder.Entity<AuditEvent>(entity =>

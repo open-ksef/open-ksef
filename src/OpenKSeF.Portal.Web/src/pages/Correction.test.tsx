@@ -245,6 +245,7 @@ describe('KOR corrections in the portal', () => {
       expect(rows[1]).toContain('po')
       expect(text('total-gross')).toBe('-123,00 PLN')
       expect(button('Kopiuj jako nową')).toBeUndefined()
+      expect(button('Zapisz jako szablon')).toBeUndefined()
       expect(button('Koryguj')).toBeUndefined()
     })
   })

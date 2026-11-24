@@ -832,7 +832,7 @@ public class IssuedInvoicesApiTests : IDisposable
         Assert.Equal("Draft", copy.Status);
         Assert.Null(copy.Number);
         Assert.Null(copy.Ksef.KsefNumber);
-        Assert.Equal((Today, Today, Today.AddDays(14)), (copy.IssueDate, copy.SaleDate, copy.DueDate));
+        Assert.Equal((Today, Today, Today.AddDays(31)), (copy.IssueDate, copy.SaleDate, copy.DueDate));
         Assert.Equal(source.Buyer, copy.Buyer);
         Assert.Equal(("Cash", true), (copy.PaymentMethod, copy.SplitPayment));
         Assert.Equal(source.ExemptionBasis, copy.ExemptionBasis);

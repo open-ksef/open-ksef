@@ -6,7 +6,7 @@ import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { listCredentials } from '@/api/endpoints/credentials'
-import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
+import { copyIssuedInvoice, listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import { listTenants } from '@/api/endpoints/tenants'
 import { CompanyProvider } from '@/company/CompanyProvider'
@@ -16,7 +16,7 @@ import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/tenants', () => ({ listTenants: vi.fn() }))
 vi.mock('@/api/endpoints/credentials', () => ({ listCredentials: vi.fn() }))
-vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedFeed: vi.fn() }))
+vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedFeed: vi.fn(), copyIssuedInvoice: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn() }))
 
 const NOTE = 'Ostatnie pobieranie faktur sprzedaży z KSeF nie objęło całego okresu. Lista może być niepełna.'
@@ -30,11 +30,15 @@ describe('Wystawione faktury, niepełne pobieranie', () => {
   let root: Root
   let container: HTMLDivElement
 
+  let router: ReturnType<typeof createMemoryRouter>
+
   async function render(result: object, path = '/issued?tenantId=a'): Promise<void> {
     vi.mocked(listIssuedFeed).mockResolvedValue(result as never)
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const router = createMemoryRouter(
+    router = createMemoryRouter(
       [
+        { path: '/issued/:id/edit', element: <p>Formularz szkicu</p> },
+        { path: '/issued/:id', element: <p>Szczegóły faktury</p> },
         {
           path: '*',
           element: (
@@ -145,6 +149,46 @@ describe('Wystawione faktury, niepełne pobieranie', () => {
   })
   const rowLink = (index = 0) => container.querySelectorAll('[data-testid="issued-invoice-table"] a.rowlink')[index]
   const button = (label: string) => [...container.querySelectorAll('button')].find((b) => b.textContent === label) as HTMLButtonElement
+
+  it('offers Kopiuj jako nową only on Accepted VAT rows issued in OpenKSeF; a click opens the new draft form, not the details', async () => {
+    const own = { ...invoice, source: 'OpenKSeF', ksefNumber: 'K2' }
+    await render(
+      feed([
+        { ...own, id: 'vat', buyerName: 'VAT przyjęta' },
+        { ...own, id: 'vat-old', buyerName: 'VAT bez rodzaju', invoiceType: undefined },
+        { ...invoice, id: 'ext', buyerName: 'Spoza' },
+        { ...own, id: 'draft', status: 'Draft', number: null },
+        { ...own, id: 'sending', status: 'Sending' },
+        { ...own, id: 'rejected', status: 'Rejected' },
+        ...['KOR', 'ZAL', 'ROZ', 'KOR_ZAL', 'KOR_ROZ'].map((invoiceType) => ({ ...own, id: invoiceType, invoiceType })),
+      ]),
+    )
+    const copyButtons = [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Kopiuj jako nową"]')]
+    expect(copyButtons.map((button) => button.closest('tr')?.textContent?.split('FV/1')[0])).toEqual(['VAT przyjęta', 'VAT bez rodzaju'])
+
+    vi.mocked(copyIssuedInvoice).mockResolvedValue({ id: 'new-1' } as never)
+    await act(async () => copyButtons[0].click())
+    for (let tick = 0; tick < 4; tick++) await act(flush)
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 300)))
+
+    expect(copyIssuedInvoice).toHaveBeenCalledWith('a', 'vat')
+    expect(router.state.location.pathname).toBe('/issued/new-1/edit')
+    expect(container.textContent).toContain('Formularz szkicu')
+  })
+
+  it('a failed copy stays on the list with the error', async () => {
+    vi.mocked(copyIssuedInvoice).mockRejectedValue(new Error('Nie można skopiować'))
+    await render(feed([{ ...invoice, source: 'OpenKSeF', invoiceType: 'VAT' }]))
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Kopiuj jako nową"]')!.click())
+    for (let tick = 0; tick < 4; tick++) await act(flush)
+    expect(container.textContent).toContain('Nie można skopiować')
+    expect(router.state.location.pathname).toBe('/issued')
+  })
+
+  it('links the template list', async () => {
+    await render(feed([invoice]))
+    expect(container.querySelector('a[href="/issued/templates?tenantId=a"]')?.textContent).toContain('Szablony')
+  })
 
   it('labels only a draft without a number as szkic', async () => {
     const own = { ...invoice, source: 'OpenKSeF', ksefNumber: null, number: null }

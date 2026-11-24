@@ -550,3 +550,29 @@ export interface IssuedFeedItemResponse extends Omit<IssuedInvoiceListItemRespon
   source: 'OpenKSeF' | 'External'
   dueDate: string | null
 }
+
+export interface RecentBuyerResponse {
+  buyer: IssuedInvoiceBuyer
+  lastIssueDate: string
+}
+
+export interface LineSuggestionResponse {
+  name: string
+  unit: string
+  unitNetPrice: number
+  vatRate: VatRateCode
+}
+
+export interface InvoiceTemplateRequest {
+  name: string | null
+}
+
+export interface InvoiceTemplateResponse {
+  id: string
+  name: string
+  buyer: IssuedInvoiceBuyer
+  currency: string
+  paymentDays: number
+  lineCount: number
+  createdAt: string
+}

@@ -1,6 +1,7 @@
 import { apiClient } from '../client'
 import type {
   AdvanceDraftRequest,
+  BuyerKind,
   CorrectionDraftRequest,
   CorrectionMode,
   ExchangeRateProposalResponse,
@@ -11,7 +12,10 @@ import type {
   IssuedInvoiceResponse,
   IssuedInvoiceStatus,
   IssuedInvoiceType,
+  InvoiceTemplateResponse,
+  LineSuggestionResponse,
   PagedResult,
+  RecentBuyerResponse,
 } from '../types'
 
 export interface ListIssuedInvoicesParams extends Record<string, string | number | boolean | null | undefined> {
@@ -110,6 +114,36 @@ export function reissueInvoice(tenantId: string, id: string): Promise<IssuedInvo
 
 export function copyIssuedInvoice(tenantId: string, id: string): Promise<IssuedInvoiceResponse> {
   return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/copy`)
+}
+
+export function listRecentBuyers(tenantId: string, q?: string): Promise<RecentBuyerResponse[]> {
+  return apiClient.get<RecentBuyerResponse[]>(`${base(tenantId)}/recent-buyers`, { query: { q: q || undefined } })
+}
+
+export function listLineSuggestions(tenantId: string, q: string, buyerKind: BuyerKind): Promise<LineSuggestionResponse[]> {
+  return apiClient.get<LineSuggestionResponse[]>(`${base(tenantId)}/line-suggestions`, { query: { q, buyerKind } })
+}
+
+const template = (tenantId: string, id: string): string => `${base(tenantId)}/templates/${encodeURIComponent(id)}`
+
+export function listTemplates(tenantId: string): Promise<InvoiceTemplateResponse[]> {
+  return apiClient.get<InvoiceTemplateResponse[]>(`${base(tenantId)}/templates`)
+}
+
+export function saveAsTemplate(tenantId: string, id: string, name: string): Promise<InvoiceTemplateResponse> {
+  return apiClient.post<InvoiceTemplateResponse>(`${item(tenantId, id)}/template`, { name })
+}
+
+export function renameTemplate(tenantId: string, id: string, name: string): Promise<InvoiceTemplateResponse> {
+  return apiClient.put<InvoiceTemplateResponse>(template(tenantId, id), { name })
+}
+
+export function deleteTemplate(tenantId: string, id: string): Promise<void> {
+  return apiClient.delete<void>(template(tenantId, id))
+}
+
+export function createDraftFromTemplate(tenantId: string, id: string): Promise<IssuedInvoiceResponse> {
+  return apiClient.post<IssuedInvoiceResponse>(`${template(tenantId, id)}/draft`)
 }
 
 export function getIssuedInvoiceXml(tenantId: string, id: string): Promise<string> {

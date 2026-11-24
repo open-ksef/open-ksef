@@ -66,6 +66,19 @@ public record IssuedInvoiceDraftInput(
     decimal? ExchangeRate = null,
     DateOnly? ExchangeRateDate = null);
 
+public record RecentBuyer(
+    BuyerKind Kind,
+    string? Nip,
+    string? Name,
+    string? AddressLine1,
+    string? AddressLine2,
+    string? CountryCode,
+    string? IdType,
+    string? ForeignId,
+    DateOnly LastIssueDate);
+
+public record LineSuggestion(string Name, string Unit, decimal UnitNetPrice, VatRate VatRate);
+
 public record IssuedInvoiceListFilter(string? Status, string? Month, string? Query);
 
 public record IssuedFeedRow(
@@ -136,7 +149,7 @@ public record OrderChainView(
     decimal Remaining,
     Guid? OpenDocumentId);
 
-/// <summary>Draft CRUD, issue, copy and tenant delete. Null means not found; <see cref="InvoiceStateException"/> maps to 409, <see cref="InvoiceValidationException"/> to 400/422.</summary>
+/// <summary>Draft CRUD, issue, copy, templates, buyer and line suggestions, tenant delete. Null means not found; <see cref="InvoiceStateException"/> maps to 409, <see cref="InvoiceValidationException"/> to 400/422.</summary>
 public interface IIssuedInvoiceService
 {
     IQueryable<IssuedInvoice> Query(Guid tenantId, IssuedInvoiceListFilter filter);
@@ -172,6 +185,20 @@ public interface IIssuedInvoiceService
     Task<IssuedInvoiceView?> CreateFinalAsync(Guid tenantId, Guid advanceId, CancellationToken ct = default);
 
     Task<IssuedInvoiceView?> UpdateFinalAsync(Guid tenantId, Guid id, IssuedInvoiceFinalInput input, uint? expectedVersion = null, CancellationToken ct = default);
+
+    Task<IReadOnlyList<RecentBuyer>> RecentBuyersAsync(Guid tenantId, string? query, CancellationToken ct = default);
+
+    Task<IReadOnlyList<LineSuggestion>> LineSuggestionsAsync(Guid tenantId, string? query, string? buyerKind, CancellationToken ct = default);
+
+    Task<IReadOnlyList<InvoiceTemplate>> ListTemplatesAsync(Guid tenantId, CancellationToken ct = default);
+
+    Task<InvoiceTemplate?> CreateTemplateAsync(Guid tenantId, Guid sourceId, string? name, CancellationToken ct = default);
+
+    Task<InvoiceTemplate?> RenameTemplateAsync(Guid tenantId, Guid id, string? name, CancellationToken ct = default);
+
+    Task<bool> DeleteTemplateAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    Task<IssuedInvoiceView?> DraftFromTemplateAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     Task<bool> DeleteTenantAsync(Guid tenantId, CancellationToken ct = default);
 }

@@ -10,6 +10,7 @@ using OpenKSeF.Api.IntegrationTests.Infrastructure;
 using OpenKSeF.Domain.Data;
 using OpenKSeF.Domain.Entities;
 using OpenKSeF.Domain.Enums;
+using OpenKSeF.Domain.Invoicing;
 
 namespace OpenKSeF.Api.IntegrationTests;
 
@@ -26,6 +27,8 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         paymentMethod = "Transfer",
         splitPayment = false,
     };
+
+    private static readonly object TemplateBody = new { name = "T" };
 
     private sealed record Case(object? Body = null, string? Permission = null, HttpStatusCode Allowed = HttpStatusCode.OK);
 
@@ -73,6 +76,13 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         ["PUT api/tenants/{tenantId}/issued-invoices/{id}/advance"] = new(new { advanceAmount = 1 }, Draft, HttpStatusCode.Conflict),
         ["POST api/tenants/{tenantId}/issued-invoices/{id}/final"] = new(null, Draft, HttpStatusCode.Conflict),
         ["PUT api/tenants/{tenantId}/issued-invoices/{id}/final"] = new(new { }, Draft, HttpStatusCode.Conflict),
+        ["GET api/tenants/{tenantId}/issued-invoices/recent-buyers"] = new(null, Draft),
+        ["GET api/tenants/{tenantId}/issued-invoices/line-suggestions"] = new(null, Draft),
+        ["GET api/tenants/{tenantId}/issued-invoices/templates"] = new(null, Draft),
+        ["POST api/tenants/{tenantId}/issued-invoices/{id}/template"] = new(TemplateBody, Draft, HttpStatusCode.Created),
+        ["PUT api/tenants/{tenantId}/issued-invoices/templates/{id}"] = new(TemplateBody, Draft),
+        ["DELETE api/tenants/{tenantId}/issued-invoices/templates/{id}"] = new(null, Draft, HttpStatusCode.NoContent),
+        ["POST api/tenants/{tenantId}/issued-invoices/templates/{id}/draft"] = new(null, Draft, HttpStatusCode.Created),
         ["GET api/tenants/{tenantId}/issued-invoices/{id}/xml"] = new(null, Read, HttpStatusCode.Conflict),
         ["GET api/tenants/{tenantId}/issued-invoices/{id}/upo"] = new(null, Read, HttpStatusCode.Conflict),
         ["GET api/tenants/{tenantId}/seller-profile"] = new(null, Read),
@@ -106,6 +116,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         var tenantB = await CreateTenantAsync(_other);
         var issuedId = await CreateDraftAsync(tenantA);
         var inviteId = await SeedInviteAsync(tenantA);
+        var templateId = await SeedTemplateAsync(tenantA, issuedId);
 
         var now = DateTime.UtcNow;
         var invoice = new InvoiceHeader
@@ -136,7 +147,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
             await db.SaveChangesAsync();
         });
 
-        _seed = new Seed(tenantA, tenantB, invoice.Id, invoice.KSeFInvoiceNumber, issuedId, device, inviteId, ownerId);
+        _seed = new Seed(tenantA, tenantB, invoice.Id, invoice.KSeFInvoiceNumber, issuedId, device, inviteId, ownerId, templateId);
     }
 
     public Task DisposeAsync()
@@ -250,7 +261,8 @@ public sealed class TenantIsolationTests : IAsyncLifetime
                 var expected = Cases[route.Key];
                 foreach (var (name, role, client) in clients)
                 {
-                    Guid? issuedId = route.Template.Contains("/issued-invoices/{id}") ? await CreateDraftAsync(_seed.TenantA)
+                    Guid? issuedId = route.Template.Contains("/issued-invoices/templates/{id}") ? await SeedTemplateAsync(_seed.TenantA, _seed.IssuedId)
+                        : route.Template.Contains("/issued-invoices/{id}") ? await CreateDraftAsync(_seed.TenantA)
                         : route.Template.Contains("/invites/{id}") ? await SeedInviteAsync(_seed.TenantA)
                         : null;
                     if (route.Key == "DELETE api/tenants/{tenantId}/credentials")
@@ -353,6 +365,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
     {
         _ when !template.Contains("{id}") => Guid.Empty,
         _ when template.StartsWith("api/devices/{id}", StringComparison.Ordinal) => _seed.DeviceId,
+        _ when template.Contains("/issued-invoices/templates/{id}", StringComparison.Ordinal) => resourceId ?? _seed.TemplateId,
         _ when template.Contains("/issued-invoices/{id}", StringComparison.Ordinal) => resourceId ?? _seed.IssuedId,
         _ when template.Contains("/invites/{id}", StringComparison.Ordinal) => resourceId ?? _seed.InviteId,
         _ when template.Contains("/invoices/{id}", StringComparison.Ordinal) => _seed.InvoiceId,
@@ -361,9 +374,28 @@ public sealed class TenantIsolationTests : IAsyncLifetime
 
     private async Task<Guid> CreateDraftAsync(Guid tenantId)
     {
-        var response = await _owner.PostAsJsonAsync($"/api/tenants/{tenantId}/issued-invoices", DraftBody);
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        return (await response.Content.ReadFromJsonAsync<IdDto>())!.Id;
+        var draft = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, DateOnly.FromDateTime(DateTime.UtcNow), DateTime.UtcNow);
+        draft.SetBuyer(BuyerKind.Company, "1111111111", "Nabywca Testowy", null, null);
+        await WithDbAsync(async db =>
+        {
+            db.IssuedInvoices.Add(draft);
+            await db.SaveChangesAsync();
+        });
+        return draft.Id;
+    }
+
+    private async Task<Guid> SeedTemplateAsync(Guid tenantId, Guid issuedId)
+    {
+        var templateId = Guid.Empty;
+        await WithDbAsync(async db =>
+        {
+            var source = await db.IssuedInvoices.Include(i => i.Lines).SingleAsync(i => i.Id == issuedId);
+            var template = InvoiceTemplate.Capture(tenantId, source, source, DateTime.UtcNow, "T");
+            db.InvoiceTemplates.Add(template);
+            await db.SaveChangesAsync();
+            templateId = template.Id;
+        });
+        return templateId;
     }
 
     private async Task<Guid> SeedInviteAsync(Guid tenantId)
@@ -395,7 +427,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         await action(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>());
     }
 
-    private sealed record Seed(Guid TenantA, Guid TenantB, Guid InvoiceId, string KsefNumber, Guid IssuedId, Guid DeviceId, Guid InviteId, string OwnerUserId);
+    private sealed record Seed(Guid TenantA, Guid TenantB, Guid InvoiceId, string KsefNumber, Guid IssuedId, Guid DeviceId, Guid InviteId, string OwnerUserId, Guid TemplateId);
 
     private sealed record IdDto(Guid Id);
 

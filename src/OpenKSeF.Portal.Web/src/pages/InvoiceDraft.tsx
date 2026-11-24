@@ -7,6 +7,7 @@ import {
   deleteIssuedInvoice,
   getIssuedInvoice,
   issueIssuedInvoice,
+  saveAsTemplate,
   updateIssuedInvoice,
 } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
@@ -25,6 +26,7 @@ import { ExemptionBasisField } from '@/components/invoicing/ExemptionBasisField'
 import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadge'
 import { LinesTable } from '@/components/invoicing/LinesTable'
 import { PaymentSection } from '@/components/invoicing/PaymentSection'
+import { SaveTemplateButton } from '@/components/invoicing/SaveTemplateButton'
 import { SellerCard } from '@/components/invoicing/SellerCard'
 import { ValidationSummary } from '@/components/invoicing/ValidationSummary'
 import { VatSummary } from '@/components/invoicing/VatSummary'
@@ -338,6 +340,13 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
             <span className="inv-help" role="status">
               {invoice ? `Zapisano ${timeFormat.format(new Date(invoice.updatedAt))}` : ''}
             </span>
+            {invoice ? (
+              <SaveTemplateButton
+                defaultName={form.buyer.name}
+                disabled={busy}
+                save={async (name) => saveAsTemplate(tenantId, (JSON.stringify(form) === baseline.current ? invoice : await save.mutateAsync(true)).id, name)}
+              />
+            ) : null}
             {invoice?.status === 'Draft' ? (
               <button type="button" className="ui-button ui-button--danger-outline ui-button--sm inv-form__delete" disabled={busy} onClick={() => setDeleteOpen(true)}>
                 Usuń szkic
@@ -364,13 +373,14 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
         {failure ? <ErrorBanner message={failure} /> : null}
         <ValidationSummary errors={shownErrors} warnings={warnings} />
 
-        <BuyerSection value={form.buyer} fieldErrors={fieldErrors} onChange={(buyer) => setForm(withBuyer(form, buyer))} />
+        <BuyerSection tenantId={tenantId} value={form.buyer} fieldErrors={fieldErrors} onChange={(buyer) => setForm(withBuyer(form, buyer))} />
         <LinesTable
           lines={form.lines}
           currency={form.currency}
           rates={isForeign ? FOREIGN_VAT_RATES : undefined}
           newLineRate={isForeign ? foreignRateFor(form.buyer.countryCode) : undefined}
           fieldErrors={fieldErrors}
+          suggest={{ tenantId, buyerKind: form.buyer.kind }}
           onChange={(lines) => setForm({ ...form, lines })}
         >
           {isForeign ? <p className="inv-help">np I: nabywca spoza UE. np II: nabywca z UE (art. 100 ust. 1 pkt 4).</p> : null}

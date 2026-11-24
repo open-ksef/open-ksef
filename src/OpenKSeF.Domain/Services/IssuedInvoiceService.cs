@@ -30,6 +30,8 @@ public class IssuedInvoiceService(
     public const string ChainSourceCode = "INV-CHAIN-SOURCE";
     public const string FinalExistsCode = "INV-ROZ-EXISTS";
     public const string UseFinalCorrectionCode = "INV-KOR-USE-ROZ";
+    public const string TemplateKindCode = "INV-TEMPLATE-KIND";
+    private const int MaxSuggestions = 20;
 
     private const int MaxLines = 1000;
     private const int MaxTextLength = 512;
@@ -382,12 +384,125 @@ public class IssuedInvoiceService(
         if (source.Status is IssuedInvoiceStatus.Queued or IssuedInvoiceStatus.Sending)
             throw new InvoiceStateException("Tej faktury nie można skopiować w trakcie wysyłki do KSeF. Poczekaj na wynik wysyłki.");
 
+        var (original, state) = await CopySourceAsync(tenantId, source, ct);
+        return await AddCopyAsync(tenantId, InvoiceTemplate.Capture(tenantId, original, state, Now()), ct);
+    }
+
+    private async Task<(IssuedInvoice Original, IssuedInvoice State)> CopySourceAsync(Guid tenantId, IssuedInvoice source, CancellationToken ct)
+    {
         var original = source.CorrectedInvoiceId is { } originalId ? await LoadAsync(tenantId, originalId, ct) ?? source : source;
         var state = original.Status == IssuedInvoiceStatus.Accepted
             ? Corrections.CurrentState(original, await CorrectionsOfAsync(tenantId, original.Id, ct))
             : original;
-        return await AddCopyAsync(tenantId, original, state, clearBuyerId: false, ct);
+        return (original, state);
     }
+
+    public async Task<IReadOnlyList<RecentBuyer>> RecentBuyersAsync(Guid tenantId, string? query, CancellationToken ct = default)
+    {
+        // shortcut: groups all accepted invoices of the tenant in memory; move to SQL DISTINCT ON past ~10k accepted invoices.
+        var buyers = await AcceptedSales(tenantId)
+            .OrderByDescending(i => i.IssueDate)
+            .ThenByDescending(i => i.CreatedAt)
+            .Select(i => new RecentBuyer(i.BuyerKind, i.BuyerNip, i.BuyerName, i.BuyerAddressLine1, i.BuyerAddressLine2,
+                i.BuyerCountryCode, i.BuyerIdType, i.BuyerForeignId, i.IssueDate))
+            .ToListAsync(ct);
+        var term = query?.Trim();
+        return buyers
+            .DistinctBy(BuyerKey)
+            .Where(b => string.IsNullOrEmpty(term)
+                || (b.Name?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (b.Nip?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (b.ForeignId?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false))
+            .Take(MaxSuggestions)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<LineSuggestion>> LineSuggestionsAsync(Guid tenantId, string? query, string? buyerKind, CancellationToken ct = default)
+    {
+        var errors = new List<InvoiceCheck>();
+        var kind = ParseName(buyerKind, BuyerKind.Company, "INV-VAL-070", "buyerKind", "Rodzaj nabywcy: Company, Person lub Foreign", errors);
+        if (errors.Count > 0)
+            throw new InvoiceValidationException(errors);
+        var term = query?.Trim().ToLower();
+        if (term is null || term.Length < 2)
+            return [];
+
+        var rates = (kind == BuyerKind.Foreign ? VatRates.IssuableForeign : VatRates.Issuable).ToList();
+        var lines = await AcceptedSales(tenantId)
+            .SelectMany(i => i.Lines.Select(l => new { i.IssueDate, i.CreatedAt, l.LineNo, l.Name, l.Unit, l.UnitNetPrice, l.VatRate }))
+            .Where(l => l.Name.ToLower().Contains(term) && rates.Contains(l.VatRate))
+            .OrderByDescending(l => l.IssueDate)
+            .ThenByDescending(l => l.CreatedAt)
+            .ThenBy(l => l.LineNo)
+            .ToListAsync(ct);
+        return lines
+            .DistinctBy(l => l.Name.ToUpperInvariant())
+            .Take(MaxSuggestions)
+            .Select(l => new LineSuggestion(l.Name, l.Unit, l.UnitNetPrice, l.VatRate))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<InvoiceTemplate>> ListTemplatesAsync(Guid tenantId, CancellationToken ct = default) =>
+        await db.InvoiceTemplates.AsNoTracking().Include(t => t.Lines)
+            .Where(t => t.TenantId == tenantId)
+            .OrderBy(t => t.Name)
+            .ToListAsync(ct);
+
+    public async Task<InvoiceTemplate?> CreateTemplateAsync(Guid tenantId, Guid sourceId, string? name, CancellationToken ct = default)
+    {
+        var checkedName = TemplateName(name);
+        var source = await LoadAsync(tenantId, sourceId, ct);
+        if (source is null)
+            return null;
+        if (source.InvoiceType != IssuedInvoiceType.Vat)
+            throw new InvoiceStateException("Szablon można zapisać tylko z faktury VAT.", TemplateKindCode);
+
+        var (original, state) = await CopySourceAsync(tenantId, source, ct);
+        var template = InvoiceTemplate.Capture(tenantId, original, state, Now(), checkedName);
+        db.InvoiceTemplates.Add(template);
+        await db.SaveChangesAsync(ct);
+        return template;
+    }
+
+    public async Task<InvoiceTemplate?> RenameTemplateAsync(Guid tenantId, Guid id, string? name, CancellationToken ct = default)
+    {
+        var checkedName = TemplateName(name);
+        var template = await LoadTemplateAsync(tenantId, id, ct);
+        if (template is null)
+            return null;
+        template.Rename(checkedName, Now());
+        await db.SaveChangesAsync(ct);
+        return template;
+    }
+
+    public async Task<bool> DeleteTemplateAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
+        await db.InvoiceTemplates.Where(t => t.TenantId == tenantId && t.Id == id).ExecuteDeleteAsync(ct) > 0;
+
+    public async Task<IssuedInvoiceView?> DraftFromTemplateAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
+        await LoadTemplateAsync(tenantId, id, ct) is { } template ? await AddCopyAsync(tenantId, template, ct) : null;
+
+    private IQueryable<IssuedInvoice> AcceptedSales(Guid tenantId) =>
+        db.IssuedInvoices.AsNoTracking().Where(i => i.TenantId == tenantId && i.Status == IssuedInvoiceStatus.Accepted
+            && (i.InvoiceType == IssuedInvoiceType.Vat || i.InvoiceType == IssuedInvoiceType.Zal || i.InvoiceType == IssuedInvoiceType.Roz));
+
+    private static string BuyerKey(RecentBuyer buyer) => buyer.Kind switch
+    {
+        BuyerKind.Company => $"C|{buyer.Nip}",
+        BuyerKind.Foreign when buyer.IdType == IssuedInvoice.BuyerIdNone => $"F|{buyer.CountryCode}|{buyer.Name?.ToUpperInvariant()}",
+        BuyerKind.Foreign => $"F|{buyer.CountryCode}|{buyer.IdType}|{buyer.ForeignId}",
+        _ => $"P|{buyer.Name?.ToUpperInvariant()}|{buyer.AddressLine1?.ToUpperInvariant()}"
+    };
+
+    private static string TemplateName(string? name)
+    {
+        var trimmed = name?.Trim();
+        if (string.IsNullOrEmpty(trimmed) || trimmed.Length > InvoiceTemplate.MaxNameLength)
+            throw new InvoiceValidationException([new("INV-VAL-099", "name", $"Nazwa szablonu musi mieć od 1 do {InvoiceTemplate.MaxNameLength} znaków")]);
+        return trimmed;
+    }
+
+    private Task<InvoiceTemplate?> LoadTemplateAsync(Guid tenantId, Guid id, CancellationToken ct) =>
+        db.InvoiceTemplates.Include(t => t.Lines).SingleOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 
     public async Task<IssuedInvoiceView?> CreateCorrectionAsync(Guid tenantId, Guid originalId, string? mode, CancellationToken ct = default)
     {
@@ -507,7 +622,7 @@ public class IssuedInvoiceService(
             throw new InvoiceStateException("Poprawną fakturę wystawisz po przyjęciu w KSeF korekty do zera.", ReissueCode);
 
         var lastSale = chain.Last(d => d.Lines.Count > 0);
-        return await AddCopyAsync(tenantId, original, lastSale, clearBuyerId: current.CorrectionReason == Corrections.WrongBuyerIdReason, ct);
+        return await AddCopyAsync(tenantId, InvoiceTemplate.Capture(tenantId, original, lastSale, Now(), clearBuyerId: current.CorrectionReason == Corrections.WrongBuyerIdReason), ct);
     }
 
     public async Task<IssuedInvoiceView?> CreateAdvanceAsync(Guid tenantId, IssuedInvoiceAdvanceInput? input, CancellationToken ct = default)
@@ -815,15 +930,17 @@ public class IssuedInvoiceService(
             errors.Add(new("INV-VAL-030", "buyer.countryCode", "Podaj kraj nabywcy inny niż Polska"));
     }
 
-    private async Task<IssuedInvoiceView> AddCopyAsync(Guid tenantId, IssuedInvoice source, IssuedInvoice state, bool clearBuyerId, CancellationToken ct)
+    private async Task<IssuedInvoiceView> AddCopyAsync(Guid tenantId, InvoiceTemplate snapshot, CancellationToken ct)
     {
-        var copy = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, Today(), Now());
-        copy.SetBuyer(state.BuyerKind, clearBuyerId ? null : state.BuyerNip, state.BuyerName, state.BuyerAddressLine1, state.BuyerAddressLine2);
-        copy.SetForeignBuyer(state.BuyerCountryCode, clearBuyerId ? "" : state.BuyerForeignId);
-        copy.SetCurrency(source.Currency, null, null);
-        copy.SetPayment(source.PaymentMethod, source.SplitPayment);
-        copy.SetExemptionBasis(source.ExemptionBasisKind, source.ExemptionBasisText);
-        copy.ReplaceLines(state.Lines.OrderBy(l => l.LineNo).Select(l => ((string?)l.Name, (string?)l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)));
+        var today = Today();
+        var copy = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, today, Now());
+        copy.SetBuyer(snapshot.BuyerKind, snapshot.BuyerNip, snapshot.BuyerName, snapshot.BuyerAddressLine1, snapshot.BuyerAddressLine2);
+        copy.SetForeignBuyer(snapshot.BuyerCountryCode, snapshot.BuyerForeignId);
+        copy.SetCurrency(snapshot.Currency, null, null);
+        copy.SetDates(today, today, today.AddDays(snapshot.PaymentDays));
+        copy.SetPayment(snapshot.PaymentMethod, snapshot.SplitPayment);
+        copy.SetExemptionBasis(snapshot.ExemptionBasisKind, snapshot.ExemptionBasisText);
+        copy.ReplaceLines(snapshot.Lines.OrderBy(l => l.LineNo).Select(l => ((string?)l.Name, (string?)l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)));
         await ProposeRateIfMissingAsync(copy, ct);
         db.IssuedInvoices.Add(copy);
         await db.SaveChangesAsync(ct);

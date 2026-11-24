@@ -1,14 +1,18 @@
-import type { ReactElement } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState, type ReactElement } from 'react'
 
-import type { BuyerKind, NipLookupResponse } from '@/api/types'
+import { listRecentBuyers } from '@/api/endpoints/issuedInvoices'
+import type { BuyerKind, IssuedInvoiceBuyer, NipLookupResponse } from '@/api/types'
 import { COUNTRY_OPTIONS, countryName, isEuCountry } from '@/invoicing/foreign'
 import type { BuyerFormValue } from '@/invoicing/form'
+import { formatDate } from '@/invoicing/format'
 import { NipLookupField } from './NipLookupField'
 
 interface BuyerSectionProps {
   value: BuyerFormValue
   onChange: (value: BuyerFormValue) => void
   fieldErrors?: Record<string, string>
+  tenantId?: string
 }
 
 const kinds: { kind: BuyerKind; label: string }[] = [
@@ -17,7 +21,7 @@ const kinds: { kind: BuyerKind; label: string }[] = [
   { kind: 'Foreign', label: 'Firma zagraniczna' },
 ]
 
-export function BuyerSection({ value, onChange, fieldErrors = {} }: BuyerSectionProps): ReactElement {
+export function BuyerSection({ value, onChange, fieldErrors = {}, tenantId }: BuyerSectionProps): ReactElement {
   const isPerson = value.kind === 'Person'
 
   function applyLookup(result: NipLookupResponse): void {
@@ -67,6 +71,7 @@ export function BuyerSection({ value, onChange, fieldErrors = {} }: BuyerSection
     <section className="inv-card" aria-labelledby="buyer-title">
       <div className="inv-card-head">
         <h2 id="buyer-title">Nabywca</h2>
+        {tenantId ? <RecentBuyers tenantId={tenantId} onPick={onChange} /> : null}
         <div className="inv-chips" role="group" aria-label="Rodzaj nabywcy">
           {kinds.map((option) => (
             <button
@@ -105,6 +110,105 @@ export function BuyerSection({ value, onChange, fieldErrors = {} }: BuyerSection
         </div>
       ) : null}
     </section>
+  )
+}
+
+const SEARCH_DELAY_MS = 300
+
+const toFormValue = (buyer: IssuedInvoiceBuyer): BuyerFormValue => ({
+  kind: buyer.kind,
+  nip: buyer.nip ?? '',
+  name: buyer.name ?? '',
+  addressLine1: buyer.addressLine1 ?? '',
+  addressLine2: buyer.addressLine2 ?? '',
+  countryCode: buyer.countryCode ?? '',
+  foreignId: buyer.foreignId ?? '',
+  noTaxId: buyer.kind === 'Foreign' && buyer.idType === 'None',
+})
+
+function buyerTaxId(buyer: IssuedInvoiceBuyer): string {
+  if (buyer.kind === 'Company') return buyer.nip ? `NIP ${buyer.nip}` : ''
+  if (buyer.kind === 'Person') return buyer.addressLine1 ?? ''
+  return [buyer.countryCode ? countryName(buyer.countryCode) : null, buyer.idType === 'None' ? 'bez numeru podatkowego' : buyer.foreignId].filter(Boolean).join(' · ')
+}
+
+function RecentBuyers({ tenantId, onPick }: { tenantId: string; onPick: (value: BuyerFormValue) => void }): ReactElement {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [term, setTerm] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => setTerm(search.trim()), SEARCH_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const query = useQuery({
+    queryKey: ['recent-buyers', tenantId, term],
+    queryFn: () => listRecentBuyers(tenantId, term),
+    enabled: open,
+  })
+  const buyers = query.data ?? []
+
+  return (
+    <div className="inv-recent">
+      <button
+        type="button"
+        className="ui-button ui-button--outline ui-button--sm"
+        aria-expanded={open}
+        aria-controls="recent-buyers"
+        onClick={() => setOpen(!open)}
+      >
+        Ostatni nabywcy
+      </button>
+      {open ? (
+        <div
+          id="recent-buyers"
+          className="inv-recent__panel"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setOpen(false)
+          }}
+        >
+          <label htmlFor="recent-buyers-q" className="visually-hidden">
+            Szukaj nabywcy: nazwa lub numer podatkowy
+          </label>
+          <input
+            id="recent-buyers-q"
+            type="search"
+            placeholder="Nazwa lub numer podatkowy"
+            autoComplete="off"
+            autoFocus
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          {query.isLoading ? (
+            <p className="inv-help">Wczytywanie…</p>
+          ) : query.isError ? (
+            <p className="inv-field-error">Nie udało się wczytać nabywców.</p>
+          ) : buyers.length === 0 ? (
+            <p className="inv-help">{term ? 'Brak nabywców dla tego wyszukiwania.' : 'Nabywcy pojawią się po pierwszej fakturze przyjętej w KSeF.'}</p>
+          ) : (
+            <ul aria-label="Ostatni nabywcy">
+              {buyers.map(({ buyer, lastIssueDate }, index) => (
+                <li key={index}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onPick(toFormValue(buyer))
+                      setOpen(false)
+                    }}
+                  >
+                    <b>{buyer.name ?? '—'}</b>
+                    <span className="inv-help">
+                      {[buyerTaxId(buyer), `ostatnio ${formatDate(lastIssueDate)}`].filter(Boolean).join(' · ')}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </div>
   )
 }
 
