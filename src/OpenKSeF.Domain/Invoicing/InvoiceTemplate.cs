@@ -52,7 +52,7 @@ public sealed class InvoiceTemplate
             BuyerForeignId = clearBuyerId ? null : state.BuyerForeignId,
             Currency = source.Currency,
             PaymentMethod = source.PaymentMethod,
-            PaymentDays = Math.Max(0, source.DueDate.DayNumber - source.IssueDate.DayNumber),
+            PaymentDays = source.InvoiceType == IssuedInvoiceType.Zal ? IssuedInvoice.DefaultPaymentDays : Math.Max(0, source.DueDate.DayNumber - source.IssueDate.DayNumber),
             SplitPayment = source.SplitPayment,
             ExemptionBasisKind = source.ExemptionBasisKind,
             ExemptionBasisText = source.ExemptionBasisText,

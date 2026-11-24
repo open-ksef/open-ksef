@@ -354,6 +354,20 @@ public class InvoiceTemplatesApiTests : IDisposable
     }
 
     [Fact]
+    public async Task CopyOfZal_KeepsDefaultTerm()
+    {
+        var tenantId = await CreateTenantAsync();
+        var advance = await _client.PostAsJsonAsync($"{Base(tenantId)}/advances", new AdvanceDraftRequest());
+        Assert.Equal(HttpStatusCode.Created, advance.StatusCode);
+        var zal = (await advance.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!;
+        Assert.Equal(zal.IssueDate, zal.DueDate);
+
+        var copy = await PostCreatedAsync($"{Base(tenantId)}/{zal.Id}/copy?invoiceType=ZAL");
+
+        Assert.Equal(Today.AddDays(IssuedInvoice.DefaultPaymentDays), copy.DueDate);
+    }
+
+    [Fact]
     public async Task DeletingCompany_RemovesItsTemplates()
     {
         var tenantId = await CreateTenantAsync();
