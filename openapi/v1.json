@@ -431,6 +431,11 @@
       "CurrentStateResponse": {
         "additionalProperties": false,
         "properties": {
+          "advanceAmount": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
           "buyer": {
             "$ref": "#/components/schemas/IssuedInvoiceBuyerModel"
           },

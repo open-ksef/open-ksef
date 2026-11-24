@@ -97,7 +97,8 @@
       "idType": null,
       "foreignId": null
     },
-    "isZero": true
+    "isZero": true,
+    "advanceAmount": null
   },
   "corrections": [
     {

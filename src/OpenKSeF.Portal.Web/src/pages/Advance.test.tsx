@@ -401,7 +401,7 @@ describe('advance and final invoices in the portal', () => {
   it('ZAL after an accepted KOR_ZAL shows the corrected advance as current state and captions the summary Zapłacono', async () => {
     serve(
       acceptedZal({
-        currentState: { lines: order, vatSummary: [{ vatRate: '23', net: 1000, vat: 230 }], totalNet: 1000, totalVat: 230, totalGross: 1230, buyer: base.buyer, isZero: false },
+        currentState: { lines: order, vatSummary: [{ vatRate: '23', net: 1000, vat: 230 }], totalNet: 1000, totalVat: 230, totalGross: 1230, buyer: base.buyer, isZero: false, advanceAmount: 246.5 },
         corrections: [
           { id: 'kz-1', number: 'KOR/1/11/2026', invoiceType: 'KOR_ZAL', status: 'Accepted', issueDate: '2026-11-07', totalGross: -123 },
           { id: 'kz-2', number: null, invoiceType: 'KOR_ZAL', status: 'Draft', issueDate: '2026-11-08', totalGross: -100 },
@@ -410,7 +410,7 @@ describe('advance and final invoices in the portal', () => {
     )
     await render('/issued/z-1?tenantId=t-1')
     await waitFor(() => Boolean(container.querySelector('[data-testid="current-state"]')))
-    expect(text('current-gross')).toBe('246,00 PLN')
+    expect(text('current-gross')).toBe('246,50 PLN')
     expect(text('current-state')).toContain('Wartość zamówienia: 1 230,00 PLN')
     const summary = container.querySelector('[aria-labelledby="vat-summary-title"]')!.textContent
     expect(summary).toContain('Zapłacono')

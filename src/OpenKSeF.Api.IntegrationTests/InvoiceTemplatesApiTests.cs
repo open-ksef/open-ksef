@@ -114,6 +114,23 @@ public class InvoiceTemplatesApiTests : IDisposable
         return (await response.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!;
     }
 
+    private async Task<Guid> AcceptCorrectionAsync(Guid tenantId, Guid originalId, string mode, CorrectionDraftRequest draft)
+    {
+        var created = await _client.PostAsJsonAsync($"{Base(tenantId)}/{originalId}/corrections", new CorrectionCreateRequest(mode));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var korId = (await created.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!.Id;
+        (await _client.PutAsJsonAsync($"{Base(tenantId)}/{korId}/correction", draft)).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{korId}/issue?invoiceType=KOR&confirmPastIssueDate=true", null)).StatusCode);
+        await WithDbAsync(async db =>
+        {
+            var kor = await db.IssuedInvoices.SingleAsync(i => i.Id == korId);
+            kor.MarkSendStarted("session-2", Now);
+            kor.MarkAccepted($"1111111111-20261220-{Guid.NewGuid().ToString("N")[..12].ToUpperInvariant()}-CD", Now, 200, "Sukces", Now);
+            return await db.SaveChangesAsync();
+        });
+        return korId;
+    }
+
     private Task<List<InvoiceTemplateResponse>> TemplatesAsync(Guid tenantId) =>
         _client.GetFromJsonAsync<List<InvoiceTemplateResponse>>($"{Base(tenantId)}/templates")!;
 
@@ -184,6 +201,56 @@ public class InvoiceTemplatesApiTests : IDisposable
     }
 
     [Fact]
+    public async Task RecentBuyers_UseStateAfterAcceptedKor_SkipWrongBuyerId()
+    {
+        var tenantId = await CreateTenantAsync();
+        var wrongNip = TestNip.New();
+        var renamedNip = TestNip.New();
+        var wrongId = await SeedAsync(tenantId, new DateOnly(2026, 11, 3), Company(wrongNip, "Pomyłka sp. z o.o.", "ul. Błędna 1"));
+        var renamedId = await SeedAsync(tenantId, new DateOnly(2026, 11, 4), Company(renamedNip, "Stara Nazwa sp. z o.o.", "ul. Stara 1"));
+        await AcceptCorrectionAsync(tenantId, wrongId, "WrongBuyerId", new CorrectionDraftRequest());
+        await AcceptCorrectionAsync(tenantId, renamedId, "Edit", new CorrectionDraftRequest(CorrectionReason: "Dane nabywcy",
+            Buyer: new IssuedInvoiceBuyerModel("Company", renamedNip, "Nowa Nazwa sp. z o.o.", "ul. Nowa 2", "00-002 Warszawa")));
+
+        var buyers = (await _client.GetFromJsonAsync<List<RecentBuyerResponse>>($"{Base(tenantId)}/recent-buyers"))!;
+
+        var buyer = Assert.Single(buyers);
+        Assert.Equal(new IssuedInvoiceBuyerModel("Company", renamedNip, "Nowa Nazwa sp. z o.o.", "ul. Nowa 2", "00-002 Warszawa"), buyer.Buyer);
+        Assert.Equal(new DateOnly(2026, 11, 4), buyer.LastIssueDate);
+    }
+
+    [Fact]
+    public async Task LineSuggestions_UseCorrectedPrice_SkipLinesCorrectedToZero()
+    {
+        var tenantId = await CreateTenantAsync();
+        var repricedId = await SeedAsync(tenantId, new DateOnly(2026, 11, 3), Company(TestNip.New(), "A", "ul. A 1", ("Abonament księgowy", "mies.", 1000m, VatRate.Rate23)));
+        var zeroId = await SeedAsync(tenantId, new DateOnly(2026, 11, 4), Company(TestNip.New(), "B", "ul. B 1", ("Księgowość jednorazowa", "szt.", 700m, VatRate.Rate23)));
+        await AcceptCorrectionAsync(tenantId, repricedId, "Edit", new CorrectionDraftRequest(
+            CorrectionReason: "Rabat", Lines: [new CorrectionLineRequest(1, "Abonament księgowy", "mies.", 1, 900m, "23")]));
+        await AcceptCorrectionAsync(tenantId, zeroId, "ToZero", new CorrectionDraftRequest(CorrectionReason: "Zwrot"));
+
+        var suggestions = (await _client.GetFromJsonAsync<List<LineSuggestionResponse>>($"{Base(tenantId)}/line-suggestions?q=księg"))!;
+
+        Assert.Equal([new LineSuggestionResponse("Abonament księgowy", "mies.", 900m, "23")], suggestions);
+    }
+
+    [Fact]
+    public async Task Template_FromInvoiceCorrectedToZero_Returns409_WritesNothing()
+    {
+        var tenantId = await CreateTenantAsync();
+        var sourceId = await SeedAsync(tenantId, new DateOnly(2026, 11, 3), Company(TestNip.New(), "Klient", "ul. Krótka 2"));
+        await AcceptCorrectionAsync(tenantId, sourceId, "ToZero", new CorrectionDraftRequest(CorrectionReason: "Zwrot"));
+
+        var response = await _client.PostAsJsonAsync($"{Base(tenantId)}/{sourceId}/template", new InvoiceTemplateRequest("Zero"));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = (await response.Content.ReadFromJsonAsync<JsonObject>())!;
+        Assert.Equal(("INV-TEMPLATE-ZERO", "Faktura skorygowana do zera nie ma pozycji. Zapisz szablon z innej faktury."),
+            (problem["code"]?.GetValue<string>(), problem["message"]?.GetValue<string>()));
+        Assert.Equal(0, await WithDbAsync(db => db.InvoiceTemplates.CountAsync(t => t.TenantId == tenantId)));
+    }
+
+    [Fact]
     public async Task Template_RoundTrip_IsASnapshot_RenameKeepsContent_DeleteRemoves()
     {
         var tenantId = await CreateTenantAsync();
@@ -248,19 +315,8 @@ public class InvoiceTemplatesApiTests : IDisposable
     {
         var tenantId = await CreateTenantAsync();
         var originalId = await SeedAsync(tenantId, new DateOnly(2026, 11, 3), Company(TestNip.New(), "Klient", "ul. Krótka 2", ("Usługa", "szt.", 1000m, VatRate.Rate23)));
-        var created = await _client.PostAsJsonAsync($"{Base(tenantId)}/{originalId}/corrections", new CorrectionCreateRequest("Edit"));
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        var korId = (await created.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!.Id;
-        (await _client.PutAsJsonAsync($"{Base(tenantId)}/{korId}/correction", new CorrectionDraftRequest(
-            CorrectionReason: "Rabat", Lines: [new CorrectionLineRequest(1, "Usługa", "szt.", 1, 900m, "23")]))).EnsureSuccessStatusCode();
-        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{korId}/issue?invoiceType=KOR&confirmPastIssueDate=true", null)).StatusCode);
-        await WithDbAsync(async db =>
-        {
-            var kor = await db.IssuedInvoices.SingleAsync(i => i.Id == korId);
-            kor.MarkSendStarted("session-2", Now);
-            kor.MarkAccepted("1111111111-20261220-ABCDEF123456-CD", Now, 200, "Sukces", Now);
-            return await db.SaveChangesAsync();
-        });
+        var korId = await AcceptCorrectionAsync(tenantId, originalId, "Edit", new CorrectionDraftRequest(
+            CorrectionReason: "Rabat", Lines: [new CorrectionLineRequest(1, "Usługa", "szt.", 1, 900m, "23")]));
 
         var template = await SaveTemplateAsync(tenantId, originalId, "Po rabacie");
         var fromTemplate = await PostCreatedAsync($"{Base(tenantId)}/templates/{template.Id}/draft");
@@ -335,18 +391,7 @@ public class InvoiceTemplatesApiTests : IDisposable
         var copy = await PostCreatedAsync($"{Base(tenantId)}/{sourceId}/copy");
         Assert.Equal((Today, Today, Today.AddDays(30)), (copy.IssueDate, copy.SaleDate, copy.DueDate));
 
-        var created = await _client.PostAsJsonAsync($"{Base(tenantId)}/{sourceId}/corrections", new CorrectionCreateRequest("ToZero"));
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        var korId = (await created.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!.Id;
-        (await _client.PutAsJsonAsync($"{Base(tenantId)}/{korId}/correction", new CorrectionDraftRequest(CorrectionReason: "Zwrot"))).EnsureSuccessStatusCode();
-        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync($"{Base(tenantId)}/{korId}/issue?invoiceType=KOR&confirmPastIssueDate=true", null)).StatusCode);
-        await WithDbAsync(async db =>
-        {
-            var kor = await db.IssuedInvoices.SingleAsync(i => i.Id == korId);
-            kor.MarkSendStarted("session-2", Now);
-            kor.MarkAccepted("1111111111-20261220-ABCDEF123456-CD", Now, 200, "Sukces", Now);
-            return await db.SaveChangesAsync();
-        });
+        await AcceptCorrectionAsync(tenantId, sourceId, "ToZero", new CorrectionDraftRequest(CorrectionReason: "Zwrot"));
 
         var reissue = await PostCreatedAsync($"{Base(tenantId)}/{sourceId}/reissue");
         Assert.Equal(Today.AddDays(30), reissue.DueDate);

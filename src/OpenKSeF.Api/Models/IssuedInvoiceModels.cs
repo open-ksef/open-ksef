@@ -169,7 +169,8 @@ public record CurrentStateResponse(
     decimal TotalVat,
     decimal TotalGross,
     IssuedInvoiceBuyerModel Buyer,
-    bool IsZero);
+    bool IsZero,
+    decimal? AdvanceAmount = null);
 
 public record CorrectionListItemResponse(Guid Id, string? Number, string InvoiceType, string Status, DateOnly IssueDate, decimal TotalGross);
 

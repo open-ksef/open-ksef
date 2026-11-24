@@ -84,9 +84,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
   const correction = isCorrection(invoice)
   const kind = invoice.invoiceType ?? 'VAT'
   const advance = kind === 'ZAL'
-  const advanceAfter = advance
-    ? (invoice.corrections ?? []).filter((item) => item.status === 'Accepted').reduce((sum, item) => sum + item.totalGross, invoice.totalGross)
-    : null
+  const advanceAfter = advance ? (invoice.currentState?.advanceAmount ?? null) : null
   const noPayment = advance || ((correction || kind === 'ROZ') && invoice.totalGross <= 0)
   const chain = invoice.chain
   const chainOpen = Boolean(chain?.openDocumentId)
@@ -549,7 +547,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
               {advanceAfter != null ? (
                 <p className="inv-help">
                   Nabywca: {invoice.currentState.buyer.name ?? '—'}. Wartość zamówienia: {formatMoney(invoice.currentState.totalGross, invoice.currency)}. Zaliczka:{' '}
-                  <b data-testid="current-gross">{formatMoney(Math.round(advanceAfter * 100) / 100, invoice.currency)}</b>
+                  <b data-testid="current-gross">{formatMoney(advanceAfter, invoice.currency)}</b>
                 </p>
               ) : (
                 <p className="inv-help">
