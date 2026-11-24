@@ -6,7 +6,8 @@ public enum IssuedInvoiceStatus
     Queued,
     Sending,
     Accepted,
-    Rejected
+    Rejected,
+    Issued
 }
 
 public enum BuyerKind
@@ -37,7 +38,8 @@ public enum IssuedInvoiceType
     Zal,
     Roz,
     KorZal,
-    KorRoz
+    KorRoz,
+    Pro
 }
 
 public enum CorrectionMode
@@ -47,21 +49,24 @@ public enum CorrectionMode
     WrongBuyerId
 }
 
-/// <summary>KSeF RodzajFaktury codes, stored and sent on the wire, and the numbering series of each kind.</summary>
+/// <summary>KSeF RodzajFaktury codes, stored and sent on the wire, and the numbering series of each kind. PRO is a non-fiscal proforma, never sent.</summary>
 public static class IssuedInvoiceTypes
 {
     public const string FvSeries = "FV";
     public const string KorSeries = "KOR";
     public const string ZalSeries = "ZAL";
+    public const string ProSeries = "PRO";
 
     public static string Code(this IssuedInvoiceType type) => type switch
     {
+        IssuedInvoiceType.Vat => "VAT",
         IssuedInvoiceType.Kor => "KOR",
         IssuedInvoiceType.Zal => "ZAL",
         IssuedInvoiceType.Roz => "ROZ",
         IssuedInvoiceType.KorZal => "KOR_ZAL",
         IssuedInvoiceType.KorRoz => "KOR_ROZ",
-        _ => "VAT"
+        IssuedInvoiceType.Pro => "PRO",
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
     };
 
     public static IssuedInvoiceType Parse(string code) => code switch
@@ -72,6 +77,7 @@ public static class IssuedInvoiceTypes
         "ROZ" => IssuedInvoiceType.Roz,
         "KOR_ZAL" => IssuedInvoiceType.KorZal,
         "KOR_ROZ" => IssuedInvoiceType.KorRoz,
+        "PRO" => IssuedInvoiceType.Pro,
         _ => throw new FormatException($"Unknown invoice type '{code}'.")
     };
 
@@ -81,29 +87,36 @@ public static class IssuedInvoiceTypes
 
     public static IssuedInvoiceType CorrectionOf(this IssuedInvoiceType type) => type switch
     {
-        IssuedInvoiceType.Zal => IssuedInvoiceType.KorZal,
-        IssuedInvoiceType.Roz => IssuedInvoiceType.KorRoz,
-        _ => IssuedInvoiceType.Kor
+        IssuedInvoiceType.Vat or IssuedInvoiceType.Kor => IssuedInvoiceType.Kor,
+        IssuedInvoiceType.Zal or IssuedInvoiceType.KorZal => IssuedInvoiceType.KorZal,
+        IssuedInvoiceType.Roz or IssuedInvoiceType.KorRoz => IssuedInvoiceType.KorRoz,
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
     };
 
     public static string Series(this IssuedInvoiceType type) => type switch
     {
-        _ when type.IsCorrection() => KorSeries,
+        IssuedInvoiceType.Vat or IssuedInvoiceType.Roz => FvSeries,
+        IssuedInvoiceType.Kor or IssuedInvoiceType.KorZal or IssuedInvoiceType.KorRoz => KorSeries,
         IssuedInvoiceType.Zal => ZalSeries,
-        _ => FvSeries
+        IssuedInvoiceType.Pro => ProSeries,
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
     };
 
     public static IssuedInvoiceType[] TypesOf(string series) => series switch
     {
+        FvSeries => [IssuedInvoiceType.Vat, IssuedInvoiceType.Roz],
         KorSeries => [IssuedInvoiceType.Kor, IssuedInvoiceType.KorZal, IssuedInvoiceType.KorRoz],
         ZalSeries => [IssuedInvoiceType.Zal],
-        _ => [IssuedInvoiceType.Vat, IssuedInvoiceType.Roz]
+        ProSeries => [IssuedInvoiceType.Pro],
+        _ => throw new ArgumentOutOfRangeException(nameof(series), series, null)
     };
 
     public static string Pattern(this SellerProfile profile, IssuedInvoiceType type) => type.Series() switch
     {
+        FvSeries => profile.NumberingPattern,
         KorSeries => profile.CorrectionNumberingPattern,
         ZalSeries => profile.AdvanceNumberingPattern,
-        _ => profile.NumberingPattern
+        ProSeries => profile.ProformaNumberingPattern,
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
     };
 }

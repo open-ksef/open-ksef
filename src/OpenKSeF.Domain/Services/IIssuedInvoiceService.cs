@@ -79,7 +79,7 @@ public record RecentBuyer(
 
 public record LineSuggestion(string Name, string Unit, decimal UnitNetPrice, VatRate VatRate);
 
-public record IssuedInvoiceListFilter(string? Status, string? Month, string? Query);
+public record IssuedInvoiceListFilter(string? Status, string? Month, string? Query, string? InvoiceType = null);
 
 public record IssuedFeedRow(
     Guid Id,
@@ -138,6 +138,12 @@ public record IssuedInvoiceView(IssuedInvoice Invoice, IssuedInvoiceSeller Selle
 
     /// <summary>Set on every document of an order chain.</summary>
     public OrderChainView? Chain { get; init; }
+
+    /// <summary>Set on a VAT document converted from a proforma.</summary>
+    public IssuedInvoice? Proforma { get; init; }
+
+    /// <summary>Set on a converted proforma: the VAT draft or invoice that links it.</summary>
+    public IssuedInvoice? ConvertedTo { get; init; }
 }
 
 /// <summary>Order chain of a document: order value of the latest order, advances, ROZ, corrections, remaining value and the open document.</summary>
@@ -160,15 +166,18 @@ public interface IIssuedInvoiceService
 
     Task<ExchangeRateQuote?> ProposeExchangeRateAsync(string? currency, DateOnly? issueDate, DateOnly? saleDate, CancellationToken ct = default);
 
-    Task<IssuedInvoiceView> CreateAsync(Guid tenantId, IssuedInvoiceDraftInput input, CancellationToken ct = default);
+    Task<IssuedInvoiceView> CreateAsync(Guid tenantId, IssuedInvoiceDraftInput input, string? invoiceType = null, CancellationToken ct = default);
 
-    Task<IssuedInvoiceView?> UpdateAsync(Guid tenantId, Guid id, IssuedInvoiceDraftInput input, uint? expectedVersion = null, CancellationToken ct = default);
+    Task<IssuedInvoiceView?> UpdateAsync(Guid tenantId, Guid id, IssuedInvoiceDraftInput input, uint? expectedVersion = null, string? invoiceType = null, CancellationToken ct = default);
 
     Task<bool> DeleteAsync(Guid tenantId, Guid id, uint? expectedVersion = null, CancellationToken ct = default);
 
     Task<(IssuedInvoiceView View, bool Issued)?> IssueAsync(Guid tenantId, Guid id, uint? expectedVersion = null, bool confirmPastIssueDate = false, uint? expectedSellerVersion = null, string? invoiceType = null, CancellationToken ct = default);
 
     Task<IssuedInvoiceView?> CopyAsync(Guid tenantId, Guid id, string? invoiceType = null, CancellationToken ct = default);
+
+    /// <summary>VAT draft from an issued proforma, or the live document already converted from it (Created false).</summary>
+    Task<(IssuedInvoiceView View, bool Created)?> ConvertProformaAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     Task<IssuedInvoiceView?> CreateCorrectionAsync(Guid tenantId, Guid originalId, string? mode, CancellationToken ct = default);
 

@@ -892,6 +892,9 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<Guid?>("ProformaId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateOnly>("SaleDate")
                         .HasColumnType("date");
 
@@ -990,6 +993,8 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .HasFilter("\"Number\" IS NOT NULL");
 
                     b.HasIndex("TenantId", "OrderChainId");
+
+                    b.HasIndex("TenantId", "ProformaId");
 
                     b.ToTable("IssuedInvoices");
                 });
@@ -1129,6 +1134,13 @@ namespace OpenKSeF.Domain.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ProformaNumberingPattern")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasDefaultValue("PRO/{nr}/{MM}/{RRRR}");
 
                     b.Property<uint>("Version")
                         .IsConcurrencyToken()

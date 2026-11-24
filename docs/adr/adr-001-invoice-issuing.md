@@ -39,3 +39,21 @@ Status: accepted (2026-10-30).
 - Node sidecar for the generator: a new runtime in the API image.
 - Value objects `Money`/`PartyName`/`PostalAddress`: PLN only, flat columns, and the checks live in one issue check list.
 - Feature switch: CEO Q2 = on for everyone.
+
+## Addendum A (2026-11-24): proforma (REQ-0029)
+
+Decision:
+- A proforma is an `IssuedInvoice` row with `InvoiceType = PRO` and its own status `Issued`. It never enters `Queued`, `Sending`, `Accepted` or `Rejected`, so the send outbox, escalation, export and tenant-delete checks, which all select by status, never see it. The FA(3) writer is never called for it; `AttachSentXml` and `MarkSendStarted` refuse it.
+- `IssuedInvoiceTypes` switches list every kind and throw on an unknown one. The former `_ => "VAT"` default would have stored a proforma as a VAT invoice.
+- Numbering: series `PRO`, `SellerProfiles.ProformaNumberingPattern` (default `PRO/{nr}/{MM}/{RRRR}`), counter in `NumberSeriesCounters`, pattern distinct from FV, KOR and ZAL (`SP-VAL-012`).
+- Conversion: the VAT draft stores `ProformaId` (nullable, non-unique index, no FK). One live conversion is enforced under a `FOR UPDATE` lock on the proforma row. "Converted" is computed from the link, not stored.
+- Lists exclude `PRO` unless `invoiceType=PRO` is passed. Writes to a proforma need `invoiceType=PRO`, so released mobile builds get 409.
+
+Consequences:
+- One additive migration. Rolling back to a previous image after the first proforma makes that tenant's issued list fail (unknown `PRO`/`Issued`); it fails closed, and the fix is to roll forward.
+- A manual next-number override can reuse the number of a deleted proforma. Accepted: no numbering duty.
+
+Rejected:
+- Separate proforma table: duplicates the issuing model for a subset lifecycle.
+- `IsProforma` flag on VAT rows: every VAT check would treat it as a sellable invoice.
+- Partial unique index for one conversion: M3 under ADR-004; the row lock suffices.

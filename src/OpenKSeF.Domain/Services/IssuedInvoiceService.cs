@@ -32,6 +32,8 @@ public class IssuedInvoiceService(
     public const string UseFinalCorrectionCode = "INV-KOR-USE-ROZ";
     public const string TemplateKindCode = "INV-TEMPLATE-KIND";
     public const string TemplateZeroCode = "INV-TEMPLATE-ZERO";
+    public const string ProformaStateCode = "INV-PRO-STATE";
+    public const string ProformaConvertedCode = "INV-PRO-CONVERTED";
     private const int MaxSuggestions = 20;
 
     private const int MaxLines = 1000;
@@ -64,10 +66,26 @@ public class IssuedInvoiceService(
                 case "Rejected":
                     query = query.Where(i => i.Status == IssuedInvoiceStatus.Rejected);
                     break;
+                case "Issued":
+                    query = query.Where(i => i.Status == IssuedInvoiceStatus.Issued);
+                    break;
                 default:
-                    errors.Add(new("INV-VAL-080", "status", "Dozwolone statusy: Draft, Sending, Accepted, Rejected"));
+                    errors.Add(new("INV-VAL-080", "status", "Dozwolone statusy: Draft, Sending, Accepted, Rejected, Issued"));
                     break;
             }
+        }
+
+        switch (filter.InvoiceType)
+        {
+            case null or "":
+                query = query.Where(i => i.InvoiceType != IssuedInvoiceType.Pro);
+                break;
+            case "PRO":
+                query = query.Where(i => i.InvoiceType == IssuedInvoiceType.Pro);
+                break;
+            default:
+                errors.Add(new("INV-VAL-082", "invoiceType", "Dozwolony rodzaj dokumentu: PRO"));
+                break;
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Month))
@@ -136,7 +154,7 @@ public class IssuedInvoiceService(
         var totalCount = await own.CountAsync(ct);
 
         List<IssuedFeedRow> externalRows = [];
-        if (string.IsNullOrWhiteSpace(filter.Status) || filter.Status == "Accepted")
+        if (string.IsNullOrEmpty(filter.InvoiceType) && (string.IsNullOrWhiteSpace(filter.Status) || filter.Status == "Accepted"))
         {
             var external = ExternalIssued(tenantId, filter);
             externalRows = await external
@@ -225,9 +243,15 @@ public class IssuedInvoiceService(
         return await exchangeRates.LatestMidBeforeAsync(code!, Min(issued, saleDate ?? issued), ct);
     }
 
-    public async Task<IssuedInvoiceView> CreateAsync(Guid tenantId, IssuedInvoiceDraftInput input, CancellationToken ct = default)
+    public async Task<IssuedInvoiceView> CreateAsync(Guid tenantId, IssuedInvoiceDraftInput input, string? invoiceType = null, CancellationToken ct = default)
     {
-        var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, Today(), Now());
+        var type = invoiceType switch
+        {
+            null or "VAT" => IssuedInvoiceType.Vat,
+            "PRO" => IssuedInvoiceType.Pro,
+            _ => throw new InvoiceValidationException([new("INV-VAL-082", "invoiceType", "Dozwolony rodzaj dokumentu: VAT lub PRO")])
+        };
+        var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, Today(), Now(), type);
         Apply(invoice, input);
         await ProposeRateIfMissingAsync(invoice, ct);
         db.IssuedInvoices.Add(invoice);
@@ -235,12 +259,12 @@ public class IssuedInvoiceService(
         return await ViewAsync(invoice, ct);
     }
 
-    public async Task<IssuedInvoiceView?> UpdateAsync(Guid tenantId, Guid id, IssuedInvoiceDraftInput input, uint? expectedVersion = null, CancellationToken ct = default)
+    public async Task<IssuedInvoiceView?> UpdateAsync(Guid tenantId, Guid id, IssuedInvoiceDraftInput input, uint? expectedVersion = null, string? invoiceType = null, CancellationToken ct = default)
     {
         var invoice = await LoadAsync(tenantId, id, ct);
         if (invoice is null)
             return null;
-        EnsureKind(invoice, null);
+        EnsureKind(invoice, invoiceType);
         if (!invoice.IsEditable)
             throw new InvoiceStateException("Faktury w tym statusie nie można zmieniać");
         EnsureVersion(invoice, expectedVersion);
@@ -257,6 +281,8 @@ public class IssuedInvoiceService(
         var invoice = await LoadAsync(tenantId, id, ct);
         if (invoice is null)
             return false;
+        if (invoice is { InvoiceType: IssuedInvoiceType.Pro, Status: IssuedInvoiceStatus.Issued })
+            return await DeleteIssuedProformaAsync(tenantId, invoice, expectedVersion, ct);
         if (invoice.Status != IssuedInvoiceStatus.Draft)
             throw new InvoiceStateException("Usunąć można tylko szkic");
         EnsureVersion(invoice, expectedVersion);
@@ -264,6 +290,49 @@ public class IssuedInvoiceService(
         db.IssuedInvoices.Remove(invoice);
         await SaveOrConflictAsync(ct);
         return true;
+    }
+
+    /// <summary>The row lock serialises delete with conversion, so a proforma is never deleted while a VAT draft is created from it.</summary>
+    private async Task<bool> DeleteIssuedProformaAsync(Guid tenantId, IssuedInvoice proforma, uint? expectedVersion, CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlAsync($"""SELECT 1 FROM "IssuedInvoices" WHERE "TenantId" = {tenantId} AND "Id" = {proforma.Id} FOR UPDATE""", ct);
+        if (await db.IssuedInvoices.AnyAsync(i => i.TenantId == tenantId && i.ProformaId == proforma.Id, ct))
+            throw new InvoiceStateException("Proformy przekształconej w fakturę nie można usunąć.", ProformaConvertedCode);
+        EnsureVersion(proforma, expectedVersion);
+
+        db.IssuedInvoices.Remove(proforma);
+        await SaveOrConflictAsync(ct);
+        await transaction.CommitAsync(ct);
+        return true;
+    }
+
+    public async Task<(IssuedInvoiceView View, bool Created)?> ConvertProformaAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        if (!await db.IssuedInvoices.AnyAsync(i => i.TenantId == tenantId && i.Id == id, ct))
+            return null;
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var tenantLocked = await db.Database
+            .SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "Tenants" WHERE "Id" = {tenantId} FOR KEY SHARE""")
+            .ToListAsync(ct);
+        if (tenantLocked.Count == 0)
+            return null;
+
+        await db.Database.ExecuteSqlAsync($"""SELECT 1 FROM "IssuedInvoices" WHERE "TenantId" = {tenantId} AND "Id" = {id} FOR UPDATE""", ct);
+        var proforma = await LoadAsync(tenantId, id, ct);
+        if (proforma is null)
+            return null;
+        if (proforma is not { InvoiceType: IssuedInvoiceType.Pro, Status: IssuedInvoiceStatus.Issued })
+            throw new InvoiceStateException("Fakturę utworzysz tylko z wystawionej proformy.", ProformaStateCode);
+
+        var existing = await db.IssuedInvoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.TenantId == tenantId && i.ProformaId == id, ct);
+        if (existing is not null)
+            return (await ViewAsync(existing, ct), false);
+
+        var view = await AddCopyAsync(tenantId, InvoiceTemplate.Capture(tenantId, proforma, proforma, Now()), ct, IssuedInvoiceType.Vat, proforma.Id);
+        await transaction.CommitAsync(ct);
+        return (view, true);
     }
 
     public async Task<(IssuedInvoiceView View, bool Issued)?> IssueAsync(Guid tenantId, Guid id, uint? expectedVersion = null, bool confirmPastIssueDate = false, uint? expectedSellerVersion = null, string? invoiceType = null, CancellationToken ct = default)
@@ -283,10 +352,11 @@ public class IssuedInvoiceService(
         if (sellerNip is null)
             return null;
 
-        if (!confirmPastIssueDate && IssueChecks.PastIssueDate(invoice, Today()) is { } pastIssueDate)
+        var isProforma = invoice.InvoiceType == IssuedInvoiceType.Pro;
+        if (!isProforma && !confirmPastIssueDate && IssueChecks.PastIssueDate(invoice, Today()) is { } pastIssueDate)
             throw new InvoiceValidationException([pastIssueDate]);
 
-        if (!invoice.InvoiceType.IsCorrection())
+        if (!isProforma && !invoice.InvoiceType.IsCorrection())
             await EnsureProposedRateIsCurrentAsync(invoice, ct);
 
         var now = Now();
@@ -340,14 +410,17 @@ public class IssuedInvoiceService(
             invoice.IssueDate);
 
         invoice.Issue(profile, sellerNip, number, now, original, state, refs?.Deducted, advanceCount);
-        var written = writer.Write(invoice, now, refs);
-        if (!written.IsValid)
-            throw new InvoiceValidationException(written.SchemaErrors.Select(e => new InvoiceCheck("INV-XSD", null, $"Faktura nie spełnia schematu FA(3): {e}")).ToList());
+        if (!isProforma)
+        {
+            var written = writer.Write(invoice, now, refs);
+            if (!written.IsValid)
+                throw new InvoiceValidationException(written.SchemaErrors.Select(e => new InvoiceCheck("INV-XSD", null, $"Faktura nie spełnia schematu FA(3): {e}")).ToList());
 
-        invoice.AttachSentXml(
-            written.Xml,
-            environment.Current,
-            environment.BuildVerificationUrl(sellerNip, invoice.IssueDate, written.Xml));
+            invoice.AttachSentXml(
+                written.Xml,
+                environment.Current,
+                environment.BuildVerificationUrl(sellerNip, invoice.IssueDate, written.Xml));
+        }
 
         try
         {
@@ -369,6 +442,7 @@ public class IssuedInvoiceService(
             {
                 IssuedInvoiceTypes.KorSeries => $"Numer {number} jest już użyty. Ustaw wyższy następny numer korekt w danych do faktur.",
                 IssuedInvoiceTypes.ZalSeries => $"Numer {number} jest już użyty. Ustaw wyższy następny numer faktur zaliczkowych w danych do faktur.",
+                IssuedInvoiceTypes.ProSeries => $"Numer {number} jest już użyty. Ustaw wyższy następny numer proform w danych do faktur.",
                 _ => $"Numer {number} jest już użyty. Ustaw wyższy następny numer w danych do faktur."
             });
         }
@@ -386,7 +460,8 @@ public class IssuedInvoiceService(
             throw new InvoiceStateException("Tej faktury nie można skopiować w trakcie wysyłki do KSeF. Poczekaj na wynik wysyłki.");
 
         var (original, state) = await CopySourceAsync(tenantId, source, ct);
-        return await AddCopyAsync(tenantId, InvoiceTemplate.Capture(tenantId, original, state, Now()), ct);
+        return await AddCopyAsync(tenantId, InvoiceTemplate.Capture(tenantId, original, state, Now()), ct,
+            source.InvoiceType == IssuedInvoiceType.Pro ? IssuedInvoiceType.Pro : IssuedInvoiceType.Vat);
     }
 
     private async Task<(IssuedInvoice Original, IssuedInvoice State)> CopySourceAsync(Guid tenantId, IssuedInvoice source, CancellationToken ct)
@@ -944,10 +1019,10 @@ public class IssuedInvoiceService(
             errors.Add(new("INV-VAL-030", "buyer.countryCode", "Podaj kraj nabywcy inny niż Polska"));
     }
 
-    private async Task<IssuedInvoiceView> AddCopyAsync(Guid tenantId, InvoiceTemplate snapshot, CancellationToken ct)
+    private async Task<IssuedInvoiceView> AddCopyAsync(Guid tenantId, InvoiceTemplate snapshot, CancellationToken ct, IssuedInvoiceType type = IssuedInvoiceType.Vat, Guid? proformaId = null)
     {
         var today = Today();
-        var copy = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, today, Now());
+        var copy = IssuedInvoice.Draft(Guid.NewGuid(), tenantId, today, Now(), type, proformaId);
         copy.SetBuyer(snapshot.BuyerKind, snapshot.BuyerNip, snapshot.BuyerName, snapshot.BuyerAddressLine1, snapshot.BuyerAddressLine2);
         copy.SetForeignBuyer(snapshot.BuyerCountryCode, snapshot.BuyerForeignId);
         copy.SetCurrency(snapshot.Currency, null, null);
@@ -1165,6 +1240,10 @@ public class IssuedInvoiceService(
     private async Task<IssuedInvoiceView> ViewAsync(IssuedInvoice invoice, CancellationToken ct)
     {
         var view = await DocumentViewAsync(invoice, ct);
+        if (invoice.ProformaId is { } proformaId)
+            view = view with { Proforma = await db.IssuedInvoices.AsNoTracking().SingleOrDefaultAsync(i => i.TenantId == invoice.TenantId && i.Id == proformaId, ct) };
+        if (invoice.InvoiceType == IssuedInvoiceType.Pro)
+            view = view with { ConvertedTo = await db.IssuedInvoices.AsNoTracking().FirstOrDefaultAsync(i => i.TenantId == invoice.TenantId && i.ProformaId == invoice.Id, ct) };
         if (invoice.OrderChainId is not { } chainId)
             return view;
 

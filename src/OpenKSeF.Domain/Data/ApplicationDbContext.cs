@@ -171,6 +171,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(i => new { i.TenantId, i.KsefNumber });
             entity.HasIndex(i => new { i.TenantId, i.CorrectedInvoiceId });
             entity.HasIndex(i => new { i.TenantId, i.OrderChainId });
+            entity.HasIndex(i => new { i.TenantId, i.ProformaId });
             entity.Property(i => i.AdvanceAmount).HasPrecision(18, 2);
             entity.Property(i => i.InvoiceType)
                 .HasConversion(t => t.Code(), code => IssuedInvoiceTypes.Parse(code))
@@ -255,6 +256,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(p => p.NumberingPattern).IsRequired().HasMaxLength(100);
             entity.Property(p => p.CorrectionNumberingPattern).IsRequired().HasMaxLength(100).HasDefaultValue(InvoiceNumbering.DefaultCorrectionPattern);
             entity.Property(p => p.AdvanceNumberingPattern).IsRequired().HasMaxLength(100).HasDefaultValue(InvoiceNumbering.DefaultAdvancePattern);
+            entity.Property(p => p.ProformaNumberingPattern).IsRequired().HasMaxLength(100).HasDefaultValue(InvoiceNumbering.DefaultProformaPattern);
             entity.HasOne<Tenant>()
                 .WithOne()
                 .HasForeignKey<SellerProfile>(p => p.TenantId)

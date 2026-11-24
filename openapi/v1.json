@@ -1319,6 +1319,9 @@
           "chain": {
             "$ref": "#/components/schemas/OrderChainResponse"
           },
+          "convertedTo": {
+            "$ref": "#/components/schemas/CorrectionListItemResponse"
+          },
           "correctedInvoice": {
             "$ref": "#/components/schemas/CorrectedInvoiceRefResponse"
           },
@@ -1417,6 +1420,9 @@
           "paymentMethod": {
             "nullable": true,
             "type": "string"
+          },
+          "proforma": {
+            "$ref": "#/components/schemas/CorrectionListItemResponse"
           },
           "saleDate": {
             "format": "date",
@@ -1802,6 +1808,19 @@
           "numberingPattern": {
             "nullable": true,
             "type": "string"
+          },
+          "proformaNextNumber": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "proformaNextNumberPeriod": {
+            "nullable": true,
+            "type": "string"
+          },
+          "proformaNumberingPattern": {
+            "nullable": true,
+            "type": "string"
           }
         },
         "type": "object"
@@ -1904,6 +1923,22 @@
             "type": "string"
           },
           "numberingPattern": {
+            "nullable": true,
+            "type": "string"
+          },
+          "proformaNextNumber": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "proformaNextNumberPeriod": {
+            "nullable": true,
+            "type": "string"
+          },
+          "proformaNextNumberPreview": {
+            "nullable": true,
+            "type": "string"
+          },
+          "proformaNumberingPattern": {
             "nullable": true,
             "type": "string"
           }
@@ -6808,6 +6843,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "invoiceType",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6884,6 +6926,13 @@
             "required": true,
             "schema": {
               "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "invoiceType",
+            "schema": {
               "type": "string"
             }
           }
@@ -7223,6 +7272,13 @@
           {
             "in": "query",
             "name": "q",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "invoiceType",
             "schema": {
               "type": "string"
             }
@@ -7943,6 +7999,13 @@
               "format": "int64",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "invoiceType",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -8230,6 +8293,115 @@
           }
         ],
         "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "IssuedInvoices"
+        ]
+      }
+    },
+    "/api/tenants/{tenantId}/issued-invoices/{id}/convert": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedInvoiceResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
           "201": {
             "content": {
               "application/json": {

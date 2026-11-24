@@ -21,7 +21,10 @@ public record SellerProfileInput(
     string? CorrectionNextNumberPeriod = null,
     string? AdvanceNumberingPattern = null,
     int? AdvanceNextNumber = null,
-    string? AdvanceNextNumberPeriod = null);
+    string? AdvanceNextNumberPeriod = null,
+    string? ProformaNumberingPattern = null,
+    int? ProformaNextNumber = null,
+    string? ProformaNextNumberPeriod = null);
 
 public record SellerProfileView(
     SellerProfile Profile,
@@ -34,7 +37,10 @@ public record SellerProfileView(
     string CorrectionNextNumberPreview,
     int AdvanceNextNumber,
     string AdvanceNextNumberPeriod,
-    string AdvanceNextNumberPreview);
+    string AdvanceNextNumberPreview,
+    int ProformaNextNumber,
+    string ProformaNextNumberPeriod,
+    string ProformaNextNumberPreview);
 
 public interface ISellerProfileService
 {

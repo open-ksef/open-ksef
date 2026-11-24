@@ -74,7 +74,7 @@ public static class IssueChecks
         {
             if (invoice.BuyerKind != BuyerKind.Foreign)
                 errors.Add(new("INV-VAL-091", "currency", "Waluta inna niż PLN jest dostępna tylko dla firmy zagranicznej"));
-            else if (invoice.ExchangeRate is not > 0)
+            else if (invoice.InvoiceType != IssuedInvoiceType.Pro && invoice.ExchangeRate is not > 0)
                 errors.Add(new("INV-VAL-092", "exchangeRate", "Podaj kurs waluty większy od zera"));
         }
 

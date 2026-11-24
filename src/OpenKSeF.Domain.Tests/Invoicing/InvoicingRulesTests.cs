@@ -28,6 +28,23 @@ public class InvoicingRulesTests
     }
 
     [Fact]
+    public void IssuedInvoiceType_EveryValueRoundTripsAndOwnsItsSeries()
+    {
+        var profile = new SellerProfile(Guid.NewGuid());
+        Assert.All(Enum.GetValues<IssuedInvoiceType>(), t =>
+        {
+            Assert.Equal(t, IssuedInvoiceTypes.Parse(t.Code()));
+            Assert.Contains(t, IssuedInvoiceTypes.TypesOf(t.Series()));
+            Assert.NotNull(profile.Pattern(t));
+        });
+        Assert.Equal(Enum.GetValues<IssuedInvoiceType>().Length, Enum.GetValues<IssuedInvoiceType>().Select(t => t.Code()).Distinct().Count());
+        Assert.Equal("PRO", IssuedInvoiceType.Pro.Code());
+        Assert.Equal(IssuedInvoiceTypes.ProSeries, IssuedInvoiceType.Pro.Series());
+        Assert.Equal(InvoiceNumbering.DefaultProformaPattern, profile.Pattern(IssuedInvoiceType.Pro));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ((IssuedInvoiceType)99).Code());
+    }
+
+    [Fact]
     public void VatRate_EveryEnumValueHasCode_AndIssuableIsMvpList()
     {
         Assert.All(Enum.GetValues<VatRate>(), r => Assert.True(VatRates.TryParse(r.Code(), out _)));
