@@ -16,6 +16,7 @@ public sealed class SellerProfile
     public string NumberingPattern { get; private set; } = InvoiceNumbering.DefaultPattern;
     public string CorrectionNumberingPattern { get; private set; } = InvoiceNumbering.DefaultCorrectionPattern;
     public string AdvanceNumberingPattern { get; private set; } = InvoiceNumbering.DefaultAdvancePattern;
+    public string ProformaNumberingPattern { get; private set; } = InvoiceNumbering.DefaultProformaPattern;
 
     public bool IsComplete => !string.IsNullOrWhiteSpace(LegalName) && !string.IsNullOrWhiteSpace(AddressLine1);
 
@@ -43,6 +44,12 @@ public sealed class SellerProfile
     {
         if (pattern is not null)
             AdvanceNumberingPattern = pattern.Trim();
+    }
+
+    public void SetProformaNumberingPattern(string? pattern)
+    {
+        if (pattern is not null)
+            ProformaNumberingPattern = pattern.Trim();
     }
 
     /// <summary>Null keeps the stored value, so older clients cannot wipe it; an empty string clears it.</summary>

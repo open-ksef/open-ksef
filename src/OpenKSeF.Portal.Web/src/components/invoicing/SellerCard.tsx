@@ -6,7 +6,7 @@ import { EnvBadge } from './KsefStatusBadge'
 interface SellerCardProps {
   nip: string
   name: string | null
-  environment: KsefEnvironment
+  environment?: KsefEnvironment
 }
 
 export function SellerCard({ nip, name, environment }: SellerCardProps): ReactElement {
@@ -14,7 +14,7 @@ export function SellerCard({ nip, name, environment }: SellerCardProps): ReactEl
     <section className="inv-seller" aria-label="Sprzedawca" data-testid="seller-card">
       <span className="inv-caption">Sprzedawca</span>
       <b title={name ?? undefined}>{name ?? '—'}</b>
-      <span className="mono">NIP {nip}</span> <EnvBadge environment={environment} />
+      <span className="mono">NIP {nip}</span> {environment ? <EnvBadge environment={environment} /> : null}
     </section>
   )
 }

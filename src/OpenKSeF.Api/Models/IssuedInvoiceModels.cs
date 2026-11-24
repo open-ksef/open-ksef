@@ -112,7 +112,9 @@ public record IssuedInvoiceResponse(
     decimal? AdvanceAmount = null,
     decimal? AmountBefore = null,
     IReadOnlyList<AdvanceInvoiceRefResponse>? AdvanceInvoices = null,
-    OrderChainResponse? Chain = null);
+    OrderChainResponse? Chain = null,
+    CorrectionListItemResponse? Proforma = null,
+    CorrectionListItemResponse? ConvertedTo = null);
 
 public record AdvanceInvoiceRefResponse(Guid Id, string? Number, string? KsefNumber);
 

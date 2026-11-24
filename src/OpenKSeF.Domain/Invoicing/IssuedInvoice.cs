@@ -30,6 +30,7 @@ public sealed class IssuedInvoice
     public CorrectionMode? CorrectionMode { get; private set; }
     public int? CorrectionType { get; private set; }
     public Guid? OrderChainId { get; private set; }
+    public Guid? ProformaId { get; private set; }
     public decimal? AdvanceAmount { get; private set; }
     public IssuedInvoiceStatus Status { get; private set; }
     public string? Number { get; private set; }
@@ -94,7 +95,7 @@ public sealed class IssuedInvoice
 
     public IReadOnlyList<IssuedInvoiceLine> Lines => _lines;
 
-    public bool NeedsExchangeRate => BuyerKind == BuyerKind.Foreign && Currency != DefaultCurrency && ExchangeRate is null;
+    public bool NeedsExchangeRate => InvoiceType != IssuedInvoiceType.Pro && BuyerKind == BuyerKind.Foreign && Currency != DefaultCurrency && ExchangeRate is null;
 
     public bool IsEditable => Status is IssuedInvoiceStatus.Draft or IssuedInvoiceStatus.Rejected;
 
@@ -112,10 +113,13 @@ public sealed class IssuedInvoice
 
     private IssuedInvoice() { }
 
-    public static IssuedInvoice Draft(Guid id, Guid tenantId, DateOnly today, DateTime now) => new()
+    /// <summary>A VAT draft converted from a proforma carries its id; a proforma draft has type PRO.</summary>
+    public static IssuedInvoice Draft(Guid id, Guid tenantId, DateOnly today, DateTime now, IssuedInvoiceType type = IssuedInvoiceType.Vat, Guid? proformaId = null) => new()
     {
         Id = id,
         TenantId = tenantId,
+        InvoiceType = type,
+        ProformaId = proformaId,
         Status = IssuedInvoiceStatus.Draft,
         BuyerKind = BuyerKind.Company,
         IssueDate = today,
@@ -420,6 +424,15 @@ public sealed class IssuedInvoice
         }
 
         Number = assigned;
+        IssuedAt = now;
+        UpdatedAt = now;
+        if (InvoiceType == IssuedInvoiceType.Pro)
+        {
+            Status = IssuedInvoiceStatus.Issued;
+            NextAttemptAt = null;
+            return;
+        }
+
         Status = IssuedInvoiceStatus.Queued;
         SentXml = null;
         VerificationUrl = null;
@@ -432,12 +445,11 @@ public sealed class IssuedInvoice
         AttemptCount = 0;
         LastError = null;
         NextAttemptAt = now;
-        IssuedAt = now;
-        UpdatedAt = now;
     }
 
     public void AttachSentXml(byte[] xml, string ksefEnvironment, string? verificationUrl)
     {
+        EnsureNotProforma();
         EnsureStatus(IssuedInvoiceStatus.Queued);
         SentXml = xml;
         KsefEnvironment = ksefEnvironment;
@@ -446,6 +458,7 @@ public sealed class IssuedInvoice
 
     public void MarkSendStarted(string sessionRef, DateTime now)
     {
+        EnsureNotProforma();
         EnsureStatus(IssuedInvoiceStatus.Queued, IssuedInvoiceStatus.Sending);
         KsefSessionRef = sessionRef;
         SendStartedAt = now;
@@ -544,6 +557,12 @@ public sealed class IssuedInvoice
     {
         if (!allowed.Contains(Status))
             throw new InvoiceStateException($"Invoice in status {Status} cannot do this; expected {string.Join(" or ", allowed)}.");
+    }
+
+    private void EnsureNotProforma()
+    {
+        if (InvoiceType == IssuedInvoiceType.Pro)
+            throw new InvoiceStateException("A proforma is never sent to KSeF.");
     }
 
     private void RecalculateTotals() => RecalculateTotals(null);

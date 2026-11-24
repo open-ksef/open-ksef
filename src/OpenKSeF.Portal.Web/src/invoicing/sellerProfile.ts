@@ -16,6 +16,8 @@ export interface SellerProfileFormValue {
   correctionNextNumber: string
   advanceNumberingPattern: string
   advanceNextNumber: string
+  proformaNumberingPattern: string
+  proformaNextNumber: string
   bankSwift: string
   bankName: string
   foreignBankAccount: string
@@ -25,6 +27,7 @@ export interface SellerProfileFormValue {
 
 export const DEFAULT_CORRECTION_PATTERN = 'KOR/{nr}/{MM}/{RRRR}'
 export const DEFAULT_ADVANCE_PATTERN = 'ZAL/{nr}/{MM}/{RRRR}'
+export const DEFAULT_PROFORMA_PATTERN = 'PRO/{nr}/{MM}/{RRRR}'
 
 export const NUMBER_TOKENS = ['{nr}', '{MM}', '{RRRR}'] as const
 
@@ -53,6 +56,8 @@ export function fromProfile(profile: SellerProfileResponse): SellerProfileFormVa
     correctionNextNumber: String(profile.correctionNextNumber ?? 1),
     advanceNumberingPattern: profile.advanceNumberingPattern ?? DEFAULT_ADVANCE_PATTERN,
     advanceNextNumber: String(profile.advanceNextNumber ?? 1),
+    proformaNumberingPattern: profile.proformaNumberingPattern ?? DEFAULT_PROFORMA_PATTERN,
+    proformaNextNumber: String(profile.proformaNextNumber ?? 1),
     bankSwift: profile.bankSwift ?? '',
     bankName: profile.bankName ?? '',
     foreignBankAccount: profile.foreignBankAccount ?? '',
@@ -86,6 +91,16 @@ export function validateSellerProfile(form: SellerProfileFormValue): Record<stri
   if (!/^\d+$/.test(form.advanceNextNumber) || Number(form.advanceNextNumber) < 1) {
     errors.advanceNextNumber = 'Następny numer musi być większy od zera'
   }
+  if (!form.proformaNumberingPattern.includes('{nr}')) {
+    errors.proformaNumberingPattern = 'Wzorzec numeracji musi zawierać {nr}'
+  } else if (
+    [form.numberingPattern.trim(), form.correctionNumberingPattern.trim(), form.advanceNumberingPattern.trim()].includes(form.proformaNumberingPattern.trim())
+  ) {
+    errors.proformaNumberingPattern = 'Wzorzec proform musi różnić się od wzorców faktur, korekt i zaliczek'
+  }
+  if (!/^\d+$/.test(form.proformaNextNumber) || Number(form.proformaNextNumber) < 1) {
+    errors.proformaNextNumber = 'Następny numer musi być większy od zera'
+  }
   return errors
 }
 
@@ -98,6 +113,7 @@ export function toSellerProfileRequest(
   const numberChanged = Number(form.nextNumber) !== profile.nextNumber
   const correctionNumberChanged = Number(form.correctionNextNumber) !== (profile.correctionNextNumber ?? 1)
   const advanceNumberChanged = Number(form.advanceNextNumber) !== (profile.advanceNextNumber ?? 1)
+  const proformaNumberChanged = Number(form.proformaNextNumber) !== (profile.proformaNextNumber ?? 1)
   return {
     legalName: text(form.legalName),
     addressLine1: text(form.addressLine1),
@@ -107,6 +123,7 @@ export function toSellerProfileRequest(
     numberingPattern: form.numberingPattern,
     correctionNumberingPattern: form.correctionNumberingPattern,
     advanceNumberingPattern: form.advanceNumberingPattern,
+    proformaNumberingPattern: form.proformaNumberingPattern,
     bankSwift: form.bankSwift.trim(),
     bankName: form.bankName.trim(),
     foreignBankAccount: form.foreignBankAccount.trim(),
@@ -125,6 +142,12 @@ export function toSellerProfileRequest(
       ? {
           advanceNextNumber: Number(form.advanceNextNumber),
           advanceNextNumberPeriod: numberingPeriod(form.advanceNumberingPattern, today),
+        }
+      : {}),
+    ...(proformaNumberChanged
+      ? {
+          proformaNextNumber: Number(form.proformaNextNumber),
+          proformaNextNumberPeriod: numberingPeriod(form.proformaNumberingPattern, today),
         }
       : {}),
   }

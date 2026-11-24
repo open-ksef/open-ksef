@@ -104,5 +104,7 @@
     "corrections": [],
     "remaining": 1230.00,
     "openDocumentId": "<openDocumentId>"
-  }
+  },
+  "proforma": null,
+  "convertedTo": null
 }

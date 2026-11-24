@@ -173,6 +173,12 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
     profile.advanceNextNumberPreview
       ? profile.advanceNextNumberPreview
       : previewNumber(form.advanceNumberingPattern, Number(form.advanceNextNumber) || 1, new Date())
+  const proformaPreview =
+    form.proformaNumberingPattern === profile.proformaNumberingPattern &&
+    form.proformaNextNumber === String(profile.proformaNextNumber) &&
+    profile.proformaNextNumberPreview
+      ? profile.proformaNextNumberPreview
+      : previewNumber(form.proformaNumberingPattern, Number(form.proformaNextNumber) || 1, new Date())
 
   return (
     <form onSubmit={onSubmit} noValidate className="inv-stack" aria-label="Dane do faktur">
@@ -350,6 +356,27 @@ function SellerProfileForm({ tenantId, profile, continueToDraft }: SellerProfile
             </div>
             <p className="inv-help" role="status">
               Następna faktura zaliczkowa otrzyma numer <span className="mono">{advancePreview}</span>. Faktura rozliczająca dostaje numer z serii faktur.
+            </p>
+            <div className="inv-grid">
+              <TextField
+                id="proforma-numbering-pattern"
+                label="Wzorzec numeru proformy"
+                value={form.proformaNumberingPattern}
+                error={errors.proformaNumberingPattern}
+                mono
+                onChange={(proformaNumberingPattern) => set({ proformaNumberingPattern })}
+              />
+              <TextField
+                id="proforma-next-number"
+                label="Następny numer proformy"
+                value={form.proformaNextNumber}
+                error={errors.proformaNextNumber ?? errors.proformaNextNumberPeriod}
+                numeric
+                onChange={(proformaNextNumber) => set({ proformaNextNumber: digitsOnly(proformaNextNumber) })}
+              />
+            </div>
+            <p className="inv-help" role="status">
+              Następna proforma otrzyma numer <span className="mono">{proformaPreview}</span>. Proformy mają własną numerację i nie trafiają do KSeF.
             </p>
           </section>
         </div>

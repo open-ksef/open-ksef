@@ -76,6 +76,31 @@ describe('Wystawione faktury, niepełne pobieranie', () => {
     container.remove()
   })
 
+  it('Proformy view lists only PRO, without KSeF column or note, and copies a proforma as a proforma', async () => {
+    const proforma = { ...invoice, id: 'p1', source: 'OpenKSeF', ksefNumber: null, number: 'PRO/1/11/2026', status: 'Issued', invoiceType: 'PRO' }
+    vi.mocked(copyIssuedInvoice).mockResolvedValue({ id: 'p2' } as never)
+    await render(feed([proforma], { issuedFetchIncomplete: true }), '/issued?tenantId=a&view=proformy')
+
+    expect(vi.mocked(listIssuedFeed).mock.calls[0][1]).toMatchObject({ invoiceType: 'PRO' })
+    expect(container.querySelector('h1')?.textContent).toBe('Proformy')
+    expect(table()?.textContent).toContain('Proforma · PRO/1/11/2026')
+    expect(table()?.textContent).toContain('Wystawiona')
+    expect(table()?.textContent).not.toContain('Numer KSeF')
+    expect(note()).toBeNull()
+    expect([...container.querySelectorAll('a')].find((link) => link.textContent?.includes('Nowa proforma'))?.getAttribute('href')).toBe('/issued/new?kind=PRO&tenantId=a')
+
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Kopiuj jako nową"]')!.click())
+    for (let tick = 0; tick < 4; tick++) await act(flush)
+    expect(copyIssuedInvoice).toHaveBeenCalledWith('a', 'p1', 'PRO')
+  })
+
+  it('default view asks the feed without invoiceType', async () => {
+    await render(feed([invoice]))
+
+    expect(vi.mocked(listIssuedFeed).mock.calls[0][1]).toMatchObject({ invoiceType: undefined })
+    expect(container.querySelector('[aria-label="Rodzaj dokumentu"] [aria-pressed="true"]')?.textContent).toBe('Faktury')
+  })
+
   it('shows an info note above the list, the list stays', async () => {
     await render(feed([invoice], { issuedFetchIncomplete: true }))
 
@@ -171,7 +196,7 @@ describe('Wystawione faktury, niepełne pobieranie', () => {
     for (let tick = 0; tick < 4; tick++) await act(flush)
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 300)))
 
-    expect(copyIssuedInvoice).toHaveBeenCalledWith('a', 'vat')
+    expect(copyIssuedInvoice).toHaveBeenCalledWith('a', 'vat', undefined)
     expect(router.state.location.pathname).toBe('/issued/new-1/edit')
     expect(container.textContent).toContain('Formularz szkicu')
   })

@@ -32,13 +32,14 @@ public class IssuedInvoicesController(
         [FromQuery] string? status = null,
         [FromQuery] string? month = null,
         [FromQuery] string? q = null,
+        [FromQuery] string? invoiceType = null,
         CancellationToken ct = default) =>
         GuardedAsync(StatusCodes.Status400BadRequest, async () =>
         {
             page = Math.Max(page, 1);
             pageSize = pageSize < 1 ? 20 : Math.Min(pageSize, 100);
 
-            var query = issuedInvoices.Query(tenantId, new IssuedInvoiceListFilter(status, month, q));
+            var query = issuedInvoices.Query(tenantId, new IssuedInvoiceListFilter(status, month, q, invoiceType));
             var totalCount = await query.CountAsync(ct);
             var items = await query
                 .OrderByDescending(i => i.IssueDate)
@@ -79,6 +80,7 @@ public class IssuedInvoicesController(
         [FromQuery] string? status = null,
         [FromQuery] string? month = null,
         [FromQuery] string? q = null,
+        [FromQuery] string? invoiceType = null,
         CancellationToken ct = default) =>
         GuardedAsync(StatusCodes.Status400BadRequest, async () =>
         {
@@ -86,7 +88,7 @@ public class IssuedInvoicesController(
             pageSize = pageSize < 1 ? 20 : Math.Min(pageSize, 100);
             page = Math.Min(page, MaxFeedRows / pageSize);
 
-            var (rows, totalCount) = await issuedInvoices.FeedAsync(tenantId, new IssuedInvoiceListFilter(status, month, q), page, pageSize, ct);
+            var (rows, totalCount) = await issuedInvoices.FeedAsync(tenantId, new IssuedInvoiceListFilter(status, month, q, invoiceType), page, pageSize, ct);
             var items = rows.Select(r => new IssuedFeedItemResponse(
                 r.Id,
                 r.IsExternal ? "External" : "OpenKSeF",
@@ -216,9 +218,9 @@ public class IssuedInvoicesController(
     [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public Task<IActionResult> Create(Guid tenantId, IssuedInvoiceDraftRequest request, CancellationToken ct) =>
+    public Task<IActionResult> Create(Guid tenantId, IssuedInvoiceDraftRequest request, CancellationToken ct, [FromQuery] string? invoiceType = null) =>
         GuardedAsync(StatusCodes.Status400BadRequest, async () =>
-            CreatedInvoice(tenantId, await issuedInvoices.CreateAsync(tenantId, ToInput(request), ct)));
+            CreatedInvoice(tenantId, await issuedInvoices.CreateAsync(tenantId, ToInput(request), invoiceType, ct)));
 
     [HttpPut("{id:guid}")]
     [TenantAccess(TenantPermissions.IssuingDraft)]
@@ -227,9 +229,9 @@ public class IssuedInvoicesController(
     [ProducesResponseType(typeof(ValidationEnvelope), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public Task<IActionResult> Update(Guid tenantId, Guid id, IssuedInvoiceDraftRequest request, [FromQuery] uint? version, CancellationToken ct) =>
+    public Task<IActionResult> Update(Guid tenantId, Guid id, IssuedInvoiceDraftRequest request, [FromQuery] uint? version, CancellationToken ct, [FromQuery] string? invoiceType = null) =>
         GuardedAsync(StatusCodes.Status400BadRequest, async () =>
-            await issuedInvoices.UpdateAsync(tenantId, id, ToInput(request), version, ct) is { } view ? Ok(ToResponse(view)) : NotFound());
+            await issuedInvoices.UpdateAsync(tenantId, id, ToInput(request), version, invoiceType, ct) is { } view ? Ok(ToResponse(view)) : NotFound());
 
     [HttpDelete("{id:guid}")]
     [TenantAccess(TenantPermissions.IssuingDraft)]
@@ -265,6 +267,20 @@ public class IssuedInvoicesController(
     public Task<IActionResult> Copy(Guid tenantId, Guid id, CancellationToken ct, [FromQuery] string? invoiceType = null) =>
         GuardedAsync(StatusCodes.Status400BadRequest, async () =>
             await issuedInvoices.CopyAsync(tenantId, id, invoiceType, ct) is { } view ? CreatedInvoice(tenantId, view) : NotFound());
+
+    [HttpPost("{id:guid}/convert")]
+    [TenantAccess(TenantPermissions.IssuingDraft)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(IssuedInvoiceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public Task<IActionResult> ConvertProforma(Guid tenantId, Guid id, CancellationToken ct) =>
+        GuardedAsync(StatusCodes.Status400BadRequest, async () =>
+        {
+            if (await issuedInvoices.ConvertProformaAsync(tenantId, id, ct) is not { } result)
+                return NotFound();
+            return result.Created ? CreatedInvoice(tenantId, result.View) : Ok(ToResponse(result.View));
+        });
 
     [HttpPost("{id:guid}/corrections")]
     [TenantAccess(TenantPermissions.IssuingDraft)]
@@ -563,7 +579,9 @@ public class IssuedInvoicesController(
                     chain.Final is null ? null : ChainItem(chain.Final),
                     chain.Corrections.Select(ChainItem).ToList(),
                     chain.Remaining,
-                    chain.OpenDocumentId));
+                    chain.OpenDocumentId),
+            view.Proforma is null ? null : ChainItem(view.Proforma),
+            view.ConvertedTo is null ? null : ChainItem(view.ConvertedTo));
     }
 
     private static CorrectionListItemResponse ChainItem(IssuedInvoice c) =>

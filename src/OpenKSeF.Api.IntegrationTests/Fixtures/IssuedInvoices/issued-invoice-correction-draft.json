@@ -88,5 +88,7 @@
   "advanceAmount": null,
   "amountBefore": null,
   "advanceInvoices": null,
-  "chain": null
+  "chain": null,
+  "proforma": null,
+  "convertedTo": null
 }

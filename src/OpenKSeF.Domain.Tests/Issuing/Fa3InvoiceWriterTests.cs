@@ -23,10 +23,11 @@ public class Fa3InvoiceWriterTests
         string number = "FV/1/11/2026",
         Guid? tenantId = null,
         DateTime? now = null,
-        Action<SellerProfile>? configureProfile = null)
+        Action<SellerProfile>? configureProfile = null,
+        IssuedInvoiceType type = IssuedInvoiceType.Vat)
     {
         var at = now ?? Now;
-        var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId ?? Guid.NewGuid(), DateOnly.FromDateTime(at), at);
+        var invoice = IssuedInvoice.Draft(Guid.NewGuid(), tenantId ?? Guid.NewGuid(), DateOnly.FromDateTime(at), at, type);
         invoice.SetBuyer(BuyerKind.Company, buyerNip, "Nabywca sp. z o.o.", "ul. Długa 2", "00-002 Warszawa");
         configure(invoice);
         var profile = new SellerProfile(invoice.TenantId);

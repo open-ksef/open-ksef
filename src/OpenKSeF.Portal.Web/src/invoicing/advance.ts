@@ -65,9 +65,10 @@ export const KIND_LABELS: Record<IssuedInvoiceType, string> = {
   ROZ: 'Faktura rozliczająca',
   KOR_ZAL: 'Korekta faktury zaliczkowej',
   KOR_ROZ: 'Korekta faktury rozliczającej',
+  PRO: 'Faktura proforma',
 }
 
-export const LIST_KIND_LABELS: Partial<Record<IssuedInvoiceType, string>> = { KOR: 'Korekta', ZAL: 'Zaliczka', ROZ: 'Rozliczenie', KOR_ZAL: 'Korekta', KOR_ROZ: 'Korekta' }
+export const LIST_KIND_LABELS: Partial<Record<IssuedInvoiceType, string>> = { KOR: 'Korekta', ZAL: 'Zaliczka', ROZ: 'Rozliczenie', KOR_ZAL: 'Korekta', KOR_ROZ: 'Korekta', PRO: 'Proforma' }
 
 export const isChainDraft = (invoice: { invoiceType?: IssuedInvoiceType }): boolean => invoice.invoiceType === 'ZAL' || invoice.invoiceType === 'ROZ'
 

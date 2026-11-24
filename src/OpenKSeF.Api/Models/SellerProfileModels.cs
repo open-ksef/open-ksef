@@ -19,7 +19,10 @@ public record SellerProfileRequest(
     string? CorrectionNextNumberPeriod = null,
     string? AdvanceNumberingPattern = null,
     int? AdvanceNextNumber = null,
-    string? AdvanceNextNumberPeriod = null);
+    string? AdvanceNextNumberPeriod = null,
+    string? ProformaNumberingPattern = null,
+    int? ProformaNextNumber = null,
+    string? ProformaNextNumberPeriod = null);
 
 public record SellerProfileResponse(
     string? LegalName,
@@ -46,4 +49,8 @@ public record SellerProfileResponse(
     string AdvanceNumberingPattern = "ZAL/{nr}/{MM}/{RRRR}",
     int AdvanceNextNumber = 1,
     string? AdvanceNextNumberPeriod = null,
-    string? AdvanceNextNumberPreview = null);
+    string? AdvanceNextNumberPreview = null,
+    string ProformaNumberingPattern = "PRO/{nr}/{MM}/{RRRR}",
+    int ProformaNextNumber = 1,
+    string? ProformaNextNumberPeriod = null,
+    string? ProformaNextNumberPreview = null);

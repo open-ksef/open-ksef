@@ -211,6 +211,7 @@ describe('issuing endpoints', () => {
     await issued.deleteIssuedInvoice('t-1', 'i-1')
     await issued.issueIssuedInvoice('t-1', 'i-1')
     await issued.copyIssuedInvoice('t-1', 'i-1')
+    await issued.convertProforma('t-1', 'p-1')
     await issued.getIssuedInvoiceXml('t-1', 'i-1')
     await issued.getIssuedInvoiceUpo('t-1', 'i-1')
     await getSellerProfile('t-1')
@@ -234,9 +235,10 @@ describe('issuing endpoints', () => {
       ['/nip-lookup/4444444444'],
     ])
     expect(apiClientMock.post.mock.calls).toEqual([
-      ['/tenants/t-1/issued-invoices', draft],
+      ['/tenants/t-1/issued-invoices', draft, { query: {} }],
       ['/tenants/t-1/issued-invoices/i-1/issue', undefined, { query: { version: undefined } }],
-      ['/tenants/t-1/issued-invoices/i-1/copy'],
+      ['/tenants/t-1/issued-invoices/i-1/copy', undefined, { query: {} }],
+      ['/tenants/t-1/issued-invoices/p-1/convert'],
     ])
     expect(apiClientMock.put.mock.calls[0][0]).toBe('/tenants/t-1/issued-invoices/i-1')
     expect(apiClientMock.put.mock.calls[1][0]).toBe('/tenants/t-1/seller-profile')

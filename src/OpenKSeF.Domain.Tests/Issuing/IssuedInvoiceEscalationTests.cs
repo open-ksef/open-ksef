@@ -123,6 +123,23 @@ public class IssuedInvoiceEscalationTests
     }
 
     [Fact]
+    public async Task IssuedProforma_IsNeverEscalated()
+    {
+        await using (var db = NewDb())
+        {
+            db.IssuedInvoices.Add(Fa3InvoiceWriterTests.Issued(i => i.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]), number: "PRO/1/11/2026", now: IssuedAt,
+                type: IssuedInvoiceType.Pro));
+            await db.SaveChangesAsync();
+        }
+
+        _time.Advance(Threshold * 3);
+        await RunAsync();
+
+        Assert.Empty(_logs.Errors);
+        Assert.Empty(_notifications.Calls);
+    }
+
+    [Fact]
     public async Task BeforeThreshold_NothingHappens()
     {
         var id = await SeedAsync(Sending);

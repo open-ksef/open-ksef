@@ -13,5 +13,6 @@
   "createdAt": "<createdAt>", "updatedAt": "<updatedAt>", "issuedAt": "<issuedAt>", "exchangeRate": null, "exchangeRateDate": null, "version": "<version>", "sellerVersion": 0,
   "invoiceType": "VAT", "correctedInvoice": null, "correctionReason": null, "correctionType": null, "correctionRows": null,
   "buyerBefore": null, "currentState": null, "corrections": null, "openCorrectionId": null,
-  "orderChainId": null, "advanceAmount": null, "amountBefore": null, "advanceInvoices": null, "chain": null
+  "orderChainId": null, "advanceAmount": null, "amountBefore": null, "advanceInvoices": null, "chain": null,
+  "proforma": null, "convertedTo": null
 }

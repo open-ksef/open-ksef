@@ -117,6 +117,30 @@ public class IssuedInvoiceSendProcessorTests
     }
 
     [Fact]
+    public async Task IssuedProforma_IsNeverSelected()
+    {
+        var vatId = await SeedAsync();
+        var proforma = Fa3InvoiceWriterTests.Issued(i => i.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]), number: "PRO/1/11/2026", tenantId: _tenantId,
+            type: IssuedInvoiceType.Pro);
+        await using (var db = NewDb())
+        {
+            db.IssuedInvoices.Add(proforma);
+            await db.SaveChangesAsync();
+        }
+
+        for (var cycle = 0; cycle < 3; cycle++)
+        {
+            await RunAsync();
+            _time.Advance(TimeSpan.FromMinutes(5));
+        }
+
+        Assert.Equal(1, _submitter.Sends);
+        Assert.Equal(IssuedInvoiceStatus.Sending, (await LoadAsync(vatId)).Status);
+        var after = await LoadAsync(proforma.Id);
+        Assert.Equal((IssuedInvoiceStatus.Issued, 0, null, null, null), (after.Status, after.AttemptCount, after.KsefSessionRef, after.SentXml, after.NextAttemptAt));
+    }
+
+    [Fact]
     public async Task Queued_SavesSessionRefAndSendStartedBeforeSend_ElementRefAfter()
     {
         var id = await SeedAsync();

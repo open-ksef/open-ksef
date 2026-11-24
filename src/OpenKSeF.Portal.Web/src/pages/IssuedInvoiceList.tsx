@@ -35,6 +35,14 @@ const tabs: { status: IssuedInvoiceStatus | ''; label: string }[] = [
   { status: 'Rejected', label: 'Odrzucone' },
 ]
 
+const proformaTabs: { status: IssuedInvoiceStatus | ''; label: string }[] = [
+  { status: '', label: 'Wszystkie' },
+  { status: 'Draft', label: 'Szkice' },
+  { status: 'Issued', label: 'Wystawione' },
+]
+
+const PROFORMA_VIEW = 'proformy'
+
 function lastPageSearch(current: URLSearchParams, lastPage: number): string {
   const next = new URLSearchParams(current)
   if (lastPage > 1) next.set('page', String(lastPage))
@@ -45,7 +53,8 @@ function lastPageSearch(current: URLSearchParams, lastPage: number): string {
 const amount = (row: IssuedFeedItemResponse, value: number): string =>
   isCorrection(row) ? formatSignedMoney(value, row.currency) : formatMoney(value, row.currency)
 
-const canCopy = (row: IssuedFeedItemResponse): boolean => row.source === 'OpenKSeF' && (row.invoiceType ?? 'VAT') === 'VAT' && row.status === 'Accepted'
+const canCopy = (row: IssuedFeedItemResponse): boolean =>
+  row.source === 'OpenKSeF' && (((row.invoiceType ?? 'VAT') === 'VAT' && row.status === 'Accepted') || (row.invoiceType === 'PRO' && row.status === 'Issued'))
 
 const EXTERNAL_HINT = 'Faktura wystawiona w innym programie, tylko do odczytu'
 
@@ -62,6 +71,7 @@ export function IssuedInvoiceListPage(): ReactElement {
   const location = useLocation()
   const tenantsQuery = useTenants()
   const { tenantId } = useCompany()
+  const proformas = searchParams.get('view') === PROFORMA_VIEW
   const status = (searchParams.get('status') ?? '') as IssuedInvoiceStatus | ''
   const month = searchParams.get('month') ?? ''
   const q = searchParams.get('q') ?? ''
@@ -73,7 +83,7 @@ export function IssuedInvoiceListPage(): ReactElement {
     enabled: Boolean(tenantId),
   })
   const listQuery = useQuery({
-    queryKey: ['issued-invoices', tenantId, status, month, q, page],
+    queryKey: ['issued-invoices', tenantId, proformas, status, month, q, page],
     queryFn: () =>
       listIssuedFeed(tenantId, {
         page,
@@ -81,14 +91,16 @@ export function IssuedInvoiceListPage(): ReactElement {
         status: status || undefined,
         month: month || undefined,
         q: q || undefined,
+        invoiceType: proformas ? 'PRO' : undefined,
       }),
     enabled: Boolean(tenantId),
   })
 
-  const update = (next: { status?: string; month?: string; q?: string; page?: number }): void => {
+  const update = (next: { view?: boolean; status?: string; month?: string; q?: string; page?: number }): void => {
     const params = new URLSearchParams()
-    const values = { tenantId, status, month, q, page, ...next }
+    const values = { tenantId, view: proformas, status, month, q, page, ...next }
     if (values.tenantId) params.set('tenantId', values.tenantId)
+    if (values.view) params.set('view', PROFORMA_VIEW)
     if (values.status) params.set('status', values.status)
     if (values.month) params.set('month', values.month)
     if (values.q) params.set('q', values.q)
@@ -117,7 +129,7 @@ export function IssuedInvoiceListPage(): ReactElement {
   const unfilteredEmpty = listQuery.isSuccess && rows.length === 0 && !status && !month && !q && page === 1
   const hasCredential = credentialsQuery.data?.find((row) => row.tenantId === tenantId)?.hasCredential
   const incomplete = listQuery.data?.issuedFetchIncomplete ?? false
-  const stateCard = unfilteredEmpty && credentialsQuery.isSuccess && (!incomplete || hasCredential === false)
+  const stateCard = !proformas && unfilteredEmpty && credentialsQuery.isSuccess && (!incomplete || hasCredential === false)
   const totalCount = listQuery.data?.totalCount ?? 0
   const shownPage = listQuery.data?.page ?? page
   const firstRow = (shownPage - 1) * PAGE_SIZE + 1
@@ -135,14 +147,14 @@ export function IssuedInvoiceListPage(): ReactElement {
   })
   const queryClient = useQueryClient()
   const copy = useMutation({
-    mutationFn: (id: string) => copyIssuedInvoice(tenantId, id),
+    mutationFn: (row: IssuedFeedItemResponse) => copyIssuedInvoice(tenantId, row.id, row.invoiceType === 'PRO' ? 'PRO' : undefined),
     onSuccess: (draft) => {
       void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
       navigate(`/issued/${encodeURIComponent(draft.id)}/edit?${tenantQuery}`)
     },
   })
 
-  const columns: TableColumn<IssuedFeedItemResponse>[] = [
+  const allColumns: TableColumn<IssuedFeedItemResponse>[] = [
     {
       key: 'buyerName',
       label: 'Nabywca i numer',
@@ -225,7 +237,7 @@ export function IssuedInvoiceListPage(): ReactElement {
             disabled={copy.isPending}
             onClick={(event) => {
               event.stopPropagation()
-              copy.mutate(row.id)
+              copy.mutate(row)
             }}
           >
             <Icon name="copy" />
@@ -234,21 +246,34 @@ export function IssuedInvoiceListPage(): ReactElement {
     },
   ]
 
+  const columns = proformas ? allColumns.filter((column) => column.key !== 'ksefNumber') : allColumns
+
   return (
     <div className="inv-stack">
       <header className="page-header received-head">
-        <h1>Wystawione faktury</h1>
-        {profileQuery.data ? <EnvBadge environment={profileQuery.data.ksefEnvironment} /> : null}
+        <h1>{proformas ? 'Proformy' : 'Wystawione faktury'}</h1>
+        {profileQuery.data && !proformas ? <EnvBadge environment={profileQuery.data.ksefEnvironment} /> : null}
         <Link to={`/issued/new?${tenantQuery}`} className="ui-button ui-button--primary ui-button--md">
           <Icon name="plus" /> Nowa faktura
         </Link>
         <button type="button" className="ui-button ui-button--outline ui-button--md" disabled={newAdvance.isPending} onClick={() => newAdvance.mutate()}>
           <Icon name="plus" /> {newAdvance.isPending ? 'Tworzenie…' : 'Nowa zaliczka'}
         </button>
+        <Link to={`/issued/new?kind=PRO&${tenantQuery}`} className="ui-button ui-button--outline ui-button--md">
+          <Icon name="plus" /> Nowa proforma
+        </Link>
         <Link to={`/issued/templates?${tenantQuery}`} className="ui-button ui-button--outline ui-button--md">
           <Icon name="file-text" /> Szablony
         </Link>
       </header>
+      <div className="inv-chips" role="group" aria-label="Rodzaj dokumentu">
+        <button type="button" aria-pressed={!proformas} onClick={() => update({ view: false, status: '', page: 1 })}>
+          Faktury
+        </button>
+        <button type="button" aria-pressed={proformas} onClick={() => update({ view: true, status: '', page: 1 })}>
+          Proformy
+        </button>
+      </div>
       {copy.error ? <ErrorBanner message={copy.error instanceof Error ? copy.error.message : 'Nie udało się skopiować faktury'} /> : null}
       {newAdvance.error ? <ErrorBanner message={newAdvance.error instanceof Error ? newAdvance.error.message : 'Nie udało się utworzyć faktury zaliczkowej'} /> : null}
 
@@ -257,7 +282,7 @@ export function IssuedInvoiceListPage(): ReactElement {
       {stateCard ? null : (
         <div className="received-tools">
           <div className="inv-chips" role="group" aria-label="Status">
-            {tabs.map((tab) => (
+            {(proformas ? proformaTabs : tabs).map((tab) => (
               <button key={tab.label} type="button" aria-pressed={status === tab.status} onClick={() => update({ status: tab.status, page: 1 })}>
                 {tab.label}
               </button>
@@ -274,7 +299,7 @@ export function IssuedInvoiceListPage(): ReactElement {
         </div>
       )}
 
-      {incomplete ? (
+      {incomplete && !proformas ? (
         <div className="inv-alert inv-alert--info company-note" role="status" data-testid="issued-fetch-incomplete">
           <Icon name="circle-alert" />
           <span>Ostatnie pobieranie faktur sprzedaży z KSeF nie objęło całego okresu. Lista może być niepełna.</span>
@@ -309,21 +334,21 @@ export function IssuedInvoiceListPage(): ReactElement {
         <AsyncStateView
           isLoading={tenantsQuery.isLoading || listQuery.isLoading || pastLastPage || (unfilteredEmpty && credentialsQuery.isLoading)}
           error={tenantsQuery.error ?? listQuery.error ?? (unfilteredEmpty ? credentialsQuery.error : null)}
-          isEmpty={rows.length === 0 && (!incomplete || !unfilteredEmpty)}
+          isEmpty={rows.length === 0 && (proformas || !incomplete || !unfilteredEmpty)}
           loading={<Skeleton variant="table" columns={columns} label="Wczytywanie faktur…" />}
-          emptyTitle="Brak faktur spełniających kryteria"
-          emptyMessage="Zmień filtry lub kliknij „Nowa faktura”."
+          emptyTitle={proformas ? 'Brak proform spełniających kryteria' : 'Brak faktur spełniających kryteria'}
+          emptyMessage={proformas ? 'Zmień filtry lub kliknij „Nowa proforma”.' : 'Zmień filtry lub kliknij „Nowa faktura”.'}
           onRetry={() => {
             void listQuery.refetch()
             void credentialsQuery.refetch()
           }}
         >
           {rows.length > 0 ? (
-            <section className="received-list" aria-label="Lista faktur">
+            <section className="received-list" aria-label={proformas ? 'Lista proform' : 'Lista faktur'}>
               <Table testId="issued-invoice-table" columns={columns} data={rows} onRowClick={onRowClick} />
               <nav className="ui-pagination" aria-label="Paginacja wystawionych faktur">
                 <span className="ui-pagination-info">
-                  {firstRow}–{firstRow + rows.length - 1} z {totalCount} {totalCount === 1 ? 'faktury' : 'faktur'}
+                  {firstRow}–{firstRow + rows.length - 1} z {totalCount} {proformas ? (totalCount === 1 ? 'proformy' : 'proform') : totalCount === 1 ? 'faktury' : 'faktur'}
                 </span>
                 {totalCount > MAX_ROWS ? (
                   <span className="ui-pagination-info" role="status" data-testid="issued-cap-note">

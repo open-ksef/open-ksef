@@ -455,4 +455,40 @@ public class IssuedInvoiceTests
         Assert.Throws<InvoiceStateException>(() => invoice.MarkAccepted("K", Now, 200, null, Now));
         Assert.Throws<InvoiceStateException>(() => invoice.AttachUpo([1], Now));
     }
+
+    [Fact]
+    public void Issue_Proforma_IsIssuedInProSeriesAndNeverQueued()
+    {
+        var invoice = IssuedInvoice.Draft(Guid.NewGuid(), Guid.NewGuid(), Today, Now, IssuedInvoiceType.Pro);
+        invoice.SetBuyer(BuyerKind.Company, ValidBuyerNip, "Nabywca sp. z o.o.", "ul. Długa 2", "00-002 Warszawa");
+        invoice.ReplaceLines([("Usługa", null, 1, 100m, VatRate.Rate23)]);
+
+        invoice.Issue(CompleteProfile(), "1234563218", "PRO/1/11/2026", Now);
+
+        Assert.Equal(IssuedInvoiceStatus.Issued, invoice.Status);
+        Assert.Equal("2026-11", invoice.NumberPeriod);
+        Assert.Null(invoice.NextAttemptAt);
+        Assert.Null(invoice.SentXml);
+        Assert.False(invoice.IsEditable);
+        Assert.False(invoice.IsOpen);
+        Assert.Throws<InvoiceStateException>(() => invoice.AttachSentXml([1], "test", null));
+        Assert.Throws<InvoiceStateException>(() => invoice.MarkSendStarted("S", Now));
+    }
+
+    [Fact]
+    public void Issue_ForeignCurrencyProformaWithoutRate_IsIssued()
+    {
+        var invoice = IssuedInvoice.Draft(Guid.NewGuid(), Guid.NewGuid(), Today, Now, IssuedInvoiceType.Pro);
+        invoice.SetBuyer(BuyerKind.Foreign, null, "Buyer Ltd", "1 Street", "London");
+        invoice.SetForeignBuyer("GB", null);
+        invoice.SetCurrency("EUR", null, null);
+        invoice.ReplaceLines([("Service", null, 1, 100m, VatRate.NotTaxable)]);
+
+        Assert.False(invoice.NeedsExchangeRate);
+        invoice.Issue(CompleteProfile(), "1234563218", "PRO/1/11/2026", Now);
+
+        Assert.Equal(IssuedInvoiceStatus.Issued, invoice.Status);
+        Assert.Null(invoice.ExchangeRate);
+        Assert.Equal("EUR", invoice.Currency);
+    }
 }

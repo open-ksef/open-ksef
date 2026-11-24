@@ -58,6 +58,8 @@ export function InvoiceDraftPage(): ReactElement {
   const { id } = useParams()
   const tenantsQuery = useTenants()
   const { tenantId } = useCompany()
+  const location = useLocation()
+  const proformaRequested = new URLSearchParams(location.search).get('kind') === 'PRO'
   const [formSlot, setFormSlot] = useState<{ id?: string; created?: string; generation: number }>({ id, generation: 0 })
 
   // A new form stays mounted through the replace navigation to the invoice it created, because the issue flow continues there. Any other id change must remount, or the form saves one invoice's content into another.
@@ -106,6 +108,7 @@ export function InvoiceDraftPage(): ReactElement {
           tenantId={tenantId}
           profile={profileQuery.data}
           invoice={invoiceQuery.data}
+          proforma={invoiceQuery.data ? invoiceQuery.data.invoiceType === 'PRO' : proformaRequested}
           onCreated={(created) => setFormSlot((slot) => ({ ...slot, created }))}
         />
       )}
@@ -117,6 +120,7 @@ interface DraftFormProps {
   tenantId: string
   profile: SellerProfileResponse
   invoice?: IssuedInvoiceResponse
+  proforma: boolean
   onCreated: (id: string) => void
 }
 
@@ -127,7 +131,7 @@ const failureText = (error: unknown, fallback: string): string =>
     ? fallback
     : error.message
 
-function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): ReactElement {
+function DraftForm({ tenantId, profile, invoice, proforma, onCreated }: DraftFormProps): ReactElement {
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
@@ -171,14 +175,21 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
       vatRate: line.vatRate,
     })),
   )
-  const blockingError = issueBlocked ? (missingTaxIdError(form) ?? missingRateError(form)) : null
+  const blockingIssue = (): ValidationIssue | null => missingTaxIdError(form) ?? (proforma ? null : missingRateError(form))
+  const blockingError = issueBlocked ? blockingIssue() : null
   const shownErrors = blockingError ? [blockingError, ...errors] : errors
   const fieldErrors = toFieldErrors(shownErrors)
 
   async function saveDraft(stay = false): Promise<IssuedInvoiceResponse> {
     const snapshot = JSON.stringify(form)
     const request = toDraftRequest(form, invoice?.exchangeRate)
-    const saved = invoice ? await updateIssuedInvoice(tenantId, invoice.id, request, version.current) : await createIssuedInvoice(tenantId, request)
+    const saved = proforma
+      ? invoice
+        ? await updateIssuedInvoice(tenantId, invoice.id, request, version.current, 'PRO')
+        : await createIssuedInvoice(tenantId, request, 'PRO')
+      : invoice
+        ? await updateIssuedInvoice(tenantId, invoice.id, request, version.current)
+        : await createIssuedInvoice(tenantId, request)
     version.current = saved.version
     if (form.currency !== 'PLN' && !form.exchangeRate.trim() && saved.exchangeRate) {
       const withServerRate = { ...form, exchangeRate: rateToInput(saved.exchangeRate), exchangeRateDate: saved.exchangeRateDate ?? null }
@@ -248,9 +259,11 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
 
   const issue = useMutation({
     mutationFn: ({ target, confirmPastIssueDate }: { target: IssuedInvoiceResponse; confirmPastIssueDate?: boolean }) =>
-      confirmPastIssueDate
-        ? issueIssuedInvoice(tenantId, target.id, target.version, target.sellerVersion, true)
-        : issueIssuedInvoice(tenantId, target.id, target.version, target.sellerVersion),
+      proforma
+        ? issueIssuedInvoice(tenantId, target.id, target.version, target.sellerVersion, undefined, 'PRO')
+        : confirmPastIssueDate
+          ? issueIssuedInvoice(tenantId, target.id, target.version, target.sellerVersion, true)
+          : issueIssuedInvoice(tenantId, target.id, target.version, target.sellerVersion),
     onSuccess: (issued) => {
       queryClient.setQueryData(['issued-invoice', tenantId, issued.id], issued)
       void queryClient.invalidateQueries({ queryKey: ['seller-profile', tenantId] })
@@ -262,7 +275,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
   const prepareIssue = useMutation({
     mutationFn: () => saveDraft(),
     onSuccess: (saved) => {
-      if (saved.ksef.environment === 'test' || saved.ksef.environment === 'demo') {
+      if (proforma || saved.ksef.environment === 'test' || saved.ksef.environment === 'demo') {
         issue.mutate({ target: saved })
       } else {
         setConfirmFor(saved)
@@ -275,7 +288,8 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
     mutationFn: () => deleteIssuedInvoice(tenantId, invoice?.id ?? '', version.current),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
-      navigate(`/issued?tenantId=${encodeURIComponent(tenantId)}`, { replace: true })
+      if (invoice?.proforma) void queryClient.invalidateQueries({ queryKey: ['issued-invoice', tenantId, invoice.proforma.id] })
+      navigate(listHref, { replace: true })
       queryClient.removeQueries({ queryKey: ['issued-invoice', tenantId, invoice?.id] })
     },
     onError: (removeError) => {
@@ -284,12 +298,27 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
     },
   })
 
+  const listHref = `/issued?${proforma ? 'view=proformy&' : ''}tenantId=${encodeURIComponent(tenantId)}`
   const issuing = prepareIssue.isPending || issue.isPending
   const busy = save.isPending || issuing || remove.isPending
-  const expectedNumber = form.issueDate.startsWith(profile.nextNumberPeriod) ? profile.nextNumberPreview : null
+  const expectedNumber = proforma
+    ? profile.proformaNextNumberPeriod && form.issueDate.startsWith(profile.proformaNextNumberPeriod)
+      ? (profile.proformaNextNumberPreview ?? null)
+      : null
+    : form.issueDate.startsWith(profile.nextNumberPeriod)
+      ? profile.nextNumberPreview
+      : null
   const totalText = formatMoney(totals.totalGross, form.currency)
   const isForeign = form.buyer.kind === 'Foreign'
-  const title = invoice?.status === 'Rejected' ? `Popraw fakturę ${invoice.number ?? ''}`.trim() : invoice ? 'Szkic faktury' : 'Nowa faktura'
+  const title = proforma
+    ? invoice
+      ? 'Szkic proformy'
+      : 'Nowa proforma'
+    : invoice?.status === 'Rejected'
+      ? `Popraw fakturę ${invoice.number ?? ''}`.trim()
+      : invoice
+        ? 'Szkic faktury'
+        : 'Nowa faktura'
   const issueButton = (
     <button
       type="button"
@@ -297,7 +326,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
       disabled={busy || !profile.isComplete || !canSubmit}
       onClick={(event) => {
         issueOpener.current = event.currentTarget
-        if (missingTaxIdError(form) ?? missingRateError(form)) {
+        if (blockingIssue()) {
           setErrors([])
           setIssueBlocked(true)
           return
@@ -305,7 +334,13 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
         prepareIssue.mutate()
       }}
     >
-      {issuing ? 'Wysyłanie…' : 'Wystaw i wyślij do KSeF'} <EnvBadge environment={profile.ksefEnvironment} />
+      {proforma ? (
+        issuing ? 'Wystawianie…' : 'Wystaw proformę'
+      ) : (
+        <>
+          {issuing ? 'Wysyłanie…' : 'Wystaw i wyślij do KSeF'} <EnvBadge environment={profile.ksefEnvironment} />
+        </>
+      )}
     </button>
   )
 
@@ -331,7 +366,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
     <form onSubmit={onSubmit} noValidate className="inv-form" aria-labelledby="draft-title">
       <div className="inv-form__main">
         <div>
-          <Link to={`/issued?tenantId=${encodeURIComponent(tenantId)}`} className="back-link">
+          <Link to={listHref} className="back-link">
             <Icon name="arrow-left" size={14} /> Wystawione
           </Link>
           <div className="inv-form__head">
@@ -340,7 +375,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
             <span className="inv-help" role="status">
               {invoice ? `Zapisano ${timeFormat.format(new Date(invoice.updatedAt))}` : ''}
             </span>
-            {invoice ? (
+            {invoice && !proforma ? (
               <SaveTemplateButton
                 defaultName={form.buyer.name}
                 disabled={busy}
@@ -367,9 +402,17 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
         ) : null}
         {canSubmit ? null : (
           <div className="inv-alert inv-alert--info" role="status" data-testid="issue-not-allowed">
-            Wysłać fakturę do KSeF może właściciel, administrator lub księgowy.
+            {proforma ? 'Wystawić proformę może właściciel, administrator lub księgowy.' : 'Wysłać fakturę do KSeF może właściciel, administrator lub księgowy.'}
           </div>
         )}
+        {invoice?.proforma ? (
+          <div className="inv-alert inv-alert--info" role="status" data-testid="from-proforma">
+            Szkic utworzony z proformy{' '}
+            <Link to={`/issued/${encodeURIComponent(invoice.proforma.id)}?tenantId=${encodeURIComponent(tenantId)}`} className="mono">
+              {invoice.proforma.number ?? '—'}
+            </Link>
+          </div>
+        ) : null}
         {failure ? <ErrorBanner message={failure} /> : null}
         <ValidationSummary errors={shownErrors} warnings={warnings} />
 
@@ -411,6 +454,7 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
               issueDate={form.issueDate}
               saleDate={form.saleDate}
               fieldErrors={fieldErrors}
+              noRate={proforma}
               onUpdate={updateForm}
             />
           ) : null}
@@ -427,8 +471,8 @@ function DraftForm({ tenantId, profile, invoice, onCreated }: DraftFormProps): R
         </section>
       </div>
 
-      <aside className="inv-side" aria-label="Podsumowanie faktury">
-        <SellerCard nip={profile.nip} name={profile.legalName} environment={profile.ksefEnvironment} />
+      <aside className="inv-side" aria-label={proforma ? 'Podsumowanie proformy' : 'Podsumowanie faktury'}>
+        <SellerCard nip={profile.nip} name={profile.legalName} environment={proforma ? undefined : profile.ksefEnvironment} />
         <div className="inv-card inv-totals">
           <div>
             <span className="inv-caption">Do zapłaty</span>

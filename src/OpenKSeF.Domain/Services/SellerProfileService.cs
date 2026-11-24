@@ -46,13 +46,18 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
         var correctionPeriod = input.CorrectionNextNumberPeriod?.Trim() ?? InvoiceNumbering.PeriodKey(correctionPattern, Today());
         var advancePattern = input.AdvanceNumberingPattern?.Trim() ?? profile?.AdvanceNumberingPattern ?? InvoiceNumbering.DefaultAdvancePattern;
         var advancePeriod = input.AdvanceNextNumberPeriod?.Trim() ?? InvoiceNumbering.PeriodKey(advancePattern, Today());
+        var proformaPattern = input.ProformaNumberingPattern?.Trim() ?? profile?.ProformaNumberingPattern ?? InvoiceNumbering.DefaultProformaPattern;
+        var proformaPeriod = input.ProformaNextNumberPeriod?.Trim() ?? InvoiceNumbering.PeriodKey(proformaPattern, Today());
         var errors = Validate(input, pattern, bankAccount, period);
         errors.AddRange(ValidatePattern(correctionPattern, input.CorrectionNextNumber, correctionPeriod, "correctionNumberingPattern", "correctionNextNumber", "correctionNextNumberPeriod"));
         errors.AddRange(ValidatePattern(advancePattern, input.AdvanceNextNumber, advancePeriod, "advanceNumberingPattern", "advanceNextNumber", "advanceNextNumberPeriod"));
+        errors.AddRange(ValidatePattern(proformaPattern, input.ProformaNextNumber, proformaPeriod, "proformaNumberingPattern", "proformaNextNumber", "proformaNextNumberPeriod"));
         if (pattern == correctionPattern)
             errors.Add(new("SP-VAL-010", "correctionNumberingPattern", "Wzorzec numeracji korekt musi różnić się od wzorca faktur"));
         if (advancePattern == pattern || advancePattern == correctionPattern)
             errors.Add(new("SP-VAL-011", "advanceNumberingPattern", "Wzorzec numeracji faktur zaliczkowych musi różnić się od wzorców faktur i korekt"));
+        if (proformaPattern == pattern || proformaPattern == correctionPattern || proformaPattern == advancePattern)
+            errors.Add(new("SP-VAL-012", "proformaNumberingPattern", "Wzorzec numeracji proform musi różnić się od wzorców faktur, korekt i faktur zaliczkowych"));
         if (errors.Count > 0)
             return (null, errors);
 
@@ -70,6 +75,7 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
         profile.SetBankDetails(input.BankSwift, input.BankName, input.ForeignBankAccount, input.ForeignBankSwift, input.ForeignBankName);
         profile.SetCorrectionNumberingPattern(correctionPattern);
         profile.SetAdvanceNumberingPattern(advancePattern);
+        profile.SetProformaNumberingPattern(proformaPattern);
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var tenantLocked = await db.Database
@@ -100,6 +106,8 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
             await SetSeriesNextAsync(tenantId, IssuedInvoiceTypes.KorSeries, correctionPattern, correctionPeriod, correctionNext, "correctionNextNumber", ct);
         if (input.AdvanceNextNumber is { } advanceNext)
             await SetSeriesNextAsync(tenantId, IssuedInvoiceTypes.ZalSeries, advancePattern, advancePeriod, advanceNext, "advanceNextNumber", ct);
+        if (input.ProformaNextNumber is { } proformaNext)
+            await SetSeriesNextAsync(tenantId, IssuedInvoiceTypes.ProSeries, proformaPattern, proformaPeriod, proformaNext, "proformaNextNumber", ct);
 
         try
         {
@@ -229,9 +237,12 @@ public partial class SellerProfileService(ApplicationDbContext db, TimeProvider 
         var correctionNext = await SeriesNextAsync(profile.TenantId, IssuedInvoiceTypes.KorSeries, correctionPeriod, ct);
         var advancePeriod = InvoiceNumbering.PeriodKey(profile.AdvanceNumberingPattern, today);
         var advanceNext = await SeriesNextAsync(profile.TenantId, IssuedInvoiceTypes.ZalSeries, advancePeriod, ct);
+        var proformaPeriod = InvoiceNumbering.PeriodKey(profile.ProformaNumberingPattern, today);
+        var proformaNext = await SeriesNextAsync(profile.TenantId, IssuedInvoiceTypes.ProSeries, proformaPeriod, ct);
         return new SellerProfileView(profile, nip, next, period, InvoiceNumbering.Format(profile.NumberingPattern, next, today),
             correctionNext, correctionPeriod, InvoiceNumbering.Format(profile.CorrectionNumberingPattern, correctionNext, today),
-            advanceNext, advancePeriod, InvoiceNumbering.Format(profile.AdvanceNumberingPattern, advanceNext, today));
+            advanceNext, advancePeriod, InvoiceNumbering.Format(profile.AdvanceNumberingPattern, advanceNext, today),
+            proformaNext, proformaPeriod, InvoiceNumbering.Format(profile.ProformaNumberingPattern, proformaNext, today));
     }
 
     private async Task<int> SeriesNextAsync(Guid tenantId, string series, string period, CancellationToken ct) =>
