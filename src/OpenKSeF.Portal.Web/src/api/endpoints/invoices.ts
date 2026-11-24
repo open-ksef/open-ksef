@@ -38,3 +38,14 @@ export function setInvoicePaid(tenantId: string, invoiceId: string, isPaid: bool
 export function getInvoiceXml(tenantId: string, invoiceId: string): Promise<FileResponse> {
   return apiClient.getFile(`/tenants/${encodeURIComponent(tenantId)}/invoices/${encodeURIComponent(invoiceId)}/xml`)
 }
+
+export interface ExportInvoicesParams extends Record<string, string | boolean | undefined> {
+  from?: string
+  to?: string
+  sales: boolean
+  purchases: boolean
+}
+
+export function exportInvoices(tenantId: string, params: ExportInvoicesParams): Promise<FileResponse> {
+  return apiClient.getFile(`/tenants/${encodeURIComponent(tenantId)}/invoices/export`, { query: params })
+}

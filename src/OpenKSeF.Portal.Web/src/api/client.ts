@@ -101,8 +101,8 @@ export class ApiClient {
     return this.request<TResponse>(path, { ...options, method: 'GET' })
   }
 
-  getFile(path: string): Promise<FileResponse> {
-    return this.request<FileResponse>(path, { method: 'GET', file: true })
+  getFile(path: string, options?: Omit<RequestOptions, 'body'>): Promise<FileResponse> {
+    return this.request<FileResponse>(path, { ...options, method: 'GET', file: true })
   }
 
   post<TResponse>(path: string, body?: unknown, options?: Omit<RequestOptions, 'body'>): Promise<TResponse> {

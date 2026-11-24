@@ -2,7 +2,7 @@ import type { TenantResponse } from '@/api/types'
 
 export const ownerAccess: Pick<TenantResponse, 'role' | 'permissions' | 'notificationsEnabled'> = {
   role: 'Owner',
-  permissions: ['credential.manage', 'invoices.markPaid', 'invoices.read', 'issuing.draft', 'issuing.submit', 'members.manage', 'notifications.self', 'sync.fullResync', 'sync.run', 'tenant.delete', 'tenant.edit'],
+  permissions: ['credential.manage', 'invoices.export', 'invoices.markPaid', 'invoices.read', 'issuing.draft', 'issuing.submit', 'members.manage', 'notifications.self', 'sync.fullResync', 'sync.run', 'tenant.delete', 'tenant.edit'],
   notificationsEnabled: true,
 }
 
