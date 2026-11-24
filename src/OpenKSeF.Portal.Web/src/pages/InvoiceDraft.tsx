@@ -288,6 +288,7 @@ function DraftForm({ tenantId, profile, invoice, proforma, onCreated }: DraftFor
     mutationFn: () => deleteIssuedInvoice(tenantId, invoice?.id ?? '', version.current),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
+      if (invoice?.proforma) void queryClient.invalidateQueries({ queryKey: ['issued-invoice', tenantId, invoice.proforma.id] })
       navigate(listHref, { replace: true })
       queryClient.removeQueries({ queryKey: ['issued-invoice', tenantId, invoice?.id] })
     },

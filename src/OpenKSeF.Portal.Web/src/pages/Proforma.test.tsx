@@ -140,8 +140,7 @@ describe('proforma pages', () => {
   const button = (text: string) => [...container.querySelectorAll('button')].find((item) => item.textContent?.includes(text))
   const link = (text: string) => [...container.querySelectorAll('a')].find((item) => item.textContent?.includes(text))
 
-  async function render(path: string): Promise<void> {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  async function render(path: string, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })): Promise<void> {
     await act(async () =>
       root.render(
         <QueryClientProvider client={client}>
@@ -250,5 +249,20 @@ describe('proforma pages', () => {
     await act(async () => [...dialog.querySelectorAll('button')].find((item) => item.textContent === 'Usuń proformę')!.click())
     await waitFor(() => container.textContent === 'Lista')
     expect(deleteIssuedInvoice).toHaveBeenCalledWith('t-1', 'p-1', 2)
+  })
+
+  it('deleting a VAT draft made from a proforma marks the cached proforma stale', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(['issued-invoice', 't-1', 'p-1'], proforma({ convertedTo: linked }))
+    vi.mocked(getIssuedInvoice).mockResolvedValue(vatDraft)
+    vi.mocked(deleteIssuedInvoice).mockResolvedValue()
+    await render('/issued/v-1?tenantId=t-1', client)
+    await waitFor(() => Boolean(button('Usuń szkic')))
+
+    await act(async () => button('Usuń szkic')!.click())
+    const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]')!
+    await act(async () => [...dialog.querySelectorAll('button')].find((item) => item.textContent === 'Usuń szkic')!.click())
+    await waitFor(() => container.textContent === 'Lista')
+    expect(client.getQueryState(['issued-invoice', 't-1', 'p-1'])?.isInvalidated).toBe(true)
   })
 })

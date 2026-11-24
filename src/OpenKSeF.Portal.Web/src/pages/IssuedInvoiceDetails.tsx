@@ -192,6 +192,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
     mutationFn: () => deleteIssuedInvoice(tenantId, invoice.id, invoice.version),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
+      if (invoice.proforma) void queryClient.invalidateQueries({ queryKey: ['issued-invoice', tenantId, invoice.proforma.id] })
       navigate(`/issued?${proforma ? 'view=proformy&' : ''}${tenantQuery}`, { replace: true })
       queryClient.removeQueries({ queryKey: ['issued-invoice', tenantId, invoice.id] })
     },
