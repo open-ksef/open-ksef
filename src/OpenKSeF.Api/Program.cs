@@ -151,6 +151,7 @@ builder.Services.AddScoped<IQrCodeService, QrCodeService>();
 builder.Services.AddScoped<ISellerProfileService, SellerProfileService>();
 builder.Services.AddScoped<IKSeFIssuingEnvironment, OpenKSeF.Api.Services.KSeFIssuingEnvironment>();
 builder.Services.AddScoped<IIssuedInvoiceService, IssuedInvoiceService>();
+builder.Services.AddScoped<InvoiceExportService>();
 builder.Services.AddHttpClient<WhiteListClient>(client =>
 {
     client.BaseAddress = WhiteListClient.BaseAddress;

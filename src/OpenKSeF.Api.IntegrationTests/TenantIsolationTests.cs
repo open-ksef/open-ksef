@@ -56,6 +56,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         ["GET api/tenants/{tenantId}/invoices/by-number/{ksefInvoiceNumber}"] = new(null, Read),
         ["GET api/tenants/{tenantId}/invoices/{id}/transfer"] = new(null, Read),
         ["GET api/tenants/{tenantId}/invoices/{id}/xml"] = new(null, Read),
+        ["GET api/tenants/{tenantId}/invoices/export"] = new(null, TenantPermissions.InvoicesExport),
         ["PATCH api/tenants/{tenantId}/invoices/{id}/paid"] = new(new { isPaid = true }, TenantPermissions.InvoicesMarkPaid),
         ["GET api/invoices"] = new(null, Read),
         ["GET api/invoices/by-number/{ksefInvoiceNumber}"] = new(null, Read),
@@ -300,7 +301,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
 
         Assert.Equal("Owner", ownerView.Role);
         Assert.Equal(TenantPermissions.For(TenantRole.Owner).Order(StringComparer.Ordinal), ownerView.Permissions);
-        Assert.Equal(11, ownerView.Permissions.Count);
+        Assert.Equal(12, ownerView.Permissions.Count);
         Assert.Equal(_seed.TenantA, employeeView.Id);
         Assert.Equal("Employee", employeeView.Role);
         Assert.Equal(TenantPermissions.For(TenantRole.Employee).Order(StringComparer.Ordinal), employeeView.Permissions);

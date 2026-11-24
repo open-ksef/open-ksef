@@ -15,6 +15,7 @@ public class TenantPermissionsTests
         ["notifications.self"] = "OAKE",
         ["issuing.draft"] = "OAKE",
         ["issuing.submit"] = "OAK-",
+        ["invoices.export"] = "OAK-",
         ["sync.fullResync"] = "OA--",
         ["credential.manage"] = "OA--",
         ["tenant.edit"] = "OA--",
@@ -37,9 +38,9 @@ public class TenantPermissionsTests
         Assert.Equal(granted, TenantPermissions.For(role).Contains(permission));
 
     [Fact]
-    public void Matrix_Has44Cells_AndNoExtraPermissions()
+    public void Matrix_Has48Cells_AndNoExtraPermissions()
     {
-        Assert.Equal(44, Cells().Count);
+        Assert.Equal(48, Cells().Count);
         Assert.Equal(Roles, Enum.GetValues<TenantRole>());
         foreach (var role in Roles)
             Assert.Subset(Table.Keys.ToHashSet(), TenantPermissions.For(role).ToHashSet());
