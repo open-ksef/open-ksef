@@ -446,6 +446,7 @@ export interface IssuedInvoiceCurrentState {
   totalGross: number
   buyer: IssuedInvoiceBuyer
   isZero: boolean
+  advanceAmount?: number | null
 }
 
 export interface IssuedInvoiceCorrectionItem {

@@ -207,6 +207,8 @@ public class IssuedInvoiceAdvancesApiTests : IDisposable
         Assert.Contains("<StanPrzedZ>1</StanPrzedZ>", xml);
         await AcceptAsync(korZal.Id, "5213456789-20261220-ABCDEF12345A-AF");
         IssuedInvoicesApiTests.AssertMatchesFixture("issued-invoice-kor-zal.json", JsonNode.Parse(await _client.GetStringAsync($"{Base(tenantId)}/{korZal.Id}"))!);
+        var zalJson = JsonNode.Parse(await _client.GetStringAsync($"{Base(tenantId)}/{zal.Id}"))!;
+        Assert.Equal((369m, 246m), (zalJson["totalGross"]!.GetValue<decimal>(), zalJson["currentState"]!["advanceAmount"]!.GetValue<decimal>()));
 
         var final = await Read(await _client.PostAsync($"{Base(tenantId)}/{zal.Id}/final", null), HttpStatusCode.Created);
         Assert.Equal((800m, 184m, 984m), (final.TotalNet, final.TotalVat, final.TotalGross));

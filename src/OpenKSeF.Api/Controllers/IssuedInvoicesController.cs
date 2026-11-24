@@ -543,7 +543,8 @@ public class IssuedInvoicesController(
                     current.VatSummary().Sum(s => s.Vat),
                     current.VatSummary().Sum(s => s.Net + s.Vat),
                     BuyerModel(current),
-                    current.Lines.Count == 0),
+                    current.Lines.Count == 0,
+                    invoice.InvoiceType == IssuedInvoiceType.Zal ? current.AdvanceAmount : null),
             view.Corrections.Count == 0
                 ? null
                 : view.Corrections.OrderBy(c => c.CreatedAt)

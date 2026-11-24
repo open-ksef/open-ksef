@@ -31,6 +31,7 @@ public class IssuedInvoiceService(
     public const string FinalExistsCode = "INV-ROZ-EXISTS";
     public const string UseFinalCorrectionCode = "INV-KOR-USE-ROZ";
     public const string TemplateKindCode = "INV-TEMPLATE-KIND";
+    public const string TemplateZeroCode = "INV-TEMPLATE-ZERO";
     private const int MaxSuggestions = 20;
 
     private const int MaxLines = 1000;
@@ -399,15 +400,15 @@ public class IssuedInvoiceService(
 
     public async Task<IReadOnlyList<RecentBuyer>> RecentBuyersAsync(Guid tenantId, string? query, CancellationToken ct = default)
     {
-        // shortcut: groups all accepted invoices of the tenant in memory; move to SQL DISTINCT ON past ~10k accepted invoices.
-        var buyers = await AcceptedSales(tenantId)
-            .OrderByDescending(i => i.IssueDate)
-            .ThenByDescending(i => i.CreatedAt)
-            .Select(i => new RecentBuyer(i.BuyerKind, i.BuyerNip, i.BuyerName, i.BuyerAddressLine1, i.BuyerAddressLine2,
-                i.BuyerCountryCode, i.BuyerIdType, i.BuyerForeignId, i.IssueDate))
-            .ToListAsync(ct);
+        // shortcut: loads all accepted sales of the tenant and their corrections into memory; move to SQL past ~10k accepted invoices.
+        var sales = await CurrentSalesAsync(AcceptedSales(tenantId), false, ct);
         var term = query?.Trim();
-        return buyers
+        return sales
+            .Where(s => s.Current.CorrectionReason != Corrections.WrongBuyerIdReason)
+            .OrderByDescending(s => s.Original.IssueDate)
+            .ThenByDescending(s => s.Original.CreatedAt)
+            .Select(s => new RecentBuyer(s.Current.BuyerKind, s.Current.BuyerNip, s.Current.BuyerName, s.Current.BuyerAddressLine1, s.Current.BuyerAddressLine2,
+                s.Current.BuyerCountryCode, s.Current.BuyerIdType, s.Current.BuyerForeignId, s.Original.IssueDate))
             .DistinctBy(BuyerKey)
             .Where(b => string.IsNullOrEmpty(term)
                 || (b.Name?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
@@ -428,17 +429,19 @@ public class IssuedInvoiceService(
             return [];
 
         var rates = (kind == BuyerKind.Foreign ? VatRates.IssuableForeign : VatRates.Issuable).ToList();
-        var lines = await AcceptedSales(tenantId)
-            .SelectMany(i => i.Lines.Select(l => new { i.IssueDate, i.CreatedAt, l.LineNo, l.Name, l.Unit, l.UnitNetPrice, l.VatRate }))
-            .Where(l => l.Name.ToLower().Contains(term) && rates.Contains(l.VatRate))
-            .OrderByDescending(l => l.IssueDate)
-            .ThenByDescending(l => l.CreatedAt)
-            .ThenBy(l => l.LineNo)
-            .ToListAsync(ct);
-        return lines
-            .DistinctBy(l => l.Name.ToUpperInvariant())
+        var matching = db.IssuedInvoices
+            .Where(i => i.TenantId == tenantId && i.Status == IssuedInvoiceStatus.Accepted && i.Lines.Any(l => l.Name.ToLower().Contains(term)))
+            .Select(i => i.CorrectedInvoiceId ?? i.Id);
+        var sales = await CurrentSalesAsync(AcceptedSales(tenantId).Where(i => matching.Contains(i.Id)), true, ct);
+        return sales
+            .SelectMany(s => s.Current.Lines.Select(l => (s.Original, Line: l)))
+            .Where(x => x.Line.Name.Contains(term, StringComparison.OrdinalIgnoreCase) && rates.Contains(x.Line.VatRate))
+            .OrderByDescending(x => x.Original.IssueDate)
+            .ThenByDescending(x => x.Original.CreatedAt)
+            .ThenBy(x => x.Line.LineNo)
+            .DistinctBy(x => x.Line.Name.ToUpperInvariant())
             .Take(MaxSuggestions)
-            .Select(l => new LineSuggestion(l.Name, l.Unit, l.UnitNetPrice, l.VatRate))
+            .Select(x => new LineSuggestion(x.Line.Name, x.Line.Unit, x.Line.UnitNetPrice, x.Line.VatRate))
             .ToList();
     }
 
@@ -458,6 +461,8 @@ public class IssuedInvoiceService(
             throw new InvoiceStateException("Szablon można zapisać tylko z faktury VAT.", TemplateKindCode);
 
         var (original, state) = await CopySourceAsync(tenantId, source, ct);
+        if (state.Id != original.Id && state.Lines.Count == 0)
+            throw new InvoiceStateException("Faktura skorygowana do zera nie ma pozycji. Zapisz szablon z innej faktury.", TemplateZeroCode);
         var template = InvoiceTemplate.Capture(tenantId, original, state, Now(), checkedName);
         db.InvoiceTemplates.Add(template);
         await db.SaveChangesAsync(ct);
@@ -484,6 +489,15 @@ public class IssuedInvoiceService(
     private IQueryable<IssuedInvoice> AcceptedSales(Guid tenantId) =>
         db.IssuedInvoices.AsNoTracking().Where(i => i.TenantId == tenantId && i.Status == IssuedInvoiceStatus.Accepted
             && (i.InvoiceType == IssuedInvoiceType.Vat || i.InvoiceType == IssuedInvoiceType.Zal || i.InvoiceType == IssuedInvoiceType.Roz));
+
+    private async Task<List<(IssuedInvoice Original, IssuedInvoice Current)>> CurrentSalesAsync(IQueryable<IssuedInvoice> sales, bool withLines, CancellationToken ct)
+    {
+        var corrections = db.IssuedInvoices.AsNoTracking()
+            .Where(c => c.Status == IssuedInvoiceStatus.Accepted && sales.Any(s => s.Id == c.CorrectedInvoiceId));
+        var originals = await (withLines ? sales.Include(i => i.Lines) : sales).ToListAsync(ct);
+        var byOriginal = (await (withLines ? corrections.Include(i => i.Lines) : corrections).ToListAsync(ct)).ToLookup(c => c.CorrectedInvoiceId);
+        return originals.Select(o => (o, Corrections.CurrentState(o, byOriginal[o.Id]))).ToList();
+    }
 
     private static string BuyerKey(RecentBuyer buyer) => buyer.Kind switch
     {
