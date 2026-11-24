@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
+import { exportInvoices } from '@/api/endpoints/invoices'
 import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import { createTenant, deleteTenant, listMembers, updateTenant } from '@/api/endpoints/tenants'
 import { ApiError, readFieldError } from '@/api/errors'
@@ -16,6 +17,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Skeleton } from '@/components/Skeleton'
 import { formatWarsawDate } from '@/invoicing/format'
 import { nipError } from '@/invoicing/nip'
+import { downloadFile } from '@/invoicing/status'
 import { notifyMutationError, notifyMutationSuccess } from '@/notifications'
 
 const EMAIL_ERROR = 'Adres e-mail do powiadomień jest nieprawidłowy'
@@ -186,6 +188,8 @@ function DetailsTab({ company }: { company: TenantResponse }): ReactElement {
         </form>
       </section>
 
+      {can(company, 'invoices.export') ? <ExportSection company={company} /> : null}
+
       {deletable ? (
         <section className="ui-card ui-card--danger" aria-labelledby="company-danger-title">
           <h2 id="company-danger-title">Działania ryzykowne</h2>
@@ -229,6 +233,87 @@ function DetailsTab({ company }: { company: TenantResponse }): ReactElement {
         ) : null}
       </ConfirmDialog>
     </div>
+  )
+}
+
+function exportError(from: string, to: string, sales: boolean, purchases: boolean): string | null {
+  if (Boolean(from) !== Boolean(to)) return 'Podaj obie daty albo zostaw obie puste, aby pobrać wszystkie faktury.'
+  if (from > to) return 'Data „od” nie może być późniejsza niż data „do”.'
+  if (!sales && !purchases) return 'Wybierz co najmniej jeden rodzaj: Sprzedaż lub Zakup.'
+  return null
+}
+
+function ExportSection({ company }: { company: TenantResponse }): ReactElement {
+  const [open, setOpen] = useState(false)
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [sales, setSales] = useState(true)
+  const [purchases, setPurchases] = useState(true)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  const download = useMutation({
+    mutationFn: () => exportInvoices(company.id, { from: from || undefined, to: to || undefined, sales, purchases }),
+    onSuccess: ({ blob, fileName }) => {
+      downloadFile(blob, fileName ?? `OpenKSeF_${company.nip}.zip`, 'application/zip')
+      setOpen(false)
+    },
+    onError: (error) => {
+      toast.error(error instanceof ApiError && error.status === 400 ? error.message : 'Nie udało się pobrać eksportu faktur.')
+    },
+  })
+
+  function onConfirm(): void {
+    const error = exportError(from, to, sales, purchases)
+    setFormError(error)
+    if (!error) download.mutate()
+  }
+
+  return (
+    <section className="ui-card" aria-labelledby="company-export-title">
+      <h2 id="company-export-title">Eksport faktur</h2>
+      <p className="company-muted">Plik ZIP z XML faktur sprzedaży i zakupu, UPO oraz indeksem CSV.</p>
+      <Button variant="outline" data-testid="invoice-export-open" onClick={() => setOpen(true)}>
+        Eksportuj faktury
+      </Button>
+      <ConfirmDialog
+        open={open}
+        title="Eksport faktur"
+        message="Okres według daty wystawienia, włącznie. Puste daty oznaczają wszystkie faktury."
+        confirmLabel="Pobierz ZIP"
+        pendingLabel="Przygotowujemy plik…"
+        isPending={download.isPending}
+        onConfirm={onConfirm}
+        onCancel={() => {
+          setFormError(null)
+          setOpen(false)
+        }}
+      >
+        <div className="ui-form-group">
+          <label htmlFor="invoice-export-from">Od</label>
+          <input id="invoice-export-from" data-testid="invoice-export-from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} data-autofocus />
+        </div>
+        <div className="ui-form-group">
+          <label htmlFor="invoice-export-to">Do</label>
+          <input id="invoice-export-to" data-testid="invoice-export-to" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+        </div>
+        <fieldset className="company-method">
+          <legend>Faktury</legend>
+          <label className="inv-check">
+            <input type="checkbox" data-testid="invoice-export-sales" checked={sales} onChange={(event) => setSales(event.target.checked)} />
+            Sprzedaż
+          </label>
+          <label className="inv-check">
+            <input type="checkbox" data-testid="invoice-export-purchases" checked={purchases} onChange={(event) => setPurchases(event.target.checked)} />
+            Zakup
+          </label>
+        </fieldset>
+        {formError ? (
+          <div className="ui-form-error" role="alert">
+            {formError}
+          </div>
+        ) : null}
+      </ConfirmDialog>
+    </section>
   )
 }
 

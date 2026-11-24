@@ -1,4 +1,5 @@
 using KSeF.Client.Core.Interfaces.Services;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -132,6 +133,38 @@ public class InvoicesController : ControllerBase
             .FirstOrDefaultAsync();
 
         return xml is null ? NotFound() : File(xml.Content, "application/xml", $"{xml.KSeFInvoiceNumber}.xml");
+    }
+
+    [HttpGet("export")]
+    [TenantAccess(TenantPermissions.InvoicesExport)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Export(
+        Guid tenantId,
+        [FromServices] InvoiceExportService export,
+        [FromQuery] DateOnly? from = null,
+        [FromQuery] DateOnly? to = null,
+        [FromQuery] bool sales = true,
+        [FromQuery] bool purchases = true,
+        CancellationToken ct = default)
+    {
+        if (from.HasValue != to.HasValue || from > to)
+            return BadRequest(new { error = "Podaj obie daty okresu (od nie później niż do) albo żadnej" });
+        if (!sales && !purchases)
+            return BadRequest(new { error = "Wybierz sprzedaż, zakup albo oba kierunki" });
+
+        var prepared = await export.PrepareAsync(tenantId, from, to, sales, purchases, ct);
+        await TenantAudit.AddAsync(_db, tenantId, _currentUser.UserId, AuditEvent.InvoicesExported, prepared.AuditTarget);
+        await _db.SaveChangesAsync(ct);
+
+        // ZipArchive in .NET 10 still closes each entry (deflate tail, data descriptor) with synchronous writes.
+        HttpContext.Features.GetRequiredFeature<IHttpBodyControlFeature>().AllowSynchronousIO = true;
+        Response.ContentType = "application/zip";
+        Response.Headers.ContentDisposition = new Microsoft.Net.Http.Headers.ContentDispositionHeaderValue("attachment") { FileName = prepared.FileName }.ToString();
+        await export.WriteAsync(prepared, Response.Body, ct);
+        return new EmptyResult();
     }
 
     [HttpGet("by-number/{ksefInvoiceNumber}")]

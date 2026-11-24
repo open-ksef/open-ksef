@@ -6,6 +6,7 @@ public class AuditEvent
     public const string TwoFactorResetPartial = "TwoFactorResetPartial";
     public const string InvoicePaid = "invoice.paid";
     public const string InvoiceUnpaid = "invoice.unpaid";
+    public const string InvoicesExported = "invoices.exported";
     public const string CredentialSet = "credential.set";
     public const string CredentialDeleted = "credential.deleted";
     public const string MemberLeft = "member.left";

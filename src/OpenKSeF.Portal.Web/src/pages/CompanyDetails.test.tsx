@@ -6,12 +6,14 @@ import toast from 'react-hot-toast'
 import { RouterProvider, createMemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { exportInvoices } from '@/api/endpoints/invoices'
 import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import { claimTenant, createTenant, deleteTenant, listMembers, listTenants, updateTenant } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
 import { CompanyCard } from '@/company/CompanyCard'
 import { CompanyProvider } from '@/company/CompanyProvider'
 import { memoryStorage } from '@/company/memoryStorage'
+import { downloadFile } from '@/invoicing/status'
 import { CompanyDetailsPage } from './CompanyDetails'
 import { employeeAccess, ownerAccess } from '@/test/tenant'
 
@@ -24,6 +26,8 @@ vi.mock('@/api/endpoints/tenants', () => ({
   listMembers: vi.fn(),
 }))
 vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedFeed: vi.fn() }))
+vi.mock('@/api/endpoints/invoices', () => ({ exportInvoices: vi.fn() }))
+vi.mock('@/invoicing/status', async (importOriginal) => ({ ...(await importOriginal<object>()), downloadFile: vi.fn() }))
 vi.mock('@/api/endpoints/sellerProfile', () => ({ getSellerProfile: vi.fn().mockResolvedValue({ ksefEnvironment: 'test' }) }))
 vi.mock('react-hot-toast', () => ({ default: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }))
 
@@ -313,5 +317,69 @@ describe('Firma, Dane firmy', () => {
     expect(vi.mocked(createTenant).mock.calls[0][0]).toEqual({ nip: '3333333333', displayName: null, notificationEmail: null })
     expect(by('location')?.textContent).toBe('/company/token?tenantId=c')
     expect(toast).not.toHaveBeenCalled()
+  })
+
+  it('shows Eksport faktur only with invoices.export', async () => {
+    vi.mocked(listTenants).mockResolvedValue([{ ...company('a', 'Firma A', '1111111111'), ...employeeAccess }])
+    await render()
+    expect(by('invoice-export-open')).toBeNull()
+    act(() => root.unmount())
+
+    root = createRoot(container)
+    vi.mocked(listTenants).mockResolvedValue([company('a', 'Firma A', '1111111111')])
+    await render()
+    expect(by('invoice-export-open')?.textContent).toBe('Eksportuj faktury')
+  })
+
+  it('rejects a reversed period, a single date and no direction in the export dialog', async () => {
+    await render()
+    await act(async () => by('invoice-export-open')?.click())
+    const confirm = () => act(async () => container.querySelector<HTMLElement>('[role="alertdialog"] .ui-button--primary')?.click())
+    const alert = () => container.querySelector('[role="alertdialog"] [role="alert"]')?.textContent
+
+    await type('invoice-export-from', '2026-10-31')
+    await confirm()
+    expect(alert()).toBe('Podaj obie daty albo zostaw obie puste, aby pobrać wszystkie faktury.')
+
+    await type('invoice-export-to', '2026-10-01')
+    await confirm()
+    expect(alert()).toBe('Data „od” nie może być późniejsza niż data „do”.')
+
+    await type('invoice-export-from', '2026-10-01')
+    await type('invoice-export-to', '2026-10-31')
+    await act(async () => by('invoice-export-sales')?.click())
+    await act(async () => by('invoice-export-purchases')?.click())
+    await confirm()
+    expect(alert()).toBe('Wybierz co najmniej jeden rodzaj: Sprzedaż lub Zakup.')
+    expect(exportInvoices).not.toHaveBeenCalled()
+  })
+
+  it('downloads the export ZIP under the server file name', async () => {
+    const blob = new Blob(['zip'])
+    vi.mocked(exportInvoices).mockResolvedValue({ blob, fileName: 'OpenKSeF_1111111111_2026-10-01_2026-10-31.zip' })
+    await render()
+    await act(async () => by('invoice-export-open')?.click())
+    await type('invoice-export-from', '2026-10-01')
+    await type('invoice-export-to', '2026-10-31')
+    await act(async () => by('invoice-export-purchases')?.click())
+    await act(async () => container.querySelector<HTMLElement>('[role="alertdialog"] .ui-button--primary')?.click())
+    await settle()
+
+    expect(exportInvoices).toHaveBeenCalledExactlyOnceWith('a', { from: '2026-10-01', to: '2026-10-31', sales: true, purchases: false })
+    expect(downloadFile).toHaveBeenCalledExactlyOnceWith(blob, 'OpenKSeF_1111111111_2026-10-01_2026-10-31.zip', 'application/zip')
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull()
+  })
+
+  it('exports everything when both dates are empty and shows a 400 message as is', async () => {
+    vi.mocked(exportInvoices).mockRejectedValue(
+      await normalizeError(new Response(JSON.stringify({ error: 'Zły okres.' }), { status: 400, headers: { 'Content-Type': 'application/json' } })),
+    )
+    await render()
+    await act(async () => by('invoice-export-open')?.click())
+    await act(async () => container.querySelector<HTMLElement>('[role="alertdialog"] .ui-button--primary')?.click())
+    await settle()
+
+    expect(exportInvoices).toHaveBeenCalledExactlyOnceWith('a', { from: undefined, to: undefined, sales: true, purchases: true })
+    expect(toast.error).toHaveBeenCalledWith('Zły okres.')
   })
 })
