@@ -92,6 +92,15 @@ describe('Szablony', () => {
     expect(row).toContain('2 pozycje · PLN · termin 21 dni')
   })
 
+  it('keeps the row actions in their own cell, not the narrow list icon column', async () => {
+    await render()
+    const cell = byLabel('Nowa z szablonu Abonament X').closest('td')!
+    expect(cell.className).toBe('template-actions')
+    expect(cell.classList.contains('issued-actions')).toBe(false)
+    expect(cell.contains(byLabel('Zmień nazwę szablonu Abonament X'))).toBe(true)
+    expect(cell.contains(byLabel('Usuń szablon Abonament X'))).toBe(true)
+  })
+
   it('Nowa z szablonu creates a draft and opens its edit form', async () => {
     vi.mocked(createDraftFromTemplate).mockResolvedValue({ id: 'new-1' } as never)
     await render()

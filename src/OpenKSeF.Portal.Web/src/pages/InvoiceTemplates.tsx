@@ -74,9 +74,9 @@ export function InvoiceTemplatesPage(): ReactElement {
     {
       key: 'id',
       label: 'Akcje',
-      className: 'issued-actions',
+      className: 'template-actions',
       render: (template) => (
-        <div className="status-panel__row">
+        <div className="template-actions__row">
           <button
             type="button"
             className="ui-button ui-button--primary ui-button--sm"

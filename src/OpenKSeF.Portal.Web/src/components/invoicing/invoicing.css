@@ -696,3 +696,18 @@ fieldset.inv-card {
   width: 1%;
   text-align: right;
 }
+
+.template-actions {
+  width: auto;
+}
+
+.template-actions__row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.template-actions__row > * {
+  white-space: nowrap;
+}
