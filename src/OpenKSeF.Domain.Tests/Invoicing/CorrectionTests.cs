@@ -78,7 +78,7 @@ public class CorrectionTests
         var correction = IssuedInvoice.Correction(Guid.NewGuid(), original, original, CorrectionMode.WrongBuyerId, Today, Now);
 
         Assert.Empty(correction.Lines);
-        Assert.Equal(Corrections.WrongBuyerIdReason, correction.CorrectionReason);
+        Assert.Equal((Corrections.WrongBuyerIdReason, CorrectionMode.WrongBuyerId), (correction.CorrectionReason, correction.CorrectionMode));
         Assert.Equal(-123m, correction.TotalGross);
     }
 

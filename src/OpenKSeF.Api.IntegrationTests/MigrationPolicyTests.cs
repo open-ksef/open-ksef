@@ -23,6 +23,7 @@ public class MigrationPolicyTests
         ["20261116175939_AddTenantInvites"] = "T-166: DropForeignKey + AddForeignKey re-create FK_AuditEvents_Tenants_TenantId with ON DELETE SET NULL instead of CASCADE, so audit rows (and the invite limits counted from them) outlive a deleted company. TenantId is already nullable; every existing row already satisfies the FK; no row written or removed. The rest is a new table. Down restores CASCADE.",
         ["20261116203549_NonUniqueTenantUserNipIndex"] = "T-766: DropIndex + CreateIndex make IX_Tenants_UserId_Nip non-unique; the duplicate-NIP check moves to current membership (REQ-0037). No row written or removed; runbook step 7 (deleted:<tenant Id>) works with or without uniqueness. Down re-creates the unique index and fails once one user created two companies with the same NIP: roll back by image only.",
         ["20261120120000_DropIssuedInvoiceSentXmlSha256"] = "T-817 (ADR-004 M4 release 2): DropColumn IssuedInvoices.SentXmlSha256, a write-only hash unmapped since 20261120090000 (v0.0.32, the rollback target, does not map it). The hashes are lost; nothing reads them. Down re-adds the column nullable and empty.",
+        ["20261124104125_StoreCorrectionMode"] = "T-868: raw Sql backfills only the new nullable IssuedInvoices.CorrectionMode = 'WrongBuyerId' on KOR/KOR_ZAL/KOR_ROZ rows whose CorrectionReason is 'Błędny NIP nabywcy'. No other column is written, no row removed. Prod had 0 issued invoices on 2026-11-24.",
     };
 
     [Fact]

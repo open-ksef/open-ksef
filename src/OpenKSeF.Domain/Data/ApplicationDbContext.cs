@@ -177,6 +177,7 @@ public class ApplicationDbContext : DbContext
                 .HasMaxLength(8)
                 .HasDefaultValue(IssuedInvoiceType.Vat);
             entity.Property(i => i.CorrectionReason).HasMaxLength(256);
+            entity.Property(i => i.CorrectionMode).HasConversion<string>().HasMaxLength(16);
             entity.Property(i => i.Status).HasConversion<string>().HasMaxLength(16);
             entity.Property(i => i.Number).HasMaxLength(256);
             entity.Property(i => i.NumberPeriod).HasMaxLength(7);

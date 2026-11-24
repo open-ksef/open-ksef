@@ -169,6 +169,36 @@ public class IssuedInvoiceCorrectionsApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Reissue_UsesStoredMode_LaterKorKeepsNipCleared_ReasonTextAloneDoesNot()
+    {
+        var tenantId = await CreateTenantAsync();
+        var wrongId = await AcceptedOriginalAsync(tenantId);
+        var wrong = await NewCorrectionAsync(tenantId, wrongId, "WrongBuyerId");
+        Assert.Equal(HttpStatusCode.Accepted, (await IssueCorrectionAsync(tenantId, wrong.Id)).StatusCode);
+        await AcceptAsync(wrong.Id, "5213456789-20261220-ABCDEF123456-01");
+        var address = await NewCorrectionAsync(tenantId, wrongId, "Edit");
+        (await PutCorrectionAsync(tenantId, address.Id, new CorrectionDraftRequest(CorrectionReason: "Zmiana adresu nabywcy",
+            Buyer: new IssuedInvoiceBuyerModel("Company", BuyerNip, "Nabywca sp. z o.o.", "ul. Nowa 5", "00-002 Warszawa")))).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.Accepted, (await IssueCorrectionAsync(tenantId, address.Id)).StatusCode);
+        await AcceptAsync(address.Id, "5213456789-20261220-ABCDEF123456-02");
+
+        var cleared = await _client.PostAsync($"{Base(tenantId)}/{wrongId}/reissue", null);
+        Assert.Equal(HttpStatusCode.Created, cleared.StatusCode);
+        Assert.Null((await cleared.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!.Buyer.Nip);
+
+        var zeroId = await AcceptedOriginalAsync(tenantId);
+        var zero = await NewCorrectionAsync(tenantId, zeroId, "ToZero");
+        (await PutCorrectionAsync(tenantId, zero.Id, new CorrectionDraftRequest(CorrectionReason: "Błędny NIP nabywcy"))).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.Accepted, (await IssueCorrectionAsync(tenantId, zero.Id)).StatusCode);
+        await AcceptAsync(zero.Id, "5213456789-20261220-ABCDEF123456-03");
+
+        var kept = await _client.PostAsync($"{Base(tenantId)}/{zeroId}/reissue", null);
+        Assert.Equal(HttpStatusCode.Created, kept.StatusCode);
+        Assert.Equal(BuyerNip, (await kept.Content.ReadFromJsonAsync<IssuedInvoiceResponse>())!.Buyer.Nip);
+        Assert.Equal((CorrectionMode?)CorrectionMode.ToZero, await WithDbAsync(db => db.IssuedInvoices.Where(i => i.Id == zero.Id).Select(i => i.CorrectionMode).SingleAsync()));
+    }
+
+    [Fact]
     public async Task SecondCorrection_StartsFromStateAfterFirst_AndNamesOriginal()
     {
         var tenantId = await CreateTenantAsync();
