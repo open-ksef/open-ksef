@@ -788,6 +788,10 @@ namespace OpenKSeF.Domain.Data.Migrations
                     b.Property<Guid?>("CorrectedInvoiceId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("CorrectionMode")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("CorrectionReason")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");

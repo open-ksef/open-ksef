@@ -25,7 +25,7 @@ public sealed class OrderChainsUpgradeTests : IAsyncLifetime
 
     private static readonly (string Table, string NewColumns)[] Tables =
     [
-        ("IssuedInvoices", "- 'OrderChainId' - 'AdvanceAmount'"),
+        ("IssuedInvoices", "- 'OrderChainId' - 'AdvanceAmount' - 'CorrectionMode'"),
         ("IssuedInvoiceLines", ""),
         ("SellerProfiles", "- 'AdvanceNumberingPattern'"),
         ("InvoiceNumberCounters", ""),

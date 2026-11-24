@@ -220,6 +220,25 @@ public class InvoiceTemplatesApiTests : IDisposable
     }
 
     [Fact]
+    public async Task RecentBuyers_UseStoredMode_LaterKorKeepsWrongNipHidden_ReasonTextAloneDoesNot()
+    {
+        var tenantId = await CreateTenantAsync();
+        var wrongNip = TestNip.New();
+        var reasonNip = TestNip.New();
+        var wrongId = await SeedAsync(tenantId, new DateOnly(2026, 11, 3), Company(wrongNip, "Pomyłka sp. z o.o.", "ul. Błędna 1"));
+        var reasonId = await SeedAsync(tenantId, new DateOnly(2026, 11, 4), Company(reasonNip, "Klient sp. z o.o.", "ul. Stara 1"));
+        await AcceptCorrectionAsync(tenantId, wrongId, "WrongBuyerId", new CorrectionDraftRequest());
+        await AcceptCorrectionAsync(tenantId, wrongId, "Edit", new CorrectionDraftRequest(CorrectionReason: "Zmiana adresu",
+            Buyer: new IssuedInvoiceBuyerModel("Company", wrongNip, "Pomyłka sp. z o.o.", "ul. Nowa 3", "00-002 Warszawa")));
+        await AcceptCorrectionAsync(tenantId, reasonId, "Edit", new CorrectionDraftRequest(CorrectionReason: "Błędny NIP nabywcy",
+            Buyer: new IssuedInvoiceBuyerModel("Company", reasonNip, "Klient sp. z o.o.", "ul. Nowa 4", "00-002 Warszawa")));
+
+        var buyers = (await _client.GetFromJsonAsync<List<RecentBuyerResponse>>($"{Base(tenantId)}/recent-buyers"))!;
+
+        Assert.Equal([reasonNip], buyers.Select(b => b.Buyer.Nip));
+    }
+
+    [Fact]
     public async Task LineSuggestions_UseCorrectedPrice_SkipLinesCorrectedToZero()
     {
         var tenantId = await CreateTenantAsync();

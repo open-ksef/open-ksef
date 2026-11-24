@@ -404,7 +404,7 @@ public class IssuedInvoiceService(
         var sales = await CurrentSalesAsync(AcceptedSales(tenantId), false, ct);
         var term = query?.Trim();
         return sales
-            .Where(s => s.Current.CorrectionReason != Corrections.WrongBuyerIdReason)
+            .Where(s => !s.WrongBuyerId)
             .OrderByDescending(s => s.Original.IssueDate)
             .ThenByDescending(s => s.Original.CreatedAt)
             .Select(s => new RecentBuyer(s.Current.BuyerKind, s.Current.BuyerNip, s.Current.BuyerName, s.Current.BuyerAddressLine1, s.Current.BuyerAddressLine2,
@@ -490,13 +490,13 @@ public class IssuedInvoiceService(
         db.IssuedInvoices.AsNoTracking().Where(i => i.TenantId == tenantId && i.Status == IssuedInvoiceStatus.Accepted
             && (i.InvoiceType == IssuedInvoiceType.Vat || i.InvoiceType == IssuedInvoiceType.Zal || i.InvoiceType == IssuedInvoiceType.Roz));
 
-    private async Task<List<(IssuedInvoice Original, IssuedInvoice Current)>> CurrentSalesAsync(IQueryable<IssuedInvoice> sales, bool withLines, CancellationToken ct)
+    private async Task<List<(IssuedInvoice Original, IssuedInvoice Current, bool WrongBuyerId)>> CurrentSalesAsync(IQueryable<IssuedInvoice> sales, bool withLines, CancellationToken ct)
     {
         var corrections = db.IssuedInvoices.AsNoTracking()
             .Where(c => c.Status == IssuedInvoiceStatus.Accepted && sales.Any(s => s.Id == c.CorrectedInvoiceId));
         var originals = await (withLines ? sales.Include(i => i.Lines) : sales).ToListAsync(ct);
         var byOriginal = (await (withLines ? corrections.Include(i => i.Lines) : corrections).ToListAsync(ct)).ToLookup(c => c.CorrectedInvoiceId);
-        return originals.Select(o => (o, Corrections.CurrentState(o, byOriginal[o.Id]))).ToList();
+        return originals.Select(o => (o, Corrections.CurrentState(o, byOriginal[o.Id]), byOriginal[o.Id].Any(c => c.CorrectionMode == CorrectionMode.WrongBuyerId))).ToList();
     }
 
     private static string BuyerKey(RecentBuyer buyer) => buyer.Kind switch
@@ -636,7 +636,7 @@ public class IssuedInvoiceService(
             throw new InvoiceStateException("Poprawną fakturę wystawisz po przyjęciu w KSeF korekty do zera.", ReissueCode);
 
         var lastSale = chain.Last(d => d.Lines.Count > 0);
-        return await AddCopyAsync(tenantId, InvoiceTemplate.Capture(tenantId, original, lastSale, Now(), clearBuyerId: current.CorrectionReason == Corrections.WrongBuyerIdReason), ct);
+        return await AddCopyAsync(tenantId, InvoiceTemplate.Capture(tenantId, original, lastSale, Now(), clearBuyerId: chain.Any(d => d.CorrectionMode == CorrectionMode.WrongBuyerId)), ct);
     }
 
     public async Task<IssuedInvoiceView?> CreateAdvanceAsync(Guid tenantId, IssuedInvoiceAdvanceInput? input, CancellationToken ct = default)

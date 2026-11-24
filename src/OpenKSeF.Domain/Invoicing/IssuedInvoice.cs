@@ -27,6 +27,7 @@ public sealed class IssuedInvoice
     public IssuedInvoiceType InvoiceType { get; private set; }
     public Guid? CorrectedInvoiceId { get; private set; }
     public string? CorrectionReason { get; private set; }
+    public CorrectionMode? CorrectionMode { get; private set; }
     public int? CorrectionType { get; private set; }
     public Guid? OrderChainId { get; private set; }
     public decimal? AdvanceAmount { get; private set; }
@@ -174,8 +175,9 @@ public sealed class IssuedInvoice
             InvoiceType = original.InvoiceType.CorrectionOf(),
             CorrectedInvoiceId = original.Id,
             OrderChainId = original.OrderChainId,
-            AdvanceAmount = original.InvoiceType == IssuedInvoiceType.Zal ? (mode == CorrectionMode.Edit ? state.AdvanceAmount : 0m) : null,
-            CorrectionReason = mode == CorrectionMode.WrongBuyerId ? Corrections.WrongBuyerIdReason : null,
+            AdvanceAmount = original.InvoiceType == IssuedInvoiceType.Zal ? (mode == Invoicing.CorrectionMode.Edit ? state.AdvanceAmount : 0m) : null,
+            CorrectionReason = mode == Invoicing.CorrectionMode.WrongBuyerId ? Corrections.WrongBuyerIdReason : null,
+            CorrectionMode = mode,
             Status = IssuedInvoiceStatus.Draft,
             SellerNip = original.SellerNip,
             SellerName = original.SellerName,
@@ -207,7 +209,7 @@ public sealed class IssuedInvoice
             CreatedAt = now,
             UpdatedAt = now
         };
-        if (mode == CorrectionMode.Edit || correction.InvoiceType == IssuedInvoiceType.KorZal)
+        if (mode == Invoicing.CorrectionMode.Edit || correction.InvoiceType == IssuedInvoiceType.KorZal)
             correction.ReplaceCorrectionLines(state.Lines.OrderBy(l => l.LineNo).Select(l => ((int?)l.LineNo, (string?)l.Name, (string?)l.Unit, l.Quantity, l.UnitNetPrice, l.VatRate)), state);
         else
             correction.RecalculateTotals(state);
