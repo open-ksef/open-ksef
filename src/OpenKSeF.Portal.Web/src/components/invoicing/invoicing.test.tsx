@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, useState, type ReactElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { listLineSuggestions, listRecentBuyers } from '@/api/endpoints/issuedInvoices'
 import { lookupNip } from '@/api/endpoints/nipLookup'
 import { ApiError } from '@/api/errors'
-import type { NipLookupResponse } from '@/api/types'
-import { emptyDraft, emptyLine, type BuyerFormValue, type InvoiceLineFormValue } from '@/invoicing/form'
+import type { BuyerKind, NipLookupResponse } from '@/api/types'
+import { emptyDraft, emptyLine, withBuyer, type BuyerFormValue, type DraftFormValue, type InvoiceLineFormValue } from '@/invoicing/form'
+import { FOREIGN_VAT_RATES } from '@/invoicing/totals'
 import { BuyerSection } from './BuyerSection'
 import { EnvBadge, KsefStatusBadge } from './KsefStatusBadge'
 import { LinesTable } from './LinesTable'
@@ -15,10 +18,20 @@ import { ValidationSummary } from './ValidationSummary'
 import { VatRateSelect } from './VatRateSelect'
 
 vi.mock('@/api/endpoints/nipLookup', () => ({ lookupNip: vi.fn() }))
+vi.mock('@/api/endpoints/issuedInvoices', () => ({ listRecentBuyers: vi.fn(), listLineSuggestions: vi.fn() }))
+
+const debounce = async () => {
+  await act(() => new Promise<void>((resolve) => setTimeout(resolve, 350)))
+  await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
+}
 
 function typeInto(element: HTMLInputElement, value: string): void {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(element, value)
   element.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+function typeIntoAct(element: HTMLInputElement, value: string): void {
+  act(() => typeInto(element, value))
 }
 
 describe('issuing components', () => {
@@ -31,6 +44,8 @@ describe('issuing components', () => {
     document.body.appendChild(container)
     root = createRoot(container)
     vi.mocked(lookupNip).mockReset()
+    vi.mocked(listRecentBuyers).mockReset()
+    vi.mocked(listLineSuggestions).mockReset()
   })
 
   afterEach(() => {
@@ -39,8 +54,118 @@ describe('issuing components', () => {
   })
 
   async function render(element: ReactElement): Promise<void> {
-    await act(async () => root.render(element))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => root.render(<QueryClientProvider client={client}>{element}</QueryClientProvider>))
   }
+
+  const button = (text: string) => [...container.querySelectorAll('button')].find((item) => item.textContent?.includes(text))
+
+  function DraftHarness({ initial }: { initial: DraftFormValue }): ReactElement {
+    const [form, setForm] = useState(initial)
+    return (
+      <>
+        <BuyerSection tenantId="t-1" value={form.buyer} onChange={(buyer) => setForm(withBuyer(form, buyer))} />
+        <output data-testid="currency">{form.currency}</output>
+        <output data-testid="lines">{form.lines.map((line) => line.name).join('|')}</output>
+        <output data-testid="dates">{[form.issueDate, form.dueDate].join('|')}</output>
+      </>
+    )
+  }
+
+  it('Ostatni nabywcy: picking a GB buyer without a tax id fills kind and buyer fields, keeps currency, lines and dates', async () => {
+    const initial = { ...emptyDraft('2026-11-24'), currency: 'GBP', lines: [{ ...emptyLine('np I'), name: 'Consulting' }] }
+    initial.buyer = { ...initial.buyer, kind: 'Foreign', countryCode: 'US', foreignId: 'US-1' }
+    vi.mocked(listRecentBuyers).mockResolvedValue([
+      {
+        buyer: { kind: 'Foreign', nip: null, name: 'Example Buyer Ltd', addressLine1: '1 Test Street', addressLine2: 'Testville', countryCode: 'GB', idType: 'None', foreignId: null },
+        lastIssueDate: '2026-11-01',
+      },
+      { buyer: { kind: 'Company', nip: '5260250274', name: 'Firma Testowa', addressLine1: 'ul. A 1', addressLine2: '00-001 Warszawa' }, lastIssueDate: '2026-10-01' },
+    ])
+    await render(<DraftHarness initial={initial} />)
+    expect(listRecentBuyers).not.toHaveBeenCalled()
+
+    await act(async () => button('Ostatni nabywcy')!.click())
+    await debounce()
+    expect(button('Ostatni nabywcy')!.getAttribute('aria-expanded')).toBe('true')
+    expect(document.activeElement?.id).toBe('recent-buyers-q')
+    expect(container.querySelector('#recent-buyers')?.textContent).toContain('NIP 5260250274')
+    await act(async () => button('Example Buyer Ltd')!.click())
+
+    expect(container.querySelector('#recent-buyers')).toBeNull()
+    expect(button('Firma zagraniczna')!.getAttribute('aria-pressed')).toBe('true')
+    expect(container.querySelector<HTMLSelectElement>('#buyer-countryCode')!.value).toBe('GB')
+    expect(container.querySelector<HTMLInputElement>('.inv-check input[type="checkbox"]')!.checked).toBe(true)
+    expect(container.querySelector<HTMLInputElement>('#buyer-name')!.value).toBe('Example Buyer Ltd')
+    expect(container.querySelector<HTMLInputElement>('#buyer-addressLine1')!.value).toBe('1 Test Street')
+    expect(container.querySelector<HTMLInputElement>('#buyer-addressLine2')!.value).toBe('Testville')
+    expect(container.querySelector('[data-testid="currency"]')!.textContent).toBe('GBP')
+    expect(container.querySelector('[data-testid="lines"]')!.textContent).toBe('Consulting')
+    expect(container.querySelector('[data-testid="dates"]')!.textContent).toBe('2026-11-24|2026-12-08')
+  })
+
+  it('Ostatni nabywcy searches by the typed fragment and says when nothing matches', async () => {
+    vi.mocked(listRecentBuyers).mockResolvedValue([])
+    await render(<DraftHarness initial={emptyDraft('2026-11-24')} />)
+    await act(async () => button('Ostatni nabywcy')!.click())
+    typeIntoAct(container.querySelector<HTMLInputElement>('#recent-buyers-q')!, '5260')
+    await debounce()
+    expect(listRecentBuyers).toHaveBeenLastCalledWith('t-1', '5260')
+    expect(container.textContent).toContain('Brak nabywców dla tego wyszukiwania.')
+  })
+
+  it.each(['Firma zagraniczna', 'Osoba prywatna'])('no NIP lookup button for %s', async (label) => {
+    await render(<DraftHarness initial={emptyDraft('2026-11-24')} />)
+    expect(button('Pobierz z NIP')).toBeDefined()
+    await act(async () => button(label)!.click())
+    expect(button('Pobierz z NIP')).toBeUndefined()
+  })
+
+  function LinesHarness({ buyerKind, foreign = false }: { buyerKind: BuyerKind; foreign?: boolean }): ReactElement {
+    const [lines, setLines] = useState<InvoiceLineFormValue[]>([{ ...emptyLine(foreign ? 'np I' : '23'), quantity: '3' }])
+    return <LinesTable currency="PLN" lines={lines} rates={foreign ? FOREIGN_VAT_RATES : undefined} onChange={setLines} suggest={{ tenantId: 't-1', buyerKind }} />
+  }
+
+  it('line suggestions start at 2 characters; picking fills name, unit, price and rate, quantity stays; no np rates for Firma', async () => {
+    vi.mocked(listLineSuggestions).mockResolvedValue([
+      { name: 'Usługa księgowa - pakiet S', unit: 'usł.', unitNetPrice: 500, vatRate: '8' },
+      { name: 'Usługa księgowa - eksport', unit: 'usł.', unitNetPrice: 100, vatRate: 'np I' },
+    ])
+    await render(<LinesHarness buyerKind="Company" />)
+    const name = container.querySelector<HTMLInputElement>('#line-0-name')!
+    await act(async () => name.focus())
+    typeIntoAct(name, 'k')
+    await debounce()
+    expect(listLineSuggestions).not.toHaveBeenCalled()
+
+    typeIntoAct(name, 'księg')
+    await debounce()
+    expect(listLineSuggestions).toHaveBeenCalledWith('t-1', 'księg', 'Company')
+    expect(name.getAttribute('list')).toBe('line-suggestions')
+    const options = [...container.querySelectorAll('#line-suggestions option')]
+    expect(options.map((option) => option.getAttribute('value'))).toEqual(['Usługa księgowa - pakiet S'])
+    expect(options[0].getAttribute('label')).toBe('usł. · 500,00 PLN · 8%')
+
+    typeIntoAct(name, 'Usługa księgowa - pakiet S')
+    expect(container.querySelector<HTMLInputElement>('#line-0-unit')!.value).toBe('usł.')
+    expect(container.querySelector<HTMLInputElement>('#line-0-unitNetPrice')!.value).toBe('500')
+    expect(container.querySelector<HTMLSelectElement>('#line-0-vatRate')!.value).toBe('8')
+    expect(container.querySelector<HTMLInputElement>('#line-0-quantity')!.value).toBe('3')
+  })
+
+  it('a foreign buyer gets only np suggestions', async () => {
+    vi.mocked(listLineSuggestions).mockResolvedValue([
+      { name: 'Consulting', unit: 'h', unitNetPrice: 50, vatRate: 'np I' },
+      { name: 'Consulting PL', unit: 'h', unitNetPrice: 50, vatRate: '23' },
+    ])
+    await render(<LinesHarness buyerKind="Foreign" foreign />)
+    const name = container.querySelector<HTMLInputElement>('#line-0-name')!
+    await act(async () => name.focus())
+    typeIntoAct(name, 'Co')
+    await debounce()
+    expect(listLineSuggestions).toHaveBeenCalledWith('t-1', 'Co', 'Foreign')
+    expect([...container.querySelectorAll('#line-suggestions option')].map((option) => option.getAttribute('value'))).toEqual(['Consulting'])
+  })
 
   it('VatRateSelect offers the MVP rates with Polish labels and FA(3) codes', async () => {
     await render(<VatRateSelect id="rate" value="23" onChange={() => {}} />)
@@ -172,6 +297,8 @@ describe('issuing components', () => {
     await act(async () => container.querySelector('button')!.click())
     expect(container.textContent).toContain(message)
     expect(container.textContent).not.toContain('Biała lista nie odpowiada')
+    expect(container.querySelector<HTMLInputElement>('#nip')!.readOnly).toBe(false)
+    expect(container.querySelector('button')!.disabled).toBe(false)
   })
 
   it('status and environment badges use Polish labels', async () => {

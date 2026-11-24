@@ -12,6 +12,7 @@ import {
   getIssuedInvoice,
   getIssuedInvoiceXml,
   issueIssuedInvoice,
+  saveAsTemplate,
   updateIssuedInvoice,
 } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
@@ -39,6 +40,9 @@ vi.mock('@/api/endpoints/issuedInvoices', () => ({
   getIssuedInvoiceUpo: vi.fn(),
   copyIssuedInvoice: vi.fn(),
   deleteIssuedInvoice: vi.fn(),
+  saveAsTemplate: vi.fn(),
+  listRecentBuyers: vi.fn(),
+  listLineSuggestions: vi.fn(),
 }))
 vi.mock('@/vendor/ksef-pdf-generator/ksef-fe-invoice-converter.js', () => ({ generateInvoice: vi.fn() }))
 
@@ -1033,6 +1037,77 @@ describe('issue and detail pages', () => {
     expect(updateIssuedInvoice).not.toHaveBeenCalled()
     expect(deleteIssuedInvoice).not.toHaveBeenCalled()
     expect(issueIssuedInvoice).not.toHaveBeenCalled()
+  })
+
+  it('Zapisz jako szablon on an Accepted VAT invoice sends the trimmed name and confirms', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Accepted', ksef: { ...ksef, ksefNumber: 'K-1' } }))
+    vi.mocked(saveAsTemplate).mockResolvedValue({} as never)
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Zapisz jako szablon')))
+
+    await act(async () => buttonByText(container, 'Zapisz jako szablon')!.click())
+    const name = container.querySelector<HTMLInputElement>('#template-name')!
+    expect(name.value).toBe('Nabywca')
+    expect(document.activeElement).toBe(name)
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(name, '  Abonament X ')
+      name.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => container.querySelector<HTMLButtonElement>('.ui-modal-footer .ui-button--primary')!.click())
+    await waitFor(() => container.textContent?.includes('Zapisano szablon „Abonament X”.') ?? false)
+    expect(saveAsTemplate).toHaveBeenCalledWith('t-1', 'i-1', 'Abonament X')
+    expect(container.querySelector('#template-name')).toBeNull()
+  })
+
+  it('Zapisz jako szablon shows the INV-VAL-099 field error and keeps the dialog', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Accepted' }))
+    const body = JSON.stringify({ errors: [{ code: 'INV-VAL-099', field: 'name', message: 'Podaj nazwę szablonu (1-100 znaków)' }], warnings: [] })
+    vi.mocked(saveAsTemplate).mockRejectedValue(await normalizeError(new Response(body, { status: 400, headers: { 'Content-Type': 'application/json' } })))
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Zapisz jako szablon')))
+
+    await act(async () => buttonByText(container, 'Zapisz jako szablon')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.ui-modal-footer .ui-button--primary')!.click())
+    await waitFor(() => Boolean(container.querySelector('#template-name-error')))
+    expect(container.querySelector('#template-name-error')?.textContent).toBe('Podaj nazwę szablonu (1-100 znaków)')
+    expect(container.querySelector('#template-name')?.getAttribute('aria-invalid')).toBe('true')
+  })
+
+  it('an empty template name is rejected before any request', async () => {
+    vi.mocked(getIssuedInvoice).mockResolvedValue(invoice({ status: 'Accepted', buyer: { kind: 'Company', nip: '4444444444', name: null, addressLine1: 'a', addressLine2: 'b' } }))
+    await render('/issued/i-1?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Zapisz jako szablon')))
+
+    await act(async () => buttonByText(container, 'Zapisz jako szablon')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.ui-modal-footer .ui-button--primary')!.click())
+    expect(container.querySelector('#template-name-error')?.textContent).toBe('Podaj nazwę szablonu')
+    expect(saveAsTemplate).not.toHaveBeenCalled()
+  })
+
+  it('a saved draft offers Zapisz jako szablon and saves unsaved edits first', async () => {
+    const draft = invoice({ status: 'Draft', number: null })
+    vi.mocked(getIssuedInvoice).mockResolvedValue(draft)
+    vi.mocked(updateIssuedInvoice).mockResolvedValue({ ...draft, version: 6 })
+    vi.mocked(saveAsTemplate).mockResolvedValue({} as never)
+    await render('/issued/i-1/edit?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Zapisz jako szablon')))
+    const buyerName = container.querySelector<HTMLInputElement>('#buyer-name')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(buyerName, 'Nabywca 2')
+      buyerName.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+    await act(async () => buttonByText(container, 'Zapisz jako szablon')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.ui-modal-footer .ui-button--primary')!.click())
+    await waitFor(() => vi.mocked(saveAsTemplate).mock.calls.length === 1)
+    expect(vi.mocked(updateIssuedInvoice).mock.calls[0][2].buyer?.name).toBe('Nabywca 2')
+    expect(saveAsTemplate).toHaveBeenCalledWith('t-1', 'i-1', 'Nabywca 2')
+  })
+
+  it('a new unsaved draft has no Zapisz jako szablon', async () => {
+    await render('/issued/new?tenantId=t-1')
+    await waitFor(() => Boolean(buttonByText(container, 'Zapisz szkic')))
+    expect(buttonByText(container, 'Zapisz jako szablon')).toBeUndefined()
   })
 
   it('Kopiuj jako nową failure stays on the source and shows the error', async () => {

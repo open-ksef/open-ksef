@@ -34,7 +34,7 @@ export function ConfirmDialog({
   useEffect(() => {
     if (!open) return
     const opener = document.activeElement as HTMLElement | null
-    dialogRef.current?.querySelector<HTMLElement>('.ui-modal-footer button')?.focus()
+    dialogRef.current?.querySelector<HTMLElement>('[data-autofocus], .ui-modal-footer button')?.focus()
     return () => opener?.focus()
   }, [open])
 
@@ -45,7 +45,7 @@ export function ConfirmDialog({
       if (e.key === 'Escape') onCancel()
       const dialog = dialogRef.current
       if (e.key !== 'Tab' || !dialog) return
-      const controls = [...dialog.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]')]
+      const controls = [...dialog.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled)')]
       const edge = e.shiftKey ? controls[0] : controls[controls.length - 1]
       if (document.activeElement === edge || !dialog.contains(document.activeElement)) {
         e.preventDefault()

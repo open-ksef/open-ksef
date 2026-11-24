@@ -37,6 +37,7 @@ export const appRoutes: RouteObject[] = [
           { path: 'invoices', element: <InvoiceListPage /> },
           { path: 'invoices/:ksefInvoiceNumber', lazy: () => loadRoute(() => import('@/pages/InvoiceDetails')).then((m) => ({ Component: m.InvoiceDetailsPage })) },
           { path: 'issued', element: <IssuedInvoiceListPage /> },
+          { path: 'issued/templates', lazy: () => loadRoute(() => import('@/pages/InvoiceTemplates')).then((m) => ({ Component: m.InvoiceTemplatesPage })) },
           { path: 'issued/new', lazy: () => loadRoute(() => import('@/pages/InvoiceDraft')).then((m) => ({ Component: m.InvoiceDraftPage })) },
           { path: 'issued/:id', lazy: () => loadRoute(() => import('@/pages/IssuedInvoiceDetails')).then((m) => ({ Component: m.IssuedInvoiceDetailsPage })) },
           { path: 'issued/:id/edit', lazy: () => loadRoute(() => import('@/pages/InvoiceDraft')).then((m) => ({ Component: m.InvoiceDraftPage })) },

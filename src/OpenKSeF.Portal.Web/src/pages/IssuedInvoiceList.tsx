@@ -1,8 +1,8 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ReactElement } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
-import { createAdvance, listIssuedFeed } from '@/api/endpoints/issuedInvoices'
+import { copyIssuedInvoice, createAdvance, listIssuedFeed } from '@/api/endpoints/issuedInvoices'
 import { getSellerProfile } from '@/api/endpoints/sellerProfile'
 import type { IssuedFeedItemResponse, IssuedInvoiceStatus } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
@@ -44,6 +44,8 @@ function lastPageSearch(current: URLSearchParams, lastPage: number): string {
 
 const amount = (row: IssuedFeedItemResponse, value: number): string =>
   isCorrection(row) ? formatSignedMoney(value, row.currency) : formatMoney(value, row.currency)
+
+const canCopy = (row: IssuedFeedItemResponse): boolean => row.source === 'OpenKSeF' && (row.invoiceType ?? 'VAT') === 'VAT' && row.status === 'Accepted'
 
 const EXTERNAL_HINT = 'Faktura wystawiona w innym programie, tylko do odczytu'
 
@@ -131,6 +133,14 @@ export function IssuedInvoiceListPage(): ReactElement {
     mutationFn: () => createAdvance(tenantId),
     onSuccess: (draft) => navigate(`/issued/${encodeURIComponent(draft.id)}/chain?${tenantQuery}`),
   })
+  const queryClient = useQueryClient()
+  const copy = useMutation({
+    mutationFn: (id: string) => copyIssuedInvoice(tenantId, id),
+    onSuccess: (draft) => {
+      void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
+      navigate(`/issued/${encodeURIComponent(draft.id)}/edit?${tenantQuery}`)
+    },
+  })
 
   const columns: TableColumn<IssuedFeedItemResponse>[] = [
     {
@@ -201,6 +211,27 @@ export function IssuedInvoiceListPage(): ReactElement {
       className: 'received-ksef',
       render: (row) => <span>{row.ksefNumber ?? '—'}</span>,
     },
+    {
+      key: 'id',
+      label: 'Akcje',
+      className: 'issued-actions',
+      render: (row) =>
+        canCopy(row) ? (
+          <button
+            type="button"
+            className="ui-button ui-button--ghost ui-button--sm"
+            aria-label="Kopiuj jako nową"
+            title="Kopiuj jako nową"
+            disabled={copy.isPending}
+            onClick={(event) => {
+              event.stopPropagation()
+              copy.mutate(row.id)
+            }}
+          >
+            <Icon name="copy" />
+          </button>
+        ) : null,
+    },
   ]
 
   return (
@@ -214,7 +245,11 @@ export function IssuedInvoiceListPage(): ReactElement {
         <button type="button" className="ui-button ui-button--outline ui-button--md" disabled={newAdvance.isPending} onClick={() => newAdvance.mutate()}>
           <Icon name="plus" /> {newAdvance.isPending ? 'Tworzenie…' : 'Nowa zaliczka'}
         </button>
+        <Link to={`/issued/templates?${tenantQuery}`} className="ui-button ui-button--outline ui-button--md">
+          <Icon name="file-text" /> Szablony
+        </Link>
       </header>
+      {copy.error ? <ErrorBanner message={copy.error instanceof Error ? copy.error.message : 'Nie udało się skopiować faktury'} /> : null}
       {newAdvance.error ? <ErrorBanner message={newAdvance.error instanceof Error ? newAdvance.error.message : 'Nie udało się utworzyć faktury zaliczkowej'} /> : null}
 
       {pastLastPage ? <Navigate to={{ search: lastPageSearch(searchParams, totalPages) }} replace /> : null}

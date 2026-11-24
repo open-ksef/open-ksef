@@ -647,3 +647,52 @@ fieldset.inv-card {
   font-size: 13px;
   line-height: 2;
 }
+
+.inv-recent {
+  position: relative;
+  margin-left: auto;
+}
+
+.inv-recent__panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+  padding: 8px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  box-shadow: var(--ui-shadow-lg);
+}
+
+.inv-recent__panel ul {
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inv-recent__panel li button {
+  display: grid;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--ui-radius-sm);
+  background: none;
+  text-align: left;
+  color: var(--ui-text);
+}
+
+.inv-recent__panel li button:hover,
+.inv-recent__panel li button:focus-visible {
+  background: var(--ui-surface-2);
+}
+
+.issued-actions {
+  width: 1%;
+  text-align: right;
+}

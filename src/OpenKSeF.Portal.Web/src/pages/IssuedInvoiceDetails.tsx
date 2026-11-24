@@ -13,6 +13,7 @@ import {
   getIssuedInvoiceUpo,
   getIssuedInvoiceXml,
   reissueInvoice,
+  saveAsTemplate,
 } from '@/api/endpoints/issuedInvoices'
 import type { CorrectionMode, IssuedInvoiceLineResponse, IssuedInvoiceResponse } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
@@ -24,6 +25,7 @@ import { EnvBadge, KsefStatusBadge } from '@/components/invoicing/KsefStatusBadg
 import { ChainCard } from '@/components/invoicing/ChainCard'
 import { CorrectionRows } from '@/components/invoicing/CorrectionRows'
 import { KsefStatusPanel } from '@/components/invoicing/KsefStatusPanel'
+import { SaveTemplateButton } from '@/components/invoicing/SaveTemplateButton'
 import { VatSummary } from '@/components/invoicing/VatSummary'
 import '@/components/invoicing/invoicing.css'
 import { useTenants } from '@/hooks/useTenants'
@@ -244,6 +246,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
         </h1>
         <KsefStatusBadge status={invoice.status} />
         <EnvBadge environment={invoice.ksef.environment} />
+        {kind === 'VAT' ? <SaveTemplateButton defaultName={invoice.buyer.name ?? ''} save={(name) => saveAsTemplate(tenantId, invoice.id, name)} /> : null}
       </header>
 
       {failure ? <ErrorBanner message={failure} /> : null}
