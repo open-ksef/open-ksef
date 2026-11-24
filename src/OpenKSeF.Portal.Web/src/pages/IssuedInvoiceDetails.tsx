@@ -4,6 +4,7 @@ import { useState, type ReactElement } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import {
+  convertProforma,
   copyIssuedInvoice,
   createAdvance,
   createCorrection,
@@ -15,7 +16,7 @@ import {
   reissueInvoice,
   saveAsTemplate,
 } from '@/api/endpoints/issuedInvoices'
-import type { CorrectionMode, IssuedInvoiceLineResponse, IssuedInvoiceResponse } from '@/api/types'
+import type { CorrectionMode, IssuedInvoiceCorrectionItem, IssuedInvoiceLineResponse, IssuedInvoiceResponse } from '@/api/types'
 import { useCompany } from '@/company/useCompany'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
@@ -34,6 +35,7 @@ import { renderBilingualPdf, type PrintVariant } from '@/invoicing/bilingualPrin
 import { CORRECTION_TYPES, isCorrection } from '@/invoicing/correction'
 import { countryName } from '@/invoicing/foreign'
 import { formatDate, formatDecimal, formatIban, formatMoney, formatNrb, formatSignedMoney } from '@/invoicing/format'
+import { renderProformaPdf } from '@/invoicing/proformaPrint'
 import { downloadFile, fileStem, isReissueBlocked, ksefPollInterval, renderInvoicePdf } from '@/invoicing/status'
 import { vatRateLabel } from '@/invoicing/totals'
 
@@ -84,6 +86,8 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
   const correction = isCorrection(invoice)
   const kind = invoice.invoiceType ?? 'VAT'
   const advance = kind === 'ZAL'
+  const proforma = kind === 'PRO'
+  const convertedTo = invoice.convertedTo ?? null
   const advanceAfter = advance ? (invoice.currentState?.advanceAmount ?? null) : null
   const noPayment = advance || ((correction || kind === 'ROZ') && invoice.totalGross <= 0)
   const chain = invoice.chain
@@ -95,6 +99,8 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
   const [wrongNipOpen, setWrongNipOpen] = useState(false)
   const editHref = `/issued/${encodeURIComponent(invoice.id)}/${correction ? 'correct' : isChainDraft(invoice) ? 'chain' : 'edit'}?${tenantQuery}`
   const itemHref = (id: string): string => `/issued/${encodeURIComponent(id)}?${tenantQuery}`
+  const linkedHref = (item: Pick<IssuedInvoiceCorrectionItem, 'id' | 'status'>): string =>
+    item.status === 'Draft' ? `/issued/${encodeURIComponent(item.id)}/edit?${tenantQuery}` : itemHref(item.id)
 
   function showFailure(error: unknown, fallback: string): void {
     setFailure(error instanceof Error ? error.message : fallback)
@@ -110,7 +116,7 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
   }
 
   const copy = useMutation({
-    mutationFn: () => copyIssuedInvoice(tenantId, invoice.id),
+    mutationFn: () => (proforma ? copyIssuedInvoice(tenantId, invoice.id, 'PRO') : copyIssuedInvoice(tenantId, invoice.id)),
     onMutate: () => setFailure(null),
     onSuccess: (draft) => {
       void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
@@ -165,16 +171,33 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
     onError: (error) => showFailure(error, 'Nie udało się wygenerować PDF'),
   })
 
+  const convert = useMutation({
+    mutationFn: () => convertProforma(tenantId, invoice.id),
+    onMutate: () => setFailure(null),
+    onSuccess: (draft) => {
+      void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
+      void queryClient.invalidateQueries({ queryKey: ['issued-invoice', tenantId, invoice.id] })
+      navigate(linkedHref(draft))
+    },
+    onError: (error) => showFailure(error, 'Nie udało się utworzyć faktury'),
+  })
+
+  const proformaPdf = useMutation({
+    mutationFn: async () => downloadFile(await renderProformaPdf(invoice), `${stem}.pdf`, 'application/pdf'),
+    onMutate: () => setFailure(null),
+    onError: (error) => showFailure(error, 'Nie udało się wygenerować PDF'),
+  })
+
   const remove = useMutation({
     mutationFn: () => deleteIssuedInvoice(tenantId, invoice.id, invoice.version),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['issued-invoices', tenantId] })
-      navigate(`/issued?${tenantQuery}`, { replace: true })
+      navigate(`/issued?${proforma ? 'view=proformy&' : ''}${tenantQuery}`, { replace: true })
       queryClient.removeQueries({ queryKey: ['issued-invoice', tenantId, invoice.id] })
     },
     onError: (error) => {
       setDeleteOpen(false)
-      showFailure(error, 'Nie udało się usunąć szkicu')
+      showFailure(error, proforma ? 'Nie udało się usunąć proformy' : 'Nie udało się usunąć szkicu')
     },
   })
 
@@ -243,24 +266,76 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
           {invoice.number ?? 'Szkic'}
         </h1>
         <KsefStatusBadge status={invoice.status} />
-        <EnvBadge environment={invoice.ksef.environment} />
+        {convertedTo ? <span className="inv-badge inv-badge--neutral">Przekształcona</span> : null}
+        {proforma ? null : <EnvBadge environment={invoice.ksef.environment} />}
         {kind === 'VAT' ? <SaveTemplateButton defaultName={invoice.buyer.name ?? ''} save={(name) => saveAsTemplate(tenantId, invoice.id, name)} /> : null}
       </header>
 
       {failure ? <ErrorBanner message={failure} /> : null}
 
-      <KsefStatusPanel
-        invoice={invoice}
-        tenantId={tenantId}
-        editHref={editHref}
-        copyAction={kind === 'VAT' ? copyButton : null}
-        downloads={downloads}
-        deleteAction={
-          <button type="button" className="ui-button ui-button--danger-outline ui-button--md" onClick={() => setDeleteOpen(true)}>
-            <Icon name="trash-2" /> Usuń szkic
-          </button>
-        }
-      />
+      {invoice.proforma ? (
+        <div className="inv-alert inv-alert--info" role="status" data-testid="from-proforma">
+          Utworzona z proformy{' '}
+          <Link to={itemHref(invoice.proforma.id)} className="mono">
+            {invoice.proforma.number ?? '—'}
+          </Link>
+        </div>
+      ) : null}
+
+      {proforma && invoice.status === 'Issued' ? (
+        <section className="status-panel" aria-labelledby="proforma-panel-title" data-testid="proforma-panel">
+          <div>
+            <h2 id="proforma-panel-title">Proforma wystawiona</h2>
+            <p>Dokument poza KSeF. Nie jest fakturą VAT.</p>
+            {convertedTo ? (
+              <dl className="kv">
+                <dt>Faktura</dt>
+                <dd>
+                  <Link to={linkedHref(convertedTo)} className="mono">
+                    {convertedTo.number ?? 'Szkic faktury'}
+                  </Link>{' '}
+                  <KsefStatusBadge status={convertedTo.status} />
+                </dd>
+              </dl>
+            ) : (
+              <p className="inv-help">Proformę można usunąć, dopóki nie utworzysz z niej faktury. Jej numer nie zostanie użyty ponownie.</p>
+            )}
+          </div>
+          <div className="status-panel__next">
+            <button type="button" className="ui-button ui-button--primary ui-button--md" disabled={proformaPdf.isPending} onClick={() => proformaPdf.mutate()}>
+              <Icon name="file-down" /> {proformaPdf.isPending ? 'Generowanie…' : 'Pobierz PDF'}
+            </button>
+            {convertedTo ? (
+              <Link to={linkedHref(convertedTo)} className="ui-button ui-button--outline ui-button--md">
+                Otwórz fakturę
+              </Link>
+            ) : (
+              <button type="button" className="ui-button ui-button--outline ui-button--md" disabled={convert.isPending} onClick={() => convert.mutate()}>
+                {convert.isPending ? 'Tworzenie…' : 'Utwórz fakturę'}
+              </button>
+            )}
+            {copyButton}
+            {convertedTo ? null : (
+              <button type="button" className="ui-button ui-button--danger-outline ui-button--md" onClick={() => setDeleteOpen(true)}>
+                <Icon name="trash-2" /> Usuń proformę
+              </button>
+            )}
+          </div>
+        </section>
+      ) : (
+        <KsefStatusPanel
+          invoice={invoice}
+          tenantId={tenantId}
+          editHref={editHref}
+          copyAction={kind === 'VAT' ? copyButton : null}
+          downloads={downloads}
+          deleteAction={
+            <button type="button" className="ui-button ui-button--danger-outline ui-button--md" onClick={() => setDeleteOpen(true)}>
+              <Icon name="trash-2" /> Usuń szkic
+            </button>
+          }
+        />
+      )}
 
       {chain ? (
         <ChainCard chain={chain} currency={invoice.currency} currentId={invoice.id} itemHref={itemHref}>
@@ -562,9 +637,13 @@ function InvoiceDetails({ tenantId, invoice }: { tenantId: string; invoice: Issu
 
       <ConfirmDialog
         open={deleteOpen}
-        title="Usunąć szkic?"
-        message="Szkic zostanie trwale usunięty. Tej operacji nie można cofnąć."
-        confirmLabel="Usuń szkic"
+        title={proforma && invoice.status === 'Issued' ? 'Usunąć proformę?' : 'Usunąć szkic?'}
+        message={
+          proforma && invoice.status === 'Issued'
+            ? 'Proforma zostanie trwale usunięta. Jej numer nie zostanie użyty ponownie.'
+            : 'Szkic zostanie trwale usunięty. Tej operacji nie można cofnąć.'
+        }
+        confirmLabel={proforma && invoice.status === 'Issued' ? 'Usuń proformę' : 'Usuń szkic'}
         cancelLabel="Anuluj"
         variant="danger"
         isPending={remove.isPending}

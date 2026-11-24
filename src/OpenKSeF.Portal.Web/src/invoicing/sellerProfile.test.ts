@@ -102,4 +102,24 @@ describe('seller profile form', () => {
       'advanceNumberingPattern',
     ])
   })
+
+  it('keeps the PRO series apart: default pattern, own next number, distinct from FV, KOR and ZAL', () => {
+    const form = fromProfile(profile)
+    expect(form.proformaNumberingPattern).toBe('PRO/{nr}/{MM}/{RRRR}')
+    expect(toSellerProfileRequest(form, profile, today)).not.toHaveProperty('proformaNextNumber')
+    expect(toSellerProfileRequest({ ...form, proformaNextNumber: '5' }, profile, today)).toMatchObject({
+      proformaNumberingPattern: 'PRO/{nr}/{MM}/{RRRR}',
+      proformaNextNumber: 5,
+      proformaNextNumberPeriod: '2026-11',
+    })
+    for (const taken of [form.numberingPattern, form.correctionNumberingPattern, form.advanceNumberingPattern]) {
+      expect(validateSellerProfile({ ...form, proformaNumberingPattern: taken }).proformaNumberingPattern).toBe(
+        'Wzorzec proform musi różnić się od wzorców faktur, korekt i zaliczek',
+      )
+    }
+    expect(Object.keys(validateSellerProfile({ ...form, proformaNumberingPattern: 'PRO', proformaNextNumber: '0' })).sort()).toEqual([
+      'proformaNextNumber',
+      'proformaNumberingPattern',
+    ])
+  })
 })

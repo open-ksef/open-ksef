@@ -24,6 +24,7 @@ export interface ListIssuedInvoicesParams extends Record<string, string | number
   status?: IssuedInvoiceStatus
   month?: string
   q?: string
+  invoiceType?: IssuedInvoiceType
 }
 
 const base = (tenantId: string): string => `/tenants/${encodeURIComponent(tenantId)}/issued-invoices`
@@ -54,8 +55,8 @@ export function getIssuedInvoice(tenantId: string, id: string): Promise<IssuedIn
   return apiClient.get<IssuedInvoiceResponse>(item(tenantId, id))
 }
 
-export function createIssuedInvoice(tenantId: string, request: IssuedInvoiceDraftRequest): Promise<IssuedInvoiceResponse> {
-  return apiClient.post<IssuedInvoiceResponse>(base(tenantId), request)
+export function createIssuedInvoice(tenantId: string, request: IssuedInvoiceDraftRequest, invoiceType?: IssuedInvoiceType): Promise<IssuedInvoiceResponse> {
+  return apiClient.post<IssuedInvoiceResponse>(base(tenantId), request, { query: { invoiceType } })
 }
 
 export function updateIssuedInvoice(
@@ -63,8 +64,9 @@ export function updateIssuedInvoice(
   id: string,
   request: IssuedInvoiceDraftRequest,
   version?: number,
+  invoiceType?: IssuedInvoiceType,
 ): Promise<IssuedInvoiceResponse> {
-  return apiClient.put<IssuedInvoiceResponse>(item(tenantId, id), request, { query: { version } })
+  return apiClient.put<IssuedInvoiceResponse>(item(tenantId, id), request, { query: { version, invoiceType } })
 }
 
 export function deleteIssuedInvoice(tenantId: string, id: string, version?: number): Promise<void> {
@@ -112,8 +114,12 @@ export function reissueInvoice(tenantId: string, id: string): Promise<IssuedInvo
   return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/reissue`)
 }
 
-export function copyIssuedInvoice(tenantId: string, id: string): Promise<IssuedInvoiceResponse> {
-  return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/copy`)
+export function copyIssuedInvoice(tenantId: string, id: string, invoiceType?: IssuedInvoiceType): Promise<IssuedInvoiceResponse> {
+  return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/copy`, undefined, { query: { invoiceType } })
+}
+
+export function convertProforma(tenantId: string, id: string): Promise<IssuedInvoiceResponse> {
+  return apiClient.post<IssuedInvoiceResponse>(`${item(tenantId, id)}/convert`)
 }
 
 export function listRecentBuyers(tenantId: string, q?: string): Promise<RecentBuyerResponse[]> {

@@ -276,6 +276,23 @@ describe('SellerProfilePage', () => {
     expect(input(container, 'numbering-pattern').getAttribute('aria-invalid')).toBe('true')
   })
 
+  it('shows SP-VAL-012 inline on the proforma pattern', async () => {
+    const message = 'Wzorzec numeracji proform musi różnić się od wzorców faktur, korekt i faktur zaliczkowych'
+    vi.mocked(updateSellerProfile).mockRejectedValue(
+      await apiError(400, { errors: [{ code: 'SP-VAL-012', field: 'proformaNumberingPattern', message }], warnings: [] }),
+    )
+    await render('/company/invoice-data?tenantId=t-1')
+    await act(async () => {
+      typeInto(input(container, 'legal-name'), 'Firma')
+      typeInto(input(container, 'address-line-1'), 'ul. Prosta 1')
+      typeInto(input(container, 'bank-account'), '93 0000 0000 2026 1117 0000 0815')
+    })
+
+    await act(async () => buttonByText(container, 'Zapisz dane').click())
+    await waitFor(() => container.querySelector('#proforma-numbering-pattern-error')?.textContent === message)
+    expect(input(container, 'proforma-numbering-pattern').getAttribute('aria-invalid')).toBe('true')
+  })
+
   it('updates the number preview when the pattern changes', async () => {
     await render('/company/invoice-data?tenantId=t-1')
     await act(async () => {

@@ -15,6 +15,7 @@ interface CurrencySectionProps {
   saleDate: string
   fieldErrors?: Record<string, string>
   lockCurrency?: boolean
+  noRate?: boolean
   onUpdate: (update: (current: DraftFormValue) => DraftFormValue) => void
 }
 
@@ -27,9 +28,10 @@ export function CurrencySection({
   saleDate,
   fieldErrors = {},
   lockCurrency = false,
+  noRate = false,
   onUpdate,
 }: CurrencySectionProps): ReactElement {
-  const needsRate = currency !== 'PLN'
+  const needsRate = !noRate && currency !== 'PLN'
   const key = needsRate && issueDate && saleDate ? `${currency}|${issueDate}|${saleDate}` : null
   const [loaded, setLoaded] = useState<{ key: string; proposal: ExchangeRateProposalResponse } | null>(null)
   const [attempt, setAttempt] = useState(0)

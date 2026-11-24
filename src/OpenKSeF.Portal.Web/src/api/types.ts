@@ -223,9 +223,9 @@ export type PaymentMethod = 'Transfer' | 'Cash' | 'Card'
 
 export type ExemptionBasisKind = 'Act' | 'Directive' | 'Other'
 
-export type IssuedInvoiceStatus = 'Draft' | 'Sending' | 'Accepted' | 'Rejected'
+export type IssuedInvoiceStatus = 'Draft' | 'Sending' | 'Accepted' | 'Rejected' | 'Issued'
 
-export type IssuedInvoiceType = 'VAT' | 'KOR' | 'ZAL' | 'ROZ' | 'KOR_ZAL' | 'KOR_ROZ'
+export type IssuedInvoiceType = 'VAT' | 'KOR' | 'ZAL' | 'ROZ' | 'KOR_ZAL' | 'KOR_ROZ' | 'PRO'
 
 export type CorrectionMode = 'Edit' | 'ToZero' | 'WrongBuyerId'
 
@@ -257,6 +257,9 @@ export interface SellerProfileRequest {
   advanceNumberingPattern?: string | null
   advanceNextNumber?: number | null
   advanceNextNumberPeriod?: string | null
+  proformaNumberingPattern?: string | null
+  proformaNextNumber?: number | null
+  proformaNextNumberPeriod?: string | null
   bankSwift?: string | null
   bankName?: string | null
   foreignBankAccount?: string | null
@@ -290,6 +293,10 @@ export interface SellerProfileResponse {
   advanceNextNumber?: number
   advanceNextNumberPeriod?: string
   advanceNextNumberPreview?: string
+  proformaNumberingPattern?: string
+  proformaNextNumber?: number
+  proformaNextNumberPeriod?: string
+  proformaNextNumberPreview?: string
 }
 
 export interface NipLookupResponse {
@@ -520,6 +527,8 @@ export interface IssuedInvoiceResponse {
   amountBefore?: number | null
   advanceInvoices?: AdvanceInvoiceRef[] | null
   chain?: OrderChain | null
+  proforma?: IssuedInvoiceCorrectionItem | null
+  convertedTo?: IssuedInvoiceCorrectionItem | null
 }
 
 export interface ExchangeRateProposalResponse {

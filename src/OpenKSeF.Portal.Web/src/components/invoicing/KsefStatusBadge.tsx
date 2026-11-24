@@ -7,6 +7,7 @@ const statusPresentation: Record<IssuedInvoiceStatus, { label: string; tone: str
   Sending: { label: 'Wysyłanie', tone: 'info', icon: '' },
   Accepted: { label: 'Przyjęta w KSeF', tone: 'success', icon: '✓' },
   Rejected: { label: 'Odrzucona', tone: 'error', icon: '✕' },
+  Issued: { label: 'Wystawiona', tone: 'success', icon: '✓' },
 }
 
 export function KsefStatusBadge({ status }: { status: IssuedInvoiceStatus }): ReactElement {

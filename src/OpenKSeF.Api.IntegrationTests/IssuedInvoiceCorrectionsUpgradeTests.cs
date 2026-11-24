@@ -29,9 +29,9 @@ public sealed class IssuedInvoiceCorrectionsUpgradeTests : IAsyncLifetime
 
     private static readonly (string Table, string NewColumns)[] Tables =
     [
-        ("IssuedInvoices", "- 'InvoiceType' - 'CorrectedInvoiceId' - 'CorrectionReason' - 'CorrectionType' - 'OrderChainId' - 'AdvanceAmount' - 'CorrectionMode'"),
+        ("IssuedInvoices", "- 'InvoiceType' - 'CorrectedInvoiceId' - 'CorrectionReason' - 'CorrectionType' - 'OrderChainId' - 'AdvanceAmount' - 'CorrectionMode' - 'ProformaId'"),
         ("IssuedInvoiceLines", "- 'BaseLineNo'"),
-        ("SellerProfiles", "- 'CorrectionNumberingPattern' - 'AdvanceNumberingPattern'"),
+        ("SellerProfiles", "- 'CorrectionNumberingPattern' - 'AdvanceNumberingPattern' - 'ProformaNumberingPattern'"),
         ("InvoiceNumberCounters", ""),
     ];
 
