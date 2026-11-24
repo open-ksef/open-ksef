@@ -72,6 +72,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         ["POST api/tenants/{tenantId}/issued-invoices/{id}/corrections"] = new(new { mode = "Edit" }, Draft, HttpStatusCode.Conflict),
         ["PUT api/tenants/{tenantId}/issued-invoices/{id}/correction"] = new(new { correctionReason = "Hijacked" }, Draft, HttpStatusCode.Conflict),
         ["POST api/tenants/{tenantId}/issued-invoices/{id}/reissue"] = new(null, Draft, HttpStatusCode.Conflict),
+        ["POST api/tenants/{tenantId}/issued-invoices/{id}/convert"] = new(null, Draft, HttpStatusCode.Conflict),
         ["POST api/tenants/{tenantId}/issued-invoices/advances"] = new(new { }, Draft, HttpStatusCode.Created),
         ["POST api/tenants/{tenantId}/issued-invoices/{id}/advances"] = new(null, Draft, HttpStatusCode.Conflict),
         ["PUT api/tenants/{tenantId}/issued-invoices/{id}/advance"] = new(new { advanceAmount = 1 }, Draft, HttpStatusCode.Conflict),
