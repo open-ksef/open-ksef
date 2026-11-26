@@ -13,10 +13,10 @@
     <link rel="icon" type="image/png" sizes="32x32" href="${url.resourcesPath}/img/favicon-32.png">
     <link rel="apple-touch-icon" href="${url.resourcesPath}/img/favicon-180.png">
     <#list properties.styles?split(' ') as style>
-    <link href="${url.resourcesPath}/${style}" rel="stylesheet">
+    <link href="${url.resourcesPath}/${style}?v=${properties.assetsVersion!''}" rel="stylesheet">
     </#list>
     <#list properties.scripts?split(' ') as script>
-    <script src="${url.resourcesPath}/${script}" defer></script>
+    <script src="${url.resourcesPath}/${script}?v=${properties.assetsVersion!''}" defer></script>
     </#list>
 </head>
 <body class="${bodyClass}" data-page-id="login-${pageId}" data-icons="${url.resourcesPath}/img/icons.svg">
