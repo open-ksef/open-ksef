@@ -9,6 +9,7 @@ namespace OpenKSeF.Api.Services;
 public static class TenantAudit
 {
     private const int PageSize = 50;
+    private const string DeletedAccount = "deleted";
 
     private static readonly HashSet<string> WithDetails =
     [
@@ -65,10 +66,11 @@ public static class TenantAudit
         return new(page.Select(a =>
         {
             var actor = a.ActorName ?? a.ActorEmail;
+            var deleted = a.ActorUserId == DeletedAccount;
             if (!WithDetails.Contains(a.Action))
-                return new TenantHistoryEventResponse(a.Id, a.OccurredAt, a.Action, actor, actor is null, null, null, null);
+                return new TenantHistoryEventResponse(a.Id, a.OccurredAt, a.Action, actor, deleted, null, null, null);
             var target = a.Action is AuditEvent.InvoicePaid or AuditEvent.InvoiceUnpaid ? invoices.GetValueOrDefault(a.Target ?? "") : a.Target;
-            return new TenantHistoryEventResponse(a.Id, a.OccurredAt, a.Action, actor, actor is null,
+            return new TenantHistoryEventResponse(a.Id, a.OccurredAt, a.Action, actor, deleted,
                 a.TargetUserId is null ? null : names.GetValueOrDefault(a.TargetUserId), a.TargetEmail, target);
         }).ToList(), rows.Count > PageSize);
     }

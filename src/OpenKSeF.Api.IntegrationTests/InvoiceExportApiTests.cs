@@ -493,8 +493,14 @@ public sealed class InvoiceExportApiTests : IAsyncLifetime
         {
             app.Use(async (context, inner) =>
             {
-                await inner(context);
-                ended.TrySetResult(context.RequestAborted.IsCancellationRequested);
+                try
+                {
+                    await inner(context);
+                }
+                finally
+                {
+                    ended.TrySetResult(context.RequestAborted.IsCancellationRequested);
+                }
             });
             next(app);
         };

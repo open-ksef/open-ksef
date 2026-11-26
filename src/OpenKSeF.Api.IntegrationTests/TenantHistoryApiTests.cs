@@ -108,12 +108,16 @@ public sealed class TenantHistoryApiTests : IAsyncLifetime
         claim.ActorUserId = "deleted";
         claim.ActorEmail = null;
         claim.ActorName = null;
-        await SeedAsync([paid, paidGone, exported, roleChanged, invited, claim, unknown]);
+        var noProfile = Event(_tenantId, AuditEvent.CredentialDeleted, Base.AddMinutes(7));
+        noProfile.ActorEmail = null;
+        noProfile.ActorName = null;
+        await SeedAsync([paid, paidGone, exported, roleChanged, invited, claim, unknown, noProfile]);
 
         var items = (await HistoryAsync()).Items.ToDictionary(i => i.Id);
 
         Assert.Equal(("Anna Testowa", false, "FV/7/10/2026"), (items[paid.Id].Actor, items[paid.Id].ActorDeleted, items[paid.Id].Target));
         Assert.Null(items[paidGone.Id].Target);
+        Assert.Equal((null, false), (items[noProfile.Id].Actor, items[noProfile.Id].ActorDeleted));
         Assert.Equal(exported.Target, items[exported.Id].Target);
         Assert.Equal(("Jan Testowy", "jan@example.invalid", "Accountant->Administrator"),
             (items[roleChanged.Id].TargetName, items[roleChanged.Id].TargetEmail, items[roleChanged.Id].Target));
