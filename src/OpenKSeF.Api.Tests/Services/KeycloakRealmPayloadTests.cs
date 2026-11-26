@@ -288,30 +288,34 @@ public class KeycloakRealmPayloadTests
         Assert.Equal("S256", attributes.GetProperty("pkce.code.challenge.method").GetString());
     }
 
-    [Fact]
-    public async Task ApplySetup_GoogleIdp_PromptsForAccountSelection()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ApplySetup_GoogleIdp_PromptsForAccountSelection(bool exists)
     {
         _keycloak.RealmJson = "{}";
+        _keycloak.GoogleIdpExists = exists;
 
         var result = await CreateSetupService(Substitute.For<ISystemConfigService>(), ValidKey)
             .ApplySetupAsync(NewSetupRequest() with { GoogleClientId = "gid", GoogleClientSecret = "gsecret" }, "token", "admin");
 
         Assert.True(result.Success, result.Error);
-        var idp = _keycloak.Body(HttpMethod.Post, $"{RealmUrl}/identity-provider/instances");
-        Assert.Equal("select_account", idp.GetProperty("config").GetProperty("prompt").GetString());
+        Assert.Equal("select_account", _keycloak.GoogleIdp().GetProperty("config").GetProperty("prompt").GetString());
     }
 
-    [Fact]
-    public async Task UpdateSettings_GoogleIdp_PromptsForAccountSelection()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UpdateSettings_GoogleIdp_PromptsForAccountSelection(bool exists)
     {
         _keycloak.RealmJson = """{"bruteForceProtected":true,"failureFactor":10}""";
+        _keycloak.GoogleIdpExists = exists;
 
         var result = await CreateSettingsService().UpdateSettingsAsync(
             new SettingsUpdateRequest { GoogleClientId = "gid", GoogleClientSecret = "gsecret" }, "token");
 
         Assert.True(result.Success, result.Error);
-        var idp = _keycloak.Body(HttpMethod.Post, $"{RealmUrl}/identity-provider/instances");
-        Assert.Equal("select_account", idp.GetProperty("config").GetProperty("prompt").GetString());
+        Assert.Equal("select_account", _keycloak.GoogleIdp().GetProperty("config").GetProperty("prompt").GetString());
     }
 
     private static SmtpConfig Smtp(string? password) =>
@@ -552,6 +556,12 @@ public class KeycloakRealmPayloadTests
 
         public bool Unreachable { get; set; }
 
+        public bool GoogleIdpExists { get; set; }
+
+        public JsonElement GoogleIdp() => GoogleIdpExists
+            ? Body(HttpMethod.Put, $"{RealmUrl}/identity-provider/instances/google")
+            : Body(HttpMethod.Post, $"{RealmUrl}/identity-provider/instances");
+
         public HttpStatusCode TokenStatus { get; set; } = HttpStatusCode.OK;
 
         public (string Body, System.Net.Http.Headers.HttpRequestHeaders Headers)? Register { get; private set; }
@@ -626,6 +636,9 @@ public class KeycloakRealmPayloadTests
 
             if (url.EndsWith("/client-scopes"))
                 return Json("""[{"id":"scope-roles","name":"roles"},{"id":"scope-offline","name":"offline_access"}]""");
+
+            if (GoogleIdpExists && url.EndsWith("/identity-provider/instances/google"))
+                return Json("""{"alias":"google"}""");
 
             if (url.Contains("/clients/uuid-"))
                 return Json("""{"id":"user-1","value":"client-secret","redirectUris":["/*"],"serviceAccountsEnabled":true}""");

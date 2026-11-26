@@ -157,7 +157,7 @@ export function OnboardingPage(): ReactElement {
             <h1>Dane firmy</h1>
             <p className="wiz__lead">Podaj dane swojej firmy, aby rozpocząć korzystanie z KSeF.</p>
             <p className="wiz__lead" data-testid="onboarding-account">
-              Zalogowano jako <b>{user?.profile.email}</b>.{' '}
+              Zalogowano jako <b>{user?.profile.email ?? user?.profile.preferred_username}</b>.{' '}
               <button type="button" className="wiz__skip" data-testid="onboarding-switch-account" onClick={() => void logout()}>
                 Zaloguj na inne konto
               </button>
