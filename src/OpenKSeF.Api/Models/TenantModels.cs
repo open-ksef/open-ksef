@@ -56,6 +56,10 @@ public record TenantResponse(
 
 public record SetMemberNotificationsRequest([param: Required] bool? Enabled);
 
+public record TenantHistoryEventResponse(Guid Id, DateTime OccurredAt, string Action, string? Actor, bool ActorDeleted, string? TargetName, string? TargetEmail, string? Target);
+
+public record TenantHistoryPageResponse(List<TenantHistoryEventResponse> Items, bool HasMore);
+
 public record TenantMemberResponse(string UserId, string? DisplayName, string? Email, string Role, DateTime CreatedAt, bool ReceivesCompanyNotificationEmail = false);
 
 public record ChangeMemberRoleRequest(
