@@ -288,6 +288,32 @@ public class KeycloakRealmPayloadTests
         Assert.Equal("S256", attributes.GetProperty("pkce.code.challenge.method").GetString());
     }
 
+    [Fact]
+    public async Task ApplySetup_GoogleIdp_PromptsForAccountSelection()
+    {
+        _keycloak.RealmJson = "{}";
+
+        var result = await CreateSetupService(Substitute.For<ISystemConfigService>(), ValidKey)
+            .ApplySetupAsync(NewSetupRequest() with { GoogleClientId = "gid", GoogleClientSecret = "gsecret" }, "token", "admin");
+
+        Assert.True(result.Success, result.Error);
+        var idp = _keycloak.Body(HttpMethod.Post, $"{RealmUrl}/identity-provider/instances");
+        Assert.Equal("select_account", idp.GetProperty("config").GetProperty("prompt").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateSettings_GoogleIdp_PromptsForAccountSelection()
+    {
+        _keycloak.RealmJson = """{"bruteForceProtected":true,"failureFactor":10}""";
+
+        var result = await CreateSettingsService().UpdateSettingsAsync(
+            new SettingsUpdateRequest { GoogleClientId = "gid", GoogleClientSecret = "gsecret" }, "token");
+
+        Assert.True(result.Success, result.Error);
+        var idp = _keycloak.Body(HttpMethod.Post, $"{RealmUrl}/identity-provider/instances");
+        Assert.Equal("select_account", idp.GetProperty("config").GetProperty("prompt").GetString());
+    }
+
     private static SmtpConfig Smtp(string? password) =>
         new() { Host = "smtp.example.com", From = "noreply@example.com", Auth = true, User = "mailer", Password = password };
 

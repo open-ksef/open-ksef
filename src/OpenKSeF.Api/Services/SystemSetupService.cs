@@ -654,6 +654,7 @@ public sealed class SystemSetupService : ISystemSetupService
                     ["clientSecret"] = request.GoogleClientSecret!,
                     ["defaultScope"] = "openid email profile",
                     ["syncMode"] = "IMPORT",
+                    ["prompt"] = "select_account",
                 },
             };
             await SendKeycloakJsonAsync(client, HttpMethod.Put, idpUrl, adminToken, payload, ct);
@@ -674,6 +675,7 @@ public sealed class SystemSetupService : ISystemSetupService
                     ["clientSecret"] = request.GoogleClientSecret!,
                     ["defaultScope"] = "openid email profile",
                     ["syncMode"] = "IMPORT",
+                    ["prompt"] = "select_account",
                 },
             };
             var createUrl = $"{kcBase}/admin/realms/openksef/identity-provider/instances";

@@ -10,18 +10,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { addOrUpdateCredential, forceCredentialSync } from '@/api/endpoints/credentials'
 import { claimTenant, createTenant } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
+import { useAuth } from '@/auth/useAuth'
 import { INVALID_TOKEN_REJECTION } from '@/invoicing/status'
 import { OnboardingPage } from './Onboarding'
 import { ownerAccess } from '@/test/tenant'
 
 vi.mock('@/api/endpoints/credentials', () => ({ addOrUpdateCredential: vi.fn(), forceCredentialSync: vi.fn() }))
 vi.mock('@/api/endpoints/tenants', () => ({ createTenant: vi.fn(), claimTenant: vi.fn() }))
+vi.mock('@/auth/useAuth', () => ({ useAuth: vi.fn() }))
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 
 describe('Onboarding', () => {
   let root: Root
   let container: HTMLDivElement
   let router: ReturnType<typeof createMemoryRouter>
+  const logout = vi.fn()
   const by = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
 
   async function settle(): Promise<void> {
@@ -49,6 +52,7 @@ describe('Onboarding', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+    vi.mocked(useAuth).mockReturnValue({ user: { profile: { sub: 'u', email: 'zle@gmail.com' } }, logout } as unknown as ReturnType<typeof useAuth>)
     vi.mocked(createTenant).mockResolvedValue({ id: 't-1', nip: '1111111111', displayName: null, notificationEmail: null, ...ownerAccess, createdAt: '2026-01-01T00:00:00Z' })
     vi.mocked(addOrUpdateCredential).mockResolvedValue({ message: 'ok' })
     vi.mocked(forceCredentialSync).mockResolvedValue({ tenantId: 't-1', fetchedInvoices: 4, newInvoices: 4 } as never)
@@ -82,6 +86,12 @@ describe('Onboarding', () => {
     await next()
     expect(container.querySelector('[role="alert"]')?.textContent).toBe('NIP musi zawierać dokładnie 10 cyfr')
     expect(createTenant).not.toHaveBeenCalled()
+  })
+
+  it('shows the signed-in e-mail and logs out to switch account', async () => {
+    expect(by('onboarding-account')?.textContent).toContain('zle@gmail.com')
+    await act(async () => by('onboarding-switch-account')?.click())
+    expect(logout).toHaveBeenCalledOnce()
   })
 
   it('has no serious axe violations on both steps', async () => {
