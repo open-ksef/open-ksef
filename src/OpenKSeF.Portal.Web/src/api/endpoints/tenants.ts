@@ -6,6 +6,7 @@ import type {
   CreateInviteResponse,
   CreateTenantRequest,
   InviteLinkResponse,
+  TenantHistoryPageResponse,
   TenantInviteResponse,
   TenantMemberResponse,
   TenantResponse,
@@ -41,6 +42,10 @@ export function setMyNotifications(id: string, enabled: boolean): Promise<void> 
 
 export function listMembers(id: string): Promise<TenantMemberResponse[]> {
   return apiClient.get<TenantMemberResponse[]>(`${tenantPath(id)}/members`)
+}
+
+export function listHistory(id: string, before?: string): Promise<TenantHistoryPageResponse> {
+  return apiClient.get<TenantHistoryPageResponse>(`${tenantPath(id)}/history${before ? `?before=${encodeURIComponent(before)}` : ''}`)
 }
 
 export function changeMemberRole(id: string, userId: string, role: TenantRole): Promise<void> {

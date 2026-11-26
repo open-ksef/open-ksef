@@ -10,6 +10,7 @@ import { ApiError, readFieldError } from '@/api/errors'
 import type { TenantResponse } from '@/api/types'
 import { ClaimCompanyForm } from '@/company/ClaimCompanyForm'
 import { CompanyBox } from '@/company/CompanyBox'
+import { CompanyHistory } from '@/company/CompanyHistory'
 import { can, MANAGERS_ONLY } from '@/company/CompanyContext'
 import { useCompany } from '@/company/useCompany'
 import { Button } from '@/components/Button'
@@ -190,6 +191,8 @@ function DetailsTab({ company }: { company: TenantResponse }): ReactElement {
 
       {can(company, 'invoices.export') ? <ExportSection company={company} /> : null}
 
+      {can(company, 'members.manage') ? <CompanyHistory tenantId={company.id} /> : null}
+
       {deletable ? (
         <section className="ui-card ui-card--danger" aria-labelledby="company-danger-title">
           <h2 id="company-danger-title">Działania ryzykowne</h2>
@@ -243,6 +246,8 @@ function exportError(from: string, to: string, sales: boolean, purchases: boolea
   return null
 }
 
+const isoDate = (date: Date): string => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+
 function ExportSection({ company }: { company: TenantResponse }): ReactElement {
   const [open, setOpen] = useState(false)
   const [from, setFrom] = useState('')
@@ -272,13 +277,22 @@ function ExportSection({ company }: { company: TenantResponse }): ReactElement {
     <section className="ui-card" aria-labelledby="company-export-title">
       <h2 id="company-export-title">Eksport faktur</h2>
       <p className="company-muted">Plik ZIP z XML faktur sprzedaży i zakupu, UPO oraz indeksem CSV.</p>
-      <Button variant="outline" data-testid="invoice-export-open" onClick={() => setOpen(true)}>
+      <Button
+        variant="outline"
+        data-testid="invoice-export-open"
+        onClick={() => {
+          const now = new Date()
+          setFrom(isoDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)))
+          setTo(isoDate(new Date(now.getFullYear(), now.getMonth(), 0)))
+          setOpen(true)
+        }}
+      >
         Eksportuj faktury
       </Button>
       <ConfirmDialog
         open={open}
         title="Eksport faktur"
-        message="Okres według daty wystawienia, włącznie. Puste daty oznaczają wszystkie faktury."
+        message="Okres według daty wystawienia, włącznie. Domyślnie poprzedni miesiąc. Wyczyść obie daty, aby pobrać wszystkie faktury."
         confirmLabel="Pobierz ZIP"
         pendingLabel="Przygotowujemy plik…"
         isPending={download.isPending}
