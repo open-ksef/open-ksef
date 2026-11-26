@@ -158,6 +158,13 @@ public class TenantsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ListMembers(Guid tenantId) => Ok(await _members.ListAsync(tenantId));
 
+    [HttpGet("{tenantId:guid}/history")]
+    [TenantAccess(TenantPermissions.MembersManage)]
+    [ProducesResponseType(typeof(TenantHistoryPageResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> History(Guid tenantId, [FromQuery] Guid? before = null) => Ok(await TenantAudit.ListAsync(_db, tenantId, before));
+
     [HttpPut("{tenantId:guid}/members/{userId}")]
     [TenantAccess(TenantPermissions.MembersManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exportInvoices } from '@/api/endpoints/invoices'
 import { listIssuedFeed } from '@/api/endpoints/issuedInvoices'
-import { claimTenant, createTenant, deleteTenant, listMembers, listTenants, updateTenant } from '@/api/endpoints/tenants'
+import { claimTenant, createTenant, deleteTenant, listHistory, listMembers, listTenants, updateTenant } from '@/api/endpoints/tenants'
 import { normalizeError } from '@/api/errors'
 import { CompanyCard } from '@/company/CompanyCard'
 import { CompanyProvider } from '@/company/CompanyProvider'
@@ -24,6 +24,7 @@ vi.mock('@/api/endpoints/tenants', () => ({
   updateTenant: vi.fn(),
   deleteTenant: vi.fn(),
   listMembers: vi.fn(),
+  listHistory: vi.fn(),
 }))
 vi.mock('@/api/endpoints/issuedInvoices', () => ({ listIssuedFeed: vi.fn() }))
 vi.mock('@/api/endpoints/invoices', () => ({ exportInvoices: vi.fn() }))
@@ -93,12 +94,14 @@ describe('Firma, Dane firmy', () => {
     vi.mocked(listTenants).mockResolvedValue([company('a', 'Firma A', '1111111111'), company('b', 'Firma B', '2222222222')])
     vi.mocked(listIssuedFeed).mockResolvedValue({ items: [], page: 1, pageSize: 1, totalCount: 7, totalPages: 7, issuedFetchIncomplete: false })
     vi.mocked(listMembers).mockResolvedValue([])
+    vi.mocked(listHistory).mockResolvedValue({ items: [], hasMore: false })
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     act(() => root.unmount())
     container.remove()
   })
@@ -337,6 +340,7 @@ describe('Firma, Dane firmy', () => {
     const confirm = () => act(async () => container.querySelector<HTMLElement>('[role="alertdialog"] .ui-button--primary')?.click())
     const alert = () => container.querySelector('[role="alertdialog"] [role="alert"]')?.textContent
 
+    await type('invoice-export-to', '')
     await type('invoice-export-from', '2026-10-31')
     await confirm()
     expect(alert()).toBe('Podaj obie daty albo zostaw obie puste, aby pobrać wszystkie faktury.')
@@ -376,10 +380,41 @@ describe('Firma, Dane firmy', () => {
     )
     await render()
     await act(async () => by('invoice-export-open')?.click())
+    await type('invoice-export-from', '')
+    await type('invoice-export-to', '')
     await act(async () => container.querySelector<HTMLElement>('[role="alertdialog"] .ui-button--primary')?.click())
     await settle()
 
     expect(exportInvoices).toHaveBeenCalledExactlyOnceWith('a', { from: undefined, to: undefined, sales: true, purchases: true })
     expect(toast.error).toHaveBeenCalledWith('Zły okres.')
+  })
+
+  it('opens the export dialog on the previous month in local time', async () => {
+    await render()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 10, 26, 9, 0))
+    await act(async () => by('invoice-export-open')?.click())
+    expect((by('invoice-export-from') as HTMLInputElement).value).toBe('2026-10-01')
+    expect((by('invoice-export-to') as HTMLInputElement).value).toBe('2026-10-31')
+
+    await act(async () => [...container.querySelectorAll<HTMLElement>('[role="alertdialog"] button')].find((button) => button.textContent === 'Anuluj')?.click())
+    vi.setSystemTime(new Date(2027, 0, 3, 9, 0))
+    await act(async () => by('invoice-export-open')?.click())
+    expect((by('invoice-export-from') as HTMLInputElement).value).toBe('2026-12-01')
+    expect((by('invoice-export-to') as HTMLInputElement).value).toBe('2026-12-31')
+  })
+
+  it('shows Historia zmian only with members.manage', async () => {
+    await render()
+    expect(by('company-history')?.querySelector('h2')?.textContent).toBe('Historia zmian')
+    expect(listHistory).toHaveBeenCalledWith('a', undefined)
+    act(() => root.unmount())
+
+    vi.mocked(listHistory).mockClear()
+    root = createRoot(container)
+    vi.mocked(listTenants).mockResolvedValue([{ ...company('a', 'Firma A', '1111111111'), role: 'Accountant', permissions: ['invoices.read', 'invoices.export', 'invoices.markPaid'] }])
+    await render()
+    expect(by('company-history')).toBeNull()
+    expect(listHistory).not.toHaveBeenCalled()
   })
 })

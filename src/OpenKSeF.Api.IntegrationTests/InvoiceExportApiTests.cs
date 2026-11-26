@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Data.Common;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
@@ -5,9 +7,12 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using OpenKSeF.Api.IntegrationTests.Infrastructure;
@@ -279,6 +284,53 @@ public sealed class InvoiceExportApiTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task ClientCancelsAfterFirstMegabyte_ServerStopsReadingXml_RequestEndsAborted()
+    {
+        const int count = 1000;
+        var (tenantId, _) = await CreateTenantAsync();
+        for (var chunk = 0; chunk < count / 500; chunk++)
+        {
+            await WithDbAsync(db =>
+            {
+                for (var i = 0; i < 500; i++)
+                {
+                    var header = Header(tenantId, InvoiceDirection.Received, $"1111111111-20261015-{chunk * 500 + i:D12}-00", new DateOnly(2026, 10, 15));
+                    db.InvoiceHeaders.Add(header);
+                    db.InvoiceXmls.Add(new InvoiceXml { InvoiceHeaderId = header.Id, Content = Encoding.ASCII.GetBytes($"<Faktura>{Convert.ToBase64String(RandomNumberGenerator.GetBytes(22_000))}</Faktura>"), Sha256 = "x", StoredAt = Now });
+                }
+
+                return db.SaveChangesAsync();
+            });
+        }
+
+        var reads = new XmlReadCounter();
+        var ended = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.ConfigureDbContext<ApplicationDbContext>(options => options.AddInterceptors(reads));
+            services.AddSingleton<IStartupFilter>(new ExportEndFilter(ended));
+        }));
+        using var client = factory.CreateClient();
+        client.SetBearerToken(await _fixture.GetAccessTokenAsync());
+
+        long read = 0;
+        using (var response = await client.GetAsync($"/api/tenants/{tenantId}/invoices/export?{October}&sales=false", HttpCompletionOption.ResponseHeadersRead))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            await using var body = await response.Content.ReadAsStreamAsync();
+            var buffer = new byte[81920];
+            int n;
+            while (read < 1024 * 1024 && (n = await body.ReadAsync(buffer)) > 0)
+                read += n;
+        }
+
+        Assert.True(await ended.Task.WaitAsync(TimeSpan.FromSeconds(30)));
+        Assert.True(read >= 1024 * 1024, $"only {read} bytes before the end of the archive");
+        var xmlRows = Assert.Single(reads.ReadCounts);
+        Assert.True(xmlRows < count / 2, $"server read {xmlRows} of {count} XML rows after the client cancelled");
+    }
+
     private async Task<(Guid TenantId, string Nip)> CreateTenantAsync()
     {
         var nip = TestNip.New();
@@ -421,6 +473,37 @@ public sealed class InvoiceExportApiTests : IAsyncLifetime
     {
         using var scope = _factory.Services.CreateScope();
         return await action(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>());
+    }
+
+    private sealed class XmlReadCounter : DbCommandInterceptor
+    {
+        public ConcurrentQueue<int> ReadCounts { get; } = new();
+
+        public override InterceptionResult DataReaderDisposing(DbCommand command, DataReaderDisposingEventData eventData, InterceptionResult result)
+        {
+            if (command.CommandText.Contains("\"InvoiceXmls\"", StringComparison.Ordinal) && command.CommandText.Contains("\"Content\"", StringComparison.Ordinal))
+                ReadCounts.Enqueue(eventData.ReadCount);
+            return result;
+        }
+    }
+
+    private sealed class ExportEndFilter(TaskCompletionSource<bool> ended) : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, inner) =>
+            {
+                try
+                {
+                    await inner(context);
+                }
+                finally
+                {
+                    ended.TrySetResult(context.RequestAborted.IsCancellationRequested);
+                }
+            });
+            next(app);
+        };
     }
 
     private sealed class FixedTime : TimeProvider

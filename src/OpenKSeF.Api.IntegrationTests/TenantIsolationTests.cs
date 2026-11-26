@@ -38,6 +38,7 @@ public sealed class TenantIsolationTests : IAsyncLifetime
         ["PUT api/tenants/{tenantId}"] = new(new { displayName = "Hijacked" }, TenantPermissions.TenantEdit),
         ["DELETE api/tenants/{tenantId}"] = new(null, TenantPermissions.TenantDelete, HttpStatusCode.NoContent),
         ["GET api/tenants/{tenantId}/members"] = new(null, TenantPermissions.MembersManage),
+        ["GET api/tenants/{tenantId}/history"] = new(null, TenantPermissions.MembersManage),
         ["PUT api/tenants/{tenantId}/members/{userId}"] = new(new { role = "Employee" }, TenantPermissions.MembersManage, HttpStatusCode.NotFound),
         ["DELETE api/tenants/{tenantId}/members/{userId}"] = new(null, TenantPermissions.MembersManage, HttpStatusCode.NotFound),
         ["POST api/tenants/{tenantId}/invites"] = new(new { email = "isolation-invitee@example.invalid", role = "Employee" }, TenantPermissions.MembersManage),

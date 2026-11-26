@@ -20,6 +20,22 @@ export interface TenantMemberResponse {
   receivesCompanyNotificationEmail?: boolean
 }
 
+export interface TenantHistoryEventResponse {
+  id: string
+  occurredAt: string
+  action: string
+  actor: string | null
+  actorDeleted: boolean
+  targetName: string | null
+  targetEmail: string | null
+  target: string | null
+}
+
+export interface TenantHistoryPageResponse {
+  items: TenantHistoryEventResponse[]
+  hasMore: boolean
+}
+
 export interface CreateInviteRequest {
   email: string
   role: TenantRole
