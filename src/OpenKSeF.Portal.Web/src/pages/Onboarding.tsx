@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { addOrUpdateCredential, forceCredentialSync } from '@/api/endpoints/credentials'
 import { createTenant } from '@/api/endpoints/tenants'
 import { ApiError } from '@/api/errors'
+import { useAuth } from '@/auth/useAuth'
 import { ClaimCompanyForm } from '@/company/ClaimCompanyForm'
 import { BrandMark } from '@/components/BrandMark'
 import { Button } from '@/components/Button'
@@ -38,6 +39,7 @@ const INITIAL_FORM: CompanyForm = {
 export function OnboardingPage(): ReactElement {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user, logout } = useAuth()
 
   const [step, setStep] = useState<Step>(1)
   const [form, setForm] = useState<CompanyForm>(INITIAL_FORM)
@@ -154,6 +156,12 @@ export function OnboardingPage(): ReactElement {
           <>
             <h1>Dane firmy</h1>
             <p className="wiz__lead">Podaj dane swojej firmy, aby rozpocząć korzystanie z KSeF.</p>
+            <p className="wiz__lead" data-testid="onboarding-account">
+              Zalogowano jako <b>{user?.profile.email ?? user?.profile.preferred_username}</b>.{' '}
+              <button type="button" className="wiz__skip" data-testid="onboarding-switch-account" onClick={() => void logout()}>
+                Zaloguj na inne konto
+              </button>
+            </p>
 
             <div className="onboarding-form">
               <div className="ui-form-group">

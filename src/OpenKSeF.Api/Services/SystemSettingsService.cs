@@ -443,6 +443,7 @@ public sealed class SystemSettingsService : ISystemSettingsService
                 ["clientSecret"] = clientSecret,
                 ["defaultScope"] = "openid email profile",
                 ["syncMode"] = "IMPORT",
+                ["prompt"] = "select_account",
             },
         };
 
