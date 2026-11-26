@@ -4,3 +4,6 @@ COPY --from=portal src/index.css src/components/ui.css src/components/auth.css /
 COPY --from=portal src/assets/fonts /opt/keycloak/themes/openksef/login/resources/css/assets/fonts
 COPY --from=portal public/assets/LICENSE-Inter.txt public/assets/LICENSE-JetBrainsMono.txt /opt/keycloak/themes/openksef/login/resources/css/assets/fonts/
 COPY --from=portal public/favicon.svg public/favicon-32.png public/favicon-180.png public/icons.svg /opt/keycloak/themes/openksef/login/resources/img/
+USER root
+RUN cd /opt/keycloak/themes/openksef/login && printf '\nassetsVersion=%s\n' "$(cat resources/css/*.css resources/js/* | sha256sum | cut -c1-12)" >> theme.properties
+USER 1000
