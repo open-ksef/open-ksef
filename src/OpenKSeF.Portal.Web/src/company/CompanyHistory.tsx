@@ -26,7 +26,7 @@ export function CompanyHistory({ tenantId }: { tenantId: string }): ReactElement
   const items = history.data?.pages.flatMap((page) => page.items) ?? []
 
   return (
-    <section className="ui-card" aria-labelledby="company-history-title" data-testid="company-history">
+    <section className="ui-card company-grid__full" aria-labelledby="company-history-title" data-testid="company-history">
       <h2 id="company-history-title">Historia zmian</h2>
       <AsyncStateView
         isLoading={history.isPending}

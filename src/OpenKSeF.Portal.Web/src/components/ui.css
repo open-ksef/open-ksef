@@ -2019,6 +2019,10 @@ dd {
   max-width: 1480px;
 }
 
+.company-grid__full {
+  grid-column: 1 / -1;
+}
+
 .company-grid-foot {
   justify-content: flex-end;
   max-width: 1480px;
